@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NetSuite Formulas - Help</title>
+    
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        
+        h1 {
+            color: #2b5797;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        h2 {
+            color: #2b5797;
+            font-size: 18px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .formula {
+            background-color: #fff;
+            border-left: 4px solid #2b5797;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .formula-name {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            color: #c7254e;
+            font-size: 16px;
+        }
+        
+        .formula-desc {
+            margin: 8px 0;
+            color: #333;
+        }
+        
+        .formula-example {
+            background-color: #f9f9f9;
+            border: 1px solid #e1e1e1;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            border-radius: 3px;
+        }
+        
+        .param {
+            margin: 5px 0;
+            padding-left: 15px;
+            font-size: 14px;
+        }
+        
+        .param-name {
+            font-family: 'Courier New', monospace;
+            color: #0066cc;
+            font-weight: bold;
+        }
+        
+        .status {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .status.ok {
+            border-left: 4px solid #5cb85c;
+        }
+        
+        .status.error {
+            border-left: 4px solid #d9534f;
+        }
+        
+        button {
+            background-color: #2b5797;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        
+        button:hover {
+            background-color: #1e3f6d;
+        }
+    </style>
+</head>
+<body>
+    <h1>NetSuite Formulas</h1>
+    <p>Custom Excel functions for querying NetSuite data</p>
+    
+    <div class="status" id="status">
+        <strong>Server Status:</strong> <span id="status-text">Checking...</span>
+        <button onclick="checkStatus()">Refresh Status</button>
+    </div>
+    
+    <h2>Available Formulas</h2>
+    
+    <div class="formula">
+        <div class="formula-name">=NS.GLATITLE(accountNumber)</div>
+        <div class="formula-desc">Get the account name for a given account number</div>
+        <div class="param"><span class="param-name">accountNumber</span> - Account number or ID</div>
+        <div class="formula-example">
+            Example: =NS.GLATITLE("1000")<br>
+            Returns: "Cash - Operating Account"
+        </div>
+    </div>
+    
+    <div class="formula">
+        <div class="formula-name">=NS.GLABAL(subsidiary, account, fromPeriod, toPeriod, class, dept, location)</div>
+        <div class="formula-desc">Get GL account balance for specified parameters</div>
+        <div class="param"><span class="param-name">subsidiary</span> - Subsidiary ID (use "" for all)</div>
+        <div class="param"><span class="param-name">account</span> - Account number or ID (required)</div>
+        <div class="param"><span class="param-name">fromPeriod</span> - Starting period name (e.g., "Jan 2025")</div>
+        <div class="param"><span class="param-name">toPeriod</span> - Ending period name (e.g., "Dec 2025")</div>
+        <div class="param"><span class="param-name">class</span> - Class ID (optional)</div>
+        <div class="param"><span class="param-name">dept</span> - Department ID (optional)</div>
+        <div class="param"><span class="param-name">location</span> - Location ID (optional)</div>
+        <div class="formula-example">
+            Example: =NS.GLABAL(1, "4000", "Jan 2025", "Dec 2025", "", "", "")<br>
+            Returns: 150000.00
+        </div>
+    </div>
+    
+    <div class="formula">
+        <div class="formula-name">=NS.GLABUD(subsidiary, budgetCategory, account, fromPeriod, toPeriod, class, dept, location)</div>
+        <div class="formula-desc">Get budget amount for specified parameters</div>
+        <div class="param"><span class="param-name">subsidiary</span> - Subsidiary ID (use "" for all)</div>
+        <div class="param"><span class="param-name">budgetCategory</span> - Budget category name (e.g., "Operating")</div>
+        <div class="param"><span class="param-name">account</span> - Account number or ID (required)</div>
+        <div class="param"><span class="param-name">fromPeriod</span> - Starting period name (e.g., "Jan 2025")</div>
+        <div class="param"><span class="param-name">toPeriod</span> - Ending period name (e.g., "Dec 2025")</div>
+        <div class="param"><span class="param-name">class</span> - Class ID (optional)</div>
+        <div class="param"><span class="param-name">dept</span> - Department ID (optional)</div>
+        <div class="param"><span class="param-name">location</span> - Location ID (optional)</div>
+        <div class="formula-example">
+            Example: =NS.GLABUD(1, "Operating", "6000", "Jan 2025", "Dec 2025", "", "", "")<br>
+            Returns: 120000.00
+        </div>
+    </div>
+    
+    <h2>Troubleshooting</h2>
+    <ul>
+        <li>If formulas show <strong>#NAME?</strong> error, make sure the add-in is loaded</li>
+        <li>If formulas return errors, check the server status above</li>
+        <li>Ensure the backend server is running on <code>http://localhost:5001</code></li>
+        <li>Check your NetSuite credentials in <code>backend/netsuite_config.json</code></li>
+    </ul>
+    
+    <script>
+        Office.onReady(function(info) {
+            if (info.host === Office.HostType.Excel) {
+                checkStatus();
+            }
+        });
+        
+        async function checkStatus() {
+            const statusDiv = document.getElementById('status');
+            const statusText = document.getElementById('status-text');
+            
+            statusText.textContent = 'Checking...';
+            statusDiv.className = 'status';
+            
+            try {
+                const response = await fetch('http://localhost:5002/health');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusText.textContent = `✓ Connected to NetSuite account: ${data.account}`;
+                    statusDiv.className = 'status ok';
+                } else {
+                    statusText.textContent = '✗ Server responded with error';
+                    statusDiv.className = 'status error';
+                }
+            } catch (error) {
+                statusText.textContent = '✗ Cannot connect to server (is it running?)';
+                statusDiv.className = 'status error';
+            }
+        }
+    </script>
+</body>
+</html>
+

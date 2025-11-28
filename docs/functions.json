@@ -1,0 +1,185 @@
+{
+  "functions": [
+    {
+      "id": "GLATITLE",
+      "name": "GLATITLE",
+      "description": "Get account name from account number",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "string",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "accountNumber",
+          "description": "The account number or ID (required)",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "subsidiary",
+          "description": "Subsidiary ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "department",
+          "description": "Department ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "location",
+          "description": "Location ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "classId",
+          "description": "Class ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": false
+      }
+    },
+    {
+      "id": "GLABAL",
+      "name": "GLABAL",
+      "description": "Get GL account balance with filters",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "number",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "account",
+          "description": "Account number or ID (required)",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "fromPeriod",
+          "description": "Starting period name (e.g., \"Jan 2025\")",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "toPeriod",
+          "description": "Ending period name (e.g., \"Dec 2025\")",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "subsidiary",
+          "description": "Subsidiary ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "department",
+          "description": "Department ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "location",
+          "description": "Location ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "classId",
+          "description": "Class ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": false
+      }
+    },
+    {
+      "id": "GLABUD",
+      "name": "GLABUD",
+      "description": "Get budget amount with filters",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "number",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "account",
+          "description": "Account number or ID (required)",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "fromPeriod",
+          "description": "Starting period name (e.g., \"Jan 2025\")",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "toPeriod",
+          "description": "Ending period name (e.g., \"Dec 2025\")",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "budgetCategory",
+          "description": "Budget category name (optional, e.g., \"Operating\")",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "subsidiary",
+          "description": "Subsidiary ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "department",
+          "description": "Department ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "location",
+          "description": "Location ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "classId",
+          "description": "Class ID (optional, use \"\" to ignore)",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": false
+      }
+    }
+  ]
+}

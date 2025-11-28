@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.log
+
+# Sensitive files
+backend/netsuite_config.json
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# Certificates
+*.pem
+*.crt
+*.key
+
+# Temp files
+/tmp/
+*.tmp
