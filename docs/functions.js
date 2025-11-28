@@ -4,7 +4,7 @@
  */
 
 // Backend server URL
-const SERVER_URL = 'http://localhost:5002';
+const SERVER_URL = 'https://attention-birthday-cherry-shuttle.trycloudflare.com';
 
 
 /**
