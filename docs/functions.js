@@ -1,19 +1,20 @@
 /**
  * NetSuite Custom Functions for Excel
  * Provides three custom formulas: NS.GLATITLE, NS.GLABAL, NS.GLABUD
+ * 
+ * Uses intelligent batching to handle drag-and-drop efficiently
  */
 
 // Backend server URL
 const SERVER_URL = 'https://attention-birthday-cherry-shuttle.trycloudflare.com';
 
-// Cache for function results to improve performance
+// Cache for function results
 const functionCache = new Map();
-const CACHE_DURATION = 60000; // 60 seconds
+const CACHE_DURATION = 120000; // 2 minutes
 
-// Request queue to prevent overwhelming the backend
-const requestQueue = [];
-let activeRequests = 0;
-const MAX_CONCURRENT_REQUESTS = 2; // Only 2 requests at a time
+// Batch processing system
+const batchBuffer = new Map();
+const BATCH_DELAY = 150; // Wait 150ms to collect batch requests
 
 /**
  * Generate cache key from parameters
@@ -44,50 +45,86 @@ function setCachedResult(cacheKey, value) {
 }
 
 /**
- * Process the request queue
+ * Get or create a batch for this account/department combination
  */
-function processQueue() {
-    if (activeRequests >= MAX_CONCURRENT_REQUESTS || requestQueue.length === 0) {
+function getBatch(account, subsidiary, department, location, classId) {
+    const batchKey = `${account}|${subsidiary}|${department}|${location}|classId`;
+    
+    if (!batchBuffer.has(batchKey)) {
+        batchBuffer.set(batchKey, {
+            account: account,
+            subsidiary: subsidiary,
+            department: department,
+            location: location,
+            classId: classId,
+            periods: new Map(), // period -> array of resolve functions
+            timer: null
+        });
+    }
+    
+    return batchBuffer.get(batchKey);
+}
+
+/**
+ * Process a batch request
+ */
+async function processBatch(batchKey) {
+    const batch = batchBuffer.get(batchKey);
+    if (!batch || batch.periods.size === 0) {
+        batchBuffer.delete(batchKey);
         return;
     }
     
-    const nextRequest = requestQueue.shift();
-    activeRequests++;
+    const periods = Array.from(batch.periods.keys());
+    const requests = Array.from(batch.periods.values());
     
-    nextRequest.execute()
-        .then(result => {
-            nextRequest.resolve(result);
-        })
-        .catch(error => {
-            nextRequest.reject(error);
-        })
-        .finally(() => {
-            activeRequests--;
-            processQueue(); // Process next request
+    // Clear the batch
+    batchBuffer.delete(batchKey);
+    
+    try {
+        // Make ONE API call for all periods
+        const response = await fetch(`${SERVER_URL}/batch/balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                account: batch.account,
+                periods: periods,
+                subsidiary: batch.subsidiary || "",
+                department: batch.department || "",
+                location: batch.location || "",
+                class: batch.classId || ""
+            })
         });
-}
-
-/**
- * Queue a request to prevent overwhelming the backend
- */
-function queueRequest(execute) {
-    return new Promise((resolve, reject) => {
-        requestQueue.push({ execute, resolve, reject });
-        processQueue();
-    });
-}
-
-/**
- * Make a fetch request with queueing
- */
-async function queuedFetch(url) {
-    return queueRequest(async () => {
-        const response = await fetch(url);
+        
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
-        return response;
-    });
+        
+        const data = await response.json();
+        const balances = data.balances || {};
+        
+        // Distribute results to all waiting cells
+        for (let i = 0; i < periods.length; i++) {
+            const period = periods[i];
+            const resolvers = requests[i];
+            const balance = balances[period] || 0;
+            
+            // Cache the result
+            const cacheKey = getCacheKey('GLABAL', batch.account, period, period, 
+                                        batch.subsidiary, batch.department, batch.location, batch.classId);
+            setCachedResult(cacheKey, balance);
+            
+            // Resolve all promises for this period
+            resolvers.forEach(resolve => resolve(balance));
+        }
+        
+    } catch (error) {
+        console.error(`Batch request failed: ${error.message}`);
+        // Return 0 for all waiting cells on error
+        requests.forEach(resolvers => {
+            resolvers.forEach(resolve => resolve(0));
+        });
+    }
 }
 
 
@@ -95,10 +132,10 @@ async function queuedFetch(url) {
  * Get account name from account number
  * @customfunction
  * @param {string} accountNumber The account number or ID
- * @param {string} [subsidiary] Subsidiary ID (optional, use "" to ignore)
- * @param {string} [department] Department ID (optional, use "" to ignore)
- * @param {string} [location] Location ID (optional, use "" to ignore)
- * @param {string} [classId] Class ID (optional, use "" to ignore)
+ * @param {string} [subsidiary] Subsidiary ID (optional)
+ * @param {string} [department] Department ID (optional)
+ * @param {string} [location] Location ID (optional)
+ * @param {string} [classId] Class ID (optional)
  * @returns {string} The account name
  */
 async function GLATITLE(accountNumber, subsidiary, department, location, classId) {
@@ -114,16 +151,19 @@ async function GLATITLE(accountNumber, subsidiary, department, location, classId
     }
     
     try {
-        const response = await queuedFetch(`${SERVER_URL}/account/${accountNumber}/name`);
+        const response = await fetch(`${SERVER_URL}/account/${accountNumber}/name`);
+        
+        if (!response.ok) {
+            return "Error";
+        }
+        
         const text = await response.text();
-        
-        // Cache the result
         setCachedResult(cacheKey, text);
-        
         return text;
         
     } catch (error) {
-        throw new Error(`Error getting account name: ${error.message}`);
+        console.error(`Error getting account name: ${error.message}`);
+        return "Error";
     }
 }
 
@@ -133,59 +173,88 @@ async function GLATITLE(accountNumber, subsidiary, department, location, classId
  * @customfunction
  * @param {string} account The account number or ID (required)
  * @param {string} fromPeriod Starting period name (e.g., "Jan 2025")
- * @param {string} toPeriod Ending period name (e.g., "Dec 2025")
- * @param {string} [subsidiary] Subsidiary ID (optional, use "" to ignore)
- * @param {string} [department] Department ID (optional, use "" to ignore)
- * @param {string} [location] Location ID (optional, use "" to ignore)
- * @param {string} [classId] Class ID (optional, use "" to ignore)
+ * @param {string} toPeriod Ending period name (e.g., "Dec 2025")  
+ * @param {string} [subsidiary] Subsidiary ID (optional)
+ * @param {string} [department] Department ID (optional)
+ * @param {string} [location] Location ID (optional)
+ * @param {string} [classId] Class ID (optional)
  * @returns {number} The GL account balance
  */
 async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     if (!account) {
-        throw new Error("Account number is required");
+        return 0;
     }
     
-    // Convert parameters to strings and handle defaults
-    subsidiary = subsidiary || "";
-    department = department || "";
-    location = location || "";
-    classId = classId || "";
-    fromPeriod = fromPeriod || "";
-    toPeriod = toPeriod || "";
+    // Convert to strings and handle defaults
+    account = String(account || "");
+    fromPeriod = String(fromPeriod || "");
+    toPeriod = String(toPeriod || "");
+    subsidiary = String(subsidiary || "");
+    department = String(department || "");
+    location = String(location || "");
+    classId = String(classId || "");
     
-    // Check cache
-    const cacheKey = getCacheKey('GLABAL', account, fromPeriod, toPeriod, subsidiary, department, location, classId);
+    // For range queries (from != to), call API directly (can't batch easily)
+    if (fromPeriod !== toPeriod) {
+        const cacheKey = getCacheKey('GLABAL', account, fromPeriod, toPeriod, subsidiary, department, location, classId);
+        const cached = getCachedResult(cacheKey);
+        if (cached !== null) {
+            return cached;
+        }
+        
+        try {
+            const params = new URLSearchParams();
+            params.append('account', account);
+            if (fromPeriod) params.append('from_period', fromPeriod);
+            if (toPeriod) params.append('to_period', toPeriod);
+            if (subsidiary) params.append('subsidiary', subsidiary);
+            if (department) params.append('department', department);
+            if (location) params.append('location', location);
+            if (classId) params.append('class', classId);
+            
+            const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
+            if (!response.ok) return 0;
+            
+            const result = await response.json();
+            const balance = typeof result === 'number' ? result : parseFloat(result) || 0;
+            setCachedResult(cacheKey, balance);
+            return balance;
+        } catch (error) {
+            console.error(`Balance error: ${error.message}`);
+            return 0;
+        }
+    }
+    
+    // For single period (from == to), use batching
+    const period = fromPeriod;
+    const cacheKey = getCacheKey('GLABAL', account, period, period, subsidiary, department, location, classId);
+    
+    // Check cache first
     const cached = getCachedResult(cacheKey);
     if (cached !== null) {
         return cached;
     }
     
-    try {
-        // Build query string
-        const params = new URLSearchParams();
-        params.append('account', account);
+    // Add to batch
+    return new Promise((resolve) => {
+        const batch = getBatch(account, subsidiary, department, location, classId);
         
-        if (subsidiary && subsidiary !== "") params.append('subsidiary', subsidiary);
-        if (fromPeriod && fromPeriod !== "") params.append('from_period', fromPeriod);
-        if (toPeriod && toPeriod !== "") params.append('to_period', toPeriod);
-        if (classId && classId !== "") params.append('class', classId);
-        if (department && department !== "") params.append('department', department);
-        if (location && location !== "") params.append('location', location);
+        if (!batch.periods.has(period)) {
+            batch.periods.set(period, []);
+        }
         
-        const response = await queuedFetch(`${SERVER_URL}/balance?${params.toString()}`);
-        const result = await response.json();
-        const balance = typeof result === 'number' ? result : parseFloat(result);
+        batch.periods.get(period).push(resolve);
         
-        // Cache the result
-        setCachedResult(cacheKey, balance);
+        // Set timer to process batch after collecting more requests
+        if (batch.timer) {
+            clearTimeout(batch.timer);
+        }
         
-        return balance;
-        
-    } catch (error) {
-        // Return 0 on error to prevent #VALUE#
-        console.log(`Balance error for ${account}: ${error.message}`);
-        return 0;
-    }
+        batch.timer = setTimeout(() => {
+            const batchKey = `${account}|${subsidiary}|${department}|${location}|${classId}`;
+            processBatch(batchKey);
+        }, BATCH_DELAY);
+    });
 }
 
 
@@ -195,26 +264,26 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
  * @param {string} account The account number or ID (required)
  * @param {string} fromPeriod Starting period name (e.g., "Jan 2025")
  * @param {string} toPeriod Ending period name (e.g., "Dec 2025")
- * @param {string} [subsidiary] Subsidiary ID (optional, use "" to ignore)
- * @param {string} [department] Department ID (optional, use "" to ignore)
- * @param {string} [location] Location ID (optional, use "" to ignore)
- * @param {string} [classId] Class ID (optional, use "" to ignore)
+ * @param {string} [subsidiary] Subsidiary ID (optional)
+ * @param {string} [department] Department ID (optional)
+ * @param {string} [location] Location ID (optional)
+ * @param {string} [classId] Class ID (optional)
  * @returns {number} The budget amount
  */
 async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     if (!account) {
-        throw new Error("Account number is required");
+        return 0;
     }
     
-    // Convert parameters to strings and handle defaults
-    subsidiary = subsidiary || "";
-    department = department || "";
-    location = location || "";
-    classId = classId || "";
-    fromPeriod = fromPeriod || "";
-    toPeriod = toPeriod || "";
+    // Convert to strings
+    account = String(account || "");
+    fromPeriod = String(fromPeriod || "");
+    toPeriod = String(toPeriod || "");
+    subsidiary = String(subsidiary || "");
+    department = String(department || "");
+    location = String(location || "");
+    classId = String(classId || "");
     
-    // Check cache
     const cacheKey = getCacheKey('GLABUD', account, fromPeriod, toPeriod, subsidiary, department, location, classId);
     const cached = getCachedResult(cacheKey);
     if (cached !== null) {
@@ -222,29 +291,25 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
     }
     
     try {
-        // Build query string
         const params = new URLSearchParams();
         params.append('account', account);
+        if (fromPeriod) params.append('from_period', fromPeriod);
+        if (toPeriod) params.append('to_period', toPeriod);
+        if (subsidiary) params.append('subsidiary', subsidiary);
+        if (department) params.append('department', department);
+        if (location) params.append('location', location);
+        if (classId) params.append('class', classId);
         
-        if (subsidiary && subsidiary !== "") params.append('subsidiary', subsidiary);
-        if (fromPeriod && fromPeriod !== "") params.append('from_period', fromPeriod);
-        if (toPeriod && toPeriod !== "") params.append('to_period', toPeriod);
-        if (classId && classId !== "") params.append('class', classId);
-        if (department && department !== "") params.append('department', department);
-        if (location && location !== "") params.append('location', location);
+        const response = await fetch(`${SERVER_URL}/budget?${params.toString()}`);
+        if (!response.ok) return 0;
         
-        const response = await queuedFetch(`${SERVER_URL}/budget?${params.toString()}`);
         const result = await response.json();
-        const budget = typeof result === 'number' ? result : parseFloat(result);
-        
-        // Cache the result
+        const budget = typeof result === 'number' ? result : parseFloat(result) || 0;
         setCachedResult(cacheKey, budget);
-        
         return budget;
         
     } catch (error) {
-        // Return 0 on error to prevent #VALUE#
-        console.log(`Budget error for ${account}: ${error.message}`);
+        console.error(`Budget error: ${error.message}`);
         return 0;
     }
 }
