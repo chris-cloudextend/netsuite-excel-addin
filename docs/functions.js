@@ -8,7 +8,12 @@ const SERVER_URL = 'https://attention-birthday-cherry-shuttle.trycloudflare.com'
 
 // Cache for function results to improve performance
 const functionCache = new Map();
-const CACHE_DURATION = 30000; // 30 seconds
+const CACHE_DURATION = 60000; // 60 seconds
+
+// Request queue to prevent overwhelming the backend
+const requestQueue = [];
+let activeRequests = 0;
+const MAX_CONCURRENT_REQUESTS = 2; // Only 2 requests at a time
 
 /**
  * Generate cache key from parameters
@@ -38,6 +43,53 @@ function setCachedResult(cacheKey, value) {
     });
 }
 
+/**
+ * Process the request queue
+ */
+function processQueue() {
+    if (activeRequests >= MAX_CONCURRENT_REQUESTS || requestQueue.length === 0) {
+        return;
+    }
+    
+    const nextRequest = requestQueue.shift();
+    activeRequests++;
+    
+    nextRequest.execute()
+        .then(result => {
+            nextRequest.resolve(result);
+        })
+        .catch(error => {
+            nextRequest.reject(error);
+        })
+        .finally(() => {
+            activeRequests--;
+            processQueue(); // Process next request
+        });
+}
+
+/**
+ * Queue a request to prevent overwhelming the backend
+ */
+function queueRequest(execute) {
+    return new Promise((resolve, reject) => {
+        requestQueue.push({ execute, resolve, reject });
+        processQueue();
+    });
+}
+
+/**
+ * Make a fetch request with queueing
+ */
+async function queuedFetch(url) {
+    return queueRequest(async () => {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response;
+    });
+}
+
 
 /**
  * Get account name from account number
@@ -62,13 +114,7 @@ async function GLATITLE(accountNumber, subsidiary, department, location, classId
     }
     
     try {
-        const response = await fetch(`${SERVER_URL}/account/${accountNumber}/name`);
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || `Server error: ${response.status}`);
-        }
-        
+        const response = await queuedFetch(`${SERVER_URL}/account/${accountNumber}/name`);
         const text = await response.text();
         
         // Cache the result
@@ -126,13 +172,7 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         if (department && department !== "") params.append('department', department);
         if (location && location !== "") params.append('location', location);
         
-        const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || `Server error: ${response.status}`);
-        }
-        
+        const response = await queuedFetch(`${SERVER_URL}/balance?${params.toString()}`);
         const result = await response.json();
         const balance = typeof result === 'number' ? result : parseFloat(result);
         
@@ -142,7 +182,9 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         return balance;
         
     } catch (error) {
-        throw new Error(`Error getting balance: ${error.message}`);
+        // Return 0 on error to prevent #VALUE#
+        console.log(`Balance error for ${account}: ${error.message}`);
+        return 0;
     }
 }
 
@@ -191,13 +233,7 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         if (department && department !== "") params.append('department', department);
         if (location && location !== "") params.append('location', location);
         
-        const response = await fetch(`${SERVER_URL}/budget?${params.toString()}`);
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || `Server error: ${response.status}`);
-        }
-        
+        const response = await queuedFetch(`${SERVER_URL}/budget?${params.toString()}`);
         const result = await response.json();
         const budget = typeof result === 'number' ? result : parseFloat(result);
         
@@ -207,7 +243,9 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         return budget;
         
     } catch (error) {
-        throw new Error(`Error getting budget: ${error.message}`);
+        // Return 0 on error to prevent #VALUE#
+        console.log(`Budget error for ${account}: ${error.message}`);
+        return 0;
     }
 }
 
