@@ -1,26 +1,12 @@
 /**
  * NetSuite Custom Functions for Excel
  * Provides three custom formulas: NS.GLATITLE, NS.GLABAL, NS.GLABUD
+ * 
+ * NO CACHING - Every call makes a fresh API request for reliability
  */
 
 // Backend server URL
 const SERVER_URL = 'https://attention-birthday-cherry-shuttle.trycloudflare.com';
-
-// Simple cache - keep results for 5 minutes
-const cache = {};
-const CACHE_TTL = 300000; // 5 minutes
-
-function getFromCache(key) {
-    const item = cache[key];
-    if (item && (Date.now() - item.time) < CACHE_TTL) {
-        return item.value;
-    }
-    return undefined;
-}
-
-function setCache(key, value) {
-    cache[key] = { value: value, time: Date.now() };
-}
 
 /**
  * Get account name from account number
@@ -32,12 +18,8 @@ async function GLATITLE(accountNumber) {
     // Convert to string and check if empty
     const account = String(accountNumber || "").trim();
     if (!account || account === "undefined" || account === "null") {
-        return "Error: Account required";
+        throw new Error("#N/A");
     }
-    
-    const key = `TITLE:${account}`;
-    const cached = getFromCache(key);
-    if (cached !== undefined) return cached;
     
     try {
         const response = await fetch(`${SERVER_URL}/account/${account}/name`, {
@@ -46,15 +28,19 @@ async function GLATITLE(accountNumber) {
         });
         
         if (!response.ok) {
-            return "Error";
+            throw new Error("#N/A");
         }
         
         const text = await response.text();
-        setCache(key, text);
+        if (!text || text.trim() === "") {
+            throw new Error("#N/A");
+        }
+        
         return text;
         
     } catch (error) {
-        return "Error";
+        // Return Excel error that won't break formulas
+        throw new Error("#N/A");
     }
 }
 
@@ -81,12 +67,10 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
     location = String(location || "").trim();
     classId = String(classId || "").trim();
     
-    if (!account) return 0;
-    
-    // Create cache key
-    const key = `BAL:${account}:${fromPeriod}:${toPeriod}:${subsidiary}:${department}:${location}:${classId}`;
-    const cached = getFromCache(key);
-    if (cached !== undefined) return cached;
+    if (!account) {
+        // Return blank for missing account - won't break SUM
+        return null;
+    }
     
     try {
         const params = new URLSearchParams();
@@ -105,16 +89,26 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         });
         
         if (!response.ok) {
-            return 0;
+            const errorText = await response.text().catch(() => "");
+            console.error(`Balance API error: ${response.status} - ${errorText}`);
+            // Return null (blank cell) - SUM will ignore it
+            return null;
         }
         
         const text = await response.text();
-        const balance = parseFloat(text) || 0;
-        setCache(key, balance);
+        const balance = parseFloat(text);
+        
+        // If parsing failed, return null (blank)
+        if (isNaN(balance)) {
+            return null;
+        }
+        
         return balance;
         
     } catch (error) {
-        return 0;
+        console.error(`Balance fetch error: ${error.message}`);
+        // Return null (blank cell) - won't break SUM formulas
+        return null;
     }
 }
 
@@ -141,12 +135,10 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
     location = String(location || "").trim();
     classId = String(classId || "").trim();
     
-    if (!account) return 0;
-    
-    // Create cache key
-    const key = `BUD:${account}:${fromPeriod}:${toPeriod}:${subsidiary}:${department}:${location}:${classId}`;
-    const cached = getFromCache(key);
-    if (cached !== undefined) return cached;
+    if (!account) {
+        // Return blank for missing account - won't break SUM
+        return null;
+    }
     
     try {
         const params = new URLSearchParams();
@@ -165,16 +157,26 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         });
         
         if (!response.ok) {
-            return 0;
+            const errorText = await response.text().catch(() => "");
+            console.error(`Budget API error: ${response.status} - ${errorText}`);
+            // Return null (blank cell) - SUM will ignore it
+            return null;
         }
         
         const text = await response.text();
-        const budget = parseFloat(text) || 0;
-        setCache(key, budget);
+        const budget = parseFloat(text);
+        
+        // If parsing failed, return null (blank)
+        if (isNaN(budget)) {
+            return null;
+        }
+        
         return budget;
         
     } catch (error) {
-        return 0;
+        console.error(`Budget fetch error: ${error.message}`);
+        // Return null (blank cell) - won't break SUM formulas
+        return null;
     }
 }
 
