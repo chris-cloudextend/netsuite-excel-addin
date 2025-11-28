@@ -12,37 +12,9 @@
       "parameters": [
         {
           "name": "accountNumber",
-          "description": "The account number or ID (required)",
-          "type": "string",
+          "description": "The account number or ID (can be text or numeric)",
+          "type": "any",
           "dimensionality": "scalar"
-        },
-        {
-          "name": "subsidiary",
-          "description": "Subsidiary ID (optional, use \"\" to ignore)",
-          "type": "string",
-          "dimensionality": "scalar",
-          "optional": true
-        },
-        {
-          "name": "department",
-          "description": "Department ID (optional, use \"\" to ignore)",
-          "type": "string",
-          "dimensionality": "scalar",
-          "optional": true
-        },
-        {
-          "name": "location",
-          "description": "Location ID (optional, use \"\" to ignore)",
-          "type": "string",
-          "dimensionality": "scalar",
-          "optional": true
-        },
-        {
-          "name": "classId",
-          "description": "Class ID (optional, use \"\" to ignore)",
-          "type": "string",
-          "dimensionality": "scalar",
-          "optional": true
         }
       ],
       "options": {
@@ -62,47 +34,47 @@
       "parameters": [
         {
           "name": "account",
-          "description": "Account number or ID (required)",
-          "type": "string",
+          "description": "Account number or ID (can be text or numeric)",
+          "type": "any",
           "dimensionality": "scalar"
         },
         {
           "name": "fromPeriod",
           "description": "Starting period name (e.g., \"Jan 2025\")",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar"
         },
         {
           "name": "toPeriod",
           "description": "Ending period name (e.g., \"Dec 2025\")",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar"
         },
         {
           "name": "subsidiary",
           "description": "Subsidiary ID (optional, use \"\" to ignore)",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar",
           "optional": true
         },
         {
           "name": "department",
           "description": "Department ID (optional, use \"\" to ignore)",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar",
           "optional": true
         },
         {
           "name": "location",
           "description": "Location ID (optional, use \"\" to ignore)",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar",
           "optional": true
         },
         {
           "name": "classId",
           "description": "Class ID (optional, use \"\" to ignore)",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar",
           "optional": true
         }
@@ -124,54 +96,47 @@
       "parameters": [
         {
           "name": "account",
-          "description": "Account number or ID (required)",
-          "type": "string",
+          "description": "Account number or ID (can be text or numeric)",
+          "type": "any",
           "dimensionality": "scalar"
         },
         {
           "name": "fromPeriod",
           "description": "Starting period name (e.g., \"Jan 2025\")",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar"
         },
         {
           "name": "toPeriod",
           "description": "Ending period name (e.g., \"Dec 2025\")",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar"
-        },
-        {
-          "name": "budgetCategory",
-          "description": "Budget category name (optional, e.g., \"Operating\")",
-          "type": "string",
-          "dimensionality": "scalar",
-          "optional": true
         },
         {
           "name": "subsidiary",
           "description": "Subsidiary ID (optional, use \"\" to ignore)",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar",
           "optional": true
         },
         {
           "name": "department",
           "description": "Department ID (optional, use \"\" to ignore)",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar",
           "optional": true
         },
         {
           "name": "location",
           "description": "Location ID (optional, use \"\" to ignore)",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar",
           "optional": true
         },
         {
           "name": "classId",
           "description": "Class ID (optional, use \"\" to ignore)",
-          "type": "string",
+          "type": "any",
           "dimensionality": "scalar",
           "optional": true
         }

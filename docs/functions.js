@@ -25,20 +25,22 @@ function setCache(key, value) {
 /**
  * Get account name from account number
  * @customfunction
- * @param {string} accountNumber The account number or ID
+ * @param {any} accountNumber The account number or ID
  * @returns {string} The account name
  */
 async function GLATITLE(accountNumber) {
-    if (!accountNumber) {
+    // Convert to string and check if empty
+    const account = String(accountNumber || "").trim();
+    if (!account || account === "undefined" || account === "null") {
         return "Error: Account required";
     }
     
-    const key = `TITLE:${accountNumber}`;
+    const key = `TITLE:${account}`;
     const cached = getFromCache(key);
     if (cached !== undefined) return cached;
     
     try {
-        const response = await fetch(`${SERVER_URL}/account/${accountNumber}/name`, {
+        const response = await fetch(`${SERVER_URL}/account/${account}/name`, {
             method: 'GET',
             headers: { 'Accept': 'text/plain' }
         });
@@ -60,26 +62,26 @@ async function GLATITLE(accountNumber) {
 /**
  * Get GL account balance
  * @customfunction
- * @param {string} account The account number or ID (required)
- * @param {string} fromPeriod Starting period (e.g., "Jan 2025")
- * @param {string} toPeriod Ending period (e.g., "Dec 2025")
- * @param {string} [subsidiary] Subsidiary ID (optional)
- * @param {string} [department] Department ID (optional)
- * @param {string} [location] Location ID (optional)
- * @param {string} [classId] Class ID (optional)
+ * @param {any} account The account number or ID (required)
+ * @param {any} fromPeriod Starting period (e.g., "Jan 2025")
+ * @param {any} toPeriod Ending period (e.g., "Dec 2025")
+ * @param {any} [subsidiary] Subsidiary ID (optional)
+ * @param {any} [department] Department ID (optional)
+ * @param {any} [location] Location ID (optional)
+ * @param {any} [classId] Class ID (optional)
  * @returns {number} The GL account balance
  */
 async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
-    if (!account) return 0;
+    // Convert all to strings and trim
+    account = String(account || "").trim();
+    fromPeriod = String(fromPeriod || "").trim();
+    toPeriod = String(toPeriod || "").trim();
+    subsidiary = String(subsidiary || "").trim();
+    department = String(department || "").trim();
+    location = String(location || "").trim();
+    classId = String(classId || "").trim();
     
-    // Convert all to strings
-    account = String(account || "");
-    fromPeriod = String(fromPeriod || "");
-    toPeriod = String(toPeriod || "");
-    subsidiary = String(subsidiary || "");
-    department = String(department || "");
-    location = String(location || "");
-    classId = String(classId || "");
+    if (!account) return 0;
     
     // Create cache key
     const key = `BAL:${account}:${fromPeriod}:${toPeriod}:${subsidiary}:${department}:${location}:${classId}`;
@@ -120,26 +122,26 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
 /**
  * Get GL budget amount
  * @customfunction
- * @param {string} account The account number or ID (required)
- * @param {string} fromPeriod Starting period (e.g., "Jan 2025")
- * @param {string} toPeriod Ending period (e.g., "Dec 2025")
- * @param {string} [subsidiary] Subsidiary ID (optional)
- * @param {string} [department] Department ID (optional)
- * @param {string} [location] Location ID (optional)
- * @param {string} [classId] Class ID (optional)
+ * @param {any} account The account number or ID (required)
+ * @param {any} fromPeriod Starting period (e.g., "Jan 2025")
+ * @param {any} toPeriod Ending period (e.g., "Dec 2025")
+ * @param {any} [subsidiary] Subsidiary ID (optional)
+ * @param {any} [department] Department ID (optional)
+ * @param {any} [location] Location ID (optional)
+ * @param {any} [classId] Class ID (optional)
  * @returns {number} The budget amount
  */
 async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
-    if (!account) return 0;
+    // Convert all to strings and trim
+    account = String(account || "").trim();
+    fromPeriod = String(fromPeriod || "").trim();
+    toPeriod = String(toPeriod || "").trim();
+    subsidiary = String(subsidiary || "").trim();
+    department = String(department || "").trim();
+    location = String(location || "").trim();
+    classId = String(classId || "").trim();
     
-    // Convert all to strings
-    account = String(account || "");
-    fromPeriod = String(fromPeriod || "");
-    toPeriod = String(toPeriod || "");
-    subsidiary = String(subsidiary || "");
-    department = String(department || "");
-    location = String(location || "");
-    classId = String(classId || "");
+    if (!account) return 0;
     
     // Create cache key
     const key = `BUD:${account}:${fromPeriod}:${toPeriod}:${subsidiary}:${department}:${location}:${classId}`;
