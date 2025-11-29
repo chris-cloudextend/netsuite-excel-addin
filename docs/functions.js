@@ -272,46 +272,53 @@ async function fetchBatchBalances(accounts, periods, filterReq) {
         }
         
         const result = await response.json();
-        const balances = result.balances || {};
-        
-        console.log('Batch response received:', Object.keys(balances).length, 'accounts');
-        
-        // Distribute results back to individual requests
-        for (const req of requests) {
-            try {
-                const accountBalances = balances[req.account] || {};
-                
-                // Sum balances from fromPeriod to toPeriod
-                let total = 0;
-                const periods = Object.keys(accountBalances).sort();
-                
-                if (req.fromPeriod && req.toPeriod) {
-                    // Sum range
-                    for (const period of periods) {
-                        if (period >= req.fromPeriod && period <= req.toPeriod) {
-                            total += accountBalances[period] || 0;
-                        }
-                    }
-                } else if (req.fromPeriod) {
-                    // Single period
-                    total = accountBalances[req.fromPeriod] || 0;
-                } else {
-                    // All periods
-                    total = Object.values(accountBalances).reduce((sum, val) => sum + (val || 0), 0);
-                }
-                
-                req.resolve(total);
-                
-            } catch (error) {
-                console.error('Error processing batch result for request:', error);
-                req.resolve("");
-            }
-        }
+        return result.balances || {};
         
     } catch (error) {
-        console.error('Batch balance request failed:', error);
-        // Resolve all with blank on error
-        requests.forEach(req => req.resolve(""));
+        if (error.name === 'AbortError') {
+            console.error(`⏱️ Batch request timed out after ${FETCH_TIMEOUT_MS}ms`);
+        } else {
+            console.error('Fetch balance error:', error);
+        }
+        return {};
+    }
+}
+
+/**
+ * Distribute batch balance results to individual requests
+ */
+function distributeBalanceResults(requests, balances) {
+    console.log(`✓ Distributing results: ${Object.keys(balances).length} accounts to ${requests.length} requests`);
+    
+    for (const req of requests) {
+        try {
+            const accountBalances = balances[req.account] || {};
+            
+            // Sum balances from fromPeriod to toPeriod
+            let total = 0;
+            const periods = Object.keys(accountBalances).sort();
+            
+            if (req.fromPeriod && req.toPeriod) {
+                // Sum range
+                for (const period of periods) {
+                    if (period >= req.fromPeriod && period <= req.toPeriod) {
+                        total += accountBalances[period] || 0;
+                    }
+                }
+            } else if (req.fromPeriod) {
+                // Single period
+                total = accountBalances[req.fromPeriod] || 0;
+            } else {
+                // All periods
+                total = Object.values(accountBalances).reduce((sum, val) => sum + (val || 0), 0);
+            }
+            
+            req.resolve(total);
+            
+        } catch (error) {
+            console.error('Error distributing result:', error);
+            req.resolve("");
+        }
     }
 }
 
