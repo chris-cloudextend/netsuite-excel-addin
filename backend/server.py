@@ -97,12 +97,12 @@ def health():
 @app.route('/batch/balance', methods=['POST'])
 def batch_balance():
     """
-    BATCH ENDPOINT - Get balances for one account across multiple periods in ONE call
+    BATCH ENDPOINT - Get balances for MULTIPLE accounts and periods in ONE call
     This is much faster than individual requests!
     
     POST JSON:
     {
-        "account": "4010",
+        "accounts": ["4010", "5000", "6000"],
         "periods": ["Jan 2025", "Feb 2025", "Mar 2025"],
         "subsidiary": "",
         "class": "",
@@ -113,34 +113,42 @@ def batch_balance():
     Returns:
     {
         "balances": {
-            "Jan 2025": 12400000,
-            "Feb 2025": 13200000,
-            "Mar 2025": 13500000
+            "4010": {
+                "Jan 2025": 12400000,
+                "Feb 2025": 13200000
+            },
+            "5000": {
+                "Jan 2025": 5000000,
+                "Feb 2025": 5200000
+            }
         }
     }
     """
     data = request.get_json()
     
-    if not data or 'account' not in data or 'periods' not in data:
-        return jsonify({'error': 'account and periods required'}), 400
+    if not data or 'accounts' not in data or 'periods' not in data:
+        return jsonify({'error': 'accounts and periods required'}), 400
     
-    account = data.get('account', '')
+    accounts = data.get('accounts', [])
     periods = data.get('periods', [])
     subsidiary = data.get('subsidiary', '')
     class_id = data.get('class', '')
     department = data.get('department', '')
     location = data.get('location', '')
     
-    if not account or not periods:
-        return jsonify({'error': 'account and periods must be non-empty'}), 400
+    if not accounts or not periods:
+        return jsonify({'error': 'accounts and periods must be non-empty'}), 400
     
     try:
         # Build WHERE clause with optional filters
         where_clauses = [
             "t.posting = 'T'",
-            "tal.posting = 'T'",
-            f"a.acctnumber = '{escape_sql(account)}'"
+            "tal.posting = 'T'"
         ]
+        
+        # Add accounts IN clause
+        accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+        where_clauses.append(f"a.acctnumber IN ({accounts_in})")
         
         # Add optional filters
         if subsidiary and subsidiary != '':
@@ -168,6 +176,7 @@ def batch_balance():
         if needs_line_join:
             query = f"""
                 SELECT 
+                    a.acctnumber,
                     ap.periodname,
                     a.accttype,
                     CASE 
@@ -182,12 +191,13 @@ def batch_balance():
                 INNER JOIN Account a ON tal.account = a.id
                 INNER JOIN AccountingPeriod ap ON t.postingperiod = ap.id
                 WHERE {where_clause}
-                GROUP BY ap.periodname, a.accttype
-                ORDER BY ap.periodname
+                GROUP BY a.acctnumber, ap.periodname, a.accttype
+                ORDER BY a.acctnumber, ap.periodname
             """
         else:
             query = f"""
                 SELECT 
+                    a.acctnumber,
                     ap.periodname,
                     a.accttype,
                     CASE 
@@ -201,8 +211,8 @@ def batch_balance():
                 INNER JOIN Account a ON tal.account = a.id
                 INNER JOIN AccountingPeriod ap ON t.postingperiod = ap.id
                 WHERE {where_clause}
-                GROUP BY ap.periodname, a.accttype
-                ORDER BY ap.periodname
+                GROUP BY a.acctnumber, ap.periodname, a.accttype
+                ORDER BY a.acctnumber, ap.periodname
             """
         
         print(f"DEBUG - Batch query:\n{query}", file=sys.stderr)
@@ -212,21 +222,28 @@ def batch_balance():
         if isinstance(result, dict) and 'error' in result:
             return jsonify(result), 500
         
-        # Organize results by period
+        # Organize results by account, then period
         balances = {}
         for row in result:
+            account_num = row['acctnumber']
             period = row['periodname']
             balance = float(row['balance']) if row['balance'] else 0
             
-            if period in balances:
-                balances[period] += balance
+            if account_num not in balances:
+                balances[account_num] = {}
+            
+            if period in balances[account_num]:
+                balances[account_num][period] += balance
             else:
-                balances[period] = balance
+                balances[account_num][period] = balance
         
-        # Fill in zeros for periods with no data
-        for period in periods:
-            if period not in balances:
-                balances[period] = 0
+        # Fill in zeros for missing account/period combinations
+        for account_num in accounts:
+            if account_num not in balances:
+                balances[account_num] = {}
+            for period in periods:
+                if period not in balances[account_num]:
+                    balances[account_num][period] = 0
         
         return jsonify({'balances': balances})
         
