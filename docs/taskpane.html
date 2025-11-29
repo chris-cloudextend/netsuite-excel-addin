@@ -61,6 +61,60 @@
             margin-bottom: 20px;
         }
 
+        .refresh-section {
+            background: #fef3c7;
+            border: 2px solid #fbbf24;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+
+        .refresh-section h2 {
+            font-size: 16px;
+            color: #92400e;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .refresh-section p {
+            font-size: 13px;
+            color: #78350f;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        .refresh-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+
+        .refresh-status {
+            font-size: 12px;
+            color: #059669;
+            text-align: center;
+            margin-top: 10px;
+            min-height: 20px;
+        }
+
         .formula-card {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
@@ -204,6 +258,14 @@
         <div class="content">
             <div class="status-badge">✓ Connected to NetSuite</div>
 
+            <!-- REFRESH SECTION -->
+            <div class="refresh-section">
+                <h2>🔄 Refresh NetSuite Data</h2>
+                <p>Get the latest data from NetSuite by clicking the button below. This will recalculate all NetSuite formulas in your workbook.</p>
+                <button class="refresh-btn" onclick="refreshAllFormulas()">Refresh All Data</button>
+                <div class="refresh-status" id="refreshStatus"></div>
+            </div>
+
             <div class="info-box">
                 <p><strong>Getting Started:</strong> Use the formulas below in any Excel cell. They will automatically query your NetSuite data in real-time. All formulas accept both numeric and text account numbers.</p>
             </div>
@@ -330,6 +392,51 @@
         Office.onReady((info) => {
             console.log('NetSuite Excel Add-in task pane loaded');
         });
+
+        async function refreshAllFormulas() {
+            const statusEl = document.getElementById('refreshStatus');
+            const btn = event.target;
+            
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Refreshing...';
+                statusEl.textContent = 'Recalculating all formulas...';
+                statusEl.style.color = '#0284c7';
+                
+                await Excel.run(async (context) => {
+                    // Get all worksheets
+                    const sheets = context.workbook.worksheets;
+                    sheets.load('items');
+                    await context.sync();
+                    
+                    // Recalculate each sheet
+                    for (let i = 0; i < sheets.items.length; i++) {
+                        sheets.items[i].calculate(false);
+                    }
+                    
+                    await context.sync();
+                    
+                    statusEl.textContent = '✓ All formulas refreshed with latest NetSuite data!';
+                    statusEl.style.color = '#059669';
+                    
+                    setTimeout(() => {
+                        statusEl.textContent = '';
+                    }, 3000);
+                });
+                
+            } catch (error) {
+                console.error('Error refreshing formulas:', error);
+                statusEl.textContent = '✗ Error refreshing. Please try again.';
+                statusEl.style.color = '#dc2626';
+                
+                setTimeout(() => {
+                    statusEl.textContent = '';
+                }, 3000);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Refresh All Data';
+            }
+        }
     </script>
 </body>
 </html>
