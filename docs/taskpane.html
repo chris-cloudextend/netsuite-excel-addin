@@ -141,7 +141,17 @@
             font-size: 14px;
             opacity: 0.9;
             text-align: center;
-            max-width: 300px;
+            max-width: 320px;
+            line-height: 1.6;
+        }
+        
+        .loading-warning {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
         }
 
         .refresh-btn:hover {
@@ -299,8 +309,9 @@
     <!-- Loading Overlay -->
     <div id="loadingOverlay">
         <div class="loading-spinner"></div>
-        <div class="loading-text">Loading Formulas...</div>
-        <div class="loading-details">Please wait while we populate the cache. Do not insert rows or modify the sheet.</div>
+        <div class="loading-text">🔒 Loading Formulas...</div>
+        <div class="loading-details">Please wait while NetSuite data loads and cache populates.</div>
+        <div class="loading-warning">⚠️ WORKSHEETS ARE PROTECTED<br/>You cannot edit until loading completes<br/>(~20 seconds)</div>
     </div>
 
     <div class="container">
