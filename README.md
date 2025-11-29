@@ -1,176 +1,129 @@
-# NetSuite Excel Formulas
+# NetSuite Excel Formulas Add-in
 
-A clean, modern Excel add-in that provides custom formulas for querying NetSuite data using SuiteQL.
+Real-time NetSuite SuiteQL data directly in Excel via custom formulas.
 
-## Features
+## 🎯 Features
 
-This add-in provides three custom Excel formulas:
+- **NS.GLATITLE** - Get account names
+- **NS.GLABAL** - Get GL balances with optional filters (subsidiary, department, location, class)
+- **NS.GLABUD** - Get budget amounts with optional filters
+- **Intelligent batching** - Multiple formulas consolidated into single efficient queries
+- **Manual refresh** - Task pane button to update all formulas with latest NetSuite data
 
-1. **=NS.GLATITLE(accountNumber)** - Get account name from account number
-2. **=NS.GLABAL(subsidiary, account, fromPeriod, toPeriod, class, dept, location)** - Get GL account balance
-3. **=NS.GLABUD(subsidiary, budgetCategory, account, fromPeriod, toPeriod, class, dept, location)** - Get budget amount
+---
 
-## Architecture
+## 📁 Project Structure
 
-- **Flask Backend Server**: Handles OAuth authentication and SuiteQL queries to NetSuite
-- **Excel Office.js Add-in**: Provides custom functions that call the Flask server
-- **No VBA Required**: Modern web-based add-in that works on Windows, Mac, and Excel Online
-
-## Quick Start
-
-### 1. Install Python Dependencies
-
-```bash
-cd backend
-pip install -r requirements.txt
+```
+├── backend/                    # Flask backend server
+│   ├── server.py              # Main API (OAuth + SuiteQL)
+│   ├── netsuite_config.json   # NetSuite credentials (not in git)
+│   └── requirements.txt       # Python dependencies
+│
+├── docs/                       # GitHub Pages (public hosting)
+│   ├── taskpane.html          # Task pane UI with refresh button
+│   ├── functions.js           # Custom functions implementation
+│   ├── functions.json         # Function metadata
+│   └── icon-*.png             # Add-in icons
+│
+└── excel-addin/
+    └── manifest-claude.xml    # Excel add-in manifest (PRODUCTION)
 ```
 
-### 2. Configure NetSuite Credentials
+---
 
-Edit `backend/netsuite_config.json` with your NetSuite OAuth credentials:
+## 🚀 Quick Start
 
+### 1. Start Backend Server
+```bash
+cd backend
+python3 server.py
+```
+
+### 2. Start Cloudflare Tunnel
+```bash
+cloudflared tunnel --url http://localhost:5002
+```
+Copy the tunnel URL and update `docs/functions.js`
+
+### 3. Deploy to Excel
+- Upload `excel-addin/manifest-claude.xml` to Microsoft 365 Admin Center
+- Use Centralized Deployment
+
+---
+
+## 💼 Usage in Excel
+
+### Insert Formulas:
+```excel
+=NS.GLATITLE(4010)
+=NS.GLABAL("4010", "Jan 2025", "Dec 2025")
+=NS.GLABAL("4010", "Jan 2025", "Dec 2025", "", "13", "", "")
+=NS.GLABUD("5000", "Jan 2025", "Dec 2025")
+```
+
+### Refresh Data:
+1. Data tab → CloudExtend → "NetSuite Formulas"
+2. Click "Refresh All Data" button
+
+---
+
+## 🔧 Configuration
+
+### NetSuite Credentials
+Edit `backend/netsuite_config.json`:
 ```json
 {
-    "account_id": "YOUR_ACCOUNT_ID",
-    "consumer_key": "YOUR_CONSUMER_KEY",
-    "consumer_secret": "YOUR_CONSUMER_SECRET",
-    "token_id": "YOUR_TOKEN_ID",
-    "token_secret": "YOUR_TOKEN_SECRET"
+  "account_id": "YOUR_ACCOUNT_ID",
+  "consumer_key": "YOUR_CONSUMER_KEY",
+  "consumer_secret": "YOUR_CONSUMER_SECRET",
+  "token_id": "YOUR_TOKEN_ID",
+  "token_secret": "YOUR_TOKEN_SECRET"
 }
 ```
 
-### 3. Start the Backend Server
-
-```bash
-cd backend
-python server.py
+### Tunnel URL
+When you restart the Cloudflare tunnel, update `docs/functions.js`:
+```javascript
+const SERVER_URL = 'https://your-new-tunnel-url.trycloudflare.com';
 ```
 
-The server will start on `http://localhost:5001`
+---
 
-### 4. Load the Excel Add-in
-
-#### Option A: Excel Desktop (Sideloading)
-
-1. Open Excel
-2. Go to Insert > Add-ins > My Add-ins
-3. Click "Upload My Add-in" 
-4. Select `excel-addin/manifest.xml`
-
-#### Option B: Excel Online
-
-1. Upload `excel-addin/manifest.xml` to your OneDrive
-2. In Excel Online: Insert > Add-ins > Upload My Add-in
-3. Select the manifest file
-
-### 5. Use the Formulas
-
-Once the add-in is loaded, use the custom functions in your Excel cells:
-
-```excel
-=NS.GLATITLE("1000")
-=NS.GLABAL(1, "4000", "Jan 2025", "Dec 2025", "", "", "")
-=NS.GLABUD(1, "Operating", "6000", "Jan 2025", "Dec 2025", "", "", "")
-```
-
-## Formula Reference
-
-### NS.GLATITLE(accountNumber)
-
-Returns the account name for a given account number.
-
-**Parameters:**
-- `accountNumber`: Account number or internal ID (required)
-
-**Example:**
-```excel
-=NS.GLATITLE("1000")
-// Returns: "Cash - Operating Account"
-```
-
-### NS.GLABAL(subsidiary, account, fromPeriod, toPeriod, class, dept, location)
-
-Returns the GL account balance for specified parameters.
-
-**Parameters:**
-- `subsidiary`: Subsidiary ID (use "" for all)
-- `account`: Account number or ID (required)
-- `fromPeriod`: Starting period name (e.g., "Jan 2025")
-- `toPeriod`: Ending period name (e.g., "Dec 2025")
-- `class`: Class ID (optional)
-- `dept`: Department ID (optional)
-- `location`: Location ID (optional)
-
-**Example:**
-```excel
-=NS.GLABAL(1, "4000", "Jan 2025", "Dec 2025", "", "", "")
-// Returns: 150000.00
-```
-
-### NS.GLABUD(subsidiary, budgetCategory, account, fromPeriod, toPeriod, class, dept, location)
-
-Returns the budget amount for specified parameters.
-
-**Parameters:**
-- `subsidiary`: Subsidiary ID (use "" for all)
-- `budgetCategory`: Budget category name (e.g., "Operating")
-- `account`: Account number or ID (required)
-- `fromPeriod`: Starting period name (e.g., "Jan 2025")
-- `toPeriod`: Ending period name (e.g., "Dec 2025")
-- `class`: Class ID (optional)
-- `dept`: Department ID (optional)
-- `location`: Location ID (optional)
-
-**Example:**
-```excel
-=NS.GLABUD(1, "Operating", "6000", "Jan 2025", "Dec 2025", "", "", "")
-// Returns: 120000.00
-```
-
-## Troubleshooting
-
-### Server won't start
-- Check that port 5000 is not in use
-- Verify Python 3.7+ is installed
-
-### Formulas return #NAME?
-- Ensure the add-in is loaded (Insert > Add-ins > My Add-ins)
-- Check that the server is running
-
-### Formulas return errors
-- Verify NetSuite credentials in `netsuite_config.json`
-- Check server logs for authentication errors
-- Ensure your NetSuite account has SuiteQL enabled
-
-## Development
-
-### Project Structure
+## 📊 Architecture
 
 ```
-NetSuite Formulas Revised/
-├── README.md
-├── backend/
-│   ├── server.py              # Flask server
-│   ├── requirements.txt       # Python dependencies
-│   ├── netsuite_config.json  # NetSuite credentials
-│   └── netsuite_config.template.json
-└── excel-addin/
-    ├── manifest.xml           # Add-in manifest
-    ├── functions.html         # Custom functions page
-    ├── functions.js           # Custom functions code
-    └── taskpane.html          # Task pane UI (optional)
+Excel Cell (=NS.GLABAL(...))
+    ↓
+GitHub Pages (functions.js)
+    ↓
+Cloudflare Tunnel (HTTPS)
+    ↓
+Flask Backend (localhost:5002)
+    ↓
+NetSuite SuiteQL API (OAuth 1.0a)
 ```
 
-### Testing with Real NetSuite Data
+---
 
-The configuration file includes credentials for NetSuite test drive account (TSTDRV2320150).
+## 🎨 Current Configuration
 
-Test queries:
-- Account "1000" - typically a cash account
-- Account "4000" - typically a revenue account
-- Periods like "Jan 2025", "Feb 2025", etc.
+- **Manifest Version:** 1.0.0.9
+- **Cache-Busting:** ?v=1009
+- **Backend:** localhost:5002
+- **Tunnel:** https://load-scanner-nathan-targeted.trycloudflare.com
+- **GitHub Pages:** https://chris-cloudextend.github.io/netsuite-excel-addin/
 
-## License
+---
 
-MIT License
+## 📚 Documentation
+
+See `PROJECT-STRUCTURE.md` for detailed project organization and deployment instructions.
+
+---
+
+## 🔒 Security Note
+
+Never commit `backend/netsuite_config.json` to git - it contains sensitive credentials.
+Use `netsuite_config.template.json` as a template.
 
