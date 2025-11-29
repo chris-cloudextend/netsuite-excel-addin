@@ -266,6 +266,14 @@
                 <div class="refresh-status" id="refreshStatus"></div>
             </div>
 
+            <!-- DRILL-DOWN SECTION -->
+            <div class="refresh-section" style="background: #e0f2fe; border-color: #0ea5e9;">
+                <h2>🔍 Transaction Drill-Down</h2>
+                <p style="color: #075985;">Select any cell with an NS.GLABAL formula and click below to see the underlying NetSuite transactions with links to the original records.</p>
+                <button class="refresh-btn" style="background: #0ea5e9;" onmouseover="this.style.background='#0284c7'" onmouseout="this.style.background='#0ea5e9'" onclick="drillDownTransactions()">View Transactions</button>
+                <div class="refresh-status" id="drillStatus"></div>
+            </div>
+
             <div class="info-box">
                 <p><strong>Getting Started:</strong> Use the formulas below in any Excel cell. They will automatically query your NetSuite data in real-time. All formulas accept both numeric and text account numbers.</p>
     </div>
@@ -389,6 +397,8 @@
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <script>
+        const SERVER_URL = 'https://load-scanner-nathan-targeted.trycloudflare.com';
+
         Office.onReady((info) => {
             console.log('NetSuite Excel Add-in task pane loaded');
         });
@@ -430,6 +440,252 @@
                 btn.disabled = false;
                 btn.textContent = 'Refresh All Data';
             }
+        }
+
+        async function drillDownTransactions() {
+            const statusEl = document.getElementById('drillStatus');
+            const btn = event.target;
+            
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Loading...';
+                statusEl.textContent = 'Analyzing selected cell...';
+                statusEl.style.color = '#0284c7';
+                
+                await Excel.run(async (context) => {
+                    // Get the selected cell
+                    const range = context.workbook.getSelectedRange();
+                    range.load(['formulas', 'values', 'address']);
+                    
+                    await context.sync();
+                    
+                    const formula = range.formulas[0][0];
+                    const address = range.address;
+                    
+                    console.log('Selected cell:', address, 'Formula:', formula);
+                    
+                    // Check if it's an NS.GLABAL formula
+                    if (!formula || !formula.toUpperCase().includes('NS.GLABAL')) {
+                        statusEl.textContent = '✗ Please select a cell with an NS.GLABAL formula';
+                        statusEl.style.color = '#dc2626';
+                        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                        return;
+                    }
+                    
+                    // Parse the formula to extract parameters
+                    // Formula format: =NS.GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, class)
+                    const params = parseFormulaParams(formula);
+                    
+                    if (!params || !params.account || !params.period) {
+                        statusEl.textContent = '✗ Could not parse formula parameters';
+                        statusEl.style.color = '#dc2626';
+                        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                        return;
+                    }
+                    
+                    statusEl.textContent = 'Fetching transactions from NetSuite...';
+                    
+                    // Build query string
+                    const queryParams = new URLSearchParams({
+                        account: params.account,
+                        period: params.period
+                    });
+                    
+                    if (params.subsidiary) queryParams.append('subsidiary', params.subsidiary);
+                    if (params.department) queryParams.append('department', params.department);
+                    if (params.location) queryParams.append('location', params.location);
+                    if (params.class) queryParams.append('class', params.class);
+                    
+                    // Fetch transactions from backend
+                    const response = await fetch(`${SERVER_URL}/transactions?${queryParams}`);
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Failed to fetch transactions');
+                    }
+                    
+                    const data = await response.json();
+                    const transactions = data.transactions;
+                    
+                    if (!transactions || transactions.length === 0) {
+                        statusEl.textContent = '✓ No transactions found for this period';
+                        statusEl.style.color = '#059669';
+                        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                        return;
+                    }
+                    
+                    // Create new sheet with transaction details
+                    await createDrillDownSheet(context, transactions, params);
+                    
+                    statusEl.textContent = `✓ Loaded ${transactions.length} transaction(s)!`;
+                    statusEl.style.color = '#059669';
+                    
+                    setTimeout(() => {
+                        statusEl.textContent = '';
+                    }, 3000);
+                });
+                
+            } catch (error) {
+                console.error('Error in drill-down:', error);
+                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.style.color = '#dc2626';
+                
+                setTimeout(() => {
+                    statusEl.textContent = '';
+                }, 5000);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'View Transactions';
+            }
+        }
+
+        function parseFormulaParams(formula) {
+            try {
+                // Extract content between parentheses
+                const match = formula.match(/NS\.GLABAL\s*\((.*)\)/i);
+                if (!match) return null;
+                
+                const paramsStr = match[1];
+                
+                // Split by comma, but be careful with quotes and nested functions
+                const params = [];
+                let current = '';
+                let inQuotes = false;
+                let parenDepth = 0;
+                
+                for (let i = 0; i < paramsStr.length; i++) {
+                    const char = paramsStr[i];
+                    
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                        current += char;
+                    } else if (char === '(' && !inQuotes) {
+                        parenDepth++;
+                        current += char;
+                    } else if (char === ')' && !inQuotes) {
+                        parenDepth--;
+                        current += char;
+                    } else if (char === ',' && !inQuotes && parenDepth === 0) {
+                        params.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                
+                if (current.trim()) {
+                    params.push(current.trim());
+                }
+                
+                // Clean up parameters (remove quotes, handle empty strings)
+                const cleanParam = (p) => {
+                    if (!p || p === '""' || p === '') return '';
+                    return p.replace(/^["']|["']$/g, '');
+                };
+                
+                return {
+                    account: cleanParam(params[0]),
+                    period: cleanParam(params[1]) || cleanParam(params[2]), // Use fromPeriod as the drill-down period
+                    subsidiary: cleanParam(params[3]),
+                    department: cleanParam(params[4]),
+                    location: cleanParam(params[5]),
+                    class: cleanParam(params[6])
+                };
+                
+            } catch (error) {
+                console.error('Error parsing formula:', error);
+                return null;
+            }
+        }
+
+        async function createDrillDownSheet(context, transactions, params) {
+            // Create or get drill-down sheet
+            const sheetName = `DrillDown_${params.account}`;
+            
+            let drillSheet;
+            try {
+                drillSheet = context.workbook.worksheets.getItem(sheetName);
+                drillSheet.delete();
+                await context.sync();
+            } catch (e) {
+                // Sheet doesn't exist, that's fine
+            }
+            
+            drillSheet = context.workbook.worksheets.add(sheetName);
+            drillSheet.activate();
+            
+            // Add header
+            drillSheet.getRange('A1').values = [['TRANSACTION DRILL-DOWN']];
+            drillSheet.getRange('A1').format.font.bold = true;
+            drillSheet.getRange('A1').format.font.size = 14;
+            
+            drillSheet.getRange('A2').values = [[`Account: ${params.account} | Period: ${params.period}`]];
+            drillSheet.getRange('A2').format.font.bold = true;
+            
+            // Add column headers
+            const headers = [
+                ['Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount', 'NetSuite Link']
+            ];
+            drillSheet.getRange('A4:I4').values = headers;
+            drillSheet.getRange('A4:I4').format.font.bold = true;
+            drillSheet.getRange('A4:I4').format.fill.color = '#667eea';
+            drillSheet.getRange('A4:I4').format.font.color = 'white';
+            
+            // Add transaction data
+            const dataRows = transactions.map(txn => [
+                txn.transaction_date || '',
+                txn.transaction_type || '',
+                txn.transaction_number || '',
+                txn.entity_name || '',
+                txn.memo || '',
+                txn.debit ? parseFloat(txn.debit) : 0,
+                txn.credit ? parseFloat(txn.credit) : 0,
+                txn.net_amount ? parseFloat(txn.net_amount) : 0,
+                txn.netsuite_url || ''
+            ]);
+            
+            const dataRange = drillSheet.getRange(`A5:I${4 + dataRows.length}`);
+            dataRange.values = dataRows;
+            
+            // Format numbers as currency
+            drillSheet.getRange(`F5:H${4 + dataRows.length}`).numberFormat = [['$#,##0.00']];
+            
+            // Add hyperlinks to NetSuite URLs
+            for (let i = 0; i < transactions.length; i++) {
+                const txn = transactions[i];
+                const row = 5 + i;
+                
+                // Add hyperlink for transaction number
+                const linkCell = drillSheet.getRange(`C${row}`);
+                const hyperlink = {
+                    address: txn.netsuite_url,
+                    textToDisplay: txn.transaction_number
+                };
+                linkCell.hyperlink = hyperlink;
+                linkCell.format.font.color = '#0ea5e9';
+                linkCell.format.font.underline = 'Single';
+            }
+            
+            // Auto-fit columns
+            drillSheet.getRange('A:I').format.autofitColumns();
+            
+            // Add summary at bottom
+            const summaryRow = 5 + dataRows.length + 2;
+            drillSheet.getRange(`A${summaryRow}`).values = [[`Total Transactions: ${transactions.length}`]];
+            drillSheet.getRange(`A${summaryRow}`).format.font.bold = true;
+            
+            const totalDebit = dataRows.reduce((sum, row) => sum + row[5], 0);
+            const totalCredit = dataRows.reduce((sum, row) => sum + row[6], 0);
+            const totalNet = dataRows.reduce((sum, row) => sum + row[7], 0);
+            
+            drillSheet.getRange(`E${summaryRow}`).values = [['Totals:']];
+            drillSheet.getRange(`F${summaryRow}`).values = [[totalDebit]];
+            drillSheet.getRange(`G${summaryRow}`).values = [[totalCredit]];
+            drillSheet.getRange(`H${summaryRow}`).values = [[totalNet]];
+            drillSheet.getRange(`E${summaryRow}:H${summaryRow}`).format.font.bold = true;
+            drillSheet.getRange(`F${summaryRow}:H${summaryRow}`).numberFormat = [['$#,##0.00']];
+            
+            await context.sync();
         }
     </script>
 </body>

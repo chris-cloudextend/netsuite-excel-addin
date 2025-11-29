@@ -590,6 +590,181 @@ def get_budget():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/transactions', methods=['GET'])
+def get_transactions():
+    """
+    Get transaction-level details for drill-down
+    Used for: Drill-down from balance cells to see underlying transactions
+    
+    Query params:
+        - account: Account number (required)
+        - period: Period name (required)
+        - subsidiary: Subsidiary ID (optional)
+        - class: Class ID (optional)
+        - department: Department ID (optional)
+        - location: Location ID (optional)
+    
+    Returns: JSON with transaction details including NetSuite URLs
+    """
+    try:
+        account = request.args.get('account')
+        period = request.args.get('period')
+        subsidiary = request.args.get('subsidiary', '')
+        class_id = request.args.get('class', '')
+        department = request.args.get('department', '')
+        location = request.args.get('location', '')
+        
+        if not account or not period:
+            return jsonify({'error': 'Missing required parameters: account and period'}), 400
+        
+        # Build WHERE clause with filters
+        where_conditions = [
+            "t.posting = 'T'",
+            "tal.posting = 'T'",
+            f"a.acctnumber = '{escape_sql(account)}'",
+            f"ap.periodname = '{escape_sql(period)}'"
+        ]
+        
+        if subsidiary:
+            where_conditions.append(f"t.subsidiary = {subsidiary}")
+        
+        # Need TransactionLine join if filtering by department, class, or location
+        needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
+        
+        if class_id:
+            where_conditions.append(f"tl.class = {class_id}")
+        if department:
+            where_conditions.append(f"tl.department = {department}")
+        if location:
+            where_conditions.append(f"tl.location = {location}")
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        # SuiteQL query for transaction details
+        # GROUP BY transaction to avoid duplicates when multiple lines hit same account
+        if needs_line_join:
+            query = f"""
+                SELECT 
+                    t.id AS transaction_id,
+                    t.tranid AS transaction_number,
+                    t.trandisplayname AS transaction_type,
+                    t.recordtype AS record_type,
+                    TO_CHAR(t.trandate, 'YYYY-MM-DD') AS transaction_date,
+                    e.entityid AS entity_name,
+                    e.id AS entity_id,
+                    t.memo,
+                    SUM(COALESCE(tal.debit, 0)) AS debit,
+                    SUM(COALESCE(tal.credit, 0)) AS credit,
+                    a.acctnumber AS account_number,
+                    a.accountsearchdisplayname AS account_name
+                FROM 
+                    Transaction t
+                INNER JOIN 
+                    TransactionLine tl ON t.id = tl.transaction
+                INNER JOIN 
+                    TransactionAccountingLine tal ON t.id = tal.transaction AND tl.id = tal.transactionline
+                INNER JOIN 
+                    Account a ON tal.account = a.id
+                INNER JOIN
+                    AccountingPeriod ap ON t.postingperiod = ap.id
+                LEFT JOIN
+                    Entity e ON t.entity = e.id
+                WHERE 
+                    {where_clause}
+                GROUP BY
+                    t.id, t.tranid, t.trandisplayname, t.recordtype, t.trandate,
+                    e.entityid, e.id, t.memo, a.acctnumber, a.accountsearchdisplayname
+                ORDER BY
+                    t.trandate, t.tranid
+            """
+        else:
+            query = f"""
+                SELECT 
+                    t.id AS transaction_id,
+                    t.tranid AS transaction_number,
+                    t.trandisplayname AS transaction_type,
+                    t.recordtype AS record_type,
+                    TO_CHAR(t.trandate, 'YYYY-MM-DD') AS transaction_date,
+                    e.entityid AS entity_name,
+                    e.id AS entity_id,
+                    t.memo,
+                    SUM(COALESCE(tal.debit, 0)) AS debit,
+                    SUM(COALESCE(tal.credit, 0)) AS credit,
+                    a.acctnumber AS account_number,
+                    a.accountsearchdisplayname AS account_name
+                FROM 
+                    Transaction t
+                INNER JOIN 
+                    TransactionAccountingLine tal ON t.id = tal.transaction
+                INNER JOIN 
+                    Account a ON tal.account = a.id
+                INNER JOIN
+                    AccountingPeriod ap ON t.postingperiod = ap.id
+                LEFT JOIN
+                    Entity e ON t.entity = e.id
+                WHERE 
+                    {where_clause}
+                GROUP BY
+                    t.id, t.tranid, t.trandisplayname, t.recordtype, t.trandate,
+                    e.entityid, e.id, t.memo, a.acctnumber, a.accountsearchdisplayname
+                ORDER BY
+                    t.trandate, t.tranid
+            """
+        
+        print(f"DEBUG - Transaction drill-down query:\n{query}", file=sys.stderr)
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify(result), 500
+        
+        # Add NetSuite URL to each transaction
+        for row in result:
+            transaction_id = row.get('transaction_id')
+            record_type = row.get('record_type', '').lower()
+            
+            # Map record types to NetSuite URL paths
+            type_map = {
+                'invoice': 'custinvc',
+                'bill': 'vendorbill',
+                'journalentry': 'journal',
+                'journal': 'journal',
+                'payment': 'custpymt',
+                'vendorpayment': 'vendpymt',
+                'creditmemo': 'custcred',
+                'vendorcredit': 'vendcred',
+                'check': 'check',
+                'deposit': 'deposit',
+                'cashsale': 'cashsale',
+                'cashrefund': 'cashrfnd',
+                'expensereport': 'exprept'
+            }
+            
+            url_type = type_map.get(record_type, record_type)
+            row['netsuite_url'] = f"https://{account_id}.app.netsuite.com/app/accounting/transactions/{url_type}.nl?id={transaction_id}"
+            
+            # Calculate net amount for this account
+            debit = float(row.get('debit', 0)) if row.get('debit') else 0
+            credit = float(row.get('credit', 0)) if row.get('credit') else 0
+            row['net_amount'] = debit - credit
+        
+        return jsonify({
+            'transactions': result,
+            'count': len(result),
+            'filters': {
+                'account': account,
+                'period': period,
+                'subsidiary': subsidiary,
+                'class': class_id,
+                'department': department,
+                'location': location
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in get_transactions: {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/test')
 def test_connection():
     """Test NetSuite connection"""
@@ -634,6 +809,8 @@ if __name__ == '__main__':
     print("  GET  /account/<number>/name         - Get account name")
     print("  GET  /balance?account=...           - Get GL balance")
     print("  GET  /budget?account=...            - Get budget amount")
+    print("  POST /batch/balance                 - Batch balance queries")
+    print("  GET  /transactions?account=...      - Transaction drill-down")
     print()
     print("Press Ctrl+C to stop")
     print("=" * 80)
