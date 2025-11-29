@@ -275,13 +275,7 @@
             <!-- NETSUITE LOOKUPS SECTION -->
             <div class="refresh-section" style="background: #dbeafe; border-color: #3b82f6;">
                 <h2>🏷️ NetSuite Filters</h2>
-                <p style="color: #1e40af; font-size: 13px; margin-bottom: 15px;">Type filter names directly in your cells (e.g., "Hardware", "Boston"). Formulas automatically convert names to IDs using the lookup sheet.</p>
-                
-                <button class="refresh-btn" style="background: #8b5cf6; margin-bottom: 15px;" onclick="createLookupSheet()">📋 Create Lookup Sheet</button>
-                <div class="refresh-status" id="lookupSheetStatus" style="margin-bottom: 15px;"></div>
-                
-                <details style="margin-bottom: 15px;">
-                    <summary style="cursor: pointer; color: #1e40af; font-weight: 600;">Or use dropdowns (click to expand):</summary>
+                <p style="color: #1e40af; font-size: 13px; margin-bottom: 15px;">Select a filter name from the dropdown below and click "Insert" to add it to your cell. You can also type the name directly! The formula automatically converts names like "Hardware" or "Sales" to their internal IDs.</p>
                 
                 <div style="margin: 15px 0;">
                     <label style="display: block; font-weight: 600; color: #1e3a8a; margin-bottom: 5px;">Subsidiary:</label>
@@ -468,43 +462,43 @@
                 const data = await response.json();
                 console.log('Lookups loaded:', data);
                 
-                // Populate subsidiary dropdown
+                // Populate subsidiary dropdown - Show NAMES only (backend converts to IDs)
                 const subSelect = document.getElementById('subsidiarySelect');
                 subSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
                 (data.subsidiaries || []).forEach(item => {
                     const option = document.createElement('option');
-                    option.value = item.id;
-                    option.textContent = `${item.name} (ID: ${item.id})`;
+                    option.value = item.name;  // Use NAME as value (backend converts)
+                    option.textContent = item.name;  // Show NAME only
                     subSelect.appendChild(option);
                 });
                 
-                // Populate department dropdown
+                // Populate department dropdown - Show NAMES only
                 const deptSelect = document.getElementById('departmentSelect');
                 deptSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
                 (data.departments || []).forEach(item => {
                     const option = document.createElement('option');
-                    option.value = item.id;
-                    option.textContent = `${item.name} (ID: ${item.id})`;
+                    option.value = item.name;  // Use NAME as value (backend converts)
+                    option.textContent = item.name;  // Show NAME only
                     deptSelect.appendChild(option);
                 });
                 
-                // Populate class dropdown
+                // Populate class dropdown - Show NAMES only
                 const classSelect = document.getElementById('classSelect');
                 classSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
                 (data.classes || []).forEach(item => {
                     const option = document.createElement('option');
-                    option.value = item.id;
-                    option.textContent = `${item.name} (ID: ${item.id})`;
+                    option.value = item.name;  // Use NAME as value (backend converts)
+                    option.textContent = item.name;  // Show NAME only
                     classSelect.appendChild(option);
                 });
                 
-                // Populate location dropdown
+                // Populate location dropdown - Show NAMES only
                 const locSelect = document.getElementById('locationSelect');
                 locSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
                 (data.locations || []).forEach(item => {
                     const option = document.createElement('option');
-                    option.value = item.id;
-                    option.textContent = `${item.name} (ID: ${item.id})`;
+                    option.value = item.name;  // Use NAME as value (backend converts)
+                    option.textContent = item.name;  // Show NAME only
                     locSelect.appendChild(option);
                 });
                 
@@ -548,15 +542,14 @@
                 await Excel.run(async (context) => {
                     const range = context.workbook.getSelectedRange();
                     
-                    // If "All (No Filter)" is selected, insert empty string
-                    // This tells the formula to not filter by this dimension
-                    range.values = [[selectedValue]];  // Empty string if "All" is selected
+                    // Insert the NAME (backend will convert to ID automatically!)
+                    range.values = [[selectedValue]];  // Name or empty string
                     await context.sync();
                     
                     if (selectedValue === '') {
                         statusEl.textContent = `✓ Inserted: All ${typeName}s (no filter)`;
                     } else {
-                        statusEl.textContent = `✓ Inserted ${typeName} ID: ${selectedValue}`;
+                        statusEl.textContent = `✓ Inserted ${typeName}: "${selectedValue}"`;
                     }
                     statusEl.style.color = '#059669';
                     

@@ -14,6 +14,15 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Excel add-in
 
+# In-memory cache for name-to-ID lookups (refreshes on server restart)
+lookup_cache = {
+    'subsidiaries': {},  # name → id
+    'departments': {},   # name → id
+    'classes': {},       # name → id
+    'locations': {}      # name → id
+}
+cache_loaded = False
+
 # Load NetSuite configuration
 try:
     with open('netsuite_config.json', 'r') as f:
@@ -69,6 +78,172 @@ def escape_sql(text):
     if text is None:
         return ""
     return str(text).replace("'", "''")
+
+
+def load_lookup_cache():
+    """Load all name-to-ID mappings into memory cache"""
+    global cache_loaded
+    
+    if cache_loaded:
+        return
+    
+    print("Loading name-to-ID lookup cache...")
+    
+    # Load Classes - use known names + query NetSuite
+    class_known = {
+        'hardware': '1',
+        'furniture': '2',
+        'racks': '7',
+        'accessories': '10',
+        'consumer goods': '13',
+        'interior': '20',
+        'electronics': '22',
+        'electrical': '29'
+    }
+    lookup_cache['classes'] = class_known.copy()
+    
+    # Try to load more from NetSuite
+    try:
+        class_query = """
+            SELECT DISTINCT c.id, c.name
+            FROM Classification c
+            WHERE c.id IN (
+                SELECT DISTINCT tl.class
+                FROM TransactionLine tl
+                WHERE tl.class IS NOT NULL AND tl.class != 0
+                AND ROWNUM <= 100
+            )
+        """
+        class_result = query_netsuite(class_query)
+        if isinstance(class_result, list):
+            for row in class_result:
+                class_name_lower = row['name'].lower()
+                class_id = str(row['id'])
+                # Add or update
+                lookup_cache['classes'][class_name_lower] = class_id
+            print(f"✓ Loaded {len(lookup_cache['classes'])} classes")
+    except Exception as e:
+        print(f"✗ Class lookup error: {e}, using {len(lookup_cache['classes'])} known classes")
+    
+    # Load Locations (has real names from NetSuite)
+    try:
+        loc_query = """
+            SELECT DISTINCT l.id, l.name
+            FROM Location l
+            WHERE l.id IN (
+                SELECT DISTINCT tl.location
+                FROM TransactionLine tl
+                WHERE tl.location IS NOT NULL AND tl.location != 0
+                AND ROWNUM <= 100
+            )
+        """
+        loc_result = query_netsuite(loc_query)
+        if isinstance(loc_result, list):
+            for row in loc_result:
+                lookup_cache['locations'][row['name'].lower()] = str(row['id'])
+            print(f"✓ Loaded {len(lookup_cache['locations'])} locations")
+    except Exception as e:
+        print(f"✗ Location lookup error: {e}")
+    
+    # Departments - use known names + IDs
+    dept_known = {
+        'demo': '13',
+        'corporate': '1',
+        'sales': '2',
+        'operations': '7',
+        'marketing': '11'
+    }
+    lookup_cache['departments'] = dept_known.copy()
+    
+    # Try to load more from NetSuite
+    try:
+        dept_query = """
+            SELECT DISTINCT tl.department as id
+            FROM TransactionLine tl
+            WHERE tl.department IS NOT NULL AND tl.department != 0
+            AND ROWNUM <= 100
+        """
+        dept_result = query_netsuite(dept_query)
+        if isinstance(dept_result, list):
+            for row in dept_result:
+                dept_id = str(row['id'])
+                # Add as "Department {id}" if not in known list
+                if dept_id not in dept_known.values():
+                    lookup_cache['departments'][f'department {dept_id}'.lower()] = dept_id
+            print(f"✓ Loaded {len(lookup_cache['departments'])} departments")
+    except Exception as e:
+        print(f"✗ Department lookup error: {e}")
+    
+    # Subsidiaries - use known names + IDs
+    sub_known = {
+        'parent company': '1'
+    }
+    lookup_cache['subsidiaries'] = sub_known.copy()
+    
+    # Try to load more from NetSuite
+    try:
+        sub_query = """
+            SELECT DISTINCT t.subsidiary as id
+            FROM Transaction t
+            WHERE t.subsidiary IS NOT NULL AND t.subsidiary != 0
+            AND ROWNUM <= 100
+        """
+        sub_result = query_netsuite(sub_query)
+        if isinstance(sub_result, list):
+            for row in sub_result:
+                sub_id = str(row['id'])
+                # Add as "Subsidiary {id}" if not in known list
+                if sub_id not in sub_known.values():
+                    lookup_cache['subsidiaries'][f'subsidiary {sub_id}'.lower()] = sub_id
+            print(f"✓ Loaded {len(lookup_cache['subsidiaries'])} subsidiaries")
+    except Exception as e:
+        print(f"✗ Subsidiary lookup error: {e}")
+    
+    cache_loaded = True
+    print("✓ Lookup cache loaded!")
+
+
+def convert_name_to_id(dimension_type, value):
+    """
+    Convert a dimension name to its ID
+    Args:
+        dimension_type: 'subsidiary', 'department', 'class', 'location'
+        value: Name (string) or ID (string/number)
+    Returns:
+        ID as string, or original value if already an ID or not found
+    """
+    if not value or value == '':
+        return ''
+    
+    # Load cache if not loaded
+    if not cache_loaded:
+        load_lookup_cache()
+    
+    # If it's already a number (ID), return it
+    if str(value).isdigit():
+        return str(value)
+    
+    # Look up name in cache (case-insensitive)
+    value_lower = str(value).lower().strip()
+    
+    # Map dimension type to cache key (handle 'class' → 'classes')
+    cache_key_map = {
+        'subsidiary': 'subsidiaries',
+        'department': 'departments',
+        'class': 'classes',  # NOT 'classs'!
+        'location': 'locations'
+    }
+    cache_key = cache_key_map.get(dimension_type, dimension_type + 's')
+    
+    if cache_key in lookup_cache:
+        if value_lower in lookup_cache[cache_key]:
+            found_id = lookup_cache[cache_key][value_lower]
+            print(f"✓ Converted {dimension_type} '{value}' → ID {found_id}")
+            return found_id
+    
+    # Not found - return original (might be an ID we don't know about)
+    print(f"⚠ {dimension_type} '{value}' not found in cache, using as-is")
+    return str(value)
 
 
 @app.route('/')
@@ -135,6 +310,12 @@ def batch_balance():
     class_id = data.get('class', '')
     department = data.get('department', '')
     location = data.get('location', '')
+    
+    # Convert names to IDs (accepts names OR IDs)
+    subsidiary = convert_name_to_id('subsidiary', subsidiary)
+    class_id = convert_name_to_id('class', class_id)
+    department = convert_name_to_id('department', department)
+    location = convert_name_to_id('location', location)
     
     if not accounts or not periods:
         return jsonify({'error': 'accounts and periods must be non-empty'}), 400
@@ -342,6 +523,12 @@ def get_balance():
         department = request.args.get('department', '')
         location = request.args.get('location', '')
         
+        # Convert names to IDs (accepts names OR IDs)
+        subsidiary = convert_name_to_id('subsidiary', subsidiary)
+        class_id = convert_name_to_id('class', class_id)
+        department = convert_name_to_id('department', department)
+        location = convert_name_to_id('location', location)
+        
         if not account:
             return jsonify({'error': 'Account number required'}), 400
         
@@ -514,6 +701,12 @@ def get_budget():
         department = request.args.get('department', '')
         location = request.args.get('location', '')
         
+        # Convert names to IDs (accepts names OR IDs)
+        subsidiary = convert_name_to_id('subsidiary', subsidiary)
+        class_id = convert_name_to_id('class', class_id)
+        department = convert_name_to_id('department', department)
+        location = convert_name_to_id('location', location)
+        
         if not account:
             return jsonify({'error': 'Account number required'}), 400
         
@@ -613,6 +806,12 @@ def get_transactions():
         class_id = request.args.get('class', '')
         department = request.args.get('department', '')
         location = request.args.get('location', '')
+        
+        # Convert names to IDs (accepts names OR IDs)
+        subsidiary = convert_name_to_id('subsidiary', subsidiary)
+        class_id = convert_name_to_id('class', class_id)
+        department = convert_name_to_id('department', department)
+        location = convert_name_to_id('location', location)
         
         if not account or not period:
             return jsonify({'error': 'Missing required parameters: account and period'}), 400
@@ -983,6 +1182,9 @@ if __name__ == '__main__':
     print("  GET  /lookups/departments           - Get departments list")
     print("  GET  /lookups/classes               - Get classes list")
     print("  GET  /lookups/locations             - Get locations list")
+    print()
+    print("Loading name-to-ID lookup cache...")
+    load_lookup_cache()
     print()
     print("Press Ctrl+C to stop")
     print("=" * 80)
