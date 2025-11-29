@@ -15,9 +15,10 @@ const balanceCache = new Map(); // Cache successful results to prevent blanks on
 const titleCache = new Map(); // Cache for GLATITLE
 const budgetCache = new Map(); // Cache for GLABUD
 let batchTimer = null;
-const BATCH_DELAY_MS = 200; // Wait 200ms to collect requests before sending batch
-const MAX_BATCH_SIZE = 50; // Max accounts*periods per batch to prevent timeouts
+const BATCH_DELAY_MS = 300; // Wait 300ms to collect requests before sending batch
+const MAX_BATCH_SIZE = 20; // Max accounts*periods per batch (reduced to prevent NetSuite 429 errors)
 const FETCH_TIMEOUT_MS = 30000; // 30 second timeout for API calls
+const CHUNK_DELAY_MS = 1000; // 1 second delay between chunks to avoid NetSuite concurrency limits
 
 /**
  * Get account name from account number
@@ -274,9 +275,10 @@ async function processBatchBalanceRequests() {
                 const chunkBalances = await fetchBatchBalances(chunk, periods, firstReq);
                 Object.assign(allBalances, chunkBalances);
                 
-                // Small delay between chunks to avoid overwhelming the server
+                // Delay between chunks to avoid NetSuite 429 concurrency errors
                 if (i < accountChunks.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    console.log(`⏱️ Waiting ${CHUNK_DELAY_MS}ms before next chunk...`);
+                    await new Promise(resolve => setTimeout(resolve, CHUNK_DELAY_MS));
                 }
             }
             
