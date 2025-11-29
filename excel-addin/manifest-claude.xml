@@ -7,13 +7,13 @@
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-5678-90ab-cdef-123456789abc</Id>
-  <Version>1.0.0.9</Version>
+  <Version>1.0.0.10</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="NetSuite Formulas"/>
   <Description DefaultValue="NetSuite custom formulas for Excel"/>
-  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=1009"/>
-  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=1009"/>
+  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=1010"/>
+  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=1010"/>
   <SupportUrl DefaultValue="https://www.cloudextend.io"/>
 
   <Hosts>
@@ -22,7 +22,7 @@
 
   <!-- Task Pane -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=1009"/>
+    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=1010"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -82,6 +82,51 @@
               </Group>
             </OfficeTab>
           </ExtensionPoint>
+
+          <!-- Context Menu -->
+          <ExtensionPoint xsi:type="ContextMenu">
+            <OfficeMenu id="ContextMenuCell">
+              <Control xsi:type="Menu" id="CloudExtend.ContextMenu">
+                <Label resid="ContextMenu.Label"/>
+                <Supertip>
+                  <Title resid="ContextMenu.Label"/>
+                  <Description resid="ContextMenu.Description"/>
+                </Supertip>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16x16"/>
+                  <bt:Image size="32" resid="Icon.32x32"/>
+                  <bt:Image size="80" resid="Icon.80x80"/>
+                </Icon>
+                <Items>
+                  <Item id="CloudExtend.DrillDown">
+                    <Label resid="DrillDown.Label"/>
+                    <Supertip>
+                      <Title resid="DrillDown.Label"/>
+                      <Description resid="DrillDown.Description"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16"/>
+                      <bt:Image size="32" resid="Icon.32x32"/>
+                      <bt:Image size="80" resid="Icon.80x80"/>
+                    </Icon>
+                    <Action xsi:type="ExecuteFunction">
+                      <FunctionName>drillDownFromContextMenu</FunctionName>
+                    </Action>
+                  </Item>
+                </Items>
+              </Control>
+            </OfficeMenu>
+          </ExtensionPoint>
+
+          <!-- Commands for Context Menu -->
+          <GetStarted>
+            <Title resid="GetStarted.Title"/>
+            <Description resid="GetStarted.Description"/>
+            <LearnMoreUrl resid="GetStarted.LearnMoreUrl"/>
+          </GetStarted>
+          
+          <FunctionFile resid="Commands.Url"/>
+
         </DesktopFormFactor>
 
       </Host>
@@ -91,18 +136,21 @@
 
       <!-- Icons -->
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=1009"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=1009"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=1009"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=1010"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=1010"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=1010"/>
       </bt:Images>
 
       <!-- External Files (with cache-busting) -->
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=1009"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=1010"/>
+        <bt:Url id="Commands.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/commands.html?v=1010"/>
 
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=1009"/>
-        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=1009"/>
-        <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=1009"/>
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=1010"/>
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=1010"/>
+        <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=1010"/>
+        
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://www.cloudextend.io"/>
       </bt:Urls>
 
       <!-- Strings -->
@@ -110,10 +158,16 @@
         <bt:String id="Functions.Namespace" DefaultValue="NS"/>
         <bt:String id="CloudExtend.Group.Label" DefaultValue="CloudExtend"/>
         <bt:String id="Taskpane.Button.Label" DefaultValue="NetSuite Formulas"/>
+        <bt:String id="ContextMenu.Label" DefaultValue="NetSuite"/>
+        <bt:String id="DrillDown.Label" DefaultValue="View Transactions"/>
+        <bt:String id="GetStarted.Title" DefaultValue="NetSuite Formulas"/>
       </bt:ShortStrings>
 
       <bt:LongStrings>
         <bt:String id="Taskpane.Button.Description" DefaultValue="Open the CloudExtend task pane for NetSuite formulas"/>
+        <bt:String id="ContextMenu.Description" DefaultValue="NetSuite formula tools"/>
+        <bt:String id="DrillDown.Description" DefaultValue="View underlying transactions for this balance"/>
+        <bt:String id="GetStarted.Description" DefaultValue="Right-click any NS.GLABAL cell to view transactions"/>
       </bt:LongStrings>
 
     </Resources>
