@@ -452,6 +452,9 @@
                 statusEl.textContent = 'Analyzing selected cell...';
                 statusEl.style.color = '#0284c7';
                 
+                console.log('=== DRILL-DOWN DEBUG START ===');
+                console.log('SERVER_URL:', SERVER_URL);
+                
                 await Excel.run(async (context) => {
                     // Get the selected cell
                     const range = context.workbook.getSelectedRange();
@@ -462,7 +465,9 @@
                     const formula = range.formulas[0][0];
                     const address = range.address;
                     
-                    console.log('Selected cell:', address, 'Formula:', formula);
+                    console.log('Selected cell:', address);
+                    console.log('Formula:', formula);
+                    console.log('Value:', range.values[0][0]);
                     
                     // Check if it's an NS.GLABAL formula
                     if (!formula || !formula.toUpperCase().includes('NS.GLABAL')) {
@@ -476,12 +481,17 @@
                     // Formula format: =NS.GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, class)
                     const params = parseFormulaParams(formula);
                     
+                    console.log('Parsed params:', params);
+                    
                     if (!params || !params.account || !params.period) {
+                        console.error('Failed to parse formula. Params:', params);
                         statusEl.textContent = '✗ Could not parse formula parameters';
                         statusEl.style.color = '#dc2626';
                         setTimeout(() => { statusEl.textContent = ''; }, 5000);
                         return;
                     }
+                    
+                    console.log('Using account:', params.account, 'period:', params.period);
                     
                     statusEl.textContent = 'Fetching transactions from NetSuite...';
                     
@@ -496,23 +506,35 @@
                     if (params.location) queryParams.append('location', params.location);
                     if (params.class) queryParams.append('class', params.class);
                     
+                    const fetchUrl = `${SERVER_URL}/transactions?${queryParams}`;
+                    console.log('Fetching from:', fetchUrl);
+                    
                     // Fetch transactions from backend
-                    const response = await fetch(`${SERVER_URL}/transactions?${queryParams}`);
+                    const response = await fetch(fetchUrl);
+                    
+                    console.log('Response status:', response.status);
                     
                     if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Failed to fetch transactions');
+                        const errorText = await response.text();
+                        console.error('API error response:', errorText);
+                        throw new Error(`API error: ${response.status} - ${errorText}`);
                     }
                     
                     const data = await response.json();
+                    console.log('API response:', data);
+                    
                     const transactions = data.transactions;
+                    console.log('Transactions count:', transactions ? transactions.length : 0);
                     
                     if (!transactions || transactions.length === 0) {
+                        console.warn('No transactions found');
                         statusEl.textContent = '✓ No transactions found for this period';
                         statusEl.style.color = '#059669';
                         setTimeout(() => { statusEl.textContent = ''; }, 5000);
                         return;
                     }
+                    
+                    console.log('Creating drill-down sheet with', transactions.length, 'transaction(s)');
                     
                     // Create new sheet with transaction details
                     await createDrillDownSheet(context, transactions, params);
@@ -526,7 +548,12 @@
                 });
                 
             } catch (error) {
-                console.error('Error in drill-down:', error);
+                console.error('=== DRILL-DOWN ERROR ===');
+                console.error('Error type:', error.constructor.name);
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                console.error('Full error:', error);
+                
                 statusEl.textContent = '✗ Error: ' + error.message;
                 statusEl.style.color = '#dc2626';
                 
@@ -534,6 +561,7 @@
                     statusEl.textContent = '';
                 }, 5000);
             } finally {
+                console.log('=== DRILL-DOWN DEBUG END ===');
                 btn.disabled = false;
                 btn.textContent = 'View Transactions';
             }
