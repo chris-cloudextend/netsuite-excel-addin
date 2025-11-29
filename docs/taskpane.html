@@ -463,7 +463,7 @@
                 
                 // Populate subsidiary dropdown
                 const subSelect = document.getElementById('subsidiarySelect');
-                subSelect.innerHTML = '<option value="">-- None --</option>';
+                subSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
                 (data.subsidiaries || []).forEach(item => {
                     const option = document.createElement('option');
                     option.value = item.id;
@@ -473,7 +473,7 @@
                 
                 // Populate department dropdown
                 const deptSelect = document.getElementById('departmentSelect');
-                deptSelect.innerHTML = '<option value="">-- None --</option>';
+                deptSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
                 (data.departments || []).forEach(item => {
                     const option = document.createElement('option');
                     option.value = item.id;
@@ -483,7 +483,7 @@
                 
                 // Populate class dropdown
                 const classSelect = document.getElementById('classSelect');
-                classSelect.innerHTML = '<option value="">-- None --</option>';
+                classSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
                 (data.classes || []).forEach(item => {
                     const option = document.createElement('option');
                     option.value = item.id;
@@ -493,7 +493,7 @@
                 
                 // Populate location dropdown
                 const locSelect = document.getElementById('locationSelect');
-                locSelect.innerHTML = '<option value="">-- None --</option>';
+                locSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
                 (data.locations || []).forEach(item => {
                     const option = document.createElement('option');
                     option.value = item.id;
@@ -538,18 +538,19 @@
                 const select = document.getElementById(selectId);
                 const selectedValue = select.value;
                 
-                if (!selectedValue) {
-                    statusEl.textContent = `Please select a ${typeName} first`;
-                    statusEl.style.color = '#dc2626';
-                    return;
-                }
-                
                 await Excel.run(async (context) => {
                     const range = context.workbook.getSelectedRange();
-                    range.values = [[selectedValue]];
+                    
+                    // If "All (No Filter)" is selected, insert empty string
+                    // This tells the formula to not filter by this dimension
+                    range.values = [[selectedValue]];  // Empty string if "All" is selected
                     await context.sync();
                     
-                    statusEl.textContent = `✓ Inserted ${typeName} ID: ${selectedValue}`;
+                    if (selectedValue === '') {
+                        statusEl.textContent = `✓ Inserted: All ${typeName}s (no filter)`;
+                    } else {
+                        statusEl.textContent = `✓ Inserted ${typeName} ID: ${selectedValue}`;
+                    }
                     statusEl.style.color = '#059669';
                     
                     setTimeout(() => {

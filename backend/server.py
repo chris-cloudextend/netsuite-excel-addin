@@ -831,41 +831,44 @@ def get_all_lookups():
                 FROM TransactionLine tl
                 WHERE tl.department IS NOT NULL
                 AND tl.department != 0
-                LIMIT 50
+                AND ROWNUM <= 100
             """
             dept_result = query_netsuite(dept_query)
-            if isinstance(dept_result, list):
+            if isinstance(dept_result, list) and len(dept_result) > 0:
+                # Clear hardcoded and use real data
+                lookups['departments'] = []
                 for row in dept_result:
                     dept_id = str(row['id'])
-                    # Check if already in our known list
-                    if not any(d['id'] == dept_id for d in lookups['departments']):
-                        lookups['departments'].append({
-                            'id': dept_id,
-                            'name': f'Department {dept_id}'
-                        })
-        except:
-            pass  # Use defaults if query fails
+                    lookups['departments'].append({
+                        'id': dept_id,
+                        'name': f'Department {dept_id}'
+                    })
+        except Exception as e:
+            print(f"Department query error: {e}")
         
         try:
-            # Get unique subsidiary IDs
+            # Get unique subsidiary IDs from transactions (actual usage)
             sub_query = """
                 SELECT DISTINCT t.subsidiary as id
                 FROM Transaction t
                 WHERE t.subsidiary IS NOT NULL
                 AND t.subsidiary != 0
-                LIMIT 50
+                AND ROWNUM <= 100
             """
             sub_result = query_netsuite(sub_query)
-            if isinstance(sub_result, list):
+            
+            if isinstance(sub_result, list) and len(sub_result) > 0:
+                # Clear the hardcoded list and use real data
+                lookups['subsidiaries'] = []
                 for row in sub_result:
                     sub_id = str(row['id'])
-                    if not any(s['id'] == sub_id for s in lookups['subsidiaries']):
-                        lookups['subsidiaries'].append({
-                            'id': sub_id,
-                            'name': f'Subsidiary {sub_id}'
-                        })
-        except:
-            pass
+                    lookups['subsidiaries'].append({
+                        'id': sub_id,
+                        'name': f'Subsidiary {sub_id}'
+                    })
+                print(f"Found {len(lookups['subsidiaries'])} subsidiaries")
+        except Exception as e:
+            print(f"Subsidiary query error: {e}")
         
         try:
             # Get unique class IDs
@@ -874,18 +877,18 @@ def get_all_lookups():
                 FROM TransactionLine tl
                 WHERE tl.class IS NOT NULL
                 AND tl.class != 0
-                LIMIT 50
+                AND ROWNUM <= 100
             """
             class_result = query_netsuite(class_query)
-            if isinstance(class_result, list):
+            if isinstance(class_result, list) and len(class_result) > 0:
                 for row in class_result:
                     class_id = str(row['id'])
                     lookups['classes'].append({
                         'id': class_id,
                         'name': f'Class {class_id}'
                     })
-        except:
-            pass
+        except Exception as e:
+            print(f"Class query error: {e}")
         
         try:
             # Get unique location IDs
@@ -894,18 +897,18 @@ def get_all_lookups():
                 FROM TransactionLine tl
                 WHERE tl.location IS NOT NULL
                 AND tl.location != 0
-                LIMIT 50
+                AND ROWNUM <= 100
             """
             loc_result = query_netsuite(loc_query)
-            if isinstance(loc_result, list):
+            if isinstance(loc_result, list) and len(loc_result) > 0:
                 for row in loc_result:
                     loc_id = str(row['id'])
                     lookups['locations'].append({
                         'id': loc_id,
                         'name': f'Location {loc_id}'
                     })
-        except:
-            pass
+        except Exception as e:
+            print(f"Location query error: {e}")
         
         return jsonify(lookups)
         
