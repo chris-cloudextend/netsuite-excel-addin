@@ -19,8 +19,7 @@
       ],
       "options": {
         "stream": false,
-        "cancelable": false,
-        "volatile": true
+        "cancelable": false
       }
     },
     {
@@ -82,8 +81,7 @@
       ],
       "options": {
         "stream": false,
-        "cancelable": false,
-        "volatile": true
+        "cancelable": false
       }
     },
     {
@@ -145,8 +143,7 @@
       ],
       "options": {
         "stream": false,
-        "cancelable": false,
-        "volatile": true
+        "cancelable": false
       }
     }
   ]
