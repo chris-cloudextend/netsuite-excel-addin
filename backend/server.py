@@ -794,6 +794,125 @@ def test_connection():
         }), 500
 
 
+# ============================================================================
+# LOOKUP ENDPOINTS - For Excel dropdowns/data validation
+# ============================================================================
+
+@app.route('/lookups/all')
+def get_all_lookups():
+    """
+    Get all lookups at once - Subsidiary, Department, Location, Class
+    Returns actual IDs from transaction data
+    """
+    try:
+        # Start with known values (you can add more manually)
+        lookups = {
+            'subsidiaries': [
+                {'id': '1', 'name': 'Parent Company'},
+                # Add more as you discover them
+            ],
+            'departments': [
+                {'id': '13', 'name': 'Demo'},
+                # Will populate from NetSuite below
+            ],
+            'classes': [
+                # Will populate from NetSuite below
+            ],
+            'locations': [
+                # Will populate from NetSuite below
+            ]
+        }
+        
+        # Try to fetch actual values from NetSuite (might fail on some accounts)
+        try:
+            # Get unique department IDs from recent transactions
+            dept_query = """
+                SELECT DISTINCT tl.department as id
+                FROM TransactionLine tl
+                WHERE tl.department IS NOT NULL
+                AND tl.department != 0
+                LIMIT 50
+            """
+            dept_result = query_netsuite(dept_query)
+            if isinstance(dept_result, list):
+                for row in dept_result:
+                    dept_id = str(row['id'])
+                    # Check if already in our known list
+                    if not any(d['id'] == dept_id for d in lookups['departments']):
+                        lookups['departments'].append({
+                            'id': dept_id,
+                            'name': f'Department {dept_id}'
+                        })
+        except:
+            pass  # Use defaults if query fails
+        
+        try:
+            # Get unique subsidiary IDs
+            sub_query = """
+                SELECT DISTINCT t.subsidiary as id
+                FROM Transaction t
+                WHERE t.subsidiary IS NOT NULL
+                AND t.subsidiary != 0
+                LIMIT 50
+            """
+            sub_result = query_netsuite(sub_query)
+            if isinstance(sub_result, list):
+                for row in sub_result:
+                    sub_id = str(row['id'])
+                    if not any(s['id'] == sub_id for s in lookups['subsidiaries']):
+                        lookups['subsidiaries'].append({
+                            'id': sub_id,
+                            'name': f'Subsidiary {sub_id}'
+                        })
+        except:
+            pass
+        
+        try:
+            # Get unique class IDs
+            class_query = """
+                SELECT DISTINCT tl.class as id
+                FROM TransactionLine tl
+                WHERE tl.class IS NOT NULL
+                AND tl.class != 0
+                LIMIT 50
+            """
+            class_result = query_netsuite(class_query)
+            if isinstance(class_result, list):
+                for row in class_result:
+                    class_id = str(row['id'])
+                    lookups['classes'].append({
+                        'id': class_id,
+                        'name': f'Class {class_id}'
+                    })
+        except:
+            pass
+        
+        try:
+            # Get unique location IDs
+            loc_query = """
+                SELECT DISTINCT tl.location as id
+                FROM TransactionLine tl
+                WHERE tl.location IS NOT NULL
+                AND tl.location != 0
+                LIMIT 50
+            """
+            loc_result = query_netsuite(loc_query)
+            if isinstance(loc_result, list):
+                for row in loc_result:
+                    loc_id = str(row['id'])
+                    lookups['locations'].append({
+                        'id': loc_id,
+                        'name': f'Location {loc_id}'
+                    })
+        except:
+            pass
+        
+        return jsonify(lookups)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     print("=" * 80)
     print("NetSuite Excel Formulas - Backend Server")
@@ -822,80 +941,4 @@ if __name__ == '__main__':
     
     # Run server
     app.run(host='127.0.0.1', port=5002, debug=False)
-
-
-# ============================================================================
-# LOOKUP ENDPOINTS - For Excel dropdowns/data validation
-# ============================================================================
-
-@app.route('/lookups/subsidiaries')
-def get_subsidiaries():
-    """Get all subsidiaries for dropdown lists"""
-    try:
-        query = """
-            SELECT id, name
-            FROM Subsidiary
-            WHERE isinactive = 'F'
-            ORDER BY name
-        """
-        result = query_netsuite(query)
-        if isinstance(result, dict) and 'error' in result:
-            return jsonify({'error': result['error']}), 500
-        return jsonify({'subsidiaries': result})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/lookups/departments')
-def get_departments():
-    """Get all departments for dropdown lists"""
-    try:
-        query = """
-            SELECT id, name
-            FROM Department
-            WHERE isinactive = 'F'
-            ORDER BY name
-        """
-        result = query_netsuite(query)
-        if isinstance(result, dict) and 'error' in result:
-            return jsonify({'error': result['error']}), 500
-        return jsonify({'departments': result})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/lookups/classes')
-def get_classes():
-    """Get all classes for dropdown lists"""
-    try:
-        query = """
-            SELECT id, name
-            FROM Classification
-            WHERE isinactive = 'F'
-            ORDER BY name
-        """
-        result = query_netsuite(query)
-        if isinstance(result, dict) and 'error' in result:
-            return jsonify({'error': result['error']}), 500
-        return jsonify({'classes': result})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/lookups/locations')
-def get_locations():
-    """Get all locations for dropdown lists"""
-    try:
-        query = """
-            SELECT id, name
-            FROM Location
-            WHERE isinactive = 'F'
-            ORDER BY name
-        """
-        result = query_netsuite(query)
-        if isinstance(result, dict) and 'error' in result:
-            return jsonify({'error': result['error']}), 500
-        return jsonify({'locations': result})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
