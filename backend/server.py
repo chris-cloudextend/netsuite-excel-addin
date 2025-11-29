@@ -1001,9 +1001,14 @@ def test_connection():
 def get_all_lookups():
     """
     Get all lookups at once - Subsidiary, Department, Location, Class
-    Returns actual IDs AND NAMES from NetSuite
+    Returns data from the in-memory cache (already loaded at startup)
     """
     try:
+        # Load cache if not already loaded
+        if not cache_loaded:
+            load_lookup_cache()
+        
+        # Convert cache format (name→id) to list format (id, name) for frontend
         lookups = {
             'subsidiaries': [],
             'departments': [],
@@ -1011,149 +1016,30 @@ def get_all_lookups():
             'locations': []
         }
         
-        # Get subsidiaries - Subsidiary table not available, so use fallback
-        try:
-            sub_query_fallback = """
-                SELECT DISTINCT t.subsidiary as id
-                FROM Transaction t
-                WHERE t.subsidiary IS NOT NULL
-                AND t.subsidiary != 0
-                AND ROWNUM <= 100
-            """
-            sub_result = query_netsuite(sub_query_fallback)
-            if isinstance(sub_result, list) and len(sub_result) > 0:
-                for row in sub_result:
-                    sub_id = str(row['id'])
-                    # Known names (users can add more manually in the lookup sheet)
-                    known_names = {
-                        '1': 'Parent Company'
-                    }
-                    lookups['subsidiaries'].append({
-                        'id': sub_id,
-                        'name': known_names.get(sub_id, f'Subsidiary {sub_id}')
-                    })
-                print(f"Found {len(lookups['subsidiaries'])} subsidiaries")
-        except Exception as e:
-            print(f"Subsidiary error: {e}")
+        # Convert cache data (name→id) to list format (id, name)
+        for name, id_val in lookup_cache['subsidiaries'].items():
+            lookups['subsidiaries'].append({
+                'id': id_val,
+                'name': name.title()  # Capitalize first letter
+            })
         
-        # Get departments - Department table not available, so use fallback
-        try:
-            dept_query_fallback = """
-                SELECT DISTINCT tl.department as id
-                FROM TransactionLine tl
-                WHERE tl.department IS NOT NULL
-                AND tl.department != 0
-                AND ROWNUM <= 100
-            """
-            dept_result = query_netsuite(dept_query_fallback)
-            if isinstance(dept_result, list) and len(dept_result) > 0:
-                for row in dept_result:
-                    dept_id = str(row['id'])
-                    # Known names (users can add more manually in the lookup sheet)
-                    known_names = {
-                        '13': 'Demo',
-                        '1': 'Corporate',
-                        '2': 'Sales',
-                        '7': 'Operations',
-                        '11': 'Marketing'
-                    }
-                    lookups['departments'].append({
-                        'id': dept_id,
-                        'name': known_names.get(dept_id, f'Department {dept_id}')
-                    })
-                print(f"Found {len(lookups['departments'])} departments")
-        except Exception as e:
-            print(f"Department error: {e}")
+        for name, id_val in lookup_cache['departments'].items():
+            lookups['departments'].append({
+                'id': id_val,
+                'name': name.title()  # Capitalize first letter
+            })
         
-        # Get classes with actual names
-        try:
-            class_query = """
-                SELECT DISTINCT
-                    c.id,
-                    c.name
-                FROM Classification c
-                WHERE c.id IN (
-                    SELECT DISTINCT tl.class
-                    FROM TransactionLine tl
-                    WHERE tl.class IS NOT NULL
-                    AND tl.class != 0
-                    AND ROWNUM <= 100
-                )
-                ORDER BY c.name
-            """
-            class_result = query_netsuite(class_query)
-            if isinstance(class_result, list) and len(class_result) > 0:
-                for row in class_result:
-                    lookups['classes'].append({
-                        'id': str(row['id']),
-                        'name': row['name']
-                    })
-                print(f"Found {len(lookups['classes'])} classes with names")
-        except Exception as e:
-            print(f"Class name query error: {e}, trying fallback...")
-            try:
-                class_query_fallback = """
-                    SELECT DISTINCT tl.class as id
-                    FROM TransactionLine tl
-                    WHERE tl.class IS NOT NULL
-                    AND tl.class != 0
-                    AND ROWNUM <= 100
-                """
-                class_result = query_netsuite(class_query_fallback)
-                if isinstance(class_result, list) and len(class_result) > 0:
-                    for row in class_result:
-                        class_id = str(row['id'])
-                        lookups['classes'].append({
-                            'id': class_id,
-                            'name': f'Class {class_id}'
-                        })
-            except Exception as e2:
-                print(f"Class fallback error: {e2}")
+        for name, id_val in lookup_cache['classes'].items():
+            lookups['classes'].append({
+                'id': id_val,
+                'name': name.title()  # Capitalize first letter
+            })
         
-        # Get locations with actual names
-        try:
-            loc_query = """
-                SELECT DISTINCT
-                    l.id,
-                    l.name
-                FROM Location l
-                WHERE l.id IN (
-                    SELECT DISTINCT tl.location
-                    FROM TransactionLine tl
-                    WHERE tl.location IS NOT NULL
-                    AND tl.location != 0
-                    AND ROWNUM <= 100
-                )
-                ORDER BY l.name
-            """
-            loc_result = query_netsuite(loc_query)
-            if isinstance(loc_result, list) and len(loc_result) > 0:
-                for row in loc_result:
-                    lookups['locations'].append({
-                        'id': str(row['id']),
-                        'name': row['name']
-                    })
-                print(f"Found {len(lookups['locations'])} locations with names")
-        except Exception as e:
-            print(f"Location name query error: {e}, trying fallback...")
-            try:
-                loc_query_fallback = """
-                    SELECT DISTINCT tl.location as id
-                    FROM TransactionLine tl
-                    WHERE tl.location IS NOT NULL
-                    AND tl.location != 0
-                    AND ROWNUM <= 100
-                """
-                loc_result = query_netsuite(loc_query_fallback)
-                if isinstance(loc_result, list) and len(loc_result) > 0:
-                    for row in loc_result:
-                        loc_id = str(row['id'])
-                        lookups['locations'].append({
-                            'id': loc_id,
-                            'name': f'Location {loc_id}'
-                        })
-            except Exception as e2:
-                print(f"Location fallback error: {e2}")
+        for name, id_val in lookup_cache['locations'].items():
+            lookups['locations'].append({
+                'id': id_val,
+                'name': name  # Keep location names as-is
+            })
         
         return jsonify(lookups)
         
