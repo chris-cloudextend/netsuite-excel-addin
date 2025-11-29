@@ -275,7 +275,13 @@
             <!-- NETSUITE LOOKUPS SECTION -->
             <div class="refresh-section" style="background: #dbeafe; border-color: #3b82f6;">
                 <h2>🏷️ NetSuite Filters</h2>
-                <p style="color: #1e40af; font-size: 13px;">Select a value and click "Insert ID" to add the internal ID to the selected cell. Use these IDs in your formulas.</p>
+                <p style="color: #1e40af; font-size: 13px; margin-bottom: 15px;">Type filter names directly in your cells (e.g., "Hardware", "Boston"). Formulas automatically convert names to IDs using the lookup sheet.</p>
+                
+                <button class="refresh-btn" style="background: #8b5cf6; margin-bottom: 15px;" onclick="createLookupSheet()">📋 Create Lookup Sheet</button>
+                <div class="refresh-status" id="lookupSheetStatus" style="margin-bottom: 15px;"></div>
+                
+                <details style="margin-bottom: 15px;">
+                    <summary style="cursor: pointer; color: #1e40af; font-weight: 600;">Or use dropdowns (click to expand):</summary>
                 
                 <div style="margin: 15px 0;">
                     <label style="display: block; font-weight: 600; color: #1e3a8a; margin-bottom: 5px;">Subsidiary:</label>
@@ -311,6 +317,7 @@
                 
                 <button class="refresh-btn" style="background: #6366f1; margin-top: 10px;" onclick="loadNetSuiteLookups()">🔄 Refresh Lookup Lists</button>
                 <div class="refresh-status" id="lookupStatus"></div>
+                </details>
             </div>
 
             <!-- DRILL-DOWN SECTION -->
@@ -560,6 +567,139 @@
                 
             } catch (error) {
                 console.error('Error inserting value:', error);
+                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.style.color = '#dc2626';
+            }
+        }
+
+        // Create a hidden lookup sheet with Name → ID mappings
+        async function createLookupSheet() {
+            const statusEl = document.getElementById('lookupSheetStatus');
+            statusEl.textContent = 'Creating lookup sheet...';
+            statusEl.style.color = '#0284c7';
+            
+            try {
+                // First, fetch the lookup data
+                const response = await fetch(`${SERVER_URL}/lookups/all`);
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Lookups data:', data);
+                
+                await Excel.run(async (context) => {
+                    // Check if sheet exists, delete if it does
+                    const sheets = context.workbook.worksheets;
+                    sheets.load('items/name');
+                    await context.sync();
+                    
+                    const existingSheet = sheets.items.find(s => s.name === 'NSLookups');
+                    if (existingSheet) {
+                        existingSheet.delete();
+                        await context.sync();
+                    }
+                    
+                    // Create new hidden sheet
+                    const lookupSheet = sheets.add('NSLookups');
+                    lookupSheet.visibility = Excel.SheetVisibility.hidden;
+                    
+                    let currentRow = 1;
+                    
+                    // Add Subsidiaries section
+                    lookupSheet.getRange(`A${currentRow}`).values = [['SUBSIDIARIES']];
+                    lookupSheet.getRange(`A${currentRow}`).format.font.bold = true;
+                    currentRow++;
+                    lookupSheet.getRange(`A${currentRow}:B${currentRow}`).values = [['Name', 'ID']];
+                    lookupSheet.getRange(`A${currentRow}:B${currentRow}`).format.font.bold = true;
+                    currentRow++;
+                    
+                    const subStart = currentRow;
+                    (data.subsidiaries || []).forEach(item => {
+                        lookupSheet.getRange(`A${currentRow}:B${currentRow}`).values = [[item.name, item.id]];
+                        currentRow++;
+                    });
+                    const subEnd = currentRow - 1;
+                    
+                    // Define named range for subsidiaries
+                    if (data.subsidiaries && data.subsidiaries.length > 0) {
+                        context.workbook.names.add(`SubsidiaryLookup`, lookupSheet.getRange(`A${subStart}:B${subEnd}`));
+                    }
+                    
+                    currentRow++; // Empty row
+                    
+                    // Add Departments section
+                    lookupSheet.getRange(`A${currentRow}`).values = [['DEPARTMENTS']];
+                    lookupSheet.getRange(`A${currentRow}`).format.font.bold = true;
+                    currentRow++;
+                    lookupSheet.getRange(`A${currentRow}:B${currentRow}`).values = [['Name', 'ID']];
+                    lookupSheet.getRange(`A${currentRow}:B${currentRow}`).format.font.bold = true;
+                    currentRow++;
+                    
+                    const deptStart = currentRow;
+                    (data.departments || []).forEach(item => {
+                        lookupSheet.getRange(`A${currentRow}:B${currentRow}`).values = [[item.name, item.id]];
+                        currentRow++;
+                    });
+                    const deptEnd = currentRow - 1;
+                    
+                    if (data.departments && data.departments.length > 0) {
+                        context.workbook.names.add(`DepartmentLookup`, lookupSheet.getRange(`A${deptStart}:B${deptEnd}`));
+                    }
+                    
+                    currentRow++; // Empty row
+                    
+                    // Add Classes section
+                    lookupSheet.getRange(`A${currentRow}`).values = [['CLASSES']];
+                    lookupSheet.getRange(`A${currentRow}`).format.font.bold = true;
+                    currentRow++;
+                    lookupSheet.getRange(`A${currentRow}:B${currentRow}`).values = [['Name', 'ID']];
+                    lookupSheet.getRange(`A${currentRow}:B${currentRow}`).format.font.bold = true;
+                    currentRow++;
+                    
+                    const classStart = currentRow;
+                    (data.classes || []).forEach(item => {
+                        lookupSheet.getRange(`A${currentRow}:B${currentRow}`).values = [[item.name, item.id]];
+                        currentRow++;
+                    });
+                    const classEnd = currentRow - 1;
+                    
+                    if (data.classes && data.classes.length > 0) {
+                        context.workbook.names.add(`ClassLookup`, lookupSheet.getRange(`A${classStart}:B${classEnd}`));
+                    }
+                    
+                    currentRow++; // Empty row
+                    
+                    // Add Locations section
+                    lookupSheet.getRange(`A${currentRow}`).values = [['LOCATIONS']];
+                    lookupSheet.getRange(`A${currentRow}`).format.font.bold = true;
+                    currentRow++;
+                    lookupSheet.getRange(`A${currentRow}:B${currentRow}`).values = [['Name', 'ID']];
+                    lookupSheet.getRange(`A${currentRow}:B${currentRow}`).format.font.bold = true;
+                    currentRow++;
+                    
+                    const locStart = currentRow;
+                    (data.locations || []).forEach(item => {
+                        lookupSheet.getRange(`A${currentRow}:B${currentRow}`).values = [[item.name, item.id]];
+                        currentRow++;
+                    });
+                    const locEnd = currentRow - 1;
+                    
+                    if (data.locations && data.locations.length > 0) {
+                        context.workbook.names.add(`LocationLookup`, lookupSheet.getRange(`A${locStart}:B${locEnd}`));
+                    }
+                    
+                    // Auto-size columns
+                    lookupSheet.getRange('A:B').format.autofitColumns();
+                    
+                    await context.sync();
+                    
+                    statusEl.innerHTML = `✓ Lookup sheet created!<br><small style="color: #1e40af;">Type names like "Hardware" or "Boston" in cells.<br>Use XLOOKUP to convert to IDs in formulas.</small>`;
+                    statusEl.style.color = '#059669';
+                });
+                
+            } catch (error) {
+                console.error('Error creating lookup sheet:', error);
                 statusEl.textContent = '✗ Error: ' + error.message;
                 statusEl.style.color = '#dc2626';
             }
