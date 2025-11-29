@@ -477,11 +477,14 @@
                         return;
                     }
                     
-                    // Parse the formula to extract parameters
+                    // Parse the formula to extract cell references
                     // Formula format: =NS.GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, class)
-                    const params = parseFormulaParams(formula);
+                    const cellRefs = parseFormulaCellRefs(formula);
+                    console.log('Cell references from formula:', cellRefs);
                     
-                    console.log('Parsed params:', params);
+                    // Now get the actual VALUES from those cells
+                    const params = await resolveFormulaParams(context, cellRefs);
+                    console.log('Resolved params:', params);
                     
                     if (!params || !params.account || !params.period) {
                         console.error('Failed to parse formula. Params:', params);
@@ -567,7 +570,7 @@
             }
         }
 
-        function parseFormulaParams(formula) {
+        function parseFormulaCellRefs(formula) {
             try {
                 // Extract content between parentheses
                 const match = formula.match(/NS\.GLABAL\s*\((.*)\)/i);
@@ -605,23 +608,84 @@
                     params.push(current.trim());
                 }
                 
-                // Clean up parameters (remove quotes, handle empty strings)
-                const cleanParam = (p) => {
-                    if (!p || p === '""' || p === '') return '';
-                    return p.replace(/^["']|["']$/g, '');
-                };
-                
+                // Return cell references or literal values as-is
                 return {
-                    account: cleanParam(params[0]),
-                    period: cleanParam(params[1]) || cleanParam(params[2]), // Use fromPeriod as the drill-down period
-                    subsidiary: cleanParam(params[3]),
-                    department: cleanParam(params[4]),
-                    location: cleanParam(params[5]),
-                    class: cleanParam(params[6])
+                    accountRef: params[0] || '',
+                    fromPeriodRef: params[1] || '',
+                    toPeriodRef: params[2] || '',
+                    subsidiaryRef: params[3] || '',
+                    departmentRef: params[4] || '',
+                    locationRef: params[5] || '',
+                    classRef: params[6] || ''
                 };
                 
             } catch (error) {
                 console.error('Error parsing formula:', error);
+                return null;
+            }
+        }
+
+        async function resolveFormulaParams(context, cellRefs) {
+            try {
+                // Helper to clean up a parameter (remove quotes, handle empty)
+                const cleanParam = (p) => {
+                    if (!p || p === '""' || p === '') return '';
+                    // Remove surrounding quotes
+                    return p.replace(/^["']|["']$/g, '');
+                };
+                
+                // Helper to check if a string is a cell reference (like A1, $A$1, H$3, etc.)
+                const isCellRef = (str) => {
+                    return /^[\$]?[A-Z]+[\$]?\d+$/.test(str);
+                };
+                
+                // Helper to get value from cell reference or return literal value
+                const getValue = async (ref) => {
+                    if (!ref || ref === '""' || ref === '') return '';
+                    
+                    const cleaned = cleanParam(ref);
+                    
+                    // If it's a cell reference, get the value from that cell
+                    if (isCellRef(cleaned)) {
+                        try {
+                            const sheet = context.workbook.worksheets.getActiveWorksheet();
+                            const refRange = sheet.getRange(cleaned);
+                            refRange.load('values');
+                            await context.sync();
+                            
+                            const value = refRange.values[0][0];
+                            console.log(`  Resolved ${cleaned} to:`, value);
+                            return String(value || '');
+                        } catch (e) {
+                            console.warn(`Could not resolve cell reference ${cleaned}:`, e);
+                            return '';
+                        }
+                    }
+                    
+                    // Otherwise return the literal value
+                    return cleaned;
+                };
+                
+                // Resolve all parameters
+                const account = await getValue(cellRefs.accountRef);
+                const fromPeriod = await getValue(cellRefs.fromPeriodRef);
+                const toPeriod = await getValue(cellRefs.toPeriodRef);
+                const subsidiary = await getValue(cellRefs.subsidiaryRef);
+                const department = await getValue(cellRefs.departmentRef);
+                const location = await getValue(cellRefs.locationRef);
+                const classId = await getValue(cellRefs.classRef);
+                
+                return {
+                    account: account,
+                    period: fromPeriod, // Use fromPeriod as the drill-down period
+                    subsidiary: subsidiary,
+                    department: department,
+                    location: location,
+                    class: classId
+                };
+                
+            } catch (error) {
+                console.error('Error resolving formula params:', error);
                 return null;
             }
         }
