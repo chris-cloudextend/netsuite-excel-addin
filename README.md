@@ -9,6 +9,7 @@ Real-time NetSuite SuiteQL data directly in Excel via custom formulas.
 - **NS.GLABUD** - Get budget amounts with optional filters
 - **Intelligent batching** - Multiple formulas consolidated into single efficient queries
 - **Manual refresh** - Task pane button to update all formulas with latest NetSuite data
+- **Transaction drill-down** - Click any balance cell to see underlying transactions with NetSuite hyperlinks
 
 ---
 
@@ -65,6 +66,12 @@ Copy the tunnel URL and update `docs/functions.js`
 ### Refresh Data:
 1. Data tab → CloudExtend → "NetSuite Formulas"
 2. Click "Refresh All Data" button
+
+### Drill Down to Transactions:
+1. Select any cell with an **NS.GLABAL** formula
+2. Data tab → CloudExtend → "NetSuite Formulas"
+3. Click "View Transactions" button
+4. New sheet created with transaction details and **clickable NetSuite links**!
 
 ---
 
