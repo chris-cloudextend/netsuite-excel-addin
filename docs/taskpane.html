@@ -862,6 +862,10 @@
 
         // Make function globally available for ExecuteFunction action
         window.drillDownFromContextMenu = drillDownFromContextMenu;
+        
+        // Log that function is available
+        console.log('✅ drillDownFromContextMenu registered on window object');
+        console.log('Function type:', typeof window.drillDownFromContextMenu);
     </script>
 </body>
 </html>
