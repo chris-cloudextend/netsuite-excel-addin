@@ -3,10 +3,46 @@
  * Provides three custom formulas: NS.GLATITLE, NS.GLABAL, NS.GLABUD
  * 
  * NO CACHING - Every call makes a fresh API request for reliability
+ * WITH REQUEST THROTTLING - Limit concurrent calls to prevent overwhelming backend
  */
 
 // Backend server URL
 const SERVER_URL = 'https://attention-birthday-cherry-shuttle.trycloudflare.com';
+
+// Request queue to prevent overwhelming the backend
+const requestQueue = [];
+let activeRequests = 0;
+const MAX_CONCURRENT_REQUESTS = 3; // Allow 3 simultaneous calls
+
+async function queuedFetch(url, options) {
+    // Add to queue and wait for turn
+    return new Promise((resolve, reject) => {
+        requestQueue.push({ url, options, resolve, reject });
+        processQueue();
+    });
+}
+
+async function processQueue() {
+    // If we're at max concurrent or queue is empty, wait
+    if (activeRequests >= MAX_CONCURRENT_REQUESTS || requestQueue.length === 0) {
+        return;
+    }
+    
+    // Take next request from queue
+    const { url, options, resolve, reject } = requestQueue.shift();
+    activeRequests++;
+    
+    try {
+        const response = await fetch(url, options);
+        resolve(response);
+    } catch (error) {
+        reject(error);
+    } finally {
+        activeRequests--;
+        // Process next item in queue
+        processQueue();
+    }
+}
 
 /**
  * Get account name from account number
@@ -14,7 +50,7 @@ const SERVER_URL = 'https://attention-birthday-cherry-shuttle.trycloudflare.com'
  * @param {any} accountNumber The account number or ID
  * @returns {string} The account name
  */
-async function GLATITLE(accountNumber, invocation) {
+async function GLATITLE(accountNumber) {
     // Convert to string and check if empty
     const account = String(accountNumber || "").trim();
     if (!account || account === "undefined" || account === "null") {
@@ -22,12 +58,13 @@ async function GLATITLE(accountNumber, invocation) {
     }
     
     try {
-        const response = await fetch(`${SERVER_URL}/account/${account}/name`, {
+        const response = await queuedFetch(`${SERVER_URL}/account/${account}/name`, {
             method: 'GET',
             headers: { 'Accept': 'text/plain' }
         });
         
         if (!response.ok) {
+            console.error(`GLATITLE failed for ${account}: ${response.status}`);
             return "#N/A";
         }
         
@@ -39,7 +76,7 @@ async function GLATITLE(accountNumber, invocation) {
         return text;
         
     } catch (error) {
-        // Return #N/A text (Excel will recognize it)
+        console.error(`GLATITLE error for ${account}:`, error);
         return "#N/A";
     }
 }
@@ -57,7 +94,7 @@ async function GLATITLE(accountNumber, invocation) {
  * @param {any} [classId] Class ID (optional)
  * @returns {number} The GL account balance
  */
-async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
+async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     // Convert all to strings and trim
     account = String(account || "").trim();
     fromPeriod = String(fromPeriod || "").trim();
@@ -68,7 +105,6 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
     classId = String(classId || "").trim();
     
     if (!account) {
-        // Return empty string for blank cell - won't break SUM
         return "";
     }
     
@@ -83,31 +119,29 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         if (classId) params.append('class', classId);
         
         const url = `${SERVER_URL}/balance?${params.toString()}`;
-        const response = await fetch(url, {
+        const response = await queuedFetch(url, {
             method: 'GET',
             headers: { 'Accept': 'application/json' }
         });
         
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");
-            console.error(`Balance API error: ${response.status} - ${errorText}`);
-            // Return empty string (blank cell) - SUM will ignore it
+            console.error(`GLABAL failed for ${account} (${fromPeriod}-${toPeriod}): ${response.status} - ${errorText}`);
             return "";
         }
         
         const text = await response.text();
         const balance = parseFloat(text);
         
-        // If parsing failed, return empty string (blank)
         if (isNaN(balance)) {
+            console.error(`GLABAL parsing failed for ${account}: got "${text}"`);
             return "";
         }
         
         return balance;
         
     } catch (error) {
-        console.error(`Balance fetch error: ${error.message}`);
-        // Return empty string (blank cell) - won't break SUM formulas
+        console.error(`GLABAL error for ${account}:`, error);
         return "";
     }
 }
@@ -125,7 +159,7 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
  * @param {any} [classId] Class ID (optional)
  * @returns {number} The budget amount
  */
-async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
+async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     // Convert all to strings and trim
     account = String(account || "").trim();
     fromPeriod = String(fromPeriod || "").trim();
@@ -136,7 +170,6 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
     classId = String(classId || "").trim();
     
     if (!account) {
-        // Return empty string for blank cell - won't break SUM
         return "";
     }
     
@@ -151,31 +184,29 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         if (classId) params.append('class', classId);
         
         const url = `${SERVER_URL}/budget?${params.toString()}`;
-        const response = await fetch(url, {
+        const response = await queuedFetch(url, {
             method: 'GET',
             headers: { 'Accept': 'application/json' }
         });
         
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");
-            console.error(`Budget API error: ${response.status} - ${errorText}`);
-            // Return empty string (blank cell) - SUM will ignore it
+            console.error(`GLABUD failed for ${account} (${fromPeriod}-${toPeriod}): ${response.status} - ${errorText}`);
             return "";
         }
         
         const text = await response.text();
         const budget = parseFloat(text);
         
-        // If parsing failed, return empty string (blank)
         if (isNaN(budget)) {
+            console.error(`GLABUD parsing failed for ${account}: got "${text}"`);
             return "";
         }
         
         return budget;
         
     } catch (error) {
-        console.error(`Budget fetch error: ${error.message}`);
-        // Return empty string (blank cell) - won't break SUM formulas
+        console.error(`GLABUD error for ${account}:`, error);
         return "";
     }
 }
