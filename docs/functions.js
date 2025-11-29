@@ -13,6 +13,8 @@ const SERVER_URL = 'https://load-scanner-nathan-targeted.trycloudflare.com';
 const pendingBalanceRequests = new Map(); // key -> {account, fromPeriod, toPeriod, filters, resolve, reject}
 let batchTimer = null;
 const BATCH_DELAY_MS = 200; // Wait 200ms to collect requests before sending batch
+const MAX_BATCH_SIZE = 50; // Max accounts*periods per batch to prevent timeouts
+const FETCH_TIMEOUT_MS = 25000; // 25 second timeout for API calls
 
 /**
  * Get account name from account number
@@ -186,17 +188,70 @@ async function processBatchBalanceRequests() {
             return;
         }
         
-        // Build batch request
+        // Check if batch is too large - split if needed
+        const dataPoints = accounts.length * periods.length;
+        console.log(`Batch size: ${accounts.length} accounts x ${periods.length} periods = ${dataPoints} data points`);
+        
+        if (dataPoints > MAX_BATCH_SIZE) {
+            console.log(`⚠️ Batch too large (${dataPoints} > ${MAX_BATCH_SIZE}), splitting into chunks...`);
+            
+            // Split accounts into chunks
+            const accountChunks = [];
+            const chunkSize = Math.ceil(MAX_BATCH_SIZE / periods.length);
+            for (let i = 0; i < accounts.length; i += chunkSize) {
+                accountChunks.push(accounts.slice(i, i + chunkSize));
+            }
+            
+            console.log(`Split into ${accountChunks.length} chunks of ~${chunkSize} accounts each`);
+            
+            // Process each chunk separately
+            const allBalances = {};
+            for (let i = 0; i < accountChunks.length; i++) {
+                const chunk = accountChunks[i];
+                console.log(`Processing chunk ${i + 1}/${accountChunks.length} (${chunk.length} accounts)`);
+                
+                const chunkBalances = await fetchBatchBalances(chunk, periods, firstReq);
+                Object.assign(allBalances, chunkBalances);
+                
+                // Small delay between chunks to avoid overwhelming the server
+                if (i < accountChunks.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+            
+            // Distribute results
+            distributeBalanceResults(requests, allBalances);
+            return;
+        }
+        
+        // Normal batch processing
+        const balances = await fetchBatchBalances(accounts, periods, firstReq);
+        distributeBalanceResults(requests, balances);
+        
+    } catch (error) {
+        console.error('Batch processing error:', error);
+        // Resolve all with blank on error
+        requests.forEach(req => req.resolve(""));
+    }
+}
+
+/**
+ * Fetch batch balances from API with timeout protection
+ */
+async function fetchBatchBalances(accounts, periods, filterReq) {
+    try {
         const batchPayload = {
             accounts: accounts,
             periods: periods,
-            subsidiary: firstReq.subsidiary || "",
-            department: firstReq.department || "",
-            location: firstReq.location || "",
-            class: firstReq.classId || ""
+            subsidiary: filterReq.subsidiary || "",
+            department: filterReq.department || "",
+            location: filterReq.location || "",
+            class: filterReq.classId || ""
         };
         
-        console.log('Sending batch request:', batchPayload);
+        // Add timeout protection
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
         
         const response = await fetch(`${SERVER_URL}/batch/balance`, {
             method: 'POST',
@@ -204,15 +259,16 @@ async function processBatchBalanceRequests() {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            body: JSON.stringify(batchPayload)
+            body: JSON.stringify(batchPayload),
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");
             console.error(`Batch balance failed: ${response.status} - ${errorText}`);
-            // Resolve all with blank
-            requests.forEach(req => req.resolve(""));
-            return;
+            return {};
         }
         
         const result = await response.json();
