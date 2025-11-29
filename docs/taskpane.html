@@ -176,7 +176,7 @@
             padding-left: 12px;
             line-height: 1.5;
         }
-
+        
         .param-name {
             font-weight: 600;
             color: #334155;
@@ -190,7 +190,7 @@
             margin-top: 12px;
             border-radius: 4px;
         }
-
+        
         .example-title {
             font-size: 11px;
             font-weight: 600;
@@ -268,8 +268,8 @@
 
             <div class="info-box">
                 <p><strong>Getting Started:</strong> Use the formulas below in any Excel cell. They will automatically query your NetSuite data in real-time. All formulas accept both numeric and text account numbers.</p>
-            </div>
-
+    </div>
+    
             <!-- NS.GLATITLE -->
             <div class="formula-card">
                 <div class="formula-name">NS.GLATITLE</div>
@@ -332,9 +332,9 @@
                     <div class="example-code">=NS.GLABAL("4010", "Jan 2025", "Dec 2025")</div>
                     <div class="example-code">=NS.GLABAL(A4, B1, C1)</div>
                     <div class="example-code">=NS.GLABAL("4010", "Jan 2025", "Jan 2025", "", "13", "", "")</div>
-                </div>
-            </div>
-
+        </div>
+    </div>
+    
             <!-- NS.GLABUD -->
             <div class="formula-card">
                 <div class="formula-name">NS.GLABUD</div>
@@ -373,9 +373,9 @@
                     <div class="example-title">Examples</div>
                     <div class="example-code">=NS.GLABUD("5000", "Jan 2025", "Dec 2025")</div>
                     <div class="example-code">=NS.GLABUD(A4, B1, C1)</div>
-                </div>
-            </div>
-
+        </div>
+    </div>
+    
             <div class="info-box" style="background: #fef3c7; border-color: #fde68a;">
                 <p style="color: #92400e;"><strong>💡 Pro Tip:</strong> Use TEXT() to format date cells: <code>=NS.GLABAL("4010", TEXT(C3,"mmm yyyy"), TEXT(D3,"mmm yyyy"))</code></p>
             </div>
@@ -386,7 +386,7 @@
             <p style="margin-top: 8px; font-size: 11px;">For support, visit <a href="https://www.cloudextend.io" target="_blank">cloudextend.io</a></p>
         </div>
     </div>
-
+    
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <script>
         Office.onReady((info) => {
@@ -404,15 +404,9 @@
                 statusEl.style.color = '#0284c7';
                 
                 await Excel.run(async (context) => {
-                    // Get all worksheets
-                    const sheets = context.workbook.worksheets;
-                    sheets.load('items');
-                    await context.sync();
-                    
-                    // Recalculate each sheet
-                    for (let i = 0; i < sheets.items.length; i++) {
-                        sheets.items[i].calculate(false);
-                    }
+                    // For custom functions, we need to use application.calculate()
+                    // This forces a full recalculation including custom functions
+                    context.workbook.application.calculate(Excel.CalculationType.full);
                     
                     await context.sync();
                     
@@ -426,12 +420,12 @@
                 
             } catch (error) {
                 console.error('Error refreshing formulas:', error);
-                statusEl.textContent = '✗ Error refreshing. Please try again.';
+                statusEl.textContent = '✗ Error: ' + error.message;
                 statusEl.style.color = '#dc2626';
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
-                }, 3000);
+                }, 5000);
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Refresh All Data';
