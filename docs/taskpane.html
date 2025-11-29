@@ -262,6 +262,7 @@
             <div class="refresh-section">
                 <h2>🔄 Refresh NetSuite Data</h2>
                 <p>Get the latest data from NetSuite by clicking the button below. This will recalculate all NetSuite formulas in your workbook.</p>
+                <p style="font-size: 11px; color: #92400e; margin-top: 8px;">⚠️ <strong>Note:</strong> Large workbooks may take 30-60 seconds to refresh. Please be patient.</p>
                 <button class="refresh-btn" onclick="refreshAllFormulas()">Refresh All Data</button>
                 <div class="refresh-status" id="refreshStatus"></div>
             </div>
@@ -410,22 +411,27 @@
             try {
                 btn.disabled = true;
                 btn.textContent = 'Refreshing...';
-                statusEl.textContent = 'Recalculating all formulas...';
+                statusEl.textContent = 'Preparing to refresh...';
                 statusEl.style.color = '#0284c7';
                 
                 await Excel.run(async (context) => {
-                    // For custom functions, we need to use application.calculate()
-                    // This forces a full recalculation including custom functions
+                    statusEl.textContent = 'Recalculating formulas...';
+                    
+                    // Force recalculation
                     context.workbook.application.calculate(Excel.CalculationType.full);
                     
                     await context.sync();
+                    
+                    // Add a delay to let batching complete
+                    statusEl.textContent = 'Waiting for data from NetSuite...';
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                     
                     statusEl.textContent = '✓ All formulas refreshed with latest NetSuite data!';
                     statusEl.style.color = '#059669';
                     
                     setTimeout(() => {
                         statusEl.textContent = '';
-                    }, 3000);
+                    }, 5000);
                 });
                 
             } catch (error) {
@@ -435,7 +441,7 @@
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
-                }, 5000);
+                }, 8000);
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Refresh All Data';
@@ -599,7 +605,7 @@
                     } else if (char === ',' && !inQuotes && parenDepth === 0) {
                         params.push(current.trim());
                         current = '';
-                    } else {
+                } else {
                         current += char;
                     }
                 }
