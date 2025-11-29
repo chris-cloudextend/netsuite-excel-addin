@@ -716,14 +716,14 @@
             
             // Add column headers
             const headers = [
-                ['Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount', 'NetSuite Link']
+                ['Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount']
             ];
-            drillSheet.getRange('A4:I4').values = headers;
-            drillSheet.getRange('A4:I4').format.font.bold = true;
-            drillSheet.getRange('A4:I4').format.fill.color = '#667eea';
-            drillSheet.getRange('A4:I4').format.font.color = 'white';
+            drillSheet.getRange('A4:H4').values = headers;
+            drillSheet.getRange('A4:H4').format.font.bold = true;
+            drillSheet.getRange('A4:H4').format.fill.color = '#667eea';
+            drillSheet.getRange('A4:H4').format.font.color = 'white';
             
-            // Add transaction data
+            // Add transaction data (without NetSuite Link column)
             const dataRows = transactions.map(txn => [
                 txn.transaction_date || '',
                 txn.transaction_type || '',
@@ -732,11 +732,10 @@
                 txn.memo || '',
                 txn.debit ? parseFloat(txn.debit) : 0,
                 txn.credit ? parseFloat(txn.credit) : 0,
-                txn.net_amount ? parseFloat(txn.net_amount) : 0,
-                txn.netsuite_url || ''
+                txn.net_amount ? parseFloat(txn.net_amount) : 0
             ]);
             
-            const dataRange = drillSheet.getRange(`A5:I${4 + dataRows.length}`);
+            const dataRange = drillSheet.getRange(`A5:H${4 + dataRows.length}`);
             dataRange.values = dataRows;
             
             // Format numbers as currency
@@ -759,7 +758,7 @@
             }
             
             // Auto-fit columns
-            drillSheet.getRange('A:I').format.autofitColumns();
+            drillSheet.getRange('A:H').format.autofitColumns();
             
             // Add summary at bottom
             const summaryRow = 5 + dataRows.length + 2;
