@@ -812,99 +812,59 @@ def get_all_lookups():
             'locations': []
         }
         
-        # Get subsidiaries with actual names
+        # Get subsidiaries - Subsidiary table not available, so use fallback
         try:
-            # Query Transaction table joined to get actual subsidiary info
-            sub_query = """
-                SELECT DISTINCT
-                    s.id,
-                    s.name
-                FROM Subsidiary s
-                WHERE s.id IN (
-                    SELECT DISTINCT t.subsidiary
-                    FROM Transaction t
-                    WHERE t.subsidiary IS NOT NULL
-                    AND t.subsidiary != 0
-                    AND ROWNUM <= 100
-                )
-                ORDER BY s.name
+            sub_query_fallback = """
+                SELECT DISTINCT t.subsidiary as id
+                FROM Transaction t
+                WHERE t.subsidiary IS NOT NULL
+                AND t.subsidiary != 0
+                AND ROWNUM <= 100
             """
-            sub_result = query_netsuite(sub_query)
-            
+            sub_result = query_netsuite(sub_query_fallback)
             if isinstance(sub_result, list) and len(sub_result) > 0:
                 for row in sub_result:
+                    sub_id = str(row['id'])
+                    # Known names (users can add more manually in the lookup sheet)
+                    known_names = {
+                        '1': 'Parent Company'
+                    }
                     lookups['subsidiaries'].append({
-                        'id': str(row['id']),
-                        'name': row['name']
+                        'id': sub_id,
+                        'name': known_names.get(sub_id, f'Subsidiary {sub_id}')
                     })
-                print(f"Found {len(lookups['subsidiaries'])} subsidiaries with names")
+                print(f"Found {len(lookups['subsidiaries'])} subsidiaries")
         except Exception as e:
-            print(f"Subsidiary name query error: {e}, trying fallback...")
-            # Fallback: Just get IDs
-            try:
-                sub_query_fallback = """
-                    SELECT DISTINCT t.subsidiary as id
-                    FROM Transaction t
-                    WHERE t.subsidiary IS NOT NULL
-                    AND t.subsidiary != 0
-                    AND ROWNUM <= 100
-                """
-                sub_result = query_netsuite(sub_query_fallback)
-                if isinstance(sub_result, list) and len(sub_result) > 0:
-                    for row in sub_result:
-                        sub_id = str(row['id'])
-                        lookups['subsidiaries'].append({
-                            'id': sub_id,
-                            'name': f'Subsidiary {sub_id}'
-                        })
-            except Exception as e2:
-                print(f"Subsidiary fallback error: {e2}")
+            print(f"Subsidiary error: {e}")
         
-        # Get departments with actual names
+        # Get departments - Department table not available, so use fallback
         try:
-            dept_query = """
-                SELECT DISTINCT
-                    d.id,
-                    d.name
-                FROM Department d
-                WHERE d.id IN (
-                    SELECT DISTINCT tl.department
-                    FROM TransactionLine tl
-                    WHERE tl.department IS NOT NULL
-                    AND tl.department != 0
-                    AND ROWNUM <= 100
-                )
-                ORDER BY d.name
+            dept_query_fallback = """
+                SELECT DISTINCT tl.department as id
+                FROM TransactionLine tl
+                WHERE tl.department IS NOT NULL
+                AND tl.department != 0
+                AND ROWNUM <= 100
             """
-            dept_result = query_netsuite(dept_query)
+            dept_result = query_netsuite(dept_query_fallback)
             if isinstance(dept_result, list) and len(dept_result) > 0:
                 for row in dept_result:
+                    dept_id = str(row['id'])
+                    # Known names (users can add more manually in the lookup sheet)
+                    known_names = {
+                        '13': 'Demo',
+                        '1': 'Corporate',
+                        '2': 'Sales',
+                        '7': 'Operations',
+                        '11': 'Marketing'
+                    }
                     lookups['departments'].append({
-                        'id': str(row['id']),
-                        'name': row['name']
+                        'id': dept_id,
+                        'name': known_names.get(dept_id, f'Department {dept_id}')
                     })
-                print(f"Found {len(lookups['departments'])} departments with names")
+                print(f"Found {len(lookups['departments'])} departments")
         except Exception as e:
-            print(f"Department name query error: {e}, trying fallback...")
-            # Fallback
-            try:
-                dept_query_fallback = """
-                    SELECT DISTINCT tl.department as id
-                    FROM TransactionLine tl
-                    WHERE tl.department IS NOT NULL
-                    AND tl.department != 0
-                    AND ROWNUM <= 100
-                """
-                dept_result = query_netsuite(dept_query_fallback)
-                if isinstance(dept_result, list) and len(dept_result) > 0:
-                    for row in dept_result:
-                        dept_id = str(row['id'])
-                        lookups['departments'].append({
-                            'id': dept_id,
-                            'name': f'Department {dept_id}'
-                        })
-            except Exception as e2:
-                print(f"Department fallback error: {e2}")
+            print(f"Department error: {e}")
         
         # Get classes with actual names
         try:
