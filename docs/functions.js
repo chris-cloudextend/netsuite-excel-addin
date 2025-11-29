@@ -14,11 +14,11 @@ const SERVER_URL = 'https://attention-birthday-cherry-shuttle.trycloudflare.com'
  * @param {any} accountNumber The account number or ID
  * @returns {string} The account name
  */
-async function GLATITLE(accountNumber) {
+async function GLATITLE(accountNumber, invocation) {
     // Convert to string and check if empty
     const account = String(accountNumber || "").trim();
     if (!account || account === "undefined" || account === "null") {
-        throw new Error("#N/A");
+        return "#N/A";
     }
     
     try {
@@ -28,19 +28,19 @@ async function GLATITLE(accountNumber) {
         });
         
         if (!response.ok) {
-            throw new Error("#N/A");
+            return "#N/A";
         }
         
         const text = await response.text();
         if (!text || text.trim() === "") {
-            throw new Error("#N/A");
+            return "#N/A";
         }
         
         return text;
         
     } catch (error) {
-        // Return Excel error that won't break formulas
-        throw new Error("#N/A");
+        // Return #N/A text (Excel will recognize it)
+        return "#N/A";
     }
 }
 
@@ -57,7 +57,7 @@ async function GLATITLE(accountNumber) {
  * @param {any} [classId] Class ID (optional)
  * @returns {number} The GL account balance
  */
-async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
     // Convert all to strings and trim
     account = String(account || "").trim();
     fromPeriod = String(fromPeriod || "").trim();
@@ -68,8 +68,8 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
     classId = String(classId || "").trim();
     
     if (!account) {
-        // Return blank for missing account - won't break SUM
-        return null;
+        // Return empty string for blank cell - won't break SUM
+        return "";
     }
     
     try {
@@ -91,24 +91,24 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");
             console.error(`Balance API error: ${response.status} - ${errorText}`);
-            // Return null (blank cell) - SUM will ignore it
-            return null;
+            // Return empty string (blank cell) - SUM will ignore it
+            return "";
         }
         
         const text = await response.text();
         const balance = parseFloat(text);
         
-        // If parsing failed, return null (blank)
+        // If parsing failed, return empty string (blank)
         if (isNaN(balance)) {
-            return null;
+            return "";
         }
         
         return balance;
         
     } catch (error) {
         console.error(`Balance fetch error: ${error.message}`);
-        // Return null (blank cell) - won't break SUM formulas
-        return null;
+        // Return empty string (blank cell) - won't break SUM formulas
+        return "";
     }
 }
 
@@ -125,7 +125,7 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
  * @param {any} [classId] Class ID (optional)
  * @returns {number} The budget amount
  */
-async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
     // Convert all to strings and trim
     account = String(account || "").trim();
     fromPeriod = String(fromPeriod || "").trim();
@@ -136,8 +136,8 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
     classId = String(classId || "").trim();
     
     if (!account) {
-        // Return blank for missing account - won't break SUM
-        return null;
+        // Return empty string for blank cell - won't break SUM
+        return "";
     }
     
     try {
@@ -159,24 +159,24 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");
             console.error(`Budget API error: ${response.status} - ${errorText}`);
-            // Return null (blank cell) - SUM will ignore it
-            return null;
+            // Return empty string (blank cell) - SUM will ignore it
+            return "";
         }
         
         const text = await response.text();
         const budget = parseFloat(text);
         
-        // If parsing failed, return null (blank)
+        // If parsing failed, return empty string (blank)
         if (isNaN(budget)) {
-            return null;
+            return "";
         }
         
         return budget;
         
     } catch (error) {
         console.error(`Budget fetch error: ${error.message}`);
-        // Return null (blank cell) - won't break SUM formulas
-        return null;
+        // Return empty string (blank cell) - won't break SUM formulas
+        return "";
     }
 }
 
