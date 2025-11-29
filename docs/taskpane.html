@@ -778,6 +778,30 @@
             
             await context.sync();
         }
+
+        // ==========================================================================
+        // CONTEXT MENU HANDLER (called when right-clicking and selecting "View Transactions")
+        // ==========================================================================
+        async function drillDownFromContextMenu(event) {
+            console.log('=== CONTEXT MENU DRILL-DOWN START ===');
+            
+            try {
+                // Use the same drill-down logic as the button
+                await drillDownTransactions();
+                
+            } catch (error) {
+                console.error('=== CONTEXT MENU DRILL-DOWN ERROR ===');
+                console.error('Error:', error);
+            } finally {
+                // Signal to Excel that the command is complete
+                if (event && event.completed) {
+                    event.completed();
+                }
+            }
+        }
+
+        // Make function globally available for ExecuteFunction action
+        window.drillDownFromContextMenu = drillDownFromContextMenu;
     </script>
 </body>
 </html>
