@@ -2,33 +2,38 @@
 <OfficeApp 
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" 
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" 
-  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" 
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-5678-90ab-cdef-123456789abc</Id>
-  <Version>1.0.0.4</Version>
+  <Version>1.0.0.9</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="NetSuite Formulas"/>
   <Description DefaultValue="NetSuite custom formulas for Excel"/>
-  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png"/>
-  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png"/>
+  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=1009"/>
+  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=1009"/>
   <SupportUrl DefaultValue="https://www.cloudextend.io"/>
 
   <Hosts>
     <Host Name="Workbook"/>
   </Hosts>
 
+  <!-- Task Pane -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html"/>
+    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=1009"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
 
-  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+                    xsi:type="VersionOverridesV1_0">
+
     <Hosts>
       <Host xsi:type="Workbook">
+
+        <!-- Custom Functions -->
         <AllFormFactors>
           <ExtensionPoint xsi:type="CustomFunctions">
             <Script>
@@ -43,24 +48,76 @@
             <Namespace resid="Functions.Namespace"/>
           </ExtensionPoint>
         </AllFormFactors>
+
+        <!-- Ribbon UI -->
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabData">
+              <Group id="CloudExtend.Group">
+                <Label resid="CloudExtend.Group.Label"/>
+
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16x16"/>
+                  <bt:Image size="32" resid="Icon.32x32"/>
+                  <bt:Image size="80" resid="Icon.80x80"/>
+                </Icon>
+
+                <Control xsi:type="Button" id="CloudExtend.TaskpaneButton">
+                  <Label resid="Taskpane.Button.Label"/>
+                  <Supertip>
+                    <Title resid="Taskpane.Button.Label"/>
+                    <Description resid="Taskpane.Button.Description"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16x16"/>
+                    <bt:Image size="32" resid="Icon.32x32"/>
+                    <bt:Image size="80" resid="Icon.80x80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>CloudExtend.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+
       </Host>
     </Hosts>
 
     <Resources>
+
+      <!-- Icons -->
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=1009"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=1009"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=1009"/>
       </bt:Images>
+
+      <!-- External Files (with cache-busting) -->
       <bt:Urls>
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js"/>
-        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json"/>
-        <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=1009"/>
+
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=1009"/>
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=1009"/>
+        <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=1009"/>
       </bt:Urls>
+
+      <!-- Strings -->
       <bt:ShortStrings>
         <bt:String id="Functions.Namespace" DefaultValue="NS"/>
+        <bt:String id="CloudExtend.Group.Label" DefaultValue="CloudExtend"/>
+        <bt:String id="Taskpane.Button.Label" DefaultValue="NetSuite Formulas"/>
       </bt:ShortStrings>
+
+      <bt:LongStrings>
+        <bt:String id="Taskpane.Button.Description" DefaultValue="Open the CloudExtend task pane for NetSuite formulas"/>
+      </bt:LongStrings>
+
     </Resources>
+
   </VersionOverrides>
 
 </OfficeApp>
