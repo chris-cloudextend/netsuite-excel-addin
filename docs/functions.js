@@ -382,9 +382,14 @@ function delay(ms) {
 }
 
 // ============================================================================
-// REGISTER FUNCTIONS
+// REGISTER FUNCTIONS WITH EXCEL
 // ============================================================================
-CustomFunctions.associate('GLATITLE', GLATITLE);
-CustomFunctions.associate('GLABAL', GLABAL);
-CustomFunctions.associate('GLABUD', GLABUD);
+if (typeof CustomFunctions !== 'undefined') {
+    CustomFunctions.associate('GLATITLE', GLATITLE);
+    CustomFunctions.associate('GLABAL', GLABAL);
+    CustomFunctions.associate('GLABUD', GLABUD);
+    console.log('✅ Custom functions registered with Excel');
+} else {
+    console.error('❌ CustomFunctions not available!');
+}
 
