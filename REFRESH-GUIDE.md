@@ -1,37 +1,40 @@
 # How to Refresh NetSuite Data in Excel
 
-Since the add-in does not use caching, every recalculation fetches fresh data from NetSuite.
+## The ONLY Way to Refresh
 
-## Quick Reference
+Excel custom functions (Office.js) do not respond to F9 or standard Excel recalculation commands. This is a platform limitation.
 
-### Mac
-**Cmd + Option + F9** - Force refresh all formulas
+**To refresh NetSuite data, you MUST use the manual refresh button:**
 
-### Windows
-**Ctrl + Alt + F9** - Force refresh all formulas
+1. **Open the task pane:** Insert → My Add-ins → NetSuite Formulas
+2. **Click "Refresh All Data"** button (yellow section at top)
+3. All NetSuite formulas will recalculate with fresh data
 
 ---
 
-## All Methods
+## Why F9 Doesn't Work
 
-### Keyboard Shortcuts
+Excel custom functions created with Office.js are **not the same as built-in Excel functions**. They do not respond to:
+- ❌ F9 (Recalculate)
+- ❌ Ctrl+Alt+F9
+- ❌ Formulas → Calculate Now
+- ❌ Any Excel recalculation command
 
-#### Mac
-- `Cmd + =` - Recalculate current worksheet
-- `F9` (or `Fn+F9`) - Recalculate entire workbook
-- `Cmd + Option + F9` - **Force full recalculation (recommended)**
+This is a **platform limitation** of Office.js custom functions, not a bug.
 
-#### Windows
-- `F9` - Recalculate entire workbook
-- `Ctrl + Alt + F9` - **Force full recalculation (recommended)**
-- `Ctrl + Shift + Alt + F9` - Recalculate all open workbooks
+### Two Options Were Considered:
 
-### Menu Method
+1. **Volatile functions** (like `NOW()` or `RAND()`)
+   - ❌ Would recalculate on EVERY cell edit
+   - ❌ Would make hundreds of API calls during normal editing
+   - ❌ Would freeze Excel for 30-60 seconds per edit
+   - ❌ Terrible user experience
 
-1. Go to **Formulas** tab
-2. Click **Calculate Now** (for entire workbook)
-   OR
-   Click **Calculate Sheet** (for current sheet only)
+2. **Manual refresh button** (chosen approach)
+   - ✅ User controls when to refresh
+   - ✅ Excel stays fast during editing
+   - ✅ No unexpected API calls
+   - ✅ Professional user experience
 
 ---
 
