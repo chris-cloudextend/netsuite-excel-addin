@@ -174,30 +174,30 @@ def load_lookup_cache():
     except Exception as e:
         print(f"✗ Department lookup error: {e}")
     
-    # Subsidiaries - use known names + IDs
-    sub_known = {
-        'parent company': '1'
-    }
-    lookup_cache['subsidiaries'] = sub_known.copy()
-    
-    # Try to load more from NetSuite
+    # Subsidiaries - now we have access to the Subsidiary table!
     try:
         sub_query = """
-            SELECT DISTINCT t.subsidiary as id
-            FROM Transaction t
-            WHERE t.subsidiary IS NOT NULL AND t.subsidiary != 0
-            AND ROWNUM <= 100
+            SELECT 
+                s.id,
+                s.name,
+                s.fullName AS hierarchy
+            FROM 
+                Subsidiary s
+            ORDER BY 
+                s.fullName
         """
         sub_result = query_netsuite(sub_query)
         if isinstance(sub_result, list):
             for row in sub_result:
                 sub_id = str(row['id'])
-                # Add as "Subsidiary {id}" if not in known list
-                if sub_id not in sub_known.values():
-                    lookup_cache['subsidiaries'][f'subsidiary {sub_id}'.lower()] = sub_id
-            print(f"✓ Loaded {len(lookup_cache['subsidiaries'])} subsidiaries")
+                # Use hierarchy (full path) if available, otherwise just name
+                sub_name = row.get('hierarchy', row['name']).lower()
+                lookup_cache['subsidiaries'][sub_name] = sub_id
+            print(f"✓ Loaded {len(lookup_cache['subsidiaries'])} subsidiaries with hierarchy")
     except Exception as e:
         print(f"✗ Subsidiary lookup error: {e}")
+        # Fallback to known values
+        lookup_cache['subsidiaries'] = {'parent company': '1'}
     
     cache_loaded = True
     print("✓ Lookup cache loaded!")
