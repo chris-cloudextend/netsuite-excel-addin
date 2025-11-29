@@ -11,10 +11,11 @@ const SERVER_URL = 'https://load-scanner-nathan-targeted.trycloudflare.com';
 
 // Batching system for GLABAL
 const pendingBalanceRequests = new Map(); // key -> {account, fromPeriod, toPeriod, filters, resolve, reject}
+const balanceCache = new Map(); // Cache successful results to prevent blanks on recalc
 let batchTimer = null;
 const BATCH_DELAY_MS = 200; // Wait 200ms to collect requests before sending batch
 const MAX_BATCH_SIZE = 50; // Max accounts*periods per batch to prevent timeouts
-const FETCH_TIMEOUT_MS = 25000; // 25 second timeout for API calls
+const FETCH_TIMEOUT_MS = 30000; // 30 second timeout for API calls
 
 /**
  * Get account name from account number
@@ -137,23 +138,54 @@ async function processBatchBalanceRequests() {
             if (req.location) params.append('location', req.location);
             if (req.classId) params.append('class', req.classId);
             
+            const requestKey = JSON.stringify({ 
+                account: req.account, 
+                fromPeriod: req.fromPeriod, 
+                toPeriod: req.toPeriod,
+                subsidiary: req.subsidiary,
+                department: req.department,
+                location: req.location,
+                class: req.classId
+            });
+            
             const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
             
             if (!response.ok) {
-                req.reject(new Error(`API error: ${response.status}`));
+                console.error(`Single balance API error: ${response.status}`);
+                // Try cached value
+                const cachedValue = balanceCache.get(requestKey);
+                req.resolve(cachedValue !== undefined ? cachedValue : "");
                 return;
             }
             
             const text = await response.text();
             const balance = parseFloat(text);
-            req.resolve(isNaN(balance) ? "" : balance);
+            const finalValue = isNaN(balance) ? "" : balance;
+            
+            // Cache successful result
+            if (finalValue !== "") {
+                balanceCache.set(requestKey, finalValue);
+            }
+            
+            req.resolve(finalValue);
             
         } catch (error) {
             console.error('Single balance request error:', error);
-            req.resolve("");
+            // Try cached value
+            const requestKey = JSON.stringify({ 
+                account: req.account, 
+                fromPeriod: req.fromPeriod, 
+                toPeriod: req.toPeriod,
+                subsidiary: req.subsidiary,
+                department: req.department,
+                location: req.location,
+                class: req.classId
+            });
+            const cachedValue = balanceCache.get(requestKey);
+            req.resolve(cachedValue !== undefined ? cachedValue : "");
         }
         return;
     }
@@ -267,20 +299,23 @@ async function fetchBatchBalances(accounts, periods, filterReq) {
         
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");
-            console.error(`Batch balance failed: ${response.status} - ${errorText}`);
-            return {};
+            console.error(`⚠️ Batch balance failed: ${response.status} - ${errorText}`);
+            console.log('⚠️ Will use cached values where available');
+            return {}; // Return empty - distributeResults will use cache
         }
         
         const result = await response.json();
+        console.log(`✓ Batch successful: ${Object.keys(result.balances || {}).length} accounts`);
         return result.balances || {};
         
     } catch (error) {
         if (error.name === 'AbortError') {
-            console.error(`⏱️ Batch request timed out after ${FETCH_TIMEOUT_MS}ms`);
+            console.error(`⚠️ Batch request timed out after ${FETCH_TIMEOUT_MS}ms - will use cached values`);
         } else {
-            console.error('Fetch balance error:', error);
+            console.error('⚠️ Fetch balance error:', error);
         }
-        return {};
+        console.log(`📦 Cache has ${balanceCache.size} stored values available`);
+        return {}; // Return empty - distributeResults will use cache
     }
 }
 
@@ -292,6 +327,16 @@ function distributeBalanceResults(requests, balances) {
     
     for (const req of requests) {
         try {
+            const requestKey = JSON.stringify({ 
+                account: req.account, 
+                fromPeriod: req.fromPeriod, 
+                toPeriod: req.toPeriod,
+                subsidiary: req.subsidiary,
+                department: req.department,
+                location: req.location,
+                class: req.classId
+            });
+            
             const accountBalances = balances[req.account] || {};
             
             // Sum balances from fromPeriod to toPeriod
@@ -313,11 +358,26 @@ function distributeBalanceResults(requests, balances) {
                 total = Object.values(accountBalances).reduce((sum, val) => sum + (val || 0), 0);
             }
             
+            // Cache the successful result
+            balanceCache.set(requestKey, total);
+            
             req.resolve(total);
             
         } catch (error) {
             console.error('Error distributing result:', error);
-            req.resolve("");
+            
+            // Try to return cached value instead of blank
+            const requestKey = JSON.stringify({ 
+                account: req.account, 
+                fromPeriod: req.fromPeriod, 
+                toPeriod: req.toPeriod,
+                subsidiary: req.subsidiary,
+                department: req.department,
+                location: req.location,
+                class: req.classId
+            });
+            const cachedValue = balanceCache.get(requestKey);
+            req.resolve(cachedValue !== undefined ? cachedValue : "");
         }
     }
 }
