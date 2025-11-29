@@ -7,7 +7,7 @@
  */
 
 // Backend server URL
-const SERVER_URL = 'https://attention-birthday-cherry-shuttle.trycloudflare.com';
+const SERVER_URL = 'https://load-scanner-nathan-targeted.trycloudflare.com';
 
 // Batching system for GLABAL
 const pendingBalanceRequests = new Map(); // key -> {account, fromPeriod, toPeriod, filters, resolve, reject}
