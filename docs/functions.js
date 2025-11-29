@@ -12,6 +12,8 @@ const SERVER_URL = 'https://load-scanner-nathan-targeted.trycloudflare.com';
 // Batching system for GLABAL
 const pendingBalanceRequests = new Map(); // key -> {account, fromPeriod, toPeriod, filters, resolve, reject}
 const balanceCache = new Map(); // Cache successful results to prevent blanks on recalc
+const titleCache = new Map(); // Cache for GLATITLE
+const budgetCache = new Map(); // Cache for GLABUD
 let batchTimer = null;
 const BATCH_DELAY_MS = 200; // Wait 200ms to collect requests before sending batch
 const MAX_BATCH_SIZE = 50; // Max accounts*periods per batch to prevent timeouts
@@ -29,6 +31,15 @@ async function GLATITLE(accountNumber) {
         return "#N/A";
     }
     
+    // 🔥 CHECK CACHE FIRST - Return immediately if we have it!
+    const cachedValue = titleCache.get(account);
+    if (cachedValue !== undefined) {
+        console.log(`⚡ Title Cache HIT: ${account} → "${cachedValue}" (instant)`);
+        return cachedValue;
+    }
+    
+    console.log(`📥 Title Cache MISS: ${account} → making API call`);
+    
     try {
         const response = await fetch(`${SERVER_URL}/account/${account}/name`, {
             method: 'GET',
@@ -37,7 +48,9 @@ async function GLATITLE(accountNumber) {
         
         if (!response.ok) {
             console.error(`GLATITLE failed for ${account}: ${response.status}`);
-            return "#N/A";
+            // Try cache on error (in case we had it before)
+            const fallback = titleCache.get(account);
+            return fallback !== undefined ? fallback : "#N/A";
         }
         
         const text = await response.text();
@@ -45,11 +58,17 @@ async function GLATITLE(accountNumber) {
             return "#N/A";
         }
         
+        // Cache successful result
+        titleCache.set(account, text);
+        console.log(`💾 Cached title: ${account} → "${text}"`);
+        
         return text;
         
     } catch (error) {
         console.error(`GLATITLE error for ${account}:`, error);
-        return "#N/A";
+        // Try cache on error
+        const fallback = titleCache.get(account);
+        return fallback !== undefined ? fallback : "#N/A";
     }
 }
 
@@ -82,6 +101,16 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
     
     // Create unique key for this request
     const requestKey = JSON.stringify({ account, fromPeriod, toPeriod, subsidiary, department, location, classId });
+    
+    // 🔥 CHECK CACHE FIRST - Return immediately if we have it!
+    const cachedValue = balanceCache.get(requestKey);
+    if (cachedValue !== undefined) {
+        console.log(`⚡ Cache HIT: ${account} → ${cachedValue} (instant, no API call)`);
+        return cachedValue;
+    }
+    
+    // Cache miss - queue for API call
+    console.log(`📥 Cache MISS: ${account} → queued for API call`);
     
     // Return a promise that will be resolved when batch completes
     return new Promise((resolve, reject) => {
@@ -444,6 +473,18 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         return "";
     }
     
+    // Create unique key for this request
+    const requestKey = JSON.stringify({ account, fromPeriod, toPeriod, subsidiary, department, location, classId });
+    
+    // 🔥 CHECK CACHE FIRST - Return immediately if we have it!
+    const cachedValue = budgetCache.get(requestKey);
+    if (cachedValue !== undefined) {
+        console.log(`⚡ Budget Cache HIT: ${account} → ${cachedValue} (instant)`);
+        return cachedValue;
+    }
+    
+    console.log(`📥 Budget Cache MISS: ${account} → making API call`);
+    
     try {
         const params = new URLSearchParams();
         params.append('account', account);
@@ -463,7 +504,9 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");
             console.error(`GLABUD failed for ${account} (${fromPeriod}-${toPeriod}): ${response.status} - ${errorText}`);
-            return "";
+            // Try cache on error
+            const fallback = budgetCache.get(requestKey);
+            return fallback !== undefined ? fallback : "";
         }
         
         const text = await response.text();
@@ -474,11 +517,17 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
             return "";
         }
         
+        // Cache successful result
+        budgetCache.set(requestKey, budget);
+        console.log(`💾 Cached budget: ${account} → ${budget}`);
+        
         return budget;
         
     } catch (error) {
         console.error(`GLABUD error for ${account}:`, error);
-        return "";
+        // Try cache on error
+        const fallback = budgetCache.get(requestKey);
+        return fallback !== undefined ? fallback : "";
     }
 }
 
