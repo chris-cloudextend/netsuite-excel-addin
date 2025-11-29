@@ -811,6 +811,10 @@ if __name__ == '__main__':
     print("  GET  /budget?account=...            - Get budget amount")
     print("  POST /batch/balance                 - Batch balance queries")
     print("  GET  /transactions?account=...      - Transaction drill-down")
+    print("  GET  /lookups/subsidiaries          - Get subsidiaries list")
+    print("  GET  /lookups/departments           - Get departments list")
+    print("  GET  /lookups/classes               - Get classes list")
+    print("  GET  /lookups/locations             - Get locations list")
     print()
     print("Press Ctrl+C to stop")
     print("=" * 80)
@@ -818,4 +822,80 @@ if __name__ == '__main__':
     
     # Run server
     app.run(host='127.0.0.1', port=5002, debug=False)
+
+
+# ============================================================================
+# LOOKUP ENDPOINTS - For Excel dropdowns/data validation
+# ============================================================================
+
+@app.route('/lookups/subsidiaries')
+def get_subsidiaries():
+    """Get all subsidiaries for dropdown lists"""
+    try:
+        query = """
+            SELECT id, name
+            FROM Subsidiary
+            WHERE isinactive = 'F'
+            ORDER BY name
+        """
+        result = query_netsuite(query)
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        return jsonify({'subsidiaries': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/lookups/departments')
+def get_departments():
+    """Get all departments for dropdown lists"""
+    try:
+        query = """
+            SELECT id, name
+            FROM Department
+            WHERE isinactive = 'F'
+            ORDER BY name
+        """
+        result = query_netsuite(query)
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        return jsonify({'departments': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/lookups/classes')
+def get_classes():
+    """Get all classes for dropdown lists"""
+    try:
+        query = """
+            SELECT id, name
+            FROM Classification
+            WHERE isinactive = 'F'
+            ORDER BY name
+        """
+        result = query_netsuite(query)
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        return jsonify({'classes': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/lookups/locations')
+def get_locations():
+    """Get all locations for dropdown lists"""
+    try:
+        query = """
+            SELECT id, name
+            FROM Location
+            WHERE isinactive = 'F'
+            ORDER BY name
+        """
+        result = query_netsuite(query)
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        return jsonify({'locations': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
