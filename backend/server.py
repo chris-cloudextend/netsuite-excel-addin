@@ -210,7 +210,7 @@ def convert_name_to_id(dimension_type, value):
         dimension_type: 'subsidiary', 'department', 'class', 'location'
         value: Name (string) or ID (string/number)
     Returns:
-        ID as string, or original value if already an ID or not found
+        ID as string, or EMPTY STRING if name not found (to prevent SQL errors)
     """
     if not value or value == '':
         return ''
@@ -241,9 +241,10 @@ def convert_name_to_id(dimension_type, value):
             print(f"✓ Converted {dimension_type} '{value}' → ID {found_id}")
             return found_id
     
-    # Not found - return original (might be an ID we don't know about)
-    print(f"⚠ {dimension_type} '{value}' not found in cache, using as-is")
-    return str(value)
+    # Not found - return EMPTY to prevent SQL errors
+    # (better to ignore the filter than break the query)
+    print(f"⚠ {dimension_type} '{value}' not found in cache, ignoring filter")
+    return ''
 
 
 @app.route('/')
