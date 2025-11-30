@@ -586,9 +586,9 @@ def get_balance():
                 from_start, from_end = get_period_dates_from_name(from_period)
                 to_start, to_end = get_period_dates_from_name(to_period)
                 if from_start and to_end:
-                    # Join with AccountingPeriod and filter by date overlap
-                    where_clauses.append(f"ap.startdate >= TO_DATE('{from_start}', 'YYYY-MM-DD')")
-                    where_clauses.append(f"ap.enddate <= TO_DATE('{to_end}', 'YYYY-MM-DD')")
+                    # Use date strings directly (NetSuite returns dates as strings)
+                    where_clauses.append(f"ap.startdate >= '{from_start}'")
+                    where_clauses.append(f"ap.enddate <= '{to_end}'")
                 else:
                     # Fallback to period name if conversion fails
                     where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
@@ -768,8 +768,9 @@ def get_budget():
                 from_start, from_end = get_period_dates_from_name(from_period)
                 to_start, to_end = get_period_dates_from_name(to_period)
                 if from_start and to_end:
-                    where_clauses.append(f"ap.startdate >= TO_DATE('{from_start}', 'YYYY-MM-DD')")
-                    where_clauses.append(f"ap.enddate <= TO_DATE('{to_end}', 'YYYY-MM-DD')")
+                    # Use date strings directly (NetSuite returns dates as strings)
+                    where_clauses.append(f"ap.startdate >= '{from_start}'")
+                    where_clauses.append(f"ap.enddate <= '{to_end}'")
                 else:
                     # Fallback to period name if conversion fails
                     where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
