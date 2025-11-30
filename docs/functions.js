@@ -412,10 +412,10 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 return await fetchBatchBalances(accounts, periods, filters, allRequests, retryCount + 1);
             } else {
                 console.error(`  ❌ Max retries reached, returning blanks`);
-                // Resolve all with blank
+                // Finish all invocations with 0
                 for (const { key, req } of allRequests) {
                     if (accounts.includes(req.params.account)) {
-                        req.resolve('');
+                        safeFinishInvocation(req.invocation, 0);
                     }
                 }
                 return;
@@ -424,10 +424,10 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         
         if (!response.ok) {
             console.error(`Batch API error: ${response.status}`);
-            // Resolve all with blank
+            // Finish all invocations with 0
             for (const { key, req } of allRequests) {
                 if (accounts.includes(req.params.account)) {
-                    req.resolve('');
+                    safeFinishInvocation(req.invocation, 0);
                 }
             }
             return;
