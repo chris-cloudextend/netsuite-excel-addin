@@ -161,8 +161,16 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         if (cache.balance.has(cacheKey)) {
             cacheStats.hits++;
             console.log(`⚡ CACHE HIT [balance]: ${account}`);
-            invocation.setResult(cache.balance.get(cacheKey));
-            invocation.close();
+            
+            // Verify invocation methods exist before calling
+            if (typeof invocation.setResult === 'function' && typeof invocation.close === 'function') {
+                invocation.setResult(cache.balance.get(cacheKey));
+                invocation.close();
+            } else {
+                console.error('❌ Invocation methods missing in cache hit path!');
+                console.error('   setResult:', typeof invocation.setResult);
+                console.error('   close:', typeof invocation.close);
+            }
             return;  // Early exit is OK (no value returned)
         }
         
@@ -199,8 +207,10 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
     } catch (error) {
         // Handle any synchronous errors before async work starts
         console.error('GLABAL synchronous error:', error);
-        invocation.setResult(0);  // Return 0 for number type
-        invocation.close();
+        if (typeof invocation.setResult === 'function' && typeof invocation.close === 'function') {
+            invocation.setResult(0);  // Return 0 for number type
+            invocation.close();
+        }
         return;  // Early exit is OK (no value returned)
     }
 }
@@ -472,12 +482,18 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
             try {
                 if (!accounts.includes(req.params.account)) {
                     console.warn(`⚠️  Account ${req.params.account} not in response, returning 0`);
-                    if (req.invocation && typeof req.invocation.setResult === 'function') {
-                        req.invocation.setResult(0);
-                        req.invocation.close();
-                        // Mark as closed in tracker
-                        if (invocationTracker.has(key)) {
-                            invocationTracker.get(key).closed = true;
+                    if (req.invocation && 
+                        typeof req.invocation.setResult === 'function' && 
+                        typeof req.invocation.close === 'function') {
+                        try {
+                            req.invocation.setResult(0);
+                            req.invocation.close();
+                            // Mark as closed in tracker
+                            if (invocationTracker.has(key)) {
+                                invocationTracker.get(key).closed = true;
+                            }
+                        } catch (e) {
+                            console.error(`  → Error closing missing account:`, e);
                         }
                     }
                     continue;
@@ -503,26 +519,50 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 cache.balance.set(key, total);
                 
                 // CRITICAL FIX: Verify invocation object is valid before calling methods
-                if (req.invocation && typeof req.invocation.setResult === 'function') {
+                if (req.invocation && 
+                    typeof req.invocation.setResult === 'function' && 
+                    typeof req.invocation.close === 'function') {
+                    
                     console.log(`✅ Returning result for ${req.params.account}: ${total}`);
-                    req.invocation.setResult(total);
-                    req.invocation.close();
-                    // Mark as closed in tracker
-                    if (invocationTracker.has(key)) {
-                        invocationTracker.get(key).closed = true;
+                    
+                    try {
+                        req.invocation.setResult(total);
+                        console.log(`  → setResult() called successfully`);
+                    } catch (setError) {
+                        console.error(`  → setResult() failed:`, setError);
+                    }
+                    
+                    try {
+                        req.invocation.close();
+                        console.log(`  → close() called successfully`);
+                        // Mark as closed in tracker
+                        if (invocationTracker.has(key)) {
+                            invocationTracker.get(key).closed = true;
+                        }
+                    } catch (closeError) {
+                        console.error(`  → close() failed:`, closeError);
                     }
                 } else {
-                    console.error('❌ Invalid invocation object for:', key, req.invocation);
+                    console.error('❌ Invalid invocation object for:', key);
+                    console.error('   invocation:', req.invocation);
+                    console.error('   setResult type:', typeof req.invocation?.setResult);
+                    console.error('   close type:', typeof req.invocation?.close);
                 }
             } catch (error) {
                 console.error('Error distributing result:', error, key);
                 // ALWAYS close even on error (ChatGPT requirement)
-                if (req.invocation && typeof req.invocation.setResult === 'function') {
-                    req.invocation.setResult(0);
-                    req.invocation.close();
-                    // Mark as closed in tracker
-                    if (invocationTracker.has(key)) {
-                        invocationTracker.get(key).closed = true;
+                if (req.invocation && 
+                    typeof req.invocation.setResult === 'function' && 
+                    typeof req.invocation.close === 'function') {
+                    try {
+                        req.invocation.setResult(0);
+                        req.invocation.close();
+                        // Mark as closed in tracker
+                        if (invocationTracker.has(key)) {
+                            invocationTracker.get(key).closed = true;
+                        }
+                    } catch (closeErr) {
+                        console.error('  → Could not close invocation:', closeErr);
                     }
                 }
             }
