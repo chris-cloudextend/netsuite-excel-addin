@@ -80,6 +80,24 @@ def escape_sql(text):
     return str(text).replace("'", "''")
 
 
+def get_period_id_from_name(period_name):
+    """Convert period name (e.g., 'Mar 2025') to period ID for proper date range queries"""
+    try:
+        query = f"""
+            SELECT id, startdate
+            FROM AccountingPeriod
+            WHERE periodname = '{escape_sql(period_name)}'
+            AND ROWNUM <= 1
+        """
+        result = query_netsuite(query)
+        if isinstance(result, list) and len(result) > 0:
+            return str(result[0]['id'])
+        return None
+    except Exception as e:
+        print(f"Error getting period ID for '{period_name}': {e}", file=sys.stderr)
+        return None
+
+
 def load_lookup_cache():
     """Load all name-to-ID mappings into memory cache"""
     global cache_loaded
@@ -551,9 +569,16 @@ def get_balance():
                 where_clauses.append(f"t.postingperiod >= {from_period}")
                 where_clauses.append(f"t.postingperiod <= {to_period}")
             else:
-                # Use period names (requires join with AccountingPeriod)
-                where_clauses.append(f"ap.periodname >= '{escape_sql(from_period)}'")
-                where_clauses.append(f"ap.periodname <= '{escape_sql(to_period)}'")
+                # Convert period names to IDs, then use ID comparison
+                # This avoids string comparison issues (e.g., "Dec" < "Jan" alphabetically)
+                from_period_id = get_period_id_from_name(from_period)
+                to_period_id = get_period_id_from_name(to_period)
+                if from_period_id and to_period_id:
+                    where_clauses.append(f"t.postingperiod >= {from_period_id}")
+                    where_clauses.append(f"t.postingperiod <= {to_period_id}")
+                else:
+                    # Fallback to period name if conversion fails
+                    where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
         elif from_period:
             if from_period.isdigit():
                 where_clauses.append(f"t.postingperiod = {from_period}")
