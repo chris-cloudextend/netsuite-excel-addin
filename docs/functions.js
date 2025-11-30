@@ -633,15 +633,13 @@ function delay(ms) {
 // ============================================================================
 // REGISTER FUNCTIONS WITH EXCEL
 // ============================================================================
-// CRITICAL: Must register under namespace object for NS.GLABAL formulas to work!
-// When formulas use NS.GLABAL, Excel requires namespace registration
+// CRITICAL: The manifest ALREADY defines namespace 'NS'
+// We just register individual functions - Excel adds the NS. prefix automatically!
 if (typeof CustomFunctions !== 'undefined') {
-    CustomFunctions.associate('NS', {
-        GLATITLE,
-        GLABAL,
-        GLABUD
-    });
-    console.log('✅ Custom functions registered with Excel under NS namespace');
+    CustomFunctions.associate('GLATITLE', GLATITLE);
+    CustomFunctions.associate('GLABAL', GLABAL);
+    CustomFunctions.associate('GLABUD', GLABUD);
+    console.log('✅ Custom functions registered with Excel');
 } else {
     console.error('❌ CustomFunctions not available!');
 }
