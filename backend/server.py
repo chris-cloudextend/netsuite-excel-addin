@@ -751,8 +751,15 @@ def get_budget():
                 where_clauses.append(f"b.accountingperiod >= {from_period}")
                 where_clauses.append(f"b.accountingperiod <= {to_period}")
             else:
-                where_clauses.append(f"ap.periodname >= '{escape_sql(from_period)}'")
-                where_clauses.append(f"ap.periodname <= '{escape_sql(to_period)}'")
+                # Convert period names to IDs (same fix as balance query)
+                from_period_id = get_period_id_from_name(from_period)
+                to_period_id = get_period_id_from_name(to_period)
+                if from_period_id and to_period_id:
+                    where_clauses.append(f"b.accountingperiod >= {from_period_id}")
+                    where_clauses.append(f"b.accountingperiod <= {to_period_id}")
+                else:
+                    # Fallback to period name if conversion fails
+                    where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
         elif from_period:
             if from_period.isdigit():
                 where_clauses.append(f"b.accountingperiod = {from_period}")
