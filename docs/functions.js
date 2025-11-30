@@ -550,10 +550,11 @@ function delay(ms) {
 // REGISTER FUNCTIONS WITH EXCEL
 // ============================================================================
 if (typeof CustomFunctions !== 'undefined') {
-    CustomFunctions.associate('GLATITLE', GLATITLE);
-    CustomFunctions.associate('GLABAL', GLABAL);
-    CustomFunctions.associate('GLABUD', GLABUD);
-    console.log('✅ Custom functions registered with Excel');
+    // CRITICAL: Must include namespace prefix to match manifest (NS)
+    CustomFunctions.associate('NS.GLATITLE', GLATITLE);
+    CustomFunctions.associate('NS.GLABAL', GLABAL);
+    CustomFunctions.associate('NS.GLABUD', GLABUD);
+    console.log('✅ Custom functions registered with Excel (namespace: NS)');
 } else {
     console.error('❌ CustomFunctions not available!');
 }
