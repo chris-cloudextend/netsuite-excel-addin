@@ -9,7 +9,7 @@
  * 5. Deduplication - never make same request twice
  */
 
-const SERVER_URL = 'https://survivors-specialist-elegant-monthly.trycloudflare.com';
+const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 
 // ============================================================================
 // CACHE - Never expires, persists entire Excel session
