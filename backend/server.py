@@ -19,7 +19,8 @@ lookup_cache = {
     'subsidiaries': {},  # name → id
     'departments': {},   # name → id
     'classes': {},       # name → id
-    'locations': {}      # name → id
+    'locations': {},     # name → id
+    'periods': {}        # period name → id (for date range performance)
 }
 cache_loaded = False
 
@@ -80,22 +81,33 @@ def escape_sql(text):
     return str(text).replace("'", "''")
 
 
-def get_period_id_from_name(period_name):
-    """Convert period name (e.g., 'Mar 2025') to period ID for proper date range queries"""
+def get_period_dates_from_name(period_name):
+    """Convert period name (e.g., 'Mar 2025') to start/end dates for proper date range queries
+    Returns tuple: (startdate, enddate) or (None, None) if not found
+    Uses cache for performance (avoids repeated NetSuite queries)"""
+    
+    # Check cache first
+    cache_key = f"{period_name}_dates"
+    if cache_key in lookup_cache['periods']:
+        return lookup_cache['periods'][cache_key]
+    
     try:
         query = f"""
-            SELECT id, startdate
+            SELECT startdate, enddate
             FROM AccountingPeriod
             WHERE periodname = '{escape_sql(period_name)}'
             AND ROWNUM <= 1
         """
         result = query_netsuite(query)
         if isinstance(result, list) and len(result) > 0:
-            return str(result[0]['id'])
-        return None
+            dates = (result[0].get('startdate'), result[0].get('enddate'))
+            # Cache it
+            lookup_cache['periods'][cache_key] = dates
+            return dates
+        return (None, None)
     except Exception as e:
-        print(f"Error getting period ID for '{period_name}': {e}", file=sys.stderr)
-        return None
+        print(f"Error getting period dates for '{period_name}': {e}", file=sys.stderr)
+        return (None, None)
 
 
 def load_lookup_cache():
@@ -569,13 +581,14 @@ def get_balance():
                 where_clauses.append(f"t.postingperiod >= {from_period}")
                 where_clauses.append(f"t.postingperiod <= {to_period}")
             else:
-                # Convert period names to IDs, then use ID comparison
-                # This avoids string comparison issues (e.g., "Dec" < "Jan" alphabetically)
-                from_period_id = get_period_id_from_name(from_period)
-                to_period_id = get_period_id_from_name(to_period)
-                if from_period_id and to_period_id:
-                    where_clauses.append(f"t.postingperiod >= {from_period_id}")
-                    where_clauses.append(f"t.postingperiod <= {to_period_id}")
+                # Convert period names to DATE ranges
+                # Period IDs don't work because they include quarterly/fiscal periods
+                from_start, from_end = get_period_dates_from_name(from_period)
+                to_start, to_end = get_period_dates_from_name(to_period)
+                if from_start and to_end:
+                    # Join with AccountingPeriod and filter by date overlap
+                    where_clauses.append(f"ap.startdate >= TO_DATE('{from_start}', 'YYYY-MM-DD')")
+                    where_clauses.append(f"ap.enddate <= TO_DATE('{to_end}', 'YYYY-MM-DD')")
                 else:
                     # Fallback to period name if conversion fails
                     where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
@@ -751,12 +764,12 @@ def get_budget():
                 where_clauses.append(f"b.accountingperiod >= {from_period}")
                 where_clauses.append(f"b.accountingperiod <= {to_period}")
             else:
-                # Convert period names to IDs (same fix as balance query)
-                from_period_id = get_period_id_from_name(from_period)
-                to_period_id = get_period_id_from_name(to_period)
-                if from_period_id and to_period_id:
-                    where_clauses.append(f"b.accountingperiod >= {from_period_id}")
-                    where_clauses.append(f"b.accountingperiod <= {to_period_id}")
+                # Convert period names to DATE ranges (same fix as balance query)
+                from_start, from_end = get_period_dates_from_name(from_period)
+                to_start, to_end = get_period_dates_from_name(to_period)
+                if from_start and to_end:
+                    where_clauses.append(f"ap.startdate >= TO_DATE('{from_start}', 'YYYY-MM-DD')")
+                    where_clauses.append(f"ap.enddate <= TO_DATE('{to_end}', 'YYYY-MM-DD')")
                 else:
                     # Fallback to period name if conversion fails
                     where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
