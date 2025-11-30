@@ -146,22 +146,31 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         
         // Find invocation by looking for BOTH setResult AND close methods
         // (Preview invocations only have setResult, not close - we MUST reject those!)
+        console.log(`🔍 GLABAL called with ${args.length} arguments`);
+        
         for (let i = args.length - 1; i >= 0; i--) {
             const candidate = args[i];
-            if (candidate && 
-                typeof candidate === 'object' && 
-                typeof candidate.setResult === 'function' &&
-                typeof candidate.close === 'function') {
+            console.log(`  Arg[${i}]:`, typeof candidate, candidate && typeof candidate === 'object' ? Object.keys(candidate).join(',') : '');
+            
+            if (candidate && typeof candidate === 'object') {
+                const hasSetResult = typeof candidate.setResult === 'function';
+                const hasClose = typeof candidate.close === 'function';
+                console.log(`    hasSetResult: ${hasSetResult}, hasClose: ${hasClose}`);
                 
-                realInvocation = candidate;
-                // Remove invocation from args so we can extract business params
-                args.splice(i, 1);
-                break;
+                if (hasSetResult && hasClose) {
+                    realInvocation = candidate;
+                    args.splice(i, 1);
+                    console.log(`✅ Found full streaming invocation at index ${i}`);
+                    break;
+                } else if (hasSetResult) {
+                    console.warn(`⚠️  Found object with setResult but NO close at index ${i} (preview invocation)`);
+                }
             }
         }
         
         if (!realInvocation) {
             console.error('❌ No full streaming invocation object found in arguments!');
+            console.error('   This means Excel did not activate streaming mode for this function.');
             return;
         }
         
