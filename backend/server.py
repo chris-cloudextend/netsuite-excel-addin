@@ -23,7 +23,7 @@ lookup_cache = {
 }
 cache_loaded = False
 
-# Load NetSuite configuration (supports multiple accounts)
+# Load NetSuite configuration
 try:
     with open('netsuite_config.json', 'r') as f:
         config = json.load(f)
@@ -32,48 +32,22 @@ except FileNotFoundError:
     print("Please create netsuite_config.json with your NetSuite credentials.")
     sys.exit(1)
 
-# Multi-account support
-accounts_config = config.get('accounts', {})
-default_account = config.get('default_account', list(accounts_config.keys())[0] if accounts_config else None)
+account_id = config['account_id']
+suiteql_url = f"https://{account_id}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql"
 
-if not accounts_config:
-    print("ERROR: No accounts configured in netsuite_config.json!")
-    sys.exit(1)
-
-print(f"✓ Loaded {len(accounts_config)} NetSuite account(s):")
-for acc_id, acc_data in accounts_config.items():
-    print(f"  - {acc_data.get('name', acc_id)} ({acc_id})")
-
-# Create auth objects for each account
-auth_objects = {}
-suiteql_urls = {}
-
-for acc_id, acc_config in accounts_config.items():
-    auth_objects[acc_id] = OAuth1(
-        client_key=acc_config['consumer_key'],
-        client_secret=acc_config['consumer_secret'],
-        resource_owner_key=acc_config['token_id'],
-        resource_owner_secret=acc_config['token_secret'],
-        realm=acc_config.get('realm', acc_id),
-        signature_method='HMAC-SHA256'
-    )
-    suiteql_urls[acc_id] = f"https://{acc_id}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql"
+# Create OAuth1 authentication
+auth = OAuth1(
+    client_key=config['consumer_key'],
+    client_secret=config['consumer_secret'],
+    resource_owner_key=config['token_id'],
+    resource_owner_secret=config['token_secret'],
+    realm=account_id,
+    signature_method='HMAC-SHA256'
+)
 
 
-def get_account_config(account_id=None):
-    """Get config for specified account, or default"""
-    if not account_id:
-        account_id = default_account
-    return accounts_config.get(account_id), auth_objects.get(account_id), suiteql_urls.get(account_id), account_id
-
-
-def query_netsuite(sql_query, account_id=None):
+def query_netsuite(sql_query):
     """Execute a SuiteQL query against NetSuite"""
-    acc_config, auth, suiteql_url, actual_account = get_account_config(account_id)
-    
-    if not auth:
-        return {'error': f'Account {account_id} not found'}
-    
     try:
         response = requests.post(
             suiteql_url,
@@ -88,7 +62,6 @@ def query_netsuite(sql_query, account_id=None):
         else:
             error_msg = f"NetSuite error: {response.status_code}"
             print(f"=== NetSuite Error ===", file=sys.stderr)
-            print(f"Account: {actual_account}", file=sys.stderr)
             print(f"Query: {sql_query[:200]}...", file=sys.stderr)
             print(f"Status: {response.status_code}", file=sys.stderr)
             print(f"Response: {response.text}", file=sys.stderr)
@@ -107,14 +80,14 @@ def escape_sql(text):
     return str(text).replace("'", "''")
 
 
-def load_lookup_cache(account_id=None):
+def load_lookup_cache():
     """Load all name-to-ID mappings into memory cache"""
     global cache_loaded
     
     if cache_loaded:
         return
     
-    print(f"Loading name-to-ID lookup cache for account {account_id or default_account}...")
+    print("Loading name-to-ID lookup cache...")
     
     # Load Classes - use known names + query NetSuite
     class_known = {
@@ -280,8 +253,7 @@ def home():
     return jsonify({
         'status': 'running',
         'service': 'NetSuite Excel Formulas API',
-        'accounts': list(accounts_config.keys()),
-        'default_account': default_account,
+        'account': account_id,
         'version': '1.0',
         'endpoints': {
             '/account/{account_number}/name': 'Get account name (NSGLATITLE)',
@@ -295,11 +267,7 @@ def home():
 @app.route('/health')
 def health():
     """Health check"""
-    return jsonify({
-        'status': 'healthy',
-        'accounts': list(accounts_config.keys()),
-        'default': default_account
-    })
+    return jsonify({'status': 'healthy', 'account': account_id})
 
 
 @app.route('/batch/balance', methods=['POST'])
@@ -512,8 +480,7 @@ def get_account_name(account_number):
             WHERE a.acctnumber = '{escape_sql(account_number)}'
         """
         
-        netsuite_account = request.args.get('netsuite_account', default_account)
-        result = query_netsuite(query, netsuite_account)
+        result = query_netsuite(query)
         
         # Check for errors
         if isinstance(result, dict) and 'error' in result:
@@ -686,7 +653,7 @@ def get_balance():
                 """
         
         print(f"DEBUG - Full query:\n{query}", file=sys.stderr)
-        result = query_netsuite(query, netsuite_account)
+        result = query_netsuite(query)
         
         # Check for errors
         if isinstance(result, dict) and 'error' in result:
@@ -973,8 +940,7 @@ def get_transactions():
             }
             
             url_type = type_map.get(record_type, record_type)
-            netsuite_account = request.args.get('netsuite_account', default_account)
-            row['netsuite_url'] = f"https://{netsuite_account}.app.netsuite.com/app/accounting/transactions/{url_type}.nl?id={transaction_id}"
+            row['netsuite_url'] = f"https://{account_id}.app.netsuite.com/app/accounting/transactions/{url_type}.nl?id={transaction_id}"
             
             # Calculate net amount for this account
             debit = float(row.get('debit', 0)) if row.get('debit') else 0
@@ -999,52 +965,25 @@ def get_transactions():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/accounts')
-def list_accounts():
-    """List all available NetSuite accounts"""
-    accounts_list = []
-    for acc_id, acc_config in accounts_config.items():
-        accounts_list.append({
-            'id': acc_id,
-            'name': acc_config.get('name', acc_id),
-            'is_default': acc_id == default_account
-        })
-    return jsonify({
-        'accounts': accounts_list,
-        'default': default_account
-    })
-
-
 @app.route('/test')
 def test_connection():
     """Test NetSuite connection"""
-    account = request.args.get('account', default_account)
-    acc_config, auth, suiteql_url, actual_account = get_account_config(account)
-    
-    if not acc_config:
-        return jsonify({
-            'status': 'error',
-            'message': f'Account {account} not found'
-        }), 404
-    
     try:
         # Simple query to test connection
         query = "SELECT COUNT(*) as count FROM Account WHERE isinactive = 'F'"
-        result = query_netsuite(query, account)
+        result = query_netsuite(query)
         
         if isinstance(result, dict) and 'error' in result:
             return jsonify({
                 'status': 'error',
                 'error': result['error'],
-                'details': result.get('details', ''),
-                'account': actual_account
+                'details': result.get('details', '')
             }), 500
         
         return jsonify({
             'status': 'success',
             'message': 'NetSuite connection successful',
-            'account': actual_account,
-            'account_name': acc_config.get('name', actual_account),
+            'account': account_id,
             'active_accounts': result[0].get('count', 0) if result else 0
         })
         
@@ -1114,7 +1053,7 @@ if __name__ == '__main__':
     print("NetSuite Excel Formulas - Backend Server")
     print("=" * 80)
     print()
-    print(f"Default Account: {accounts_config[default_account].get('name', default_account)} ({default_account})")
+    print(f"NetSuite Account: {account_id}")
     print(f"Server starting on: http://localhost:5002")
     print()
     print("Endpoints:")
