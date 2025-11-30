@@ -318,6 +318,13 @@ async function processBatchQueue() {
     console.log(`\n🔄 Processing batch queue: ${requestQueue.balance.size} requests`);
     console.log(`📊 Cache stats: ${cacheStats.hits} hits / ${cacheStats.misses} misses / ${cacheStats.size()} entries`);
     
+    // DEFENSIVE: Track all invocations to ensure they all get closed
+    const allInvocations = Array.from(requestQueue.balance.values()).map(req => ({
+        account: req.params.account,
+        invocation: req.invocation,
+        closed: false
+    }));
+    
     // Convert queue to array
     const requests = Array.from(requestQueue.balance.entries());
     requestQueue.balance.clear();
@@ -374,6 +381,21 @@ async function processBatchQueue() {
             if (i < accountChunks.length - 1) {
                 console.log(`  ⏱️  Waiting 1 second before next chunk...`);
                 await delay(1000);
+            }
+        }
+    }
+    
+    // DEFENSIVE: Check if any invocations were never closed
+    const unclosedInvocations = allInvocations.filter(inv => !inv.closed);
+    if (unclosedInvocations.length > 0) {
+        console.error(`⚠️  WARNING: ${unclosedInvocations.length} invocations were never closed!`);
+        for (const inv of unclosedInvocations) {
+            console.error(`  - Account ${inv.account} never received result`);
+            // Close them with 0 to prevent hanging
+            if (inv.invocation && typeof inv.invocation.setResult === 'function') {
+                inv.invocation.setResult(0);
+                inv.invocation.close();
+                console.error(`    → Force-closed with 0`);
             }
         }
     }
@@ -440,7 +462,14 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         // Distribute results using streaming API
         for (const { key, req } of allRequests) {
             try {
-                if (!accounts.includes(req.params.account)) continue;
+                if (!accounts.includes(req.params.account)) {
+                    console.warn(`⚠️  Account ${req.params.account} not in response, returning 0`);
+                    if (req.invocation && typeof req.invocation.setResult === 'function') {
+                        req.invocation.setResult(0);
+                        req.invocation.close();
+                    }
+                    continue;
+                }
                 
                 const accountBalances = balances[req.params.account] || {};
                 let total = 0;
@@ -480,11 +509,13 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         }
         
     } catch (error) {
-        console.error('Batch fetch error:', error);
-        // ALWAYS close all invocations on error (ChatGPT requirement)
+        console.error('❌ Batch fetch error:', error);
+        // DEFENSIVE: ALWAYS close all invocations on error (ChatGPT requirement)
+        console.log(`⚠️  Closing ${allRequests.length} invocations due to error...`);
         for (const { key, req } of allRequests) {
             try {
-                if (accounts.includes(req.params.account) && req.invocation && typeof req.invocation.setResult === 'function') {
+                if (req.invocation && typeof req.invocation.setResult === 'function') {
+                    console.log(`  → Closing invocation for ${req.params.account} with 0`);
                     req.invocation.setResult(0);  // Return 0 for number type
                     req.invocation.close();
                 }
