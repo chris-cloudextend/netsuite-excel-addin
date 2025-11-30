@@ -140,14 +140,20 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
     
     try {
         // CRITICAL FIX: Excel shifts invocation object left when optional params are missing!
-        // We must find the REAL invocation object by checking for setResult method
+        // We must find the REAL FULL STREAMING invocation (has BOTH setResult AND close)
         let realInvocation = null;
         const args = Array.from(arguments);
         
-        // Find invocation by looking for the object with setResult method
+        // Find invocation by looking for BOTH setResult AND close methods
+        // (Preview invocations only have setResult, not close - we MUST reject those!)
         for (let i = args.length - 1; i >= 0; i--) {
-            if (args[i] && typeof args[i] === 'object' && typeof args[i].setResult === 'function') {
-                realInvocation = args[i];
+            const candidate = args[i];
+            if (candidate && 
+                typeof candidate === 'object' && 
+                typeof candidate.setResult === 'function' &&
+                typeof candidate.close === 'function') {
+                
+                realInvocation = candidate;
                 // Remove invocation from args so we can extract business params
                 args.splice(i, 1);
                 break;
@@ -155,22 +161,30 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         }
         
         if (!realInvocation) {
-            console.error('❌ No invocation object found in arguments!');
+            console.error('❌ No full streaming invocation object found in arguments!');
             return;
         }
         
-        // Now safely extract business parameters from remaining args
-        // Args are: [account, fromPeriod, toPeriod, subsidiary?, department?, location?, classId?]
-        const [acct, from, to, sub, dept, loc, cls] = args;
+        // SAFE parameter extraction: slice first 7 positions (business params only)
+        // This works regardless of how many args Excel actually passed
+        const businessArgs = args.slice(0, 7);
+        
+        const accountRaw    = businessArgs[0];
+        const fromRaw       = businessArgs[1];
+        const toRaw         = businessArgs[2];
+        const subRaw        = businessArgs[3];
+        const deptRaw       = businessArgs[4];
+        const locRaw        = businessArgs[5];
+        const clsRaw        = businessArgs[6];
         
         // Normalize ONLY business parameters (never the invocation!)
-        account = String(acct || '').trim();
-        fromPeriod = String(from || '').trim();
-        toPeriod = String(to || '').trim();
-        subsidiary = String(sub || '').trim();
-        department = String(dept || '').trim();
-        location = String(loc || '').trim();
-        classId = String(cls || '').trim();
+        account = String(accountRaw || '').trim();
+        fromPeriod = String(fromRaw || '').trim();
+        toPeriod = String(toRaw || '').trim();
+        subsidiary = String(subRaw || '').trim();
+        department = String(deptRaw || '').trim();
+        location = String(locRaw || '').trim();
+        classId = String(clsRaw || '').trim();
         
         if (!account) {
             realInvocation.setResult(0);
@@ -222,12 +236,12 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         
     } catch (error) {
         console.error('GLABAL synchronous error:', error);
-        // Use realInvocation if available, fallback to last argument
-        const inv = realInvocation || arguments[arguments.length - 1];
-        if (inv && typeof inv.setResult === 'function') {
-            inv.setResult(0);
-            if (typeof inv.close === 'function') {
-                inv.close();
+        // NEVER fallback to arguments[last] - only use realInvocation if we found it
+        // (Fallback could grab a business parameter instead of invocation!)
+        if (realInvocation && typeof realInvocation.setResult === 'function') {
+            realInvocation.setResult(0);
+            if (typeof realInvocation.close === 'function') {
+                realInvocation.close();
             }
         }
     }
