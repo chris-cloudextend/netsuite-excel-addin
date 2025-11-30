@@ -134,8 +134,9 @@ async function GLATITLE(accountNumber, invocation) {
  * @streaming
  * @cancelable
  */
-function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
-    // CRITICAL: Thin registration function - NO POLLING, NO WAITING
+function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+    // CRITICAL: For streaming functions, invocation is IMPLICIT (not in signature)
+    // Excel passes it as the last argument, accessible via arguments[arguments.length - 1]
     // The batch processor will call invocation.setResult() and invocation.close()
     
     try {
