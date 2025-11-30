@@ -68,7 +68,15 @@ function getCacheKey(type, params) {
 // ============================================================================
 // GLATITLE - Get Account Name
 // ============================================================================
-async function GLATITLE(accountNumber) {
+/**
+ * @customfunction GLATITLE
+ * @param {any} accountNumber The account number
+ * @param {CustomFunctions.Invocation} invocation Invocation object
+ * @returns {Promise<string>} Account name
+ * @requiresAddress
+ * @cancelable
+ */
+async function GLATITLE(accountNumber, invocation) {
     const account = String(accountNumber || '').trim();
     if (!account) return '#N/A';
     
@@ -86,7 +94,18 @@ async function GLATITLE(accountNumber) {
     
     // Single request - make immediately (don't batch titles)
     try {
-        const response = await fetch(`${SERVER_URL}/account/${account}/name`);
+        const controller = new AbortController();
+        const signal = controller.signal;
+        
+        // Listen for cancellation
+        if (invocation) {
+            invocation.onCanceled = () => {
+                console.log(`Title request canceled for ${account}`);
+                controller.abort();
+            };
+        }
+        
+        const response = await fetch(`${SERVER_URL}/account/${account}/name`, { signal });
         if (!response.ok) {
             console.error(`Title API error: ${response.status}`);
             return '#N/A';
@@ -98,6 +117,10 @@ async function GLATITLE(accountNumber) {
         return title;
         
     } catch (error) {
+        if (error.name === 'AbortError') {
+            console.log('Title request was canceled');
+            return '#N/A';
+        }
         console.error('Title fetch error:', error);
         return '#N/A';
     }
@@ -106,7 +129,21 @@ async function GLATITLE(accountNumber) {
 // ============================================================================
 // GLABAL - Get GL Account Balance (WITH SMART BATCHING)
 // ============================================================================
-async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+/**
+ * @customfunction GLABAL
+ * @param {any} account Account number
+ * @param {any} fromPeriod Starting period
+ * @param {any} toPeriod Ending period
+ * @param {any} subsidiary Subsidiary ID
+ * @param {any} department Department ID
+ * @param {any} location Location ID
+ * @param {any} classId Class ID
+ * @param {CustomFunctions.Invocation} invocation Invocation object
+ * @returns {Promise<number>} Balance amount
+ * @requiresAddress
+ * @cancelable
+ */
+async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
     // Normalize inputs
     account = String(account || '').trim();
     fromPeriod = String(fromPeriod || '').trim();
@@ -150,7 +187,21 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
 // ============================================================================
 // GLABUD - Get Budget Amount (SAME LOGIC AS GLABAL)
 // ============================================================================
-async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+/**
+ * @customfunction GLABUD
+ * @param {any} account Account number
+ * @param {any} fromPeriod Starting period
+ * @param {any} toPeriod Ending period
+ * @param {any} subsidiary Subsidiary ID
+ * @param {any} department Department ID
+ * @param {any} location Location ID
+ * @param {any} classId Class ID
+ * @param {CustomFunctions.Invocation} invocation Invocation object
+ * @returns {Promise<number>} Budget amount
+ * @requiresAddress
+ * @cancelable
+ */
+async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
     // Same implementation as GLABAL but for budget endpoint
     account = String(account || '').trim();
     fromPeriod = String(fromPeriod || '').trim();
