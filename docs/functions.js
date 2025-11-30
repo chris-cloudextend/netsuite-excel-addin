@@ -495,6 +495,36 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
 }
 
 // ============================================================================
+// HELPER: Safely finish an invocation
+// ============================================================================
+function safeFinishInvocation(invocation, value) {
+    if (!invocation) {
+        console.error("❌ Missing invocation when finishing");
+        return;
+    }
+    
+    try {
+        if (typeof invocation.setResult === "function") {
+            invocation.setResult(value);
+        } else {
+            console.error("❌ invocation.setResult is not a function");
+        }
+    } catch (e) {
+        console.error("Error in invocation.setResult:", e);
+    }
+    
+    try {
+        if (typeof invocation.close === "function") {
+            invocation.close();
+        } else {
+            console.error("❌ invocation.close is not a function");
+        }
+    } catch (e) {
+        console.error("Error in invocation.close:", e);
+    }
+}
+
+// ============================================================================
 // UTILITY: Delay helper
 // ============================================================================
 function delay(ms) {
