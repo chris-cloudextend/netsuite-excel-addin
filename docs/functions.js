@@ -550,14 +550,12 @@ function delay(ms) {
 // REGISTER FUNCTIONS WITH EXCEL
 // ============================================================================
 if (typeof CustomFunctions !== 'undefined') {
-    // CRITICAL: Associate the namespace object (not individual functions)
-    // This creates the NS namespace that Excel expects
-    CustomFunctions.associate('NS', {
-        GLATITLE: GLATITLE,
-        GLABAL: GLABAL,
-        GLABUD: GLABUD
-    });
-    console.log('✅ Custom functions registered with Excel (namespace: NS)');
+    // Associate each function by its ID from functions.json
+    // The namespace "NS" comes from the manifest, not the association!
+    CustomFunctions.associate('GLATITLE', GLATITLE);
+    CustomFunctions.associate('GLABAL', GLABAL);
+    CustomFunctions.associate('GLABUD', GLABUD);
+    console.log('✅ Custom functions registered with Excel');
 } else {
     console.error('❌ CustomFunctions not available!');
 }
