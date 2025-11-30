@@ -166,28 +166,33 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
             return;  // Early exit is OK (no value returned)
         }
         
-        cacheStats.misses++;
-        console.log(`📥 CACHE MISS [balance]: ${account} (queuing)`);
-        
-        // Register this invocation for batching
-        requestQueue.balance.set(cacheKey, {
-            params,
-            invocation,
-            retries: 0
+    cacheStats.misses++;
+    console.log(`📥 CACHE MISS [balance]: ${account} (queuing)`);
+    
+    // Register this invocation for batching
+    requestQueue.balance.set(cacheKey, {
+        params,
+        invocation,
+        retries: 0
+    });
+    
+    // Handle cancellation
+    invocation.onCanceled = () => {
+        console.log(`Balance request canceled for ${account}`);
+        requestQueue.balance.delete(cacheKey);
+    };
+    
+    // CRITICAL: Start batch processing using MICROTASK (not setTimeout)
+    // Excel only keeps streaming functions alive if async work begins IMMEDIATELY
+    // setTimeout creates a MACROTASK that Excel doesn't wait for
+    if (!batchTimer) {
+        batchTimer = true;  // Flag to prevent multiple concurrent batches
+        // Use Promise microtask to start batch processing IMMEDIATELY
+        Promise.resolve().then(() => {
+            batchTimer = null;  // Reset flag before processing
+            processBatchQueue();
         });
-        
-        // Handle cancellation
-        invocation.onCanceled = () => {
-            console.log(`Balance request canceled for ${account}`);
-            requestQueue.balance.delete(cacheKey);
-        };
-        
-        // Start batch processing immediately (use microtask for immediate execution)
-        if (!batchTimer) {
-            batchTimer = setTimeout(() => {
-                processBatchQueue();
-            }, BATCH_DELAY);
-        }
+    }
         
         // NO return statement - streaming function keeps running until invocation.close()
         
@@ -456,17 +461,18 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 // Cache the result
                 cache.balance.set(key, total);
                 
-                // ALWAYS call setResult + close (ChatGPT requirement)
-                if (req.invocation) {
-                    req.invocation.setResult(total);  // Ensure it's a number
+                // CRITICAL FIX: Verify invocation object is valid before calling methods
+                if (req.invocation && typeof req.invocation.setResult === 'function') {
+                    console.log(`✅ Returning result for ${req.params.account}: ${total}`);
+                    req.invocation.setResult(total);
                     req.invocation.close();
                 } else {
-                    console.error('Missing invocation for request:', key);
+                    console.error('❌ Invalid invocation object for:', key, req.invocation);
                 }
             } catch (error) {
                 console.error('Error distributing result:', error, key);
                 // ALWAYS close even on error (ChatGPT requirement)
-                if (req.invocation) {
+                if (req.invocation && typeof req.invocation.setResult === 'function') {
                     req.invocation.setResult(0);
                     req.invocation.close();
                 }
@@ -478,7 +484,7 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         // ALWAYS close all invocations on error (ChatGPT requirement)
         for (const { key, req } of allRequests) {
             try {
-                if (accounts.includes(req.params.account) && req.invocation) {
+                if (accounts.includes(req.params.account) && req.invocation && typeof req.invocation.setResult === 'function') {
                     req.invocation.setResult(0);  // Return 0 for number type
                     req.invocation.close();
                 }
