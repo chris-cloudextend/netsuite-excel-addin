@@ -171,7 +171,23 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         if (!realInvocation) {
             console.error('❌ No full streaming invocation object found in arguments!');
             console.error('   This means Excel did not activate streaming mode for this function.');
-            return;
+            
+            // FALLBACK: Maybe Excel passed invocation with setResult only (no close check)
+            // Let's try to find ANY object with setResult
+            for (let i = args.length - 1; i >= 0; i--) {
+                const candidate = args[i];
+                if (candidate && typeof candidate === 'object' && typeof candidate.setResult === 'function') {
+                    console.warn('⚠️  Found invocation with setResult only (may not have close)');
+                    realInvocation = candidate;
+                    args.splice(i, 1);
+                    break;
+                }
+            }
+            
+            if (!realInvocation) {
+                console.error('❌ No invocation object at all! Giving up.');
+                return;
+            }
         }
         
         // SAFE parameter extraction: slice first 7 positions (business params only)
