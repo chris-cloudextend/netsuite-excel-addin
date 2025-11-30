@@ -281,7 +281,7 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
  * @streaming
  * @cancelable
  */
-function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
+function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     // CRITICAL: Outer function must be SYNCHRONOUS (not async)
     // No return values allowed - only invocation.setResult() + close()
     
