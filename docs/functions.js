@@ -318,16 +318,20 @@ async function processBatchQueue() {
     console.log(`\n🔄 Processing batch queue: ${requestQueue.balance.size} requests`);
     console.log(`📊 Cache stats: ${cacheStats.hits} hits / ${cacheStats.misses} misses / ${cacheStats.size()} entries`);
     
-    // DEFENSIVE: Track all invocations to ensure they all get closed
-    const allInvocations = Array.from(requestQueue.balance.values()).map(req => ({
-        account: req.params.account,
-        invocation: req.invocation,
-        closed: false
-    }));
-    
     // Convert queue to array
     const requests = Array.from(requestQueue.balance.entries());
     requestQueue.balance.clear();
+    
+    // DEFENSIVE: Track all invocations to ensure they all get closed
+    // Create a Map for fast lookup by cache key
+    const invocationTracker = new Map();
+    for (const [key, req] of requests) {
+        invocationTracker.set(key, {
+            account: req.params.account,
+            invocation: req.invocation,
+            closed: false
+        });
+    }
     
     // Group by filters (batch only identical filter sets)
     const groups = new Map();
@@ -386,16 +390,20 @@ async function processBatchQueue() {
     }
     
     // DEFENSIVE: Check if any invocations were never closed
-    const unclosedInvocations = allInvocations.filter(inv => !inv.closed);
+    const unclosedInvocations = Array.from(invocationTracker.values()).filter(inv => !inv.closed);
     if (unclosedInvocations.length > 0) {
         console.error(`⚠️  WARNING: ${unclosedInvocations.length} invocations were never closed!`);
         for (const inv of unclosedInvocations) {
             console.error(`  - Account ${inv.account} never received result`);
             // Close them with 0 to prevent hanging
             if (inv.invocation && typeof inv.invocation.setResult === 'function') {
-                inv.invocation.setResult(0);
-                inv.invocation.close();
-                console.error(`    → Force-closed with 0`);
+                try {
+                    inv.invocation.setResult(0);
+                    inv.invocation.close();
+                    console.error(`    → Force-closed with 0`);
+                } catch (closeError) {
+                    console.error(`    → Failed to force-close:`, closeError);
+                }
             }
         }
     }
@@ -467,6 +475,10 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                     if (req.invocation && typeof req.invocation.setResult === 'function') {
                         req.invocation.setResult(0);
                         req.invocation.close();
+                        // Mark as closed in tracker
+                        if (invocationTracker.has(key)) {
+                            invocationTracker.get(key).closed = true;
+                        }
                     }
                     continue;
                 }
@@ -495,6 +507,10 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                     console.log(`✅ Returning result for ${req.params.account}: ${total}`);
                     req.invocation.setResult(total);
                     req.invocation.close();
+                    // Mark as closed in tracker
+                    if (invocationTracker.has(key)) {
+                        invocationTracker.get(key).closed = true;
+                    }
                 } else {
                     console.error('❌ Invalid invocation object for:', key, req.invocation);
                 }
@@ -504,6 +520,10 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 if (req.invocation && typeof req.invocation.setResult === 'function') {
                     req.invocation.setResult(0);
                     req.invocation.close();
+                    // Mark as closed in tracker
+                    if (invocationTracker.has(key)) {
+                        invocationTracker.get(key).closed = true;
+                    }
                 }
             }
         }
@@ -518,6 +538,10 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                     console.log(`  → Closing invocation for ${req.params.account} with 0`);
                     req.invocation.setResult(0);  // Return 0 for number type
                     req.invocation.close();
+                    // Mark as closed in tracker
+                    if (invocationTracker.has(key)) {
+                        invocationTracker.get(key).closed = true;
+                    }
                 }
             } catch (closeError) {
                 console.error('Error closing invocation:', closeError);
