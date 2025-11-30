@@ -175,34 +175,69 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         }
         
     cacheStats.misses++;
-    console.log(`📥 CACHE MISS [balance]: ${account} (queuing)`);
-    
-    // Register this invocation for batching
-    requestQueue.balance.set(cacheKey, {
-        params,
-        invocation,
-        retries: 0
-    });
+    console.log(`📥 CACHE MISS [balance]: ${account} (starting async wait)`);
     
     // Handle cancellation
+    let cancelled = false;
     invocation.onCanceled = () => {
         console.log(`Balance request canceled for ${account}`);
+        cancelled = true;
         requestQueue.balance.delete(cacheKey);
     };
     
-    // CRITICAL: Start batch processing using MICROTASK (not setTimeout)
-    // Excel only keeps streaming functions alive if async work begins IMMEDIATELY
-    // setTimeout creates a MACROTASK that Excel doesn't wait for
-    if (!batchTimer) {
-        batchTimer = true;  // Flag to prevent multiple concurrent batches
-        // Use Promise microtask to start batch processing IMMEDIATELY
-        Promise.resolve().then(() => {
-            batchTimer = null;  // Reset flag before processing
-            processBatchQueue();
-        });
-    }
+    // Register this request for batching (WITHOUT invocation object)
+    requestQueue.balance.set(cacheKey, {
+        params,
+        retries: 0
+    });
+    
+    // CRITICAL: Start async work IMMEDIATELY to keep invocation alive
+    // This IIFE runs immediately and waits for batch to populate cache
+    (async () => {
+        try {
+            // Start batch processing if not already running
+            if (!batchTimer) {
+                batchTimer = true;
+                Promise.resolve().then(() => {
+                    batchTimer = null;
+                    processBatchQueue();
+                });
+            }
+            
+            // Wait for result to appear in cache (batch will populate it)
+            const maxWaitTime = 30000; // 30 second timeout
+            const checkInterval = 100; // Check every 100ms
+            const startTime = Date.now();
+            
+            while (!cache.balance.has(cacheKey) && !cancelled) {
+                if (Date.now() - startTime > maxWaitTime) {
+                    console.error(`⏱️  Timeout waiting for ${account}`);
+                    invocation.setResult(0);
+                    invocation.close();
+                    return;
+                }
+                await new Promise(resolve => setTimeout(resolve, checkInterval));
+            }
+            
+            if (cancelled) {
+                console.log(`Request for ${account} was cancelled`);
+                return;
+            }
+            
+            // Result is now in cache!
+            const result = cache.balance.get(cacheKey);
+            console.log(`✅ Returning cached result for ${account}: ${result}`);
+            invocation.setResult(result);
+            invocation.close();
+            
+        } catch (error) {
+            console.error('Async wait error:', error);
+            invocation.setResult(0);
+            invocation.close();
+        }
+    })();
         
-        // NO return statement - streaming function keeps running until invocation.close()
+        // NO return statement - async IIFE keeps function alive
         
     } catch (error) {
         // Handle any synchronous errors before async work starts
@@ -328,20 +363,9 @@ async function processBatchQueue() {
     console.log(`\n🔄 Processing batch queue: ${requestQueue.balance.size} requests`);
     console.log(`📊 Cache stats: ${cacheStats.hits} hits / ${cacheStats.misses} misses / ${cacheStats.size()} entries`);
     
-    // Convert queue to array
+    // Convert queue to array (no invocation objects stored anymore!)
     const requests = Array.from(requestQueue.balance.entries());
     requestQueue.balance.clear();
-    
-    // DEFENSIVE: Track all invocations to ensure they all get closed
-    // Create a Map for fast lookup by cache key
-    const invocationTracker = new Map();
-    for (const [key, req] of requests) {
-        invocationTracker.set(key, {
-            account: req.params.account,
-            invocation: req.invocation,
-            closed: false
-        });
-    }
     
     // Group by filters (batch only identical filter sets)
     const groups = new Map();
@@ -399,26 +423,7 @@ async function processBatchQueue() {
         }
     }
     
-    // DEFENSIVE: Check if any invocations were never closed
-    const unclosedInvocations = Array.from(invocationTracker.values()).filter(inv => !inv.closed);
-    if (unclosedInvocations.length > 0) {
-        console.error(`⚠️  WARNING: ${unclosedInvocations.length} invocations were never closed!`);
-        for (const inv of unclosedInvocations) {
-            console.error(`  - Account ${inv.account} never received result`);
-            // Close them with 0 to prevent hanging
-            if (inv.invocation && typeof inv.invocation.setResult === 'function') {
-                try {
-                    inv.invocation.setResult(0);
-                    inv.invocation.close();
-                    console.error(`    → Force-closed with 0`);
-                } catch (closeError) {
-                    console.error(`    → Failed to force-close:`, closeError);
-                }
-            }
-        }
-    }
-    
-    console.log('✅ Batch processing complete\n');
+    console.log('✅ Batch processing complete - results cached\n');
 }
 
 // ============================================================================
@@ -477,25 +482,12 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         
         console.log(`  ✅ Received balances for ${Object.keys(balances).length} accounts`);
         
-        // Distribute results using streaming API
+        // Store results in cache (IIFE in GLABAL will pick them up)
         for (const { key, req } of allRequests) {
             try {
                 if (!accounts.includes(req.params.account)) {
-                    console.warn(`⚠️  Account ${req.params.account} not in response, returning 0`);
-                    if (req.invocation && 
-                        typeof req.invocation.setResult === 'function' && 
-                        typeof req.invocation.close === 'function') {
-                        try {
-                            req.invocation.setResult(0);
-                            req.invocation.close();
-                            // Mark as closed in tracker
-                            if (invocationTracker.has(key)) {
-                                invocationTracker.get(key).closed = true;
-                            }
-                        } catch (e) {
-                            console.error(`  → Error closing missing account:`, e);
-                        }
-                    }
+                    console.warn(`⚠️  Account ${req.params.account} not in response, caching 0`);
+                    cache.balance.set(key, 0);
                     continue;
                 }
                 
@@ -515,56 +507,13 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                     total = accountBalances[req.params.fromPeriod] || 0;
                 }
                 
-                // Cache the result
+                // Cache the result - IIFE will read it and call invocation.close()
                 cache.balance.set(key, total);
+                console.log(`💾 Cached result for ${req.params.account}: ${total}`);
                 
-                // CRITICAL FIX: Verify invocation object is valid before calling methods
-                if (req.invocation && 
-                    typeof req.invocation.setResult === 'function' && 
-                    typeof req.invocation.close === 'function') {
-                    
-                    console.log(`✅ Returning result for ${req.params.account}: ${total}`);
-                    
-                    try {
-                        req.invocation.setResult(total);
-                        console.log(`  → setResult() called successfully`);
-                    } catch (setError) {
-                        console.error(`  → setResult() failed:`, setError);
-                    }
-                    
-                    try {
-                        req.invocation.close();
-                        console.log(`  → close() called successfully`);
-                        // Mark as closed in tracker
-                        if (invocationTracker.has(key)) {
-                            invocationTracker.get(key).closed = true;
-                        }
-                    } catch (closeError) {
-                        console.error(`  → close() failed:`, closeError);
-                    }
-                } else {
-                    console.error('❌ Invalid invocation object for:', key);
-                    console.error('   invocation:', req.invocation);
-                    console.error('   setResult type:', typeof req.invocation?.setResult);
-                    console.error('   close type:', typeof req.invocation?.close);
-                }
             } catch (error) {
-                console.error('Error distributing result:', error, key);
-                // ALWAYS close even on error (ChatGPT requirement)
-                if (req.invocation && 
-                    typeof req.invocation.setResult === 'function' && 
-                    typeof req.invocation.close === 'function') {
-                    try {
-                        req.invocation.setResult(0);
-                        req.invocation.close();
-                        // Mark as closed in tracker
-                        if (invocationTracker.has(key)) {
-                            invocationTracker.get(key).closed = true;
-                        }
-                    } catch (closeErr) {
-                        console.error('  → Could not close invocation:', closeErr);
-                    }
-                }
+                console.error('Error processing result:', error, key);
+                cache.balance.set(key, 0);
             }
         }
         
