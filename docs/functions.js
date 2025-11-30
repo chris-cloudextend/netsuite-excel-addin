@@ -9,7 +9,7 @@
  * 5. Deduplication - never make same request twice
  */
 
-const SERVER_URL = 'https://thomas-alignment-stuart-ever.trycloudflare.com';
+const SERVER_URL = 'https://parish-regard-howto-intl.trycloudflare.com';
 
 // ============================================================================
 // CACHE - Never expires, persists entire Excel session
