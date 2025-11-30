@@ -37,7 +37,7 @@ const requestQueue = {
     budget: new Map()      // Pending budget requests
 };
 
-let batchTimer = false;  // Changed to boolean flag for streaming model
+let batchTimer = null;  // Timer reference for batching
 const BATCH_DELAY = 100;  // Reduced delay for streaming (was 500ms)
 const MAX_CONCURRENT = 3;          // Max 3 concurrent requests to NetSuite
 const CHUNK_SIZE = 10;             // Max 10 accounts per batch
@@ -178,11 +178,11 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         requestQueue.balance.delete(cacheKey);
     };
     
-    // Start batch processing immediately (no setTimeout delay!)
+    // Start batch processing immediately (use microtask for immediate execution)
     if (!batchTimer) {
-        // Use microtask instead of timer to avoid Excel timeout
-        batchTimer = true;
-        Promise.resolve().then(processBatchQueue);
+        batchTimer = setTimeout(() => {
+            processBatchQueue();
+        }, BATCH_DELAY);
     }
 }
 
@@ -276,7 +276,7 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
 // BATCH PROCESSING - Streaming Model (Immediate Start)
 // ============================================================================
 async function processBatchQueue() {
-    batchTimer = false;  // Reset flag
+    batchTimer = null;  // Reset timer reference
     
     if (requestQueue.balance.size === 0) {
         console.log('No requests in queue');
