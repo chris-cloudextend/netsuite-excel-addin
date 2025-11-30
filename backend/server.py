@@ -280,7 +280,8 @@ def home():
     return jsonify({
         'status': 'running',
         'service': 'NetSuite Excel Formulas API',
-        'account': account_id,
+        'accounts': list(accounts_config.keys()),
+        'default_account': default_account,
         'version': '1.0',
         'endpoints': {
             '/account/{account_number}/name': 'Get account name (NSGLATITLE)',
@@ -294,7 +295,11 @@ def home():
 @app.route('/health')
 def health():
     """Health check"""
-    return jsonify({'status': 'healthy', 'account': account_id})
+    return jsonify({
+        'status': 'healthy',
+        'accounts': list(accounts_config.keys()),
+        'default': default_account
+    })
 
 
 @app.route('/batch/balance', methods=['POST'])
@@ -968,7 +973,8 @@ def get_transactions():
             }
             
             url_type = type_map.get(record_type, record_type)
-            row['netsuite_url'] = f"https://{account_id}.app.netsuite.com/app/accounting/transactions/{url_type}.nl?id={transaction_id}"
+            netsuite_account = request.args.get('netsuite_account', default_account)
+            row['netsuite_url'] = f"https://{netsuite_account}.app.netsuite.com/app/accounting/transactions/{url_type}.nl?id={transaction_id}"
             
             # Calculate net amount for this account
             debit = float(row.get('debit', 0)) if row.get('debit') else 0
