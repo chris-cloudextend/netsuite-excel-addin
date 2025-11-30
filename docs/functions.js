@@ -10,6 +10,7 @@
  */
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
+const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
 
 // ============================================================================
 // CACHE - Never expires, persists entire Excel session
