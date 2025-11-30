@@ -135,54 +135,68 @@ async function GLATITLE(accountNumber, invocation) {
  * @cancelable
  */
 function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
-    // Normalize inputs
-    account = String(account || '').trim();
-    fromPeriod = String(fromPeriod || '').trim();
-    toPeriod = String(toPeriod || '').trim();
-    subsidiary = String(subsidiary || '').trim();
-    department = String(department || '').trim();
-    location = String(location || '').trim();
-    classId = String(classId || '').trim();
+    // CRITICAL: Outer function must be SYNCHRONOUS (not async)
+    // No return values allowed - only invocation.setResult() + close()
     
-    if (!account) {
-        invocation.setResult('');
+    try {
+        // Normalize inputs safely
+        account = String(account || '').trim();
+        fromPeriod = String(fromPeriod || '').trim();
+        toPeriod = String(toPeriod || '').trim();
+        subsidiary = String(subsidiary || '').trim();
+        department = String(department || '').trim();
+        location = String(location || '').trim();
+        classId = String(classId || '').trim();
+        
+        if (!account) {
+            invocation.setResult(0);  // Return 0 instead of empty for number type
+            invocation.close();
+            return;  // Early exit is OK (no value returned)
+        }
+        
+        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
+        const cacheKey = getCacheKey('balance', params);
+        
+        // Check cache FIRST - return immediately if found
+        if (cache.balance.has(cacheKey)) {
+            cacheStats.hits++;
+            console.log(`⚡ CACHE HIT [balance]: ${account}`);
+            invocation.setResult(cache.balance.get(cacheKey));
+            invocation.close();
+            return;  // Early exit is OK (no value returned)
+        }
+        
+        cacheStats.misses++;
+        console.log(`📥 CACHE MISS [balance]: ${account} (queuing)`);
+        
+        // Register this invocation for batching
+        requestQueue.balance.set(cacheKey, {
+            params,
+            invocation,
+            retries: 0
+        });
+        
+        // Handle cancellation
+        invocation.onCanceled = () => {
+            console.log(`Balance request canceled for ${account}`);
+            requestQueue.balance.delete(cacheKey);
+        };
+        
+        // Start batch processing immediately (use microtask for immediate execution)
+        if (!batchTimer) {
+            batchTimer = setTimeout(() => {
+                processBatchQueue();
+            }, BATCH_DELAY);
+        }
+        
+        // NO return statement - streaming function keeps running until invocation.close()
+        
+    } catch (error) {
+        // Handle any synchronous errors before async work starts
+        console.error('GLABAL synchronous error:', error);
+        invocation.setResult(0);  // Return 0 for number type
         invocation.close();
-        return;
-    }
-    
-    const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
-    const cacheKey = getCacheKey('balance', params);
-    
-    // Check cache FIRST - return immediately if found
-    if (cache.balance.has(cacheKey)) {
-        cacheStats.hits++;
-        console.log(`⚡ CACHE HIT [balance]: ${account}`);
-        invocation.setResult(cache.balance.get(cacheKey));
-        invocation.close();
-        return;
-    }
-    
-    cacheStats.misses++;
-    console.log(`📥 CACHE MISS [balance]: ${account} (queuing)`);
-    
-    // Register this invocation for batching
-    requestQueue.balance.set(cacheKey, {
-        params,
-        invocation,
-        retries: 0
-    });
-    
-    // Handle cancellation
-    invocation.onCanceled = () => {
-        console.log(`Balance request canceled for ${account}`);
-        requestQueue.balance.delete(cacheKey);
-    };
-    
-    // Start batch processing immediately (use microtask for immediate execution)
-    if (!batchTimer) {
-        batchTimer = setTimeout(() => {
-            processBatchQueue();
-        }, BATCH_DELAY);
+        return;  // Early exit is OK (no value returned)
     }
 }
 
@@ -195,81 +209,94 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
  * @cancelable
  */
 function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
-    // Same implementation as GLABAL but for budget endpoint
-    account = String(account || '').trim();
-    fromPeriod = String(fromPeriod || '').trim();
-    toPeriod = String(toPeriod || '').trim();
-    subsidiary = String(subsidiary || '').trim();
-    department = String(department || '').trim();
-    location = String(location || '').trim();
-    classId = String(classId || '').trim();
+    // CRITICAL: Outer function must be SYNCHRONOUS (not async)
+    // No return values allowed - only invocation.setResult() + close()
     
-    if (!account) {
-        invocation.setResult('');
-        invocation.close();
-        return;
-    }
-    
-    const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
-    const cacheKey = getCacheKey('budget', params);
-    
-    // Check cache FIRST - return immediately if found
-    if (cache.budget.has(cacheKey)) {
-        cacheStats.hits++;
-        invocation.setResult(cache.budget.get(cacheKey));
-        invocation.close();
-        return;
-    }
-    
-    cacheStats.misses++;
-    
-    // Handle cancellation
-    const controller = new AbortController();
-    invocation.onCanceled = () => {
-        console.log('Budget request canceled');
-        controller.abort();
-    };
-    
-    // For budget, make individual request (budgets are less common)
-    // Use Promise to keep async work visible to Excel
-    (async () => {
-        try {
-            const url = new URL(`${SERVER_URL}/budget`);
-            url.searchParams.append('account', account);
-            if (fromPeriod) url.searchParams.append('from_period', fromPeriod);
-            if (toPeriod) url.searchParams.append('to_period', toPeriod);
-            if (subsidiary) url.searchParams.append('subsidiary', subsidiary);
-            if (department) url.searchParams.append('department', department);
-            if (location) url.searchParams.append('location', location);
-            if (classId) url.searchParams.append('class', classId);
-            
-            const response = await fetch(url.toString(), { signal: controller.signal });
-            if (!response.ok) {
-                console.error(`Budget API error: ${response.status}`);
-                invocation.setResult('');
-                invocation.close();
-                return;
-            }
-            
-            const text = await response.text();
-            const budget = parseFloat(text);
-            const finalValue = isNaN(budget) ? '' : budget;
-            
-            if (finalValue !== '') {
-                cache.budget.set(cacheKey, finalValue);
-            }
-            
-            invocation.setResult(finalValue);
+    try {
+        // Normalize inputs safely
+        account = String(account || '').trim();
+        fromPeriod = String(fromPeriod || '').trim();
+        toPeriod = String(toPeriod || '').trim();
+        subsidiary = String(subsidiary || '').trim();
+        department = String(department || '').trim();
+        location = String(location || '').trim();
+        classId = String(classId || '').trim();
+        
+        if (!account) {
+            invocation.setResult(0);  // Return 0 instead of empty for number type
             invocation.close();
-            
-        } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.error('Budget fetch error:', error);
-            }
-            invocation.setResult('');
-            invocation.close();
+            return;  // Early exit is OK (no value returned)
         }
-    })();
+        
+        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
+        const cacheKey = getCacheKey('budget', params);
+        
+        // Check cache FIRST - return immediately if found
+        if (cache.budget.has(cacheKey)) {
+            cacheStats.hits++;
+            invocation.setResult(cache.budget.get(cacheKey));
+            invocation.close();
+            return;  // Early exit is OK (no value returned)
+        }
+        
+        cacheStats.misses++;
+        
+        // Handle cancellation
+        const controller = new AbortController();
+        invocation.onCanceled = () => {
+            console.log('Budget request canceled');
+            controller.abort();
+        };
+        
+        // Async work wrapped in IIFE (immediately invoked async function)
+        (async () => {
+            try {
+                const url = new URL(`${SERVER_URL}/budget`);
+                url.searchParams.append('account', account);
+                if (fromPeriod) url.searchParams.append('from_period', fromPeriod);
+                if (toPeriod) url.searchParams.append('to_period', toPeriod);
+                if (subsidiary) url.searchParams.append('subsidiary', subsidiary);
+                if (department) url.searchParams.append('department', department);
+                if (location) url.searchParams.append('location', location);
+                if (classId) url.searchParams.append('class', classId);
+                
+                const response = await fetch(url.toString(), { signal: controller.signal });
+                if (!response.ok) {
+                    console.error(`Budget API error: ${response.status}`);
+                    invocation.setResult(0);  // Return 0 for number type
+                    invocation.close();
+                    return;
+                }
+                
+                const text = await response.text();
+                const budget = parseFloat(text);
+                const finalValue = isNaN(budget) ? 0 : budget;  // Return 0 instead of empty
+                
+                if (finalValue !== 0) {
+                    cache.budget.set(cacheKey, finalValue);
+                }
+                
+                invocation.setResult(finalValue);
+                invocation.close();
+                
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('Budget fetch error:', error);
+                }
+                invocation.setResult(0);  // Return 0 for number type
+                invocation.close();
+            }
+        })();
+        
+        // NO return statement - streaming function keeps running
+        
+    } catch (error) {
+        // Handle any synchronous errors
+        console.error('GLABUD synchronous error:', error);
+        invocation.setResult(0);  // Return 0 for number type
+        invocation.close();
+        return;  // Early exit is OK (no value returned)
+    }
 }
 
 // ============================================================================
@@ -407,41 +434,56 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         
         // Distribute results using streaming API
         for (const { key, req } of allRequests) {
-            if (!accounts.includes(req.params.account)) continue;
-            
-            const accountBalances = balances[req.params.account] || {};
-            let total = 0;
-            const periodList = Object.keys(accountBalances).sort();
-            
-            if (req.params.fromPeriod && req.params.toPeriod) {
-                // Sum range
-                for (const period of periodList) {
-                    if (period >= req.params.fromPeriod && period <= req.params.toPeriod) {
-                        total += accountBalances[period] || 0;
+            try {
+                if (!accounts.includes(req.params.account)) continue;
+                
+                const accountBalances = balances[req.params.account] || {};
+                let total = 0;
+                const periodList = Object.keys(accountBalances).sort();
+                
+                if (req.params.fromPeriod && req.params.toPeriod) {
+                    // Sum range
+                    for (const period of periodList) {
+                        if (period >= req.params.fromPeriod && period <= req.params.toPeriod) {
+                            total += accountBalances[period] || 0;
+                        }
                     }
+                } else if (req.params.fromPeriod) {
+                    // Single period
+                    total = accountBalances[req.params.fromPeriod] || 0;
                 }
-            } else if (req.params.fromPeriod) {
-                // Single period
-                total = accountBalances[req.params.fromPeriod] || 0;
-            }
-            
-            // Cache the result
-            cache.balance.set(key, total);
-            
-            // Use streaming API to return result
-            if (req.invocation) {
-                req.invocation.setResult(total);
-                req.invocation.close();
+                
+                // Cache the result
+                cache.balance.set(key, total);
+                
+                // ALWAYS call setResult + close (ChatGPT requirement)
+                if (req.invocation) {
+                    req.invocation.setResult(total);  // Ensure it's a number
+                    req.invocation.close();
+                } else {
+                    console.error('Missing invocation for request:', key);
+                }
+            } catch (error) {
+                console.error('Error distributing result:', error, key);
+                // ALWAYS close even on error (ChatGPT requirement)
+                if (req.invocation) {
+                    req.invocation.setResult(0);
+                    req.invocation.close();
+                }
             }
         }
         
     } catch (error) {
         console.error('Batch fetch error:', error);
-        // Return blank results using streaming API
+        // ALWAYS close all invocations on error (ChatGPT requirement)
         for (const { key, req } of allRequests) {
-            if (accounts.includes(req.params.account) && req.invocation) {
-                req.invocation.setResult('');
-                req.invocation.close();
+            try {
+                if (accounts.includes(req.params.account) && req.invocation) {
+                    req.invocation.setResult(0);  // Return 0 for number type
+                    req.invocation.close();
+                }
+            } catch (closeError) {
+                console.error('Error closing invocation:', closeError);
             }
         }
     }
