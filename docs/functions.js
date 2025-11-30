@@ -570,8 +570,16 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
 // HELPER: Expand period range (e.g., "Jan 2025" to "Mar 2025" → all months)
 // ============================================================================
 function expandPeriodRange(fromPeriod, toPeriod) {
-    if (!fromPeriod) return [];
-    if (!toPeriod || fromPeriod === toPeriod) return [fromPeriod];
+    console.log(`🔍 expandPeriodRange called: from="${fromPeriod}" to="${toPeriod}"`);
+    
+    if (!fromPeriod) {
+        console.log('  → No fromPeriod, returning []');
+        return [];
+    }
+    if (!toPeriod || fromPeriod === toPeriod) {
+        console.log(`  → Same period or no toPeriod, returning [${fromPeriod}]`);
+        return [fromPeriod];
+    }
     
     try {
         // Parse month and year from "Jan 2025" format
@@ -610,6 +618,7 @@ function expandPeriodRange(fromPeriod, toPeriod) {
             }
         }
         
+        console.log(`  → Expanded to ${result.length} periods:`, result);
         return result;
         
     } catch (error) {
