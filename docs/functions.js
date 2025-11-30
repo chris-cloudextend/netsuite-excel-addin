@@ -139,18 +139,42 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
     // The batch processor will call invocation.setResult() and invocation.close()
     
     try {
-        // Normalize inputs
-        account = String(account || '').trim();
-        fromPeriod = String(fromPeriod || '').trim();
-        toPeriod = String(toPeriod || '').trim();
-        subsidiary = String(subsidiary || '').trim();
-        department = String(department || '').trim();
-        location = String(location || '').trim();
-        classId = String(classId || '').trim();
+        // CRITICAL FIX: Excel shifts invocation object left when optional params are missing!
+        // We must find the REAL invocation object by checking for setResult method
+        let realInvocation = null;
+        const args = Array.from(arguments);
+        
+        // Find invocation by looking for the object with setResult method
+        for (let i = args.length - 1; i >= 0; i--) {
+            if (args[i] && typeof args[i] === 'object' && typeof args[i].setResult === 'function') {
+                realInvocation = args[i];
+                // Remove invocation from args so we can extract business params
+                args.splice(i, 1);
+                break;
+            }
+        }
+        
+        if (!realInvocation) {
+            console.error('❌ No invocation object found in arguments!');
+            return;
+        }
+        
+        // Now safely extract business parameters from remaining args
+        // Args are: [account, fromPeriod, toPeriod, subsidiary?, department?, location?, classId?]
+        const [acct, from, to, sub, dept, loc, cls] = args;
+        
+        // Normalize ONLY business parameters (never the invocation!)
+        account = String(acct || '').trim();
+        fromPeriod = String(from || '').trim();
+        toPeriod = String(to || '').trim();
+        subsidiary = String(sub || '').trim();
+        department = String(dept || '').trim();
+        location = String(loc || '').trim();
+        classId = String(cls || '').trim();
         
         if (!account) {
-            invocation.setResult(0);
-            invocation.close();
+            realInvocation.setResult(0);
+            realInvocation.close();
             return;
         }
         
@@ -162,8 +186,8 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
             cacheStats.hits++;
             const value = cache.balance.get(cacheKey);
             console.log(`⚡ CACHE HIT [balance]: ${account} → ${value}`);
-            invocation.setResult(value);
-            invocation.close();
+            realInvocation.setResult(value);
+            realInvocation.close();
             return;
         }
         
@@ -173,12 +197,12 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         
         requestQueue.balance.set(cacheKey, {
             params,
-            invocation,  // Store the invocation - batch processor will use it
+            invocation: realInvocation,  // Store the REAL invocation - batch processor will use it
             retries: 0
         });
         
         // Handle cancellation
-        invocation.onCanceled = () => {
+        realInvocation.onCanceled = () => {
             console.log(`⏹ Canceled [balance]: ${account}`);
             requestQueue.balance.delete(cacheKey);
         };
@@ -198,8 +222,14 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         
     } catch (error) {
         console.error('GLABAL synchronous error:', error);
-        invocation.setResult(0);
-        invocation.close();
+        // Use realInvocation if available, fallback to last argument
+        const inv = realInvocation || arguments[arguments.length - 1];
+        if (inv && typeof inv.setResult === 'function') {
+            inv.setResult(0);
+            if (typeof inv.close === 'function') {
+                inv.close();
+            }
+        }
     }
 }
 
