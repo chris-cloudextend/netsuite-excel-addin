@@ -342,14 +342,17 @@ async function processBatchQueue() {
     for (const [filterKey, groupRequests] of groups.entries()) {
         const filters = JSON.parse(filterKey);
         const accounts = [...new Set(groupRequests.map(r => r.req.params.account))];
-        const periods = [...new Set(groupRequests.flatMap(r => {
-            const p = [];
-            if (r.req.params.fromPeriod) p.push(r.req.params.fromPeriod);
-            if (r.req.params.toPeriod && r.req.params.toPeriod !== r.req.params.fromPeriod) {
-                p.push(r.req.params.toPeriod);
+        
+        // CRITICAL: Expand period ranges to include ALL months!
+        // If user asks for "Jan 2025" to "Mar 2025", we need to query Jan, Feb, AND Mar
+        const allPeriods = new Set();
+        for (const r of groupRequests) {
+            const expandedPeriods = expandPeriodRange(r.req.params.fromPeriod, r.req.params.toPeriod);
+            for (const period of expandedPeriods) {
+                allPeriods.add(period);
             }
-            return p;
-        }))];
+        }
+        const periods = [...allPeriods];
         
         console.log(`  Group: ${accounts.length} accounts × ${periods.length} periods = ${accounts.length * periods.length} data points`);
         
@@ -491,6 +494,58 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 console.error('Error closing invocation:', closeError);
             }
         }
+    }
+}
+
+// ============================================================================
+// HELPER: Expand period range (e.g., "Jan 2025" to "Mar 2025" → all months)
+// ============================================================================
+function expandPeriodRange(fromPeriod, toPeriod) {
+    if (!fromPeriod) return [];
+    if (!toPeriod || fromPeriod === toPeriod) return [fromPeriod];
+    
+    try {
+        // Parse month and year from "Jan 2025" format
+        const parseMonthYear = (period) => {
+            const match = period.match(/^([A-Za-z]+)\s+(\d{4})$/);
+            if (!match) return null;
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthIndex = monthNames.findIndex(m => m === match[1]);
+            if (monthIndex === -1) return null;
+            return { month: monthIndex, year: parseInt(match[2]) };
+        };
+        
+        const from = parseMonthYear(fromPeriod);
+        const to = parseMonthYear(toPeriod);
+        
+        if (!from || !to) {
+            // Can't parse - return original periods
+            return [fromPeriod, toPeriod];
+        }
+        
+        // Generate all months in range
+        const result = [];
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        
+        let currentMonth = from.month;
+        let currentYear = from.year;
+        
+        while (currentYear < to.year || (currentYear === to.year && currentMonth <= to.month)) {
+            result.push(`${monthNames[currentMonth]} ${currentYear}`);
+            currentMonth++;
+            if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            }
+        }
+        
+        return result;
+        
+    } catch (error) {
+        console.error('Error expanding period range:', error);
+        return [fromPeriod, toPeriod];
     }
 }
 
