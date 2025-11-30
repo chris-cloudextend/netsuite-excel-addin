@@ -135,11 +135,11 @@ async function GLATITLE(accountNumber, invocation) {
  * @cancelable
  */
 function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId, invocation) {
-    // CRITICAL: Outer function must be SYNCHRONOUS (not async)
-    // No return values allowed - only invocation.setResult() + close()
+    // CRITICAL: Thin registration function - NO POLLING, NO WAITING
+    // The batch processor will call invocation.setResult() and invocation.close()
     
     try {
-        // Normalize inputs safely
+        // Normalize inputs
         account = String(account || '').trim();
         fromPeriod = String(fromPeriod || '').trim();
         toPeriod = String(toPeriod || '').trim();
@@ -149,9 +149,9 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         classId = String(classId || '').trim();
         
         if (!account) {
-            invocation.setResult(0);  // Return 0 instead of empty for number type
+            invocation.setResult(0);
             invocation.close();
-            return;  // Early exit is OK (no value returned)
+            return;
         }
         
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
@@ -160,93 +160,46 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         // Check cache FIRST - return immediately if found
         if (cache.balance.has(cacheKey)) {
             cacheStats.hits++;
-            console.log(`⚡ CACHE HIT [balance]: ${account}`);
-            
-            // Verify invocation methods exist before calling
-            if (typeof invocation.setResult === 'function' && typeof invocation.close === 'function') {
-                invocation.setResult(cache.balance.get(cacheKey));
-                invocation.close();
-            } else {
-                console.error('❌ Invocation methods missing in cache hit path!');
-                console.error('   setResult:', typeof invocation.setResult);
-                console.error('   close:', typeof invocation.close);
-            }
-            return;  // Early exit is OK (no value returned)
+            const value = cache.balance.get(cacheKey);
+            console.log(`⚡ CACHE HIT [balance]: ${account} → ${value}`);
+            invocation.setResult(value);
+            invocation.close();
+            return;
         }
         
-    cacheStats.misses++;
-    console.log(`📥 CACHE MISS [balance]: ${account} (starting async wait)`);
-    
-    // Handle cancellation
-    let cancelled = false;
-    invocation.onCanceled = () => {
-        console.log(`Balance request canceled for ${account}`);
-        cancelled = true;
-        requestQueue.balance.delete(cacheKey);
-    };
-    
-    // Register this request for batching (WITHOUT invocation object)
-    requestQueue.balance.set(cacheKey, {
-        params,
-        retries: 0
-    });
-    
-    // CRITICAL: Start async work IMMEDIATELY to keep invocation alive
-    // This IIFE runs immediately and waits for batch to populate cache
-    (async () => {
-        try {
-            // Start batch processing if not already running
-            if (!batchTimer) {
-                batchTimer = true;
-                Promise.resolve().then(() => {
-                    batchTimer = null;
-                    processBatchQueue();
+        // Cache miss → queue this invocation for batching
+        cacheStats.misses++;
+        console.log(`📥 CACHE MISS [balance]: ${account} → queuing`);
+        
+        requestQueue.balance.set(cacheKey, {
+            params,
+            invocation,  // Store the invocation - batch processor will use it
+            retries: 0
+        });
+        
+        // Handle cancellation
+        invocation.onCanceled = () => {
+            console.log(`⏹ Canceled [balance]: ${account}`);
+            requestQueue.balance.delete(cacheKey);
+        };
+        
+        // Start batch processing in a microtask if not already running
+        if (!batchTimer) {
+            batchTimer = true;
+            Promise.resolve().then(() => {
+                batchTimer = null;
+                processBatchQueue().catch(err => {
+                    console.error("processBatchQueue error:", err);
                 });
-            }
-            
-            // Wait for result to appear in cache (batch will populate it)
-            const maxWaitTime = 30000; // 30 second timeout
-            const checkInterval = 100; // Check every 100ms
-            const startTime = Date.now();
-            
-            while (!cache.balance.has(cacheKey) && !cancelled) {
-                if (Date.now() - startTime > maxWaitTime) {
-                    console.error(`⏱️  Timeout waiting for ${account}`);
-                    invocation.setResult(0);
-                    invocation.close();
-                    return;
-                }
-                await new Promise(resolve => setTimeout(resolve, checkInterval));
-            }
-            
-            if (cancelled) {
-                console.log(`Request for ${account} was cancelled`);
-                return;
-            }
-            
-            // Result is now in cache!
-            const result = cache.balance.get(cacheKey);
-            console.log(`✅ Returning cached result for ${account}: ${result}`);
-            invocation.setResult(result);
-            invocation.close();
-            
-        } catch (error) {
-            console.error('Async wait error:', error);
-            invocation.setResult(0);
-            invocation.close();
+            });
         }
-    })();
         
-        // NO return statement - async IIFE keeps function alive
+        // NO return value. Streaming completes when batch processor calls invocation.close()
         
     } catch (error) {
-        // Handle any synchronous errors before async work starts
         console.error('GLABAL synchronous error:', error);
-        if (typeof invocation.setResult === 'function' && typeof invocation.close === 'function') {
-            invocation.setResult(0);  // Return 0 for number type
-            invocation.close();
-        }
-        return;  // Early exit is OK (no value returned)
+        invocation.setResult(0);
+        invocation.close();
     }
 }
 
@@ -482,12 +435,12 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         
         console.log(`  ✅ Received balances for ${Object.keys(balances).length} accounts`);
         
-        // Store results in cache (IIFE in GLABAL will pick them up)
+        // Distribute results to invocations and close them
         for (const { key, req } of allRequests) {
             try {
                 if (!accounts.includes(req.params.account)) {
-                    console.warn(`⚠️  Account ${req.params.account} not in response, caching 0`);
-                    cache.balance.set(key, 0);
+                    console.warn(`⚠️  Account ${req.params.account} not in response`);
+                    safeFinishInvocation(req.invocation, 0);
                     continue;
                 }
                 
@@ -507,13 +460,15 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                     total = accountBalances[req.params.fromPeriod] || 0;
                 }
                 
-                // Cache the result - IIFE will read it and call invocation.close()
+                // Cache the result and finish the invocation
                 cache.balance.set(key, total);
                 console.log(`💾 Cached result for ${req.params.account}: ${total}`);
+                safeFinishInvocation(req.invocation, total);
                 
             } catch (error) {
-                console.error('Error processing result:', error, key);
+                console.error('Error distributing result:', error, key);
                 cache.balance.set(key, 0);
+                safeFinishInvocation(req.invocation, 0);
             }
         }
         
