@@ -77,6 +77,13 @@
           "type": "any",
           "dimensionality": "scalar",
           "optional": true
+        },
+        {
+          "name": "invocation",
+          "description": "Invocation parameter (automatically provided by Excel)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": false
         }
       ],
       "options": {
@@ -139,6 +146,13 @@
           "type": "any",
           "dimensionality": "scalar",
           "optional": true
+        },
+        {
+          "name": "invocation",
+          "description": "Invocation parameter (automatically provided by Excel)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": false
         }
       ],
       "options": {
