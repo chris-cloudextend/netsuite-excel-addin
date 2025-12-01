@@ -475,18 +475,44 @@ def batch_balance():
         
         where_clause = " AND ".join(where_clauses)
         
+        # Determine target subsidiary for consolidation
+        # If subsidiary filter is applied, consolidate to that subsidiary
+        # If no subsidiary, consolidate to parent (NULL)
+        target_sub = subsidiary if subsidiary and subsidiary != '' else 'NULL'
+        
         # Build query with TransactionLine join if needed
         # CRITICAL: Don't GROUP BY period - we want TOTAL across all periods!
+        # CRITICAL: Use BUILTIN.CONSOLIDATE for proper multi-subsidiary & currency handling
         if needs_line_join:
             query = f"""
                 SELECT 
                     a.acctnumber,
                     a.accttype,
                     CASE 
-                        WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome', 'Liability', 
-                                            'LongTermLiab', 'OthCurrLiab', 'Equity') 
-                        THEN SUM(COALESCE(tal.credit, 0)) - SUM(COALESCE(tal.debit, 0))
-                        ELSE SUM(COALESCE(tal.debit, 0)) - SUM(COALESCE(tal.credit, 0))
+                        WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
+                            SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            )) - SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            ))
+                        WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
+                            SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            )) - SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            ))
+                        ELSE
+                            SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            )) - SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            ))
                     END AS balance
                 FROM Transaction t
                 INNER JOIN TransactionLine tl ON t.id = tl.transaction
@@ -503,10 +529,30 @@ def batch_balance():
                     a.acctnumber,
                     a.accttype,
                     CASE 
-                        WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome', 'Liability', 
-                                            'LongTermLiab', 'OthCurrLiab', 'Equity') 
-                        THEN SUM(COALESCE(tal.credit, 0)) - SUM(COALESCE(tal.debit, 0))
-                        ELSE SUM(COALESCE(tal.debit, 0)) - SUM(COALESCE(tal.credit, 0))
+                        WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
+                            SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            )) - SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            ))
+                        WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
+                            SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            )) - SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            ))
+                        ELSE
+                            SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            )) - SUM(BUILTIN.CONSOLIDATE(
+                                COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            ))
                     END AS balance
                 FROM Transaction t
                 INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction
@@ -706,6 +752,9 @@ def get_balance():
         print(f"DEBUG - WHERE clause: {where_clause}", file=sys.stderr)
         print(f"DEBUG - Department param: {department}", file=sys.stderr)
         
+        # Determine target subsidiary for consolidation
+        target_sub = subsidiary if subsidiary and subsidiary != '' else 'NULL'
+        
         # Need TransactionLine join if filtering by department, class, or location
         needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
         
@@ -715,10 +764,30 @@ def get_balance():
                     SELECT 
                         a.accttype,
                         CASE 
-                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome', 'Liability', 
-                                                'LongTermLiab', 'OthCurrLiab', 'Equity') 
-                            THEN SUM(COALESCE(tal.credit, 0)) - SUM(COALESCE(tal.debit, 0))
-                            ELSE SUM(COALESCE(tal.debit, 0)) - SUM(COALESCE(tal.credit, 0))
+                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
+                            WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
+                            ELSE
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
                         END AS balance
                     FROM Transaction t
                     INNER JOIN TransactionLine tl ON t.id = tl.transaction  
@@ -733,10 +802,30 @@ def get_balance():
                     SELECT 
                         a.accttype,
                         CASE 
-                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome', 'Liability', 
-                                                'LongTermLiab', 'OthCurrLiab', 'Equity') 
-                            THEN SUM(COALESCE(tal.credit, 0)) - SUM(COALESCE(tal.debit, 0))
-                            ELSE SUM(COALESCE(tal.debit, 0)) - SUM(COALESCE(tal.credit, 0))
+                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
+                            WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
+                            ELSE
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
                         END AS balance
                     FROM Transaction t
                     INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction
@@ -751,10 +840,30 @@ def get_balance():
                     SELECT 
                         a.accttype,
                         CASE 
-                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome', 'Liability', 
-                                                'LongTermLiab', 'OthCurrLiab', 'Equity') 
-                            THEN SUM(COALESCE(tal.credit, 0)) - SUM(COALESCE(tal.debit, 0))
-                            ELSE SUM(COALESCE(tal.debit, 0)) - SUM(COALESCE(tal.credit, 0))
+                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
+                            WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
+                            ELSE
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
                         END AS balance
                     FROM Transaction t
                     INNER JOIN TransactionLine tl ON t.id = tl.transaction
@@ -768,10 +877,30 @@ def get_balance():
                     SELECT 
                         a.accttype,
                         CASE 
-                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome', 'Liability', 
-                                                'LongTermLiab', 'OthCurrLiab', 'Equity') 
-                            THEN SUM(COALESCE(tal.credit, 0)) - SUM(COALESCE(tal.debit, 0))
-                            ELSE SUM(COALESCE(tal.debit, 0)) - SUM(COALESCE(tal.credit, 0))
+                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
+                            WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
+                            ELSE
+                                SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                )) - SUM(BUILTIN.CONSOLIDATE(
+                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                                    {target_sub}, t.postingperiod, 'DEFAULT'
+                                ))
                         END AS balance
                     FROM Transaction t
                     INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction
@@ -881,10 +1010,20 @@ def get_budget():
         
         where_clause = " AND ".join(where_clauses)
         
+        # Determine target subsidiary for consolidation
+        target_sub = subsidiary if subsidiary and subsidiary != '' else 'NULL'
+        
         # Build SuiteQL query - only join AccountingPeriod if using period names
+        # Note: Budget amounts also need BUILTIN.CONSOLIDATE for multi-currency
+        # Budgets are typically 'LEDGER' type (not INCOME)
         if (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):
             query = f"""
-                SELECT SUM(b.amount) AS budget_amount
+                SELECT SUM(
+                    BUILTIN.CONSOLIDATE(
+                        b.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, b.accountingperiod, 'DEFAULT'
+                    )
+                ) AS budget_amount
                 FROM Budget b
                 INNER JOIN Account a ON b.account = a.id
                 INNER JOIN AccountingPeriod ap ON b.accountingperiod = ap.id
@@ -892,7 +1031,12 @@ def get_budget():
             """
         else:
             query = f"""
-                SELECT SUM(b.amount) AS budget_amount
+                SELECT SUM(
+                    BUILTIN.CONSOLIDATE(
+                        b.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, b.accountingperiod, 'DEFAULT'
+                    )
+                ) AS budget_amount
                 FROM Budget b
                 INNER JOIN Account a ON b.account = a.id
                 WHERE {where_clause}
@@ -976,8 +1120,12 @@ def get_transactions():
         
         where_clause = " AND ".join(where_conditions)
         
+        # Determine target subsidiary for consolidation
+        target_sub = subsidiary if subsidiary and subsidiary != '' else 'NULL'
+        
         # SuiteQL query for transaction details
         # GROUP BY transaction to avoid duplicates when multiple lines hit same account
+        # Use BUILTIN.CONSOLIDATE to show amounts in the correct currency
         if needs_line_join:
             query = f"""
                 SELECT 
@@ -989,8 +1137,14 @@ def get_transactions():
                     e.entityid AS entity_name,
                     e.id AS entity_id,
                     t.memo,
-                    SUM(COALESCE(tal.debit, 0)) AS debit,
-                    SUM(COALESCE(tal.credit, 0)) AS credit,
+                    SUM(BUILTIN.CONSOLIDATE(
+                        COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, t.postingperiod, 'DEFAULT'
+                    )) AS debit,
+                    SUM(BUILTIN.CONSOLIDATE(
+                        COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, t.postingperiod, 'DEFAULT'
+                    )) AS credit,
                     a.acctnumber AS account_number,
                     a.accountsearchdisplayname AS account_name
                 FROM 
@@ -1024,8 +1178,14 @@ def get_transactions():
                     e.entityid AS entity_name,
                     e.id AS entity_id,
                     t.memo,
-                    SUM(COALESCE(tal.debit, 0)) AS debit,
-                    SUM(COALESCE(tal.credit, 0)) AS credit,
+                    SUM(BUILTIN.CONSOLIDATE(
+                        COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, t.postingperiod, 'DEFAULT'
+                    )) AS debit,
+                    SUM(BUILTIN.CONSOLIDATE(
+                        COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, t.postingperiod, 'DEFAULT'
+                    )) AS credit,
                     a.acctnumber AS account_number,
                     a.accountsearchdisplayname AS account_name
                 FROM 
