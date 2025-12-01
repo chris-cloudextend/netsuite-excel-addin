@@ -261,11 +261,8 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         console.error('GLABAL synchronous error:', error);
         // NEVER fallback to arguments[last] - only use realInvocation if we found it
         // (Fallback could grab a business parameter instead of invocation!)
-        if (realInvocation && typeof realInvocation.setResult === 'function') {
-            realInvocation.setResult(0);
-            if (typeof realInvocation.close === 'function') {
-                realInvocation.close();
-            }
+        if (realInvocation) {
+            safeFinishInvocation(realInvocation, 0);
         }
     }
 }
@@ -304,8 +301,8 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
         // Check cache FIRST - return immediately if found
         if (cache.budget.has(cacheKey)) {
             cacheStats.hits++;
-            invocation.setResult(cache.budget.get(cacheKey));
-            invocation.close();
+            const value = cache.budget.get(cacheKey);
+            safeFinishInvocation(invocation, value);
             return;  // Early exit is OK (no value returned)
         }
         
@@ -333,8 +330,7 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
                 const response = await fetch(url.toString(), { signal: controller.signal });
                 if (!response.ok) {
                     console.error(`Budget API error: ${response.status}`);
-                    invocation.setResult(0);  // Return 0 for number type
-                    invocation.close();
+                    safeFinishInvocation(invocation, 0);
                     return;
                 }
                 
@@ -346,15 +342,13 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
                     cache.budget.set(cacheKey, finalValue);
                 }
                 
-                invocation.setResult(finalValue);
-                invocation.close();
+                safeFinishInvocation(invocation, finalValue);
                 
             } catch (error) {
                 if (error.name !== 'AbortError') {
                     console.error('Budget fetch error:', error);
                 }
-                invocation.setResult(0);  // Return 0 for number type
-                invocation.close();
+                safeFinishInvocation(invocation, 0);
             }
         })();
         
@@ -547,10 +541,9 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         console.log(`⚠️  Closing ${allRequests.length} invocations due to error...`);
         for (const { key, req } of allRequests) {
             try {
-                if (req.invocation && typeof req.invocation.setResult === 'function') {
+                if (req.invocation) {
                     console.log(`  → Closing invocation for ${req.params.account} with 0`);
-                    req.invocation.setResult(0);  // Return 0 for number type
-                    req.invocation.close();
+                    safeFinishInvocation(req.invocation, 0);
                     // Mark as closed in tracker
                     if (invocationTracker.has(key)) {
                         invocationTracker.get(key).closed = true;
