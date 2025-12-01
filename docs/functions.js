@@ -211,24 +211,22 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         location = String(locRaw || '').trim();
         classId = String(clsRaw || '').trim();
         
-        if (!account) {
-            realInvocation.setResult(0);
-            realInvocation.close();
-            return;
-        }
+            if (!account) {
+                safeFinishInvocation(realInvocation, 0);
+                return;
+            }
         
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
         const cacheKey = getCacheKey('balance', params);
         
-        // Check cache FIRST - return immediately if found
-        if (cache.balance.has(cacheKey)) {
-            cacheStats.hits++;
-            const value = cache.balance.get(cacheKey);
-            console.log(`⚡ CACHE HIT [balance]: ${account} → ${value}`);
-            realInvocation.setResult(value);
-            realInvocation.close();
-            return;
-        }
+            // Check cache FIRST - return immediately if found
+            if (cache.balance.has(cacheKey)) {
+                cacheStats.hits++;
+                const value = cache.balance.get(cacheKey);
+                console.log(`⚡ CACHE HIT [balance]: ${account} → ${value}`);
+                safeFinishInvocation(realInvocation, value);
+                return;
+            }
         
         // Cache miss → queue this invocation for batching
         cacheStats.misses++;
@@ -365,8 +363,7 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
     } catch (error) {
         // Handle any synchronous errors
         console.error('GLABUD synchronous error:', error);
-        invocation.setResult(0);  // Return 0 for number type
-        invocation.close();
+        safeFinishInvocation(invocation, 0);
         return;  // Early exit is OK (no value returned)
     }
 }
@@ -654,16 +651,6 @@ function safeFinishInvocation(invocation, value) {
         }
     } catch (e) {
         console.error("Error finishing invocation:", e);
-    }
-    
-    try {
-        if (typeof invocation.close === "function") {
-            invocation.close();
-        } else {
-            console.error("❌ invocation.close is not a function");
-        }
-    } catch (e) {
-        console.error("Error in invocation.close:", e);
     }
 }
 
