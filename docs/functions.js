@@ -529,6 +529,10 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         
         console.log(`  ✅ Received balances for ${Object.keys(balances).length} accounts`);
         
+        // Track which invocations we've successfully finished
+        // This prevents closing them again with 0 if there's an error later
+        const finishedInvocations = new Set();
+        
         // Distribute results to invocations and close them
         // Backend now returns period-by-period breakdown
         // Each cell extracts and sums ONLY the periods it requested
@@ -537,6 +541,7 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 if (!accounts.includes(req.params.account)) {
                     console.warn(`⚠️  Account ${req.params.account} not in response`);
                     safeFinishInvocation(req.invocation, 0);
+                    finishedInvocations.add(key);
                     continue;
                 }
                 
@@ -555,23 +560,27 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 cache.balance.set(key, total);
                 console.log(`💾 Cached ${req.params.account} (${cellPeriods.join(', ')}): ${total}`);
                 safeFinishInvocation(req.invocation, total);
+                finishedInvocations.add(key);  // Mark as finished
                 
             } catch (error) {
                 console.error('Error distributing result:', error, key);
                 // ❌ DO NOT cache 0 on error - this causes cached failures!
                 // Just finish the invocation with 0, don't pollute cache
                 safeFinishInvocation(req.invocation, 0);
+                finishedInvocations.add(key);  // Mark as finished (even with 0)
             }
         }
         
     } catch (error) {
         console.error('❌ Batch fetch error:', error);
-        // DEFENSIVE: ALWAYS close all invocations on error (ChatGPT requirement)
-        console.log(`⚠️  Closing ${allRequests.length} invocations due to error...`);
+        // DEFENSIVE: Only close invocations that we HAVEN'T already finished
+        // This prevents overwriting correct values with 0!
+        console.log(`⚠️  Closing unfinished invocations due to error...`);
         for (const { key, req } of allRequests) {
             try {
-                if (req.invocation) {
-                    console.log(`  → Closing invocation for ${req.params.account} with 0`);
+                // ✅ CRITICAL FIX: Only close if we haven't finished it yet
+                if (req.invocation && !finishedInvocations.has(key)) {
+                    console.log(`  → Closing unfinished invocation for ${req.params.account} with 0`);
                     safeFinishInvocation(req.invocation, 0);
                     // Mark as closed in tracker
                     if (invocationTracker.has(key)) {
