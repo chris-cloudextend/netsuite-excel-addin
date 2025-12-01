@@ -40,7 +40,7 @@ const requestQueue = {
 let batchTimer = null;  // Timer reference for batching
 const BATCH_DELAY = 100;  // Reduced delay for streaming (was 500ms)
 const MAX_CONCURRENT = 3;          // Max 3 concurrent requests to NetSuite
-const CHUNK_SIZE = 10;             // Max 10 accounts per batch
+const CHUNK_SIZE = 30;             // Max 30 accounts per batch (increased from 10 for better performance)
 const RETRY_DELAY = 2000;          // Wait 2s before retrying 429 errors
 const MAX_RETRIES = 2;             // Retry 429 errors up to 2 times
 
