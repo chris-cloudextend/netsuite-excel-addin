@@ -538,11 +538,11 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
         // Each cell extracts and sums ONLY the periods it requested
         for (const { key, req } of allRequests) {
             try {
+                // ✅ CRITICAL FIX: Only process accounts that are in THIS batch
+                // Don't finish invocations for accounts not in this batch - they're in other batches!
                 if (!accounts.includes(req.params.account)) {
-                    console.warn(`⚠️  Account ${req.params.account} not in response`);
-                    safeFinishInvocation(req.invocation, 0);
-                    finishedInvocations.add(key);
-                    continue;
+                    console.log(`ℹ️  Account ${req.params.account} not in this batch, skipping...`);
+                    continue;  // Leave invocation open for next batch
                 }
                 
                 const accountBalances = balances[req.params.account] || {};
