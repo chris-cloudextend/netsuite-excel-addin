@@ -413,14 +413,18 @@ async function processBatchQueue() {
     const requests = Array.from(requestQueue.balance.entries());
     requestQueue.balance.clear();
     
-    // Group by filters (batch only identical filter sets)
+    // Group by filters AND period range (critical for correct results)
     const groups = new Map();
     for (const [key, req] of requests) {
+        // CRITICAL FIX: Include period range in grouping key!
+        // Different periods should NOT be batched together
         const filterKey = JSON.stringify({
             subsidiary: req.params.subsidiary,
             department: req.params.department,
             location: req.params.location,
-            class: req.params.classId
+            class: req.params.classId,
+            fromPeriod: req.params.fromPeriod || '',  // Include period in grouping
+            toPeriod: req.params.toPeriod || ''       // Include period in grouping
         });
         
         if (!groups.has(filterKey)) {
@@ -429,23 +433,18 @@ async function processBatchQueue() {
         groups.get(filterKey).push({ key, req });
     }
     
-    console.log(`📦 Grouped into ${groups.size} filter group(s)`);
+    console.log(`📦 Grouped into ${groups.size} filter+period group(s)`);
     
     // Process each group
     for (const [filterKey, groupRequests] of groups.entries()) {
         const filters = JSON.parse(filterKey);
         const accounts = [...new Set(groupRequests.map(r => r.req.params.account))];
         
-        // CRITICAL: Expand period ranges to include ALL months!
-        // If user asks for "Jan 2025" to "Mar 2025", we need to query Jan, Feb, AND Mar
-        const allPeriods = new Set();
-        for (const r of groupRequests) {
-            const expandedPeriods = expandPeriodRange(r.req.params.fromPeriod, r.req.params.toPeriod);
-            for (const period of expandedPeriods) {
-                allPeriods.add(period);
-            }
-        }
-        const periods = [...allPeriods];
+        // Expand period range for THIS specific group
+        // All requests in this group have the SAME period range
+        const firstReq = groupRequests[0].req;
+        const expandedPeriods = expandPeriodRange(firstReq.params.fromPeriod, firstReq.params.toPeriod);
+        const periods = expandedPeriods;
         
         console.log(`  Group: ${accounts.length} accounts × ${periods.length} periods = ${accounts.length * periods.length} data points`);
         
