@@ -1357,37 +1357,23 @@
             
             console.log(`Inserting ${accounts.length} accounts at ${range.address}`);
             
-            // Prepare data with headers
-            const headers = ['Account Number', 'Account Name', 'Account Type'];
+            // Prepare data WITHOUT headers (just the data)
             const dataRows = accounts.map(acc => [
                 acc.accountnumber || '',
                 acc.accountname || '',
                 acc.accttype || ''
             ]);
             
-            const allData = [headers, ...dataRows];
-            
             // Get the range starting at cursor position
             const targetRange = sheet.getRangeByIndexes(
                 range.rowIndex,
                 range.columnIndex,
-                allData.length,
+                dataRows.length,
                 3
             );
             
             // Insert data
-            targetRange.values = allData;
-            
-            // Format header row
-            const headerRange = sheet.getRangeByIndexes(
-                range.rowIndex,
-                range.columnIndex,
-                1,
-                3
-            );
-            headerRange.format.font.bold = true;
-            headerRange.format.fill.color = '#dcfce7';
-            headerRange.format.borders.getItem('EdgeBottom').style = 'Continuous';
+            targetRange.values = dataRows;
             
             // Auto-fit columns
             targetRange.format.autofitColumns();
