@@ -1437,12 +1437,9 @@ def get_transactions():
         
         where_clause = " AND ".join(where_conditions)
         
-        # Determine target subsidiary for consolidation
-        target_sub = subsidiary if subsidiary and subsidiary != '' else 'NULL'
-        
         # SuiteQL query for transaction details
-        # GROUP BY transaction to avoid duplicates when multiple lines hit same account
-        # Use BUILTIN.CONSOLIDATE to show amounts in the correct currency
+        # For drill-down, we show RAW transaction amounts (no consolidation)
+        # This gives users the actual transaction detail, not consolidated view
         if needs_line_join:
             query = f"""
                 SELECT 
@@ -1454,14 +1451,8 @@ def get_transactions():
                     e.entityid AS entity_name,
                     e.id AS entity_id,
                     t.memo,
-                    SUM(BUILTIN.CONSOLIDATE(
-                        COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                        {target_sub}, t.postingperiod, 'DEFAULT'
-                    )) AS debit,
-                    SUM(BUILTIN.CONSOLIDATE(
-                        COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                        {target_sub}, t.postingperiod, 'DEFAULT'
-                    )) AS credit,
+                    {debit_expr} AS debit,
+                    {credit_expr} AS credit,
                     a.acctnumber AS account_number,
                     a.accountsearchdisplayname AS account_name
                 FROM 
@@ -1495,14 +1486,8 @@ def get_transactions():
                     e.entityid AS entity_name,
                     e.id AS entity_id,
                     t.memo,
-                    SUM(BUILTIN.CONSOLIDATE(
-                        COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                        {target_sub}, t.postingperiod, 'DEFAULT'
-                    )) AS debit,
-                    SUM(BUILTIN.CONSOLIDATE(
-                        COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                        {target_sub}, t.postingperiod, 'DEFAULT'
-                    )) AS credit,
+                    SUM(COALESCE(tal.debit, 0)) AS debit,
+                    SUM(COALESCE(tal.credit, 0)) AS credit,
                     a.acctnumber AS account_number,
                     a.accountsearchdisplayname AS account_name
                 FROM 
