@@ -1042,6 +1042,71 @@ def get_department_id(department_name):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/account/<account_number>/type')
+def get_account_type(account_number):
+    """
+    Get account type from account number
+    Used by: NS.GLACCTTYPE(accountNumber)
+    
+    Returns: Account type (Income, Expense, Bank, etc.)
+    """
+    try:
+        query = f"""
+            SELECT accttype AS account_type
+            FROM Account
+            WHERE acctnumber = '{escape_sql(account_number)}'
+        """
+        
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+            
+        if not result or len(result) == 0:
+            return 'Not Found', 404
+            
+        account_type = result[0].get('account_type', '')
+        return account_type, 200, {'Content-Type': 'text/plain'}
+        
+    except Exception as e:
+        print(f"Error in get_account_type: {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/account/<account_number>/parent')
+def get_account_parent(account_number):
+    """
+    Get parent account number from account number
+    Used by: NS.GLAPARENT(accountNumber)
+    
+    Returns: Parent account number (or empty string if no parent)
+    """
+    try:
+        query = f"""
+            SELECT 
+                a.acctnumber,
+                p.acctnumber AS parent_number
+            FROM Account a
+            LEFT JOIN Account p ON a.parent = p.id
+            WHERE a.acctnumber = '{escape_sql(account_number)}'
+        """
+        
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+            
+        if not result or len(result) == 0:
+            return 'Not Found', 404
+            
+        parent_number = result[0].get('parent_number', '')
+        return parent_number or '', 200, {'Content-Type': 'text/plain'}
+        
+    except Exception as e:
+        print(f"Error in get_account_parent: {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/account/<account_number>/name')
 def get_account_name(account_number):
     """
@@ -1052,10 +1117,11 @@ def get_account_name(account_number):
     """
     try:
         # Build SuiteQL query
+        # Use accountsearchdisplaynamecopy to get name WITHOUT account number prefix
         query = f"""
-            SELECT a.acctname AS account_name
-            FROM Account a
-            WHERE a.acctnumber = '{escape_sql(account_number)}'
+            SELECT accountsearchdisplaynamecopy AS account_name
+            FROM Account
+            WHERE acctnumber = '{escape_sql(account_number)}'
         """
         
         result = query_netsuite(query)

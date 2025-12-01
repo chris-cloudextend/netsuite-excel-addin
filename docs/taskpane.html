@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0066CC 0%, #00A3E0 100%);
             color: #333;
             padding: 0;
             height: 100vh;
@@ -25,11 +25,11 @@
             margin: 0 auto;
             background: white;
             min-height: 100vh;
-            box-shadow: 0 0 40px rgba(0,0,0,0.1);
+            box-shadow: 0 0 40px rgba(0, 102, 204, 0.2);
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0066CC 0%, #00A3E0 100%);
             color: white;
             padding: 30px 20px;
             text-align: center;
@@ -84,7 +84,7 @@
         }
 
         .refresh-btn {
-            background: #667eea;
+            background: #0066CC;
             color: white;
             border: none;
             padding: 12px 24px;
@@ -98,7 +98,7 @@
         }
 
         .refresh-btn:hover {
-            background: #5568d3;
+            background: #0052A3;
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
@@ -318,8 +318,8 @@
 
             <!-- ACCOUNT SEARCH SECTION -->
             <div class="refresh-section" style="background: #f0fdf4; border-color: #22c55e;">
-                <h2>🔎 Account Number Search</h2>
-                <p style="color: #15803d; font-size: 13px;">Search NetSuite accounts by prefix. Use * as wildcard.</p>
+                <h2>📥 Enter Accounts</h2>
+                <p style="color: #15803d; font-size: 13px;">Search NetSuite accounts by prefix. Results insert at cursor position. Use * as wildcard.</p>
                 
                 <div style="margin: 15px 0;">
                     <input 
@@ -380,8 +380,56 @@
                 <div class="example">
                     <div class="example-title">Examples</div>
                     <div class="example-code">=NS.GLATITLE(A4)</div>
-                    <div class="example-code">=NS.GLATITLE("4010")</div>
-                    <div class="example-code">=NS.GLATITLE(1100)</div>
+                    <div class="example-code">=NS.GLATITLE("4220")</div>
+                    <div class="example-code">=NS.GLATITLE("15000-1")</div>
+                </div>
+            </div>
+
+            <!-- NS.GLACCTTYPE -->
+            <div class="formula-card">
+                <div class="formula-name">NS.GLACCTTYPE</div>
+                <div class="formula-description">
+                    Get the account type for any account (Income, Expense, Bank, AcctRec, Equity, etc.).
+                </div>
+                <div class="formula-syntax">
+                    =NS.GLACCTTYPE(accountNumber)
+                </div>
+                <div class="parameters">
+                    <div class="param-title">Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">accountNumber</span> - Account number or internal ID (numeric or text)
+                    </div>
+                </div>
+                <div class="example">
+                    <div class="example-title">Examples</div>
+                    <div class="example-code">=NS.GLACCTTYPE("4220")</div>
+                    <div class="example-result">Returns: "Income"</div>
+                    <div class="example-code">=NS.GLACCTTYPE("10010")</div>
+                    <div class="example-result">Returns: "Bank"</div>
+                </div>
+            </div>
+
+            <!-- NS.GLAPARENT -->
+            <div class="formula-card">
+                <div class="formula-name">NS.GLAPARENT</div>
+                <div class="formula-description">
+                    Get the parent account number for any sub-account (returns empty string if no parent).
+                </div>
+                <div class="formula-syntax">
+                    =NS.GLAPARENT(accountNumber)
+                </div>
+                <div class="parameters">
+                    <div class="param-title">Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">accountNumber</span> - Account number or internal ID (numeric or text)
+                    </div>
+                </div>
+                <div class="example">
+                    <div class="example-title">Examples</div>
+                    <div class="example-code">=NS.GLAPARENT("4220")</div>
+                    <div class="example-result">Returns: "4210"</div>
+                    <div class="example-code">=NS.GLAPARENT("4000")</div>
+                    <div class="example-result">Returns: "" (top-level account)</div>
                 </div>
             </div>
 

@@ -19,13 +19,60 @@
       ],
       "options": {
         "stream": false,
-        "cancelable": true
+        "cancelable": true,
+        "volatile": false
+      }
+    },
+    {
+      "id": "GLACCTTYPE",
+      "name": "GLACCTTYPE",
+      "description": "Get account type (Income, Expense, Bank, etc.)",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "string",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "accountNumber",
+          "description": "The account number or ID",
+          "type": "any",
+          "dimensionality": "scalar"
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": true,
+        "volatile": false
+      }
+    },
+    {
+      "id": "GLAPARENT",
+      "name": "GLAPARENT",
+      "description": "Get parent account number",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "string",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "accountNumber",
+          "description": "The account number or ID",
+          "type": "any",
+          "dimensionality": "scalar"
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": true,
+        "volatile": false
       }
     },
     {
       "id": "GLABAL",
       "name": "GLABAL",
-      "description": "Get GL account balance with filters",
+      "description": "Get GL account balance with filters (non-volatile - only recalculates when explicitly refreshed)",
       "helpUrl": "https://www.example.com/help",
       "result": {
         "type": "number",
@@ -81,7 +128,8 @@
       ],
       "options": {
         "stream": true,
-        "cancelable": true
+        "cancelable": true,
+        "volatile": false
       }
     },
     {
@@ -143,7 +191,8 @@
       ],
       "options": {
         "stream": true,
-        "cancelable": true
+        "cancelable": true,
+        "volatile": false
       }
     }
   ]

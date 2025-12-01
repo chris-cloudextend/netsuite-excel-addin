@@ -709,6 +709,8 @@ function delay(ms) {
 // We just register individual functions - Excel adds the NS. prefix automatically!
 if (typeof CustomFunctions !== 'undefined') {
     CustomFunctions.associate('GLATITLE', GLATITLE);
+    CustomFunctions.associate('GLACCTTYPE', GLACCTTYPE);
+    CustomFunctions.associate('GLAPARENT', GLAPARENT);
     CustomFunctions.associate('GLABAL', GLABAL);
     CustomFunctions.associate('GLABUD', GLABUD);
     console.log('✅ Custom functions registered with Excel');
