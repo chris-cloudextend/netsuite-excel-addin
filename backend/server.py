@@ -476,11 +476,11 @@ def batch_balance():
         where_clause = " AND ".join(where_clauses)
         
         # Build query with TransactionLine join if needed
+        # CRITICAL: Don't GROUP BY period - we want TOTAL across all periods!
         if needs_line_join:
             query = f"""
                 SELECT 
                     a.acctnumber,
-                    ap.periodname,
                     a.accttype,
                     CASE 
                         WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome', 'Liability', 
@@ -494,14 +494,13 @@ def batch_balance():
                 INNER JOIN Account a ON tal.account = a.id
                 INNER JOIN AccountingPeriod ap ON t.postingperiod = ap.id
                 WHERE {where_clause}
-                GROUP BY a.acctnumber, ap.periodname, a.accttype
-                ORDER BY a.acctnumber, ap.periodname
+                GROUP BY a.acctnumber, a.accttype
+                ORDER BY a.acctnumber
             """
         else:
             query = f"""
                 SELECT 
                     a.acctnumber,
-                    ap.periodname,
                     a.accttype,
                     CASE 
                         WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome', 'Liability', 
@@ -514,8 +513,8 @@ def batch_balance():
                 INNER JOIN Account a ON tal.account = a.id
                 INNER JOIN AccountingPeriod ap ON t.postingperiod = ap.id
                 WHERE {where_clause}
-                GROUP BY a.acctnumber, ap.periodname, a.accttype
-                ORDER BY a.acctnumber, ap.periodname
+                GROUP BY a.acctnumber, a.accttype
+                ORDER BY a.acctnumber
             """
         
         print(f"DEBUG - Batch query:\n{query}", file=sys.stderr)
@@ -525,28 +524,28 @@ def batch_balance():
         if isinstance(result, dict) and 'error' in result:
             return jsonify(result), 500
         
-        # Organize results by account, then period
+        # Organize results by account
+        # Each account gets ONE total (sum across all periods)
         balances = {}
         for row in result:
             account_num = row['acctnumber']
-            period = row['periodname']
             balance = float(row['balance']) if row['balance'] else 0
             
             if account_num not in balances:
                 balances[account_num] = {}
             
-            if period in balances[account_num]:
-                balances[account_num][period] += balance
-            else:
-                balances[account_num][period] = balance
+            # Store the TOTAL under the first period key
+            # (Frontend expects: balances[account][periods[0]] = total)
+            first_period = periods[0] if periods else 'Total'
+            balances[account_num][first_period] = balance
         
-        # Fill in zeros for missing account/period combinations
+        # Fill in zeros for missing accounts
         for account_num in accounts:
             if account_num not in balances:
                 balances[account_num] = {}
-            for period in periods:
-                if period not in balances[account_num]:
-                    balances[account_num][period] = 0
+            first_period = periods[0] if periods else 'Total'
+            if first_period not in balances[account_num]:
+                balances[account_num][first_period] = 0
         
         return jsonify({'balances': balances})
         
