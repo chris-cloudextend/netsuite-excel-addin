@@ -312,8 +312,12 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
     try {
         // Normalize inputs safely
         account = String(account || '').trim();
-        fromPeriod = String(fromPeriod || '').trim();
-        toPeriod = String(toPeriod || '').trim();
+        
+        // Convert date values to "Mon YYYY" format (supports both dates and period strings)
+        fromPeriod = convertToMonthYear(fromPeriod);
+        toPeriod = convertToMonthYear(toPeriod);
+        
+        // Other parameters as strings
         subsidiary = String(subsidiary || '').trim();
         department = String(department || '').trim();
         location = String(location || '').trim();
