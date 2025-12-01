@@ -508,17 +508,18 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 
                 const accountBalances = balances[req.params.account] || {};
                 let total = 0;
-                const periodList = Object.keys(accountBalances).sort();
                 
-                if (req.params.fromPeriod && req.params.toPeriod) {
-                    // Sum range
-                    for (const period of periodList) {
-                        if (period >= req.params.fromPeriod && period <= req.params.toPeriod) {
-                            total += accountBalances[period] || 0;
-                        }
-                    }
+                // CRITICAL: Backend now returns TOTAL under the FIRST period key
+                // Example: { "Jan 2025": 899910.15 } for Jan-Mar range
+                // No need to filter or sum - just use the first (and only) value!
+                const periodList = Object.keys(accountBalances);
+                
+                if (periodList.length > 0) {
+                    // Backend returns the total under the first period key
+                    // Just use that value directly
+                    total = accountBalances[periodList[0]] || 0;
                 } else if (req.params.fromPeriod) {
-                    // Single period
+                    // Fallback: try the fromPeriod key directly
                     total = accountBalances[req.params.fromPeriod] || 0;
                 }
                 
