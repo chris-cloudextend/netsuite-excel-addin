@@ -2,7 +2,7 @@
 
 export default {
   async fetch(request) {
-    const TUNNEL_URL = 'https://made-interval-charger-stay.trycloudflare.com'; // ← UPDATE THIS!
+    const TUNNEL_URL = 'REPLACE_WITH_NEW_TUNNEL_URL'; // ← UPDATE THIS!
 
     // Excel ALWAYS runs a preflight:
     if (request.method === 'OPTIONS') {

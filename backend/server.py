@@ -54,15 +54,20 @@ auth = OAuth1(
 )
 
 
-def query_netsuite(sql_query):
-    """Execute a SuiteQL query against NetSuite"""
+def query_netsuite(sql_query, timeout=30):
+    """Execute a SuiteQL query against NetSuite
+    
+    Args:
+        sql_query: The SuiteQL query to execute
+        timeout: Request timeout in seconds (default 30, increase for complex BS queries)
+    """
     try:
         response = requests.post(
             suiteql_url,
             auth=auth,
             headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
             json={'q': sql_query},
-            timeout=30
+            timeout=timeout
         )
         
         if response.status_code == 200:
@@ -88,6 +93,30 @@ def escape_sql(text):
     return str(text).replace("'", "''")
 
 
+def is_balance_sheet_account(accttype):
+    """
+    Determine if an account type is a Balance Sheet account.
+    
+    Balance Sheet accounts are cumulative (beginning of time through period end).
+    P&L accounts are for a specific period only.
+    
+    Args:
+        accttype: Account type from NetSuite (e.g., 'Bank', 'Income', 'Expense')
+        
+    Returns:
+        True if Balance Sheet account, False if P&L account
+    """
+    # P&L account types (Income Statement)
+    pl_types = {
+        'Income', 'OthIncome', 'Other Income',
+        'COGS', 'Cost of Goods Sold',
+        'Expense', 'OthExpense', 'Other Expense'
+    }
+    
+    # If it's a P&L type, return False (not balance sheet)
+    return accttype not in pl_types
+
+
 def get_period_dates_from_name(period_name):
     """Convert period name (e.g., 'Mar 2025') to start/end dates for proper date range queries
     Returns tuple: (startdate, enddate) or (None, None) if not found
@@ -100,21 +129,23 @@ def get_period_dates_from_name(period_name):
     
     try:
         query = f"""
-            SELECT startdate, enddate
+            SELECT startdate, enddate, id
             FROM AccountingPeriod
             WHERE periodname = '{escape_sql(period_name)}'
-            AND ROWNUM <= 1
+            AND isquarter = 'F'
+            AND isyear = 'F'
+            AND ROWNUM = 1
         """
         result = query_netsuite(query)
         if isinstance(result, list) and len(result) > 0:
-            dates = (result[0].get('startdate'), result[0].get('enddate'))
+            dates = (result[0].get('startdate'), result[0].get('enddate'), result[0].get('id'))
             # Cache it
             lookup_cache['periods'][cache_key] = dates
             return dates
-        return (None, None)
+        return (None, None, None)
     except Exception as e:
         print(f"Error getting period dates for '{period_name}': {e}", file=sys.stderr)
-        return (None, None)
+        return (None, None, None)
 
 
 def get_months_between_periods(from_period, to_period):
@@ -435,6 +466,294 @@ def health():
     return jsonify({'status': 'healthy', 'account': account_id})
 
 
+def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
+    """
+    Build query for P&L accounts (Income Statement)
+    P&L accounts show activity within the specific period only
+    """
+    accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+    periods_in = ','.join([f"'{escape_sql(p)}'" for p in periods])
+    
+    # Add account and period filters
+    where_clause = f"{base_where} AND a.acctnumber IN ({accounts_in}) AND apf.periodname IN ({periods_in})"
+    
+    # Only include P&L account types
+    where_clause += " AND a.accttype IN ('Income', 'OthIncome', 'COGS', 'Expense', 'OthExpense')"
+    
+    amount_calc = f"""CASE
+                        WHEN subs_count > 1 THEN
+                            TO_NUMBER(
+                                BUILTIN.CONSOLIDATE(
+                                    tal.amount,
+                                    'LEDGER',
+                                    'DEFAULT',
+                                    'DEFAULT',
+                                    {target_sub},
+                                    t.postingperiod,
+                                    'DEFAULT'
+                                )
+                            )
+                        ELSE tal.amount
+                    END""" if target_sub else "tal.amount"
+    
+    if needs_line_join:
+        return f"""
+            SELECT 
+                a.acctnumber,
+                ap.periodname,
+                SUM(cons_amt) AS balance
+            FROM (
+                SELECT
+                    tal.account,
+                    t.postingperiod,
+                    {amount_calc}
+                    * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                FROM TransactionAccountingLine tal
+                    JOIN Transaction t ON t.id = tal.transaction
+                    JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                    JOIN Account a ON a.id = tal.account
+                    JOIN AccountingPeriod apf ON apf.id = t.postingperiod
+                    CROSS JOIN (
+                        SELECT COUNT(*) AS subs_count
+                        FROM Subsidiary
+                        WHERE isinactive = 'F'
+                    ) subs_cte
+                WHERE {where_clause}
+                    AND COALESCE(a.eliminate, 'F') = 'F'
+            ) x
+            JOIN Account a ON a.id = x.account
+            JOIN AccountingPeriod ap ON ap.id = x.postingperiod
+            GROUP BY a.acctnumber, ap.periodname
+            ORDER BY a.acctnumber, ap.periodname
+        """
+    else:
+        return f"""
+            SELECT 
+                a.acctnumber,
+                ap.periodname,
+                SUM(cons_amt) AS balance
+            FROM (
+                SELECT
+                    tal.account,
+                    t.postingperiod,
+                    {amount_calc}
+                    * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                FROM TransactionAccountingLine tal
+                    JOIN Transaction t ON t.id = tal.transaction
+                    JOIN Account a ON a.id = tal.account
+                    JOIN AccountingPeriod apf ON apf.id = t.postingperiod
+                    CROSS JOIN (
+                        SELECT COUNT(*) AS subs_count
+                        FROM Subsidiary
+                        WHERE isinactive = 'F'
+                    ) subs_cte
+                WHERE {where_clause}
+                    AND COALESCE(a.eliminate, 'F') = 'F'
+            ) x
+            JOIN Account a ON a.id = x.account
+            JOIN AccountingPeriod ap ON ap.id = x.postingperiod
+            GROUP BY a.acctnumber, ap.periodname
+            ORDER BY a.acctnumber, ap.periodname
+        """
+
+
+def build_bs_query_single_period(accounts, period_name, period_info, base_where, target_sub, needs_line_join):
+    """
+    Build query for Balance Sheet accounts for a SINGLE period
+    Balance Sheet = CUMULATIVE balance from inception through period end
+    
+    Returns one row per account with the cumulative balance as of period end
+    """
+    from datetime import datetime
+    
+    accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+    
+    enddate = period_info['enddate']
+    period_id = period_info['id']
+    
+    # Parse enddate
+    try:
+        end_date_obj = datetime.strptime(enddate, '%m/%d/%Y')
+        end_date_str = end_date_obj.strftime('%Y-%m-%d')
+    except:
+        end_date_str = enddate
+    
+    # Build WHERE clause
+    where_clause = f"{base_where} AND a.acctnumber IN ({accounts_in})"
+    where_clause += " AND a.accttype NOT IN ('Income', 'OthIncome', 'COGS', 'Expense', 'OthExpense')"
+    # CUMULATIVE: All transactions through period end (no lower bound)
+    where_clause += f" AND t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')"
+    where_clause += " AND tal.accountingbook = 1"
+    
+    amount_calc = f"""CASE
+                        WHEN subs_count > 1 THEN
+                            TO_NUMBER(
+                                BUILTIN.CONSOLIDATE(
+                                    tal.amount,
+                                    'LEDGER',
+                                    'DEFAULT',
+                                    'DEFAULT',
+                                    {target_sub},
+                                    {period_id},
+                                    'DEFAULT'
+                                )
+                            )
+                        ELSE tal.amount
+                    END""" if target_sub else "tal.amount"
+    
+    if needs_line_join:
+        return f"""
+            SELECT 
+                a.acctnumber,
+                SUM({amount_calc}) AS balance
+            FROM TransactionAccountingLine tal
+                JOIN Transaction t ON t.id = tal.transaction
+                JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                JOIN Account a ON a.id = tal.account
+                CROSS JOIN (
+                    SELECT COUNT(*) AS subs_count
+                    FROM Subsidiary
+                    WHERE isinactive = 'F'
+                ) subs_cte
+            WHERE {where_clause}
+                AND COALESCE(a.eliminate, 'F') = 'F'
+            GROUP BY a.acctnumber
+        """
+    else:
+        return f"""
+            SELECT 
+                a.acctnumber,
+                SUM({amount_calc}) AS balance
+            FROM TransactionAccountingLine tal
+                JOIN Transaction t ON t.id = tal.transaction
+                JOIN Account a ON a.id = tal.account
+                CROSS JOIN (
+                    SELECT COUNT(*) AS subs_count
+                    FROM Subsidiary
+                    WHERE isinactive = 'F'
+                ) subs_cte
+            WHERE {where_clause}
+                AND COALESCE(a.eliminate, 'F') = 'F'
+            GROUP BY a.acctnumber
+        """
+
+
+def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_join):
+    """
+    Build query for Balance Sheet accounts (Assets/Liabilities/Equity)
+    Balance Sheet accounts show CUMULATIVE balance from inception through period end
+    
+    Key difference: For each period, use t.trandate <= period.enddate
+    Returns row-based output (like P&L) - one row per account per period
+    
+    Performance optimization: 
+    1. Query ONE period at a time (UNION ALL)
+    2. Limit to fiscal year scope (not ALL history) to avoid timeouts
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    
+    accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+    
+    # Find the earliest period to determine fiscal year start
+    earliest_enddate = min([info['enddate'] for info in period_info.values()])
+    try:
+        earliest_date = datetime.strptime(earliest_enddate, '%m/%d/%Y')
+        # Get fiscal year start (January 1 of that year)
+        fiscal_year_start = datetime(earliest_date.year, 1, 1)
+        min_date_str = fiscal_year_start.strftime('%Y-%m-%d')
+        print(f"DEBUG - BS query using fiscal year start: {min_date_str}", file=sys.stderr)
+    except Exception as e:
+        # Fallback: 1 year back
+        min_date_str = '2024-01-01'
+        print(f"DEBUG - BS query using fallback date: {min_date_str} (error: {e})", file=sys.stderr)
+    
+    union_queries = []
+    
+    for period, info in period_info.items():
+        enddate = info['enddate']
+        period_id = info['id']
+        
+        # Parse enddate
+        try:
+            end_date_obj = datetime.strptime(enddate, '%m/%d/%Y')
+            end_date_str = end_date_obj.strftime('%Y-%m-%d')
+        except:
+            end_date_str = enddate
+        
+        # Build WHERE clause for this period
+        period_where = f"{base_where} AND a.acctnumber IN ({accounts_in})"
+        period_where += " AND a.accttype NOT IN ('Income', 'OthIncome', 'COGS', 'Expense', 'OthExpense')"
+        # CRITICAL: Balance Sheet is CUMULATIVE - ALL transactions through period end (like user's reference)
+        # No lower bound to get true cumulative balance
+        period_where += f" AND t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')"
+        # Add accountingbook filter (like user's reference query)
+        period_where += " AND tal.accountingbook = 1"
+        
+        amount_calc = f"""CASE
+                            WHEN subs_count > 1 THEN
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        {period_id},
+                                        'DEFAULT'
+                                    )
+                                )
+                            ELSE tal.amount
+                        END""" if target_sub else "tal.amount"
+        
+        # Query for THIS period only
+        if needs_line_join:
+            period_query = f"""
+                SELECT 
+                    a.acctnumber,
+                    '{escape_sql(period)}' AS periodname,
+                    SUM({amount_calc}) AS balance
+                FROM TransactionAccountingLine tal
+                    JOIN Transaction t ON t.id = tal.transaction
+                    JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                    JOIN Account a ON a.id = tal.account
+                    CROSS JOIN (
+                        SELECT COUNT(*) AS subs_count
+                        FROM Subsidiary
+                        WHERE isinactive = 'F'
+                    ) subs_cte
+                WHERE {period_where}
+                    AND COALESCE(a.eliminate, 'F') = 'F'
+                GROUP BY a.acctnumber
+            """
+        else:
+            period_query = f"""
+                SELECT 
+                    a.acctnumber,
+                    '{escape_sql(period)}' AS periodname,
+                    SUM({amount_calc}) AS balance
+                FROM TransactionAccountingLine tal
+                    JOIN Transaction t ON t.id = tal.transaction
+                    JOIN Account a ON a.id = tal.account
+                    CROSS JOIN (
+                        SELECT COUNT(*) AS subs_count
+                        FROM Subsidiary
+                        WHERE isinactive = 'F'
+                    ) subs_cte
+                WHERE {period_where}
+                    AND COALESCE(a.eliminate, 'F') = 'F'
+                GROUP BY a.acctnumber
+            """
+        
+        union_queries.append(period_query)
+    
+    # UNION all period queries
+    full_query = " UNION ALL ".join(union_queries)
+    full_query += " ORDER BY acctnumber, periodname"
+    
+    return full_query
+
+
 @app.route('/batch/balance', methods=['POST'])
 def batch_balance():
     """
@@ -513,11 +832,13 @@ def batch_balance():
         if location and location != '':
             where_clauses.append(f"tl.location = {location}")
         
-        # Build periods IN clause
-        periods_in = ','.join([f"'{escape_sql(p)}'" for p in periods])
-        where_clauses.append(f"ap.periodname IN ({periods_in})")
-        
-        where_clause = " AND ".join(where_clauses)
+        # Get period enddates for Balance Sheet calculation
+        # Balance Sheet accounts need cumulative balance (inception through period end)
+        period_info = {}
+        for period in periods:
+            start, end, period_id = get_period_dates_from_name(period)
+            if end and period_id:
+                period_info[period] = {'enddate': end, 'id': period_id}
         
         # Determine target subsidiary for consolidation
         # If subsidiary filter is applied, consolidate to that subsidiary (for Consolidated view)
@@ -525,137 +846,83 @@ def batch_balance():
         if subsidiary and subsidiary != '':
             target_sub = subsidiary
         else:
-            # Default to top-level parent subsidiary (dynamically loaded)
-            # This gives consolidated view across all subsidiaries
-            # Falls back to '1' if parent cannot be determined
             target_sub = default_subsidiary_id or '1'
         
-        # Build query with CORRECT BUILTIN.CONSOLIDATE pattern:
-        # 1. Apply BUILTIN.CONSOLIDATE per-line in a subquery (not in final aggregation)
-        # 2. Use tal.amount (not debit - credit)
-        # 3. Only consolidate if subs_count > 1
-        # 4. Filter out elimination accounts with COALESCE(a.eliminate, 'F') = 'F'
-        # 5. Apply sign convention: multiply by -1 for Income/OthIncome
+        # Build base WHERE clause (without period filter yet)
+        base_where = " AND ".join(where_clauses)
         
-        # For subquery: replace 'ap.' with 'apf.' since that's the alias inside the subquery
-        subquery_where_clause = where_clause.replace('ap.', 'apf.')
+        # ============================================================================
+        # STRATEGY: Run SEPARATE queries for P&L vs Balance Sheet accounts
+        # Then merge the results - this is cleaner and more maintainable
+        # ============================================================================
         
-        # Build the amount calculation based on whether consolidation is needed
-        if target_sub:
-            amount_calc = f"""CASE
-                            WHEN subs_count > 1 THEN
-                                TO_NUMBER(
-                                    BUILTIN.CONSOLIDATE(
-                                        tal.amount,
-                                        'LEDGER',
-                                        'DEFAULT',
-                                        'DEFAULT',
-                                        {target_sub},
-                                        t.postingperiod,
-                                        'DEFAULT'
-                                    )
-                                )
-                            ELSE tal.amount
-                        END"""
-        else:
-            amount_calc = "tal.amount"
+        all_balances = {}
         
-        if needs_line_join:
-            query = f"""
-                SELECT 
-                    a.acctnumber,
-                    ap.periodname,
-                    SUM(cons_amt) AS balance
-                FROM (
-                    SELECT
-                        tal.account,
-                        t.postingperiod,
-                        {amount_calc}
-                        * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
-                    FROM TransactionAccountingLine tal
-                        JOIN Transaction t ON t.id = tal.transaction
-                        JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
-                        JOIN Account a ON a.id = tal.account
-                        JOIN AccountingPeriod apf ON apf.id = t.postingperiod
-                        CROSS JOIN (
-                            SELECT COUNT(*) AS subs_count
-                            FROM Subsidiary
-                            WHERE isinactive = 'F'
-                        ) subs_cte
-                    WHERE {subquery_where_clause}
-                        AND COALESCE(a.eliminate, 'F') = 'F'
-                ) x
-                JOIN Account a ON a.id = x.account
-                JOIN AccountingPeriod ap ON ap.id = x.postingperiod
-                GROUP BY a.acctnumber, ap.periodname
-                ORDER BY a.acctnumber, ap.periodname
-            """
-        else:
-            query = f"""
-                SELECT 
-                    a.acctnumber,
-                    ap.periodname,
-                    SUM(cons_amt) AS balance
-                FROM (
-                    SELECT
-                        tal.account,
-                        t.postingperiod,
-                        {amount_calc}
-                        * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
-                    FROM TransactionAccountingLine tal
-                        JOIN Transaction t ON t.id = tal.transaction
-                        JOIN Account a ON a.id = tal.account
-                        JOIN AccountingPeriod apf ON apf.id = t.postingperiod
-                        CROSS JOIN (
-                            SELECT COUNT(*) AS subs_count
-                            FROM Subsidiary
-                            WHERE isinactive = 'F'
-                        ) subs_cte
-                    WHERE {subquery_where_clause}
-                        AND COALESCE(a.eliminate, 'F') = 'F'
-                ) x
-                JOIN Account a ON a.id = x.account
-                JOIN AccountingPeriod ap ON ap.id = x.postingperiod
-                GROUP BY a.acctnumber, ap.periodname
-                ORDER BY a.acctnumber, ap.periodname
-            """
+        # QUERY 1: P&L Accounts (Income Statement)
+        # Use current period-specific logic (ap.periodname IN periods)
+        pl_query = build_pl_query(accounts, periods, base_where, target_sub, needs_line_join)
         
-        print(f"DEBUG - Batch query:\n{query}", file=sys.stderr)
-        result = query_netsuite(query)
+        print(f"DEBUG - P&L Query:\n{pl_query[:500]}...", file=sys.stderr)
+        pl_result = query_netsuite(pl_query)
         
-        # Check for errors
-        if isinstance(result, dict) and 'error' in result:
-            return jsonify(result), 500
+        if isinstance(pl_result, list):
+            print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
+            for row in pl_result:
+                account_num = row['acctnumber']
+                period_name = row['periodname']
+                balance = float(row['balance']) if row['balance'] else 0
+                
+                if account_num not in all_balances:
+                    all_balances[account_num] = {}
+                all_balances[account_num][period_name] = balance
         
-        print(f"DEBUG - NetSuite returned {len(result)} rows", file=sys.stderr)
-        for i, row in enumerate(result[:5]):  # Print first 5 rows
-            print(f"  Row {i+1}: account={row.get('acctnumber')}, period={row.get('periodname')}, balance={row.get('balance')}", file=sys.stderr)
-        
-        # Organize results by account and period
-        # Return period-by-period breakdown for efficient batching
-        balances = {}
-        for row in result:
-            account_num = row['acctnumber']
-            period_name = row['periodname']
-            balance = float(row['balance']) if row['balance'] else 0
+        # QUERY 2: Balance Sheet Accounts (Assets/Liabilities/Equity)
+        # Use cumulative logic (t.trandate <= period.enddate)
+        # Query each period SEPARATELY (UNION ALL causes 400 errors with complex queries)
+        if period_info:
+            print(f"DEBUG - Querying {len(period_info)} periods for Balance Sheet accounts...", file=sys.stderr)
             
-            if account_num not in balances:
-                balances[account_num] = {}
-            
-            # Store each period's balance separately
-            balances[account_num][period_name] = balance
+            for period, info in period_info.items():
+                try:
+                    # Build query for THIS period only
+                    period_query = build_bs_query_single_period(
+                        accounts, period, info, base_where, target_sub, needs_line_join
+                    )
+                    
+                    print(f"DEBUG - BS Query for {period}:\n{period_query[:300]}...", file=sys.stderr)
+                    
+                    # Balance Sheet queries can be slower - use 90 second timeout
+                    bs_result = query_netsuite(period_query, timeout=90)
+                    
+                    if isinstance(bs_result, list):
+                        print(f"DEBUG - BS returned {len(bs_result)} rows for {period}", file=sys.stderr)
+                        # Process results for this period
+                        for row in bs_result:
+                            account_num = row['acctnumber']
+                            balance = float(row['balance']) if row['balance'] else 0
+                            
+                            if account_num not in all_balances:
+                                all_balances[account_num] = {}
+                            all_balances[account_num][period] = balance
+                    elif isinstance(bs_result, dict) and 'error' in bs_result:
+                        print(f"ERROR - BS query failed for {period}: {bs_result['error']}", file=sys.stderr)
+                    else:
+                        print(f"ERROR - BS query unexpected result type for {period}: {type(bs_result)}", file=sys.stderr)
+                except Exception as e:
+                    print(f"ERROR - BS query exception for {period}: {str(e)}", file=sys.stderr)
         
-        print(f"DEBUG - Final balances structure: {balances}", file=sys.stderr)
+        print(f"DEBUG - Final merged balances: {list(all_balances.keys())}", file=sys.stderr)
         
         # Fill in zeros for missing account/period combinations
         for account_num in accounts:
-            if account_num not in balances:
-                balances[account_num] = {}
+            if account_num not in all_balances:
+                all_balances[account_num] = {}
             for period in periods:
-                if period not in balances[account_num]:
-                    balances[account_num][period] = 0
+                if period not in all_balances[account_num]:
+                    all_balances[account_num][period] = 0
         
-        return jsonify({'balances': balances})
+        # Return merged results
+        return jsonify({'balances': all_balances})
         
     except Exception as e:
         print(f"Error in batch_balance: {str(e)}", file=sys.stderr)
