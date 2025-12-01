@@ -558,7 +558,8 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 
             } catch (error) {
                 console.error('Error distributing result:', error, key);
-                cache.balance.set(key, 0);
+                // ❌ DO NOT cache 0 on error - this causes cached failures!
+                // Just finish the invocation with 0, don't pollute cache
                 safeFinishInvocation(req.invocation, 0);
             }
         }
