@@ -27,6 +27,10 @@ lookup_cache = {
 }
 cache_loaded = False
 
+# Default subsidiary ID (top-level parent) - loaded at startup
+# This is used when no subsidiary is specified by the user
+default_subsidiary_id = None
+
 # Load NetSuite configuration
 try:
     with open('netsuite_config.json', 'r') as f:
@@ -320,8 +324,48 @@ def load_lookup_cache():
         # Fallback to known values
         lookup_cache['subsidiaries'] = {'parent company': '1'}
     
+    # Find top-level parent subsidiary (where parent IS NULL)
+    # This is used as default when no subsidiary is specified
+    load_default_subsidiary()
+    
     cache_loaded = True
     print("✓ Lookup cache loaded!")
+
+
+def load_default_subsidiary():
+    """
+    Find the top-level parent subsidiary (where parent IS NULL)
+    This subsidiary will be used as the default when no subsidiary is specified.
+    For consolidated reporting, this gives the full company view.
+    """
+    global default_subsidiary_id
+    
+    try:
+        # Query for top-level parent (where parent IS NULL and active)
+        # Note: SuiteQL doesn't support LIMIT, use ROWNUM instead
+        parent_query = """
+            SELECT id, name
+            FROM Subsidiary
+            WHERE parent IS NULL
+              AND isinactive = 'F'
+              AND ROWNUM = 1
+            ORDER BY id
+        """
+        result = query_netsuite(parent_query)
+        
+        if isinstance(result, list) and len(result) > 0:
+            default_subsidiary_id = str(result[0]['id'])
+            parent_name = result[0]['name']
+            print(f"✓ Default subsidiary: {parent_name} (ID: {default_subsidiary_id})")
+        else:
+            # Fallback: use '1' if query fails
+            default_subsidiary_id = '1'
+            print(f"⚠ Could not determine parent subsidiary, defaulting to ID=1")
+            
+    except Exception as e:
+        # Fallback: use '1' if query fails
+        default_subsidiary_id = '1'
+        print(f"⚠ Error finding parent subsidiary: {e}, defaulting to ID=1")
 
 
 def convert_name_to_id(dimension_type, value):
@@ -453,9 +497,9 @@ def batch_balance():
         accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
         where_clauses.append(f"a.acctnumber IN ({accounts_in})")
         
-        # Add optional filters
-        if subsidiary and subsidiary != '':
-            where_clauses.append(f"t.subsidiary = {subsidiary}")
+        # IMPORTANT: Do NOT filter by t.subsidiary here!
+        # For consolidation, we let BUILTIN.CONSOLIDATE handle subsidiary filtering
+        # The target_sub parameter tells CONSOLIDATE which subsidiary hierarchy to use
         
         # Need TransactionLine join if filtering by department, class, or location
         needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
@@ -476,52 +520,74 @@ def batch_balance():
         where_clause = " AND ".join(where_clauses)
         
         # Determine target subsidiary for consolidation
-        # If subsidiary filter is applied, consolidate to that subsidiary
-        # If no subsidiary, consolidate to parent (NULL)
-        target_sub = subsidiary if subsidiary and subsidiary != '' else 'NULL'
+        # If subsidiary filter is applied, consolidate to that subsidiary (for Consolidated view)
+        # If no subsidiary, default to top-level parent (dynamically determined at startup)
+        if subsidiary and subsidiary != '':
+            target_sub = subsidiary
+        else:
+            # Default to top-level parent subsidiary (dynamically loaded)
+            # This gives consolidated view across all subsidiaries
+            # Falls back to '1' if parent cannot be determined
+            target_sub = default_subsidiary_id or '1'
         
-        # Build query with TransactionLine join if needed
-        # CRITICAL: GROUP BY period to return breakdown by period
-        # CRITICAL: Use BUILTIN.CONSOLIDATE for proper multi-subsidiary & currency handling
+        # Build query with CORRECT BUILTIN.CONSOLIDATE pattern:
+        # 1. Apply BUILTIN.CONSOLIDATE per-line in a subquery (not in final aggregation)
+        # 2. Use tal.amount (not debit - credit)
+        # 3. Only consolidate if subs_count > 1
+        # 4. Filter out elimination accounts with COALESCE(a.eliminate, 'F') = 'F'
+        # 5. Apply sign convention: multiply by -1 for Income/OthIncome
+        
+        # For subquery: replace 'ap.' with 'apf.' since that's the alias inside the subquery
+        subquery_where_clause = where_clause.replace('ap.', 'apf.')
+        
+        # Build the amount calculation based on whether consolidation is needed
+        if target_sub:
+            amount_calc = f"""CASE
+                            WHEN subs_count > 1 THEN
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        t.postingperiod,
+                                        'DEFAULT'
+                                    )
+                                )
+                            ELSE tal.amount
+                        END"""
+        else:
+            amount_calc = "tal.amount"
+        
         if needs_line_join:
             query = f"""
                 SELECT 
                     a.acctnumber,
                     ap.periodname,
-                    a.accttype,
-                    CASE 
-                        WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
-                            SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            )) - SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            ))
-                        WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
-                            SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            )) - SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            ))
-                        ELSE
-                            SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            )) - SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            ))
-                    END AS balance
-                FROM Transaction t
-                INNER JOIN TransactionLine tl ON t.id = tl.transaction
-                INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction AND tl.id = tal.transactionline
-                INNER JOIN Account a ON tal.account = a.id
-                INNER JOIN AccountingPeriod ap ON t.postingperiod = ap.id
-                WHERE {where_clause}
-                GROUP BY a.acctnumber, ap.periodname, a.accttype
+                    SUM(cons_amt) AS balance
+                FROM (
+                    SELECT
+                        tal.account,
+                        t.postingperiod,
+                        {amount_calc}
+                        * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                    FROM TransactionAccountingLine tal
+                        JOIN Transaction t ON t.id = tal.transaction
+                        JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                        JOIN Account a ON a.id = tal.account
+                        JOIN AccountingPeriod apf ON apf.id = t.postingperiod
+                        CROSS JOIN (
+                            SELECT COUNT(*) AS subs_count
+                            FROM Subsidiary
+                            WHERE isinactive = 'F'
+                        ) subs_cte
+                    WHERE {subquery_where_clause}
+                        AND COALESCE(a.eliminate, 'F') = 'F'
+                ) x
+                JOIN Account a ON a.id = x.account
+                JOIN AccountingPeriod ap ON ap.id = x.postingperiod
+                GROUP BY a.acctnumber, ap.periodname
                 ORDER BY a.acctnumber, ap.periodname
             """
         else:
@@ -529,39 +595,28 @@ def batch_balance():
                 SELECT 
                     a.acctnumber,
                     ap.periodname,
-                    a.accttype,
-                    CASE 
-                        WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
-                            SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            )) - SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            ))
-                        WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
-                            SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            )) - SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            ))
-                        ELSE
-                            SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            )) - SUM(BUILTIN.CONSOLIDATE(
-                                COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            ))
-                    END AS balance
-                FROM Transaction t
-                INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction
-                INNER JOIN Account a ON tal.account = a.id
-                INNER JOIN AccountingPeriod ap ON t.postingperiod = ap.id
-                WHERE {where_clause}
-                GROUP BY a.acctnumber, ap.periodname, a.accttype
+                    SUM(cons_amt) AS balance
+                FROM (
+                    SELECT
+                        tal.account,
+                        t.postingperiod,
+                        {amount_calc}
+                        * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                    FROM TransactionAccountingLine tal
+                        JOIN Transaction t ON t.id = tal.transaction
+                        JOIN Account a ON a.id = tal.account
+                        JOIN AccountingPeriod apf ON apf.id = t.postingperiod
+                        CROSS JOIN (
+                            SELECT COUNT(*) AS subs_count
+                            FROM Subsidiary
+                            WHERE isinactive = 'F'
+                        ) subs_cte
+                    WHERE {subquery_where_clause}
+                        AND COALESCE(a.eliminate, 'F') = 'F'
+                ) x
+                JOIN Account a ON a.id = x.account
+                JOIN AccountingPeriod ap ON ap.id = x.postingperiod
+                GROUP BY a.acctnumber, ap.periodname
                 ORDER BY a.acctnumber, ap.periodname
             """
         
@@ -768,152 +823,140 @@ def get_balance():
         if (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):
             if needs_line_join:
                 query = f"""
-                    SELECT 
-                        a.accttype,
-                        CASE 
-                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                            WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                            ELSE
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                        END AS balance
-                    FROM Transaction t
-                    INNER JOIN TransactionLine tl ON t.id = tl.transaction  
-                    INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction AND tl.id = tal.transactionline
-                    INNER JOIN Account a ON tal.account = a.id
-                    INNER JOIN AccountingPeriod ap ON t.postingperiod = ap.id
-                    WHERE {where_clause}
-                    GROUP BY a.accttype
+                    SELECT SUM(x.cons_amt) AS balance
+                    FROM (
+                        SELECT
+                            CASE
+                                WHEN subs_count > 1 THEN
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
+                                ELSE tal.amount
+                            END
+                            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                        FROM TransactionAccountingLine tal
+                            JOIN Transaction t ON t.id = tal.transaction
+                            JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                            JOIN Account a ON a.id = tal.account
+                            JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                            CROSS JOIN (
+                                SELECT COUNT(*) AS subs_count
+                                FROM Subsidiary
+                                WHERE isinactive = 'F'
+                            ) subs_cte
+                        WHERE {where_clause}
+                            AND COALESCE(a.eliminate, 'F') = 'F'
+                    ) x
                 """
             else:
                 query = f"""
-                    SELECT 
-                        a.accttype,
-                        CASE 
-                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                            WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                            ELSE
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                        END AS balance
-                    FROM Transaction t
-                    INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction
-                    INNER JOIN Account a ON tal.account = a.id
-                    INNER JOIN AccountingPeriod ap ON t.postingperiod = ap.id
-                    WHERE {where_clause}
-                    GROUP BY a.accttype
+                    SELECT SUM(x.cons_amt) AS balance
+                    FROM (
+                        SELECT
+                            CASE
+                                WHEN subs_count > 1 THEN
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
+                                ELSE tal.amount
+                            END
+                            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                        FROM TransactionAccountingLine tal
+                            JOIN Transaction t ON t.id = tal.transaction
+                            JOIN Account a ON a.id = tal.account
+                            JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                            CROSS JOIN (
+                                SELECT COUNT(*) AS subs_count
+                                FROM Subsidiary
+                                WHERE isinactive = 'F'
+                            ) subs_cte
+                        WHERE {where_clause}
+                            AND COALESCE(a.eliminate, 'F') = 'F'
+                    ) x
                 """
         else:
             if needs_line_join:
                 query = f"""
-                    SELECT 
-                        a.accttype,
-                        CASE 
-                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                            WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                            ELSE
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                        END AS balance
-                    FROM Transaction t
-                    INNER JOIN TransactionLine tl ON t.id = tl.transaction
-                    INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction AND tl.id = tal.transactionline
-                    INNER JOIN Account a ON tal.account = a.id
-                    WHERE {where_clause}
-                    GROUP BY a.accttype
+                    SELECT SUM(x.cons_amt) AS balance
+                    FROM (
+                        SELECT
+                            CASE
+                                WHEN subs_count > 1 THEN
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
+                                ELSE tal.amount
+                            END
+                            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                        FROM TransactionAccountingLine tal
+                            JOIN Transaction t ON t.id = tal.transaction
+                            JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                            JOIN Account a ON a.id = tal.account
+                            CROSS JOIN (
+                                SELECT COUNT(*) AS subs_count
+                                FROM Subsidiary
+                                WHERE isinactive = 'F'
+                            ) subs_cte
+                        WHERE {where_clause}
+                            AND COALESCE(a.eliminate, 'F') = 'F'
+                    ) x
                 """
             else:
                 query = f"""
-                    SELECT 
-                        a.accttype,
-                        CASE 
-                            WHEN a.accttype IN ('Income', 'Other Income', 'OthIncome') THEN
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'INCOME', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                            WHEN a.accttype IN ('Liability', 'LongTermLiab', 'OthCurrLiab', 'Equity') THEN
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                            ELSE
-                                SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.debit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                )) - SUM(BUILTIN.CONSOLIDATE(
-                                    COALESCE(tal.credit, 0), 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                    {target_sub}, t.postingperiod, 'DEFAULT'
-                                ))
-                        END AS balance
-                    FROM Transaction t
-                    INNER JOIN TransactionAccountingLine tal ON t.id = tal.transaction
-                    INNER JOIN Account a ON tal.account = a.id
-                    WHERE {where_clause}
-                    GROUP BY a.accttype
+                    SELECT SUM(x.cons_amt) AS balance
+                    FROM (
+                        SELECT
+                            CASE
+                                WHEN subs_count > 1 THEN
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
+                                ELSE tal.amount
+                            END
+                            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                        FROM TransactionAccountingLine tal
+                            JOIN Transaction t ON t.id = tal.transaction
+                            JOIN Account a ON a.id = tal.account
+                            CROSS JOIN (
+                                SELECT COUNT(*) AS subs_count
+                                FROM Subsidiary
+                                WHERE isinactive = 'F'
+                            ) subs_cte
+                        WHERE {where_clause}
+                            AND COALESCE(a.eliminate, 'F') = 'F'
+                    ) x
                 """
         
         print(f"DEBUG - Full query:\n{query}", file=sys.stderr)
@@ -1306,6 +1349,9 @@ def get_all_lookups():
     """
     Get all lookups at once - Subsidiary, Department, Location, Class
     Returns data from the in-memory cache (already loaded at startup)
+    
+    For subsidiaries that are parents (have children), we also add a "(Consolidated)" option
+    which uses BUILTIN.CONSOLIDATE to include parent + all children transactions
     """
     try:
         # Load cache if not already loaded
@@ -1320,13 +1366,50 @@ def get_all_lookups():
             'locations': []
         }
         
-        # Convert cache data (name→id) to list format (id, name)
-        for name, id_val in lookup_cache['subsidiaries'].items():
-            lookups['subsidiaries'].append({
-                'id': id_val,
-                'name': name.title()  # Capitalize first letter
-            })
+        # Get subsidiary hierarchy to identify parents
+        try:
+            hierarchy_query = """
+                SELECT id, name, parent
+                FROM Subsidiary
+                WHERE isinactive = 'F'
+                ORDER BY name
+            """
+            hierarchy_result = query_netsuite(hierarchy_query)
+            
+            # Identify parent subsidiaries (those with children)
+            parent_ids = set()
+            all_subs = {}
+            
+            if isinstance(hierarchy_result, list):
+                for row in hierarchy_result:
+                    sub_id = str(row['id'])
+                    all_subs[sub_id] = row['name']
+                    if row.get('parent'):
+                        parent_ids.add(str(row['parent']))
+                
+                # Add all subsidiaries
+                for sub_id, sub_name in all_subs.items():
+                    lookups['subsidiaries'].append({
+                        'id': sub_id,
+                        'name': sub_name
+                    })
+                    
+                    # If this is a parent, also add "(Consolidated)" version
+                    if sub_id in parent_ids:
+                        lookups['subsidiaries'].append({
+                            'id': sub_id,  # Same ID, BUILTIN.CONSOLIDATE handles consolidation
+                            'name': f"{sub_name} (Consolidated)"
+                        })
+        except Exception as e:
+            print(f"Error loading subsidiary hierarchy: {e}", file=sys.stderr)
+            # Fallback to cache
+            for name, id_val in lookup_cache['subsidiaries'].items():
+                lookups['subsidiaries'].append({
+                    'id': id_val,
+                    'name': name.title()
+                })
         
+        # Convert cache data for other lookups
         for name, id_val in lookup_cache['departments'].items():
             lookups['departments'].append({
                 'id': id_val,
