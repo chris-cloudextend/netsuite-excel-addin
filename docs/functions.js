@@ -89,15 +89,25 @@ function convertToMonthYear(value) {
 }
 
 // ============================================================================
+// UTILITY: Normalize account number to string
+// ============================================================================
+function normalizeAccountNumber(account) {
+    // Excel might pass account as a number (e.g., 15000 instead of "15000-1")
+    // Always convert to string and trim
+    if (account === null || account === undefined) return '';
+    return String(account).trim();
+}
+
+// ============================================================================
 // UTILITY: Generate cache key
 // ============================================================================
 function getCacheKey(type, params) {
     if (type === 'title') {
-        return `title:${params.account}`;
+        return `title:${normalizeAccountNumber(params.account)}`;
     } else if (type === 'balance' || type === 'budget') {
         return JSON.stringify({
             type,
-            account: params.account,
+            account: normalizeAccountNumber(params.account),
             fromPeriod: params.fromPeriod,
             toPeriod: params.toPeriod,
             subsidiary: params.subsidiary || '',
@@ -121,7 +131,7 @@ function getCacheKey(type, params) {
  * @cancelable
  */
 async function GLATITLE(accountNumber, invocation) {
-    const account = String(accountNumber || '').trim();
+    const account = normalizeAccountNumber(accountNumber);
     if (!account) return '#N/A';
     
     const cacheKey = getCacheKey('title', { account });
@@ -228,8 +238,8 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
             const locRaw        = businessArgs[5];
             const clsRaw        = businessArgs[6];
             
-            // Normalize business parameters
-            account = String(accountRaw || '').trim();
+            // Normalize business parameters (CRITICAL: Keep account as string, even for "15000-1")
+            account = normalizeAccountNumber(accountRaw);
             
             // Convert date values to "Mon YYYY" format (supports both dates and period strings)
             fromPeriod = convertToMonthYear(fromRaw);
@@ -311,7 +321,7 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
     
     try {
         // Normalize inputs safely
-        account = String(account || '').trim();
+        account = normalizeAccountNumber(account);
         
         // Convert date values to "Mon YYYY" format (supports both dates and period strings)
         fromPeriod = convertToMonthYear(fromPeriod);
