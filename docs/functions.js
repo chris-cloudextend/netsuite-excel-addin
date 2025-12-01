@@ -45,6 +45,50 @@ const RETRY_DELAY = 2000;          // Wait 2s before retrying 429 errors
 const MAX_RETRIES = 2;             // Retry 429 errors up to 2 times
 
 // ============================================================================
+// UTILITY: Convert date or date serial to "Mon YYYY" format
+// ============================================================================
+function convertToMonthYear(value) {
+    // If empty, return empty string
+    if (!value || value === '') return '';
+    
+    // If already in "Mon YYYY" format, return as-is
+    if (typeof value === 'string' && /^[A-Za-z]{3}\s+\d{4}$/.test(value.trim())) {
+        return value.trim();
+    }
+    
+    let date;
+    
+    // Handle different input types
+    if (typeof value === 'number') {
+        // Excel date serial number (days since 1/1/1900)
+        // Convert to JavaScript Date
+        const excelEpoch = new Date(1899, 11, 30); // Excel's epoch is Dec 30, 1899
+        date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+    } else if (value instanceof Date) {
+        // Already a Date object
+        date = value;
+    } else if (typeof value === 'string') {
+        // Try to parse as date string
+        date = new Date(value);
+        if (isNaN(date.getTime())) {
+            // Not a valid date, return original
+            return String(value);
+        }
+    } else {
+        // Unknown type, return original
+        return String(value);
+    }
+    
+    // Convert Date to "Mon YYYY" format
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+    
+    return `${month} ${year}`;
+}
+
+// ============================================================================
 // UTILITY: Generate cache key
 // ============================================================================
 function getCacheKey(type, params) {
@@ -172,26 +216,30 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
             return;
         }
         
-        // SAFE parameter extraction: slice first 7 positions (business params only)
-        // This works regardless of how many args Excel actually passed
-        const businessArgs = args.slice(0, 7);
-        
-        const accountRaw    = businessArgs[0];
-        const fromRaw       = businessArgs[1];
-        const toRaw         = businessArgs[2];
-        const subRaw        = businessArgs[3];
-        const deptRaw       = businessArgs[4];
-        const locRaw        = businessArgs[5];
-        const clsRaw        = businessArgs[6];
-        
-        // Normalize ONLY business parameters (never the invocation!)
-        account = String(accountRaw || '').trim();
-        fromPeriod = String(fromRaw || '').trim();
-        toPeriod = String(toRaw || '').trim();
-        subsidiary = String(subRaw || '').trim();
-        department = String(deptRaw || '').trim();
-        location = String(locRaw || '').trim();
-        classId = String(clsRaw || '').trim();
+            // SAFE parameter extraction: slice first 7 positions (business params only)
+            // This works regardless of how many args Excel actually passed
+            const businessArgs = args.slice(0, 7);
+            
+            const accountRaw    = businessArgs[0];
+            const fromRaw       = businessArgs[1];
+            const toRaw         = businessArgs[2];
+            const subRaw        = businessArgs[3];
+            const deptRaw       = businessArgs[4];
+            const locRaw        = businessArgs[5];
+            const clsRaw        = businessArgs[6];
+            
+            // Normalize business parameters
+            account = String(accountRaw || '').trim();
+            
+            // Convert date values to "Mon YYYY" format (supports both dates and period strings)
+            fromPeriod = convertToMonthYear(fromRaw);
+            toPeriod = convertToMonthYear(toRaw);
+            
+            // Other parameters as strings
+            subsidiary = String(subRaw || '').trim();
+            department = String(deptRaw || '').trim();
+            location = String(locRaw || '').trim();
+            classId = String(clsRaw || '').trim();
         
             if (!account) {
                 safeFinishInvocation(realInvocation, 0);
