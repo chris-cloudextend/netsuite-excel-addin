@@ -559,6 +559,12 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 // Cache the result and finish the invocation
                 cache.balance.set(key, total);
                 console.log(`💾 Cached ${req.params.account} (${cellPeriods.join(', ')}): ${total}`);
+                console.log(`   → Finishing invocation for ${req.params.account}:`, {
+                    hasInvocation: !!req.invocation,
+                    hasSetResult: !!(req.invocation && req.invocation.setResult),
+                    hasClose: !!(req.invocation && req.invocation.close),
+                    total: total
+                });
                 safeFinishInvocation(req.invocation, total);
                 finishedInvocations.add(key);  // Mark as finished
                 
@@ -655,20 +661,27 @@ function expandPeriodRange(fromPeriod, toPeriod) {
 // ============================================================================
 function safeFinishInvocation(invocation, value) {
     if (!invocation) {
+        console.warn("⚠️  safeFinishInvocation called with null invocation");
         return;
     }
     
     try {
         if (typeof invocation.setResult === "function") {
+            console.log(`  ✅ setResult(${value})`);
             invocation.setResult(value);
+        } else {
+            console.warn("  ⚠️  invocation.setResult is not a function!");
         }
         
         // Only call close if it exists (Mac Excel uses preview invocations without close)
         if (typeof invocation.close === "function") {
+            console.log(`  ✅ close()`);
             invocation.close();
+        } else {
+            console.log("  ℹ️  No close() method (preview invocation)");
         }
     } catch (e) {
-        console.error("Error finishing invocation:", e);
+        console.error("❌ Error finishing invocation:", e);
     }
 }
 
