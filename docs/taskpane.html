@@ -1303,8 +1303,8 @@
         async function createAccountSearchSheet(context, accounts, pattern) {
             // INSERT AT CURSOR POSITION (not new sheet!)
             const sheet = context.workbook.worksheets.getActiveWorksheet();
-            const range = sheet.getSelectedRange();
-            range.load('address');
+            const range = context.workbook.getSelectedRange();
+            range.load(['address', 'rowIndex', 'columnIndex']);
             await context.sync();
             
             console.log(`Inserting ${accounts.length} accounts at ${range.address}`);
