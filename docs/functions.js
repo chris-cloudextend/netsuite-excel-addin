@@ -170,15 +170,14 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         }
         
         if (!realInvocation) {
-            console.error('❌ No full streaming invocation object found in arguments!');
-            console.error('   This means Excel did not activate streaming mode for this function.');
+            console.warn('⚠️  No full streaming invocation (with close) found');
             
-            // FALLBACK: Maybe Excel passed invocation with setResult only (no close check)
-            // Let's try to find ANY object with setResult
+            // FALLBACK: Excel on Mac sometimes sends preview invocation (setResult only, no close)
+            // This is OK - we can still use setResult, Excel will handle completion
             for (let i = args.length - 1; i >= 0; i--) {
                 const candidate = args[i];
                 if (candidate && typeof candidate === 'object' && typeof candidate.setResult === 'function') {
-                    console.warn('⚠️  Found invocation with setResult only (may not have close)');
+                    console.warn('✅ Found preview invocation (setResult only) - will work around missing close()');
                     realInvocation = candidate;
                     args.splice(i, 1);
                     break;
@@ -186,7 +185,7 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
             }
             
             if (!realInvocation) {
-                console.error('❌ No invocation object at all! Giving up.');
+                console.error('❌ No invocation object at all! Excel did not pass invocation parameter.');
                 return;
             }
         }
