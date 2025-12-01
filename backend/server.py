@@ -466,6 +466,89 @@ def health():
     return jsonify({'status': 'healthy', 'account': account_id})
 
 
+@app.route('/accounts/search', methods=['GET'])
+def search_accounts():
+    """
+    Search for accounts by partial account number
+    
+    Query params:
+        - pattern: Search pattern (e.g., "4*", "42*", "*")
+        - active_only: Filter to active accounts only (default: true)
+    
+    Returns: List of matching accounts with number, name, ID, and type
+    
+    Example:
+        GET /accounts/search?pattern=4*
+        Returns all accounts starting with "4"
+    """
+    try:
+        pattern = request.args.get('pattern', '')
+        active_only = request.args.get('active_only', 'true').lower() == 'true'
+        
+        if not pattern:
+            return jsonify({'error': 'Pattern parameter is required'}), 400
+        
+        # Convert Excel wildcard (*) to SQL wildcard (%)
+        sql_pattern = pattern.replace('*', '%')
+        
+        # Escape any existing special characters
+        sql_pattern = escape_sql(sql_pattern)
+        
+        # Build WHERE clause
+        where_conditions = []
+        
+        # Filter by pattern
+        where_conditions.append(f"acctnumber LIKE '{sql_pattern}'")
+        
+        # Filter by active status
+        if active_only:
+            where_conditions.append("isinactive = 'F'")
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        # Build SuiteQL query
+        query = f"""
+            SELECT 
+                id,
+                acctnumber,
+                accountsearchdisplayname AS accountname,
+                accttype
+            FROM 
+                Account
+            WHERE 
+                {where_clause}
+            ORDER BY 
+                acctnumber
+        """
+        
+        print(f"DEBUG - Account search query: {query}", file=sys.stderr)
+        
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify(result), 500
+        
+        # Format response
+        accounts = []
+        for row in result:
+            accounts.append({
+                'id': row.get('id'),
+                'accountnumber': row.get('acctnumber'),
+                'accountname': row.get('accountname'),
+                'accttype': row.get('accttype')
+            })
+        
+        return jsonify({
+            'pattern': pattern,
+            'count': len(accounts),
+            'accounts': accounts
+        })
+        
+    except Exception as e:
+        print(f"Error in search_accounts: {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
 def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
     """
     Build query for P&L accounts (Income Statement)

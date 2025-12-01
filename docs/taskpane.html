@@ -316,6 +316,40 @@
                 </details>
             </div>
 
+            <!-- ACCOUNT SEARCH SECTION -->
+            <div class="refresh-section" style="background: #f0fdf4; border-color: #22c55e;">
+                <h2>🔎 Account Number Search</h2>
+                <p style="color: #15803d; font-size: 13px;">Search NetSuite accounts by prefix. Use * as wildcard.</p>
+                
+                <div style="margin: 15px 0;">
+                    <input 
+                        type="text" 
+                        id="accountSearchInput" 
+                        placeholder="e.g., 4*, 42*, or * for all"
+                        style="width: 100%; padding: 10px; border: 2px solid #bbf7d0; border-radius: 6px; font-size: 14px; font-family: 'Segoe UI', sans-serif;"
+                        onkeypress="if(event.key === 'Enter') searchAccounts()"
+                    />
+                </div>
+                
+                <button 
+                    class="refresh-btn" 
+                    style="background: #22c55e; width: 100%;" 
+                    onmouseover="this.style.background='#16a34a'" 
+                    onmouseout="this.style.background='#22c55e'" 
+                    onclick="searchAccounts()">
+                    Search Accounts
+                </button>
+                
+                <div class="refresh-status" id="searchStatus"></div>
+                
+                <p style="font-size: 11px; color: #15803d; margin: 8px 0;">
+                    <strong>Examples:</strong><br>
+                    • <code>4*</code> - All accounts starting with 4<br>
+                    • <code>42*</code> - All accounts starting with 42<br>
+                    • <code>*</code> - All active accounts
+                </p>
+            </div>
+
             <!-- DRILL-DOWN SECTION -->
             <div class="refresh-section" style="background: #e0f2fe; border-color: #0ea5e9;">
                 <h2>🔍 Transaction Drill-Down</h2>
@@ -1187,6 +1221,152 @@
         // ==========================================================================
         // CONTEXT MENU HANDLER (called when right-clicking and selecting "View Transactions")
         // ==========================================================================
+        async function searchAccounts() {
+            const statusEl = document.getElementById('searchStatus');
+            const inputEl = document.getElementById('accountSearchInput');
+            const btn = event.target;
+            
+            try {
+                const pattern = inputEl.value.trim();
+                
+                if (!pattern) {
+                    statusEl.textContent = '⚠ Please enter a search pattern (e.g., 4* or 42*)';
+                    statusEl.style.color = '#dc2626';
+                    setTimeout(() => { statusEl.textContent = ''; }, 3000);
+                    return;
+                }
+                
+                btn.disabled = true;
+                btn.textContent = 'Searching...';
+                statusEl.textContent = `Searching NetSuite for "${pattern}"...`;
+                statusEl.style.color = '#0284c7';
+                
+                console.log('=== ACCOUNT SEARCH START ===');
+                console.log('Pattern:', pattern);
+                
+                // Call backend API
+                const url = `${SERVER_URL}/accounts/search?pattern=${encodeURIComponent(pattern)}`;
+                console.log('API URL:', url);
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API error:', errorText);
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Search results:', data);
+                
+                const accounts = data.accounts || [];
+                
+                if (accounts.length === 0) {
+                    statusEl.textContent = `✓ No accounts found matching "${pattern}"`;
+                    statusEl.style.color = '#059669';
+                    setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                    return;
+                }
+                
+                console.log(`Found ${accounts.length} accounts, creating sheet...`);
+                
+                // Create results sheet
+                await Excel.run(async (context) => {
+                    await createAccountSearchSheet(context, accounts, pattern);
+                    
+                    statusEl.textContent = `✓ Found ${accounts.length} account(s)! Created "AccountSearch" sheet.`;
+                    statusEl.style.color = '#059669';
+                    
+                    setTimeout(() => {
+                        statusEl.textContent = '';
+                    }, 5000);
+                });
+                
+                console.log('=== ACCOUNT SEARCH COMPLETE ===');
+                
+            } catch (error) {
+                console.error('=== ACCOUNT SEARCH ERROR ===');
+                console.error('Error:', error);
+                
+                statusEl.textContent = `✗ Error: ${error.message}`;
+                statusEl.style.color = '#dc2626';
+                
+                setTimeout(() => {
+                    statusEl.textContent = '';
+                }, 8000);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Search Accounts';
+            }
+        }
+
+        async function createAccountSearchSheet(context, accounts, pattern) {
+            // Create or clear the sheet
+            const sheetName = 'AccountSearch';
+            
+            let searchSheet;
+            try {
+                searchSheet = context.workbook.worksheets.getItem(sheetName);
+                searchSheet.delete();
+            } catch (e) {
+                // Sheet doesn't exist, that's fine
+            }
+            
+            searchSheet = context.workbook.worksheets.add(sheetName);
+            searchSheet.activate();
+            
+            await context.sync();
+            
+            // Add title
+            searchSheet.getRange('A1').values = [['ACCOUNT NUMBER SEARCH RESULTS']];
+            searchSheet.getRange('A1').format.font.bold = true;
+            searchSheet.getRange('A1').format.font.size = 14;
+            searchSheet.getRange('A1').format.font.color = '#059669';
+            
+            searchSheet.getRange('A2').values = [[`Pattern: ${pattern} | Count: ${accounts.length}`]];
+            searchSheet.getRange('A2').format.font.bold = true;
+            
+            // Add headers
+            const headers = [['Account Number', 'Account Name', 'Account Type', 'Internal ID']];
+            searchSheet.getRange('A4:D4').values = headers;
+            searchSheet.getRange('A4:D4').format.font.bold = true;
+            searchSheet.getRange('A4:D4').format.fill.color = '#dcfce7';
+            searchSheet.getRange('A4:D4').format.borders.getItem('EdgeBottom').style = 'Continuous';
+            searchSheet.getRange('A4:D4').format.borders.getItem('EdgeBottom').weight = 'Medium';
+            
+            // Add data
+            const dataRows = accounts.map(acc => [
+                acc.accountnumber || '',
+                acc.accountname || '',
+                acc.accttype || '',
+                acc.id || ''
+            ]);
+            
+            const dataRange = searchSheet.getRangeByIndexes(4, 0, dataRows.length, 4);
+            dataRange.values = dataRows;
+            
+            // Format columns
+            searchSheet.getRange('A:A').format.columnWidth = 120; // Account Number
+            searchSheet.getRange('B:B').format.columnWidth = 350; // Account Name
+            searchSheet.getRange('C:C').format.columnWidth = 120; // Account Type
+            searchSheet.getRange('D:D').format.columnWidth = 100; // Internal ID
+            
+            // Freeze header rows
+            searchSheet.freezePanes.freezeRows(4);
+            
+            // Add alternating row colors
+            for (let i = 0; i < dataRows.length; i++) {
+                if (i % 2 === 1) {
+                    const row = searchSheet.getRangeByIndexes(4 + i, 0, 1, 4);
+                    row.format.fill.color = '#f0fdf4';
+                }
+            }
+            
+            await context.sync();
+            
+            console.log(`Created AccountSearch sheet with ${accounts.length} accounts`);
+        }
+
         async function drillDownFromContextMenu(event) {
             console.log('=== CONTEXT MENU DRILL-DOWN START ===');
             
