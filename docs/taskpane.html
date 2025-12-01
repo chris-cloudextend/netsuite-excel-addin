@@ -1274,7 +1274,7 @@
                 await Excel.run(async (context) => {
                     await createAccountSearchSheet(context, accounts, pattern);
                     
-                    statusEl.textContent = `✓ Found ${accounts.length} account(s)! Created "AccountSearch" sheet.`;
+                    statusEl.textContent = `✓ Inserted ${accounts.length} account(s) at cursor position!`;
                     statusEl.style.color = '#059669';
                     
                     setTimeout(() => {
@@ -1301,70 +1301,52 @@
         }
 
         async function createAccountSearchSheet(context, accounts, pattern) {
-            // Create or clear the sheet
-            const sheetName = 'AccountSearch';
-            
-            let searchSheet;
-            try {
-                searchSheet = context.workbook.worksheets.getItem(sheetName);
-                searchSheet.delete();
-            } catch (e) {
-                // Sheet doesn't exist, that's fine
-            }
-            
-            searchSheet = context.workbook.worksheets.add(sheetName);
-            searchSheet.activate();
-            
+            // INSERT AT CURSOR POSITION (not new sheet!)
+            const sheet = context.workbook.worksheets.getActiveWorksheet();
+            const range = sheet.getSelectedRange();
+            range.load('address');
             await context.sync();
             
-            // Add title
-            searchSheet.getRange('A1').values = [['ACCOUNT NUMBER SEARCH RESULTS']];
-            searchSheet.getRange('A1').format.font.bold = true;
-            searchSheet.getRange('A1').format.font.size = 14;
-            searchSheet.getRange('A1').format.font.color = '#059669';
+            console.log(`Inserting ${accounts.length} accounts at ${range.address}`);
             
-            searchSheet.getRange('A2').values = [[`Pattern: ${pattern} | Count: ${accounts.length}`]];
-            searchSheet.getRange('A2').format.font.bold = true;
-            
-            // Add headers
-            const headers = [['Account Number', 'Account Name', 'Account Type', 'Internal ID']];
-            searchSheet.getRange('A4:D4').values = headers;
-            searchSheet.getRange('A4:D4').format.font.bold = true;
-            searchSheet.getRange('A4:D4').format.fill.color = '#dcfce7';
-            searchSheet.getRange('A4:D4').format.borders.getItem('EdgeBottom').style = 'Continuous';
-            searchSheet.getRange('A4:D4').format.borders.getItem('EdgeBottom').weight = 'Medium';
-            
-            // Add data
+            // Prepare data with headers
+            const headers = ['Account Number', 'Account Name', 'Account Type'];
             const dataRows = accounts.map(acc => [
                 acc.accountnumber || '',
                 acc.accountname || '',
-                acc.accttype || '',
-                acc.id || ''
+                acc.accttype || ''
             ]);
             
-            const dataRange = searchSheet.getRangeByIndexes(4, 0, dataRows.length, 4);
-            dataRange.values = dataRows;
+            const allData = [headers, ...dataRows];
             
-            // Format columns
-            searchSheet.getRange('A:A').format.columnWidth = 120; // Account Number
-            searchSheet.getRange('B:B').format.columnWidth = 350; // Account Name
-            searchSheet.getRange('C:C').format.columnWidth = 120; // Account Type
-            searchSheet.getRange('D:D').format.columnWidth = 100; // Internal ID
+            // Get the range starting at cursor position
+            const targetRange = sheet.getRangeByIndexes(
+                range.rowIndex,
+                range.columnIndex,
+                allData.length,
+                3
+            );
             
-            // Freeze header rows
-            searchSheet.freezePanes.freezeRows(4);
+            // Insert data
+            targetRange.values = allData;
             
-            // Add alternating row colors
-            for (let i = 0; i < dataRows.length; i++) {
-                if (i % 2 === 1) {
-                    const row = searchSheet.getRangeByIndexes(4 + i, 0, 1, 4);
-                    row.format.fill.color = '#f0fdf4';
-                }
-            }
+            // Format header row
+            const headerRange = sheet.getRangeByIndexes(
+                range.rowIndex,
+                range.columnIndex,
+                1,
+                3
+            );
+            headerRange.format.font.bold = true;
+            headerRange.format.fill.color = '#dcfce7';
+            headerRange.format.borders.getItem('EdgeBottom').style = 'Continuous';
+            
+            // Auto-fit columns
+            targetRange.format.autofitColumns();
             
             await context.sync();
             
-            console.log(`Created AccountSearch sheet with ${accounts.length} accounts`);
+            console.log(`Inserted ${accounts.length} accounts at cursor position`);
         }
 
         async function drillDownFromContextMenu(event) {
