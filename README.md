@@ -1,136 +1,124 @@
-# NetSuite Excel Formulas Add-in
+# NetSuite Excel Formulas
 
-Real-time NetSuite SuiteQL data directly in Excel via custom formulas.
+Excel add-in that provides custom formulas for querying NetSuite data directly in Excel.
 
-## 🎯 Features
+## Features
 
-- **NS.GLATITLE** - Get account names
-- **NS.GLABAL** - Get GL balances with optional filters (subsidiary, department, location, class)
-- **NS.GLABUD** - Get budget amounts with optional filters
-- **Intelligent batching** - Multiple formulas consolidated into single efficient queries
-- **Manual refresh** - Task pane button to update all formulas with latest NetSuite data
-- **Transaction drill-down** - Click any balance cell to see underlying transactions with NetSuite hyperlinks
+- **NS.GLATITLE(account)** - Get GL account name
+- **NS.GLABAL(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])** - Get GL account balance
+- **NS.GLABUD(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])** - Get GL account budget
 
----
+## Architecture
 
-## 📁 Project Structure
+- **Frontend**: Excel add-in (Office.js) hosted on GitHub Pages
+- **Backend**: Flask server for NetSuite OAuth & SuiteQL queries
+- **Proxy**: Cloudflare Worker for stable URL (no manifest updates needed)
+- **Deployment**: 
+  - Add-in files: GitHub Pages (`docs/` folder)
+  - Backend: Local Flask server exposed via Cloudflare Tunnel
 
-```
-├── backend/                    # Flask backend server
-│   ├── server.py              # Main API (OAuth + SuiteQL)
-│   ├── netsuite_config.json   # NetSuite credentials (not in git)
-│   └── requirements.txt       # Python dependencies
-│
-├── docs/                       # GitHub Pages (public hosting)
-│   ├── taskpane.html          # Task pane UI with refresh button
-│   ├── functions.js           # Custom functions implementation
-│   ├── functions.json         # Function metadata
-│   └── icon-*.png             # Add-in icons
-│
-└── excel-addin/
-    └── manifest-claude.xml    # Excel add-in manifest (PRODUCTION)
-```
+## Quick Start
 
----
+### 1. Backend Setup
 
-## 🚀 Quick Start
-
-### 1. Start Backend Server
 ```bash
 cd backend
+pip3 install -r requirements.txt
+
+# Edit netsuite_config.json with your credentials
 python3 server.py
 ```
 
-### 2. Start Cloudflare Tunnel
+### 2. Cloudflare Tunnel
+
 ```bash
 cloudflared tunnel --url http://localhost:5002
-```
-Copy the tunnel URL and update `docs/functions.js`
-
-### 3. Deploy to Excel
-- Upload `excel-addin/manifest-claude.xml` to Microsoft 365 Admin Center
-- Use Centralized Deployment
-
----
-
-## 💼 Usage in Excel
-
-### Insert Formulas:
-```excel
-=NS.GLATITLE(4010)
-=NS.GLABAL("4010", "Jan 2025", "Dec 2025")
-=NS.GLABAL("4010", "Jan 2025", "Dec 2025", "", "13", "", "")
-=NS.GLABUD("5000", "Jan 2025", "Dec 2025")
+# Update TUNNEL_URL in Cloudflare Worker with the new tunnel URL
 ```
 
-### Refresh Data:
-1. Data tab → CloudExtend → "NetSuite Formulas"
-2. Click "Refresh All Data" button
+### 3. Excel Installation
 
-### Drill Down to Transactions:
-1. Select any cell with an **NS.GLABAL** formula
-2. Data tab → CloudExtend → "NetSuite Formulas"
-3. Click "View Transactions" button
-4. New sheet created with transaction details and **clickable NetSuite links**!
+1. Copy `excel-addin/manifest-claude.xml` to:
+   - Mac: `~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/`
+   - Windows: `%USERPROFILE%\AppData\Local\Microsoft\Office\16.0\Wef\`
 
----
+2. In Excel: Insert → My Add-ins → Shared Folder
+3. Select the manifest file
 
-## 🔧 Configuration
+## Configuration
 
-### NetSuite Credentials
-Edit `backend/netsuite_config.json`:
+### NetSuite Account Setup
+
+Create `backend/netsuite_config.json`:
+
 ```json
 {
   "account_id": "YOUR_ACCOUNT_ID",
   "consumer_key": "YOUR_CONSUMER_KEY",
   "consumer_secret": "YOUR_CONSUMER_SECRET",
   "token_id": "YOUR_TOKEN_ID",
-  "token_secret": "YOUR_TOKEN_SECRET"
+  "token_secret": "YOUR_TOKEN_SECRET",
+  "realm": "YOUR_ACCOUNT_ID"
 }
 ```
 
-### Tunnel URL
-When you restart the Cloudflare tunnel, update `docs/functions.js`:
-```javascript
-const SERVER_URL = 'https://your-new-tunnel-url.trycloudflare.com';
+### Cloudflare Worker
+
+The Cloudflare Worker at `https://netsuite-proxy.chris-corcoran.workers.dev/` proxies requests to your Cloudflare Tunnel, providing a stable URL so the manifest doesn't need to be updated when the tunnel restarts.
+
+Update the `TUNNEL_URL` variable in the worker code when you restart your tunnel.
+
+## Development
+
+### File Structure
+
+```
+├── backend/
+│   ├── server.py              # Flask backend
+│   ├── requirements.txt       # Python dependencies
+│   └── netsuite_config.json   # NetSuite credentials (gitignored)
+├── docs/                      # GitHub Pages (add-in files)
+│   ├── functions.js           # Custom function implementations
+│   ├── functions.json         # Function metadata
+│   ├── functions.html         # Functions runtime page
+│   ├── taskpane.html          # Task pane UI
+│   └── commands.html          # Ribbon commands
+├── excel-addin/
+│   └── manifest-claude.xml    # Add-in manifest
+└── clear-excel-cache.sh       # Utility to clear Excel cache
 ```
 
----
+### Making Changes
 
-## 📊 Architecture
+1. Edit files in `docs/` folder
+2. Commit and push to GitHub
+3. Wait 2-3 minutes for GitHub Pages to deploy
+4. Bump manifest version to force Excel to reload:
+   - Update `<Version>` in `manifest-claude.xml`
+   - Update `?v=XXXX` in all URLs
+5. Reload add-in in Excel
 
+## Troubleshooting
+
+### Clear Excel Cache
+
+```bash
+./clear-excel-cache.sh
 ```
-Excel Cell (=NS.GLABAL(...))
-    ↓
-GitHub Pages (functions.js)
-    ↓
-Cloudflare Tunnel (HTTPS)
-    ↓
-Flask Backend (localhost:5002)
-    ↓
-NetSuite SuiteQL API (OAuth 1.0a)
+
+Or manually:
+```bash
+rm -rf ~/Library/Containers/com.microsoft.Excel/Data/Library/Application\ Support/Microsoft/Office/16.0/Wef/
 ```
 
----
+### Check Backend Logs
 
-## 🎨 Current Configuration
+Backend logs to console. Check for errors related to NetSuite authentication or SuiteQL queries.
 
-- **Manifest Version:** 1.0.0.9
-- **Cache-Busting:** ?v=1009
-- **Backend:** localhost:5002
-- **Tunnel:** https://load-scanner-nathan-targeted.trycloudflare.com
-- **GitHub Pages:** https://chris-cloudextend.github.io/netsuite-excel-addin/
+### Verify Tunnel
 
----
+Visit your Cloudflare Worker URL to ensure the tunnel is running and responding.
 
-## 📚 Documentation
+## License
 
-See `PROJECT-STRUCTURE.md` for detailed project organization and deployment instructions.
-
----
-
-## 🔒 Security Note
-
-Never commit `backend/netsuite_config.json` to git - it contains sensitive credentials.
-Use `netsuite_config.template.json` as a template.
-
+Private project - All rights reserved

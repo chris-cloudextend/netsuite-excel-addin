@@ -1,33 +1,29 @@
-# NetSuite credentials (NEVER commit)
-backend/netsuite_config.json
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-*.egg-info/
-dist/
-build/
-
-# Logs
 *.log
-/tmp/*.log
+venv/
+ENV/
 
-# OS Files
+# Node
+node_modules/
+npm-debug.log*
+
+# MacOS
 .DS_Store
-Thumbs.db
+.AppleDouble
+.LSOverride
 
-# Backup files
-*.bak
-
-# IDE
+# Editor
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Temporary files
-*.tmp
-*.temp
+# Project specific
+backend/server.log
+netsuite_config.json
+*.pyc

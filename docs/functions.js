@@ -147,47 +147,29 @@ function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location,
         
         // Find invocation by looking for BOTH setResult AND close methods
         // (Preview invocations only have setResult, not close - we MUST reject those!)
-        console.log(`🔍 GLABAL called with ${args.length} arguments`);
-        
         for (let i = args.length - 1; i >= 0; i--) {
             const candidate = args[i];
-            console.log(`  Arg[${i}]:`, typeof candidate, candidate && typeof candidate === 'object' ? Object.keys(candidate).join(',') : '');
             
             if (candidate && typeof candidate === 'object') {
                 const hasSetResult = typeof candidate.setResult === 'function';
                 const hasClose = typeof candidate.close === 'function';
-                console.log(`    hasSetResult: ${hasSetResult}, hasClose: ${hasClose}`);
                 
                 if (hasSetResult && hasClose) {
                     realInvocation = candidate;
                     args.splice(i, 1);
-                    console.log(`✅ Found full streaming invocation at index ${i}`);
                     break;
                 } else if (hasSetResult) {
-                    console.warn(`⚠️  Found object with setResult but NO close at index ${i} (preview invocation)`);
+                    // Preview invocation - still usable
+                    realInvocation = candidate;
+                    args.splice(i, 1);
+                    break;
                 }
             }
         }
         
         if (!realInvocation) {
-            console.warn('⚠️  No full streaming invocation (with close) found');
-            
-            // FALLBACK: Excel on Mac sometimes sends preview invocation (setResult only, no close)
-            // This is OK - we can still use setResult, Excel will handle completion
-            for (let i = args.length - 1; i >= 0; i--) {
-                const candidate = args[i];
-                if (candidate && typeof candidate === 'object' && typeof candidate.setResult === 'function') {
-                    console.warn('✅ Found preview invocation (setResult only) - will work around missing close()');
-                    realInvocation = candidate;
-                    args.splice(i, 1);
-                    break;
-                }
-            }
-            
-            if (!realInvocation) {
-                console.error('❌ No invocation object at all! Excel did not pass invocation parameter.');
-                return;
-            }
+            console.error('❌ No invocation object found');
+            return;
         }
         
         // SAFE parameter extraction: slice first 7 positions (business params only)
@@ -560,14 +542,10 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
 // HELPER: Expand period range (e.g., "Jan 2025" to "Mar 2025" → all months)
 // ============================================================================
 function expandPeriodRange(fromPeriod, toPeriod) {
-    console.log(`🔍 expandPeriodRange called: from="${fromPeriod}" to="${toPeriod}"`);
-    
     if (!fromPeriod) {
-        console.log('  → No fromPeriod, returning []');
         return [];
     }
     if (!toPeriod || fromPeriod === toPeriod) {
-        console.log(`  → Same period or no toPeriod, returning [${fromPeriod}]`);
         return [fromPeriod];
     }
     
@@ -608,7 +586,6 @@ function expandPeriodRange(fromPeriod, toPeriod) {
             }
         }
         
-        console.log(`  → Expanded to ${result.length} periods:`, result);
         return result;
         
     } catch (error) {
