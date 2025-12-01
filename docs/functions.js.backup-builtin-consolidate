@@ -413,17 +413,16 @@ async function processBatchQueue() {
     const requests = Array.from(requestQueue.balance.entries());
     requestQueue.balance.clear();
     
-    // Group by filters AND periods (correct, working solution)
-    // Each unique period gets its own batch for accurate results
+    // Group by filters only (efficient batching)
+    // Backend now returns period-by-period breakdown, so we can batch different periods together
     const groups = new Map();
     for (const [key, req] of requests) {
         const filterKey = JSON.stringify({
             subsidiary: req.params.subsidiary,
             department: req.params.department,
             location: req.params.location,
-            class: req.params.classId,
-            fromPeriod: req.params.fromPeriod || '',  // Include in grouping
-            toPeriod: req.params.toPeriod || ''       // Include in grouping
+            class: req.params.classId
+            // NOTE: NOT including periods - they'll be batched together efficiently
         });
         
         if (!groups.has(filterKey)) {
@@ -432,18 +431,23 @@ async function processBatchQueue() {
         groups.get(filterKey).push({ key, req });
     }
     
-    console.log(`📦 Grouped into ${groups.size} filter+period group(s)`);
+    console.log(`📦 Grouped into ${groups.size} filter group(s)`);
     
     // Process each group
     for (const [filterKey, groupRequests] of groups.entries()) {
         const filters = JSON.parse(filterKey);
         const accounts = [...new Set(groupRequests.map(r => r.req.params.account))];
         
-        // All requests in this group have the SAME period range
-        // Expand it once for the entire group
-        const firstReq = groupRequests[0].req;
-        const expandedPeriods = expandPeriodRange(firstReq.params.fromPeriod, firstReq.params.toPeriod);
-        const periods = expandedPeriods;
+        // Collect ALL unique periods from ALL requests in this group
+        // Backend will return breakdown by period, frontend will extract what each cell needs
+        const allPeriods = new Set();
+        for (const r of groupRequests) {
+            const expandedPeriods = expandPeriodRange(r.req.params.fromPeriod, r.req.params.toPeriod);
+            for (const period of expandedPeriods) {
+                allPeriods.add(period);
+            }
+        }
+        const periods = [...allPeriods];
         
         console.log(`  Group: ${accounts.length} accounts × ${periods.length} periods = ${accounts.length * periods.length} data points`);
         
