@@ -599,25 +599,17 @@ function expandPeriodRange(fromPeriod, toPeriod) {
 // ============================================================================
 function safeFinishInvocation(invocation, value) {
     if (!invocation) {
-        console.error("❌ Missing invocation when finishing");
         return;
     }
     
     try {
         if (typeof invocation.setResult === "function") {
             invocation.setResult(value);
-            console.log(`✅ Set result: ${value}`);
-        } else {
-            console.error("❌ invocation.setResult is not a function");
         }
         
-        // Only call close if it exists (full streaming invocation)
-        // Excel on Mac sometimes passes preview invocation (no close method)
+        // Only call close if it exists (Mac Excel uses preview invocations without close)
         if (typeof invocation.close === "function") {
             invocation.close();
-            console.log("✅ Closed invocation");
-        } else {
-            console.warn("⚠️  Preview invocation (no close method) - result set, Excel will auto-complete");
         }
     } catch (e) {
         console.error("Error finishing invocation:", e);
