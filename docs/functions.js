@@ -290,8 +290,7 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
         classId = String(classId || '').trim();
         
         if (!account) {
-            invocation.setResult(0);  // Return 0 instead of empty for number type
-            invocation.close();
+            safeFinishInvocation(invocation, 0);
             return;  // Early exit is OK (no value returned)
         }
         
