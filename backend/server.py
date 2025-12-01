@@ -10,6 +10,9 @@ import requests
 from requests_oauthlib import OAuth1
 import sys
 from datetime import datetime
+from dateutil import parser as date_parser
+from dateutil.relativedelta import relativedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Excel add-in
@@ -108,6 +111,94 @@ def get_period_dates_from_name(period_name):
     except Exception as e:
         print(f"Error getting period dates for '{period_name}': {e}", file=sys.stderr)
         return (None, None)
+
+
+def get_months_between_periods(from_period, to_period):
+    """Calculate the number of months between two periods
+    Returns number of months, or 0 if calculation fails"""
+    try:
+        from_start, _ = get_period_dates_from_name(from_period)
+        _, to_end = get_period_dates_from_name(to_period)
+        
+        if not from_start or not to_end:
+            return 0
+        
+        # Parse dates (NetSuite returns dates like "1/1/2025")
+        start = date_parser.parse(from_start)
+        end = date_parser.parse(to_end)
+        
+        # Calculate months difference
+        months = (end.year - start.year) * 12 + (end.month - start.month) + 1
+        return months
+    except Exception as e:
+        print(f"Error calculating months between periods: {e}", file=sys.stderr)
+        return 0
+
+
+def generate_quarterly_chunks(from_period, to_period):
+    """Break a large date range into quarterly chunks
+    Returns list of (from_period, to_period) tuples"""
+    
+    # Map month names to numbers
+    month_map = {
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+    }
+    
+    try:
+        # Parse "Jan 2025" format
+        from_parts = from_period.split()
+        to_parts = to_period.split()
+        
+        if len(from_parts) != 2 or len(to_parts) != 2:
+            return [(from_period, to_period)]  # Return original if parsing fails
+        
+        from_month = month_map.get(from_parts[0].lower()[:3])
+        from_year = int(from_parts[1])
+        to_month = month_map.get(to_parts[0].lower()[:3])
+        to_year = int(to_parts[1])
+        
+        if not from_month or not to_month:
+            return [(from_period, to_period)]
+        
+        # Generate quarters (3-month chunks)
+        chunks = []
+        current_month = from_month
+        current_year = from_year
+        
+        while (current_year < to_year) or (current_year == to_year and current_month <= to_month):
+            # Calculate chunk end (current + 2 months, or to_month if sooner)
+            chunk_end_month = min(current_month + 2, 12)
+            chunk_end_year = current_year
+            
+            # Don't exceed the target end date
+            if chunk_end_year > to_year or (chunk_end_year == to_year and chunk_end_month > to_month):
+                chunk_end_month = to_month
+                chunk_end_year = to_year
+            
+            # Convert back to period names
+            month_names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            chunk_from = f"{month_names[current_month]} {current_year}"
+            chunk_to = f"{month_names[chunk_end_month]} {chunk_end_year}"
+            
+            chunks.append((chunk_from, chunk_to))
+            
+            # Move to next quarter
+            current_month = chunk_end_month + 1
+            if current_month > 12:
+                current_month = 1
+                current_year += 1
+            
+            # Safety: prevent infinite loops
+            if len(chunks) > 20:
+                break
+        
+        return chunks if chunks else [(from_period, to_period)]
+        
+    except Exception as e:
+        print(f"Error generating chunks: {e}", file=sys.stderr)
+        return [(from_period, to_period)]  # Return original on error
 
 
 def load_lookup_cache():
