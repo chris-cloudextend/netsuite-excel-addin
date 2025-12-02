@@ -763,6 +763,20 @@ async function processBatchQueue() {
         
         console.log(`  Split into ${accountChunks.length} account chunk(s) × ${periodChunks.length} period chunk(s) = ${accountChunks.length * periodChunks.length} total batches`);
         
+        // Track which requests have been resolved to avoid double-resolution
+        const resolvedRequests = new Set();
+        
+        // For each request, track which period chunks need to be processed
+        // and accumulate the total across chunks
+        const requestAccumulators = new Map();
+        for (const {cacheKey, request} of groupRequests) {
+            requestAccumulators.set(cacheKey, {
+                total: 0,
+                periodsNeeded: new Set([request.params.fromPeriod, request.params.toPeriod].filter(p => p)),
+                periodsProcessed: new Set()
+            });
+        }
+        
         // Process chunks sequentially (both accounts AND periods)
         let chunkIndex = 0;
         const totalChunks = accountChunks.length * periodChunks.length;
@@ -793,8 +807,9 @@ async function processBatchQueue() {
                         console.error(`  ❌ API error: ${response.status}`);
                         // Reject all promises in this chunk
                         for (const {cacheKey, request} of groupRequests) {
-                            if (accountChunk.includes(request.params.account)) {
+                            if (accountChunk.includes(request.params.account) && !resolvedRequests.has(cacheKey)) {
                                 request.reject(new Error(`API error: ${response.status}`));
+                                resolvedRequests.add(cacheKey);
                             }
                         }
                         continue;
@@ -807,6 +822,11 @@ async function processBatchQueue() {
                 
                     // Distribute results to waiting Promises
                     for (const {cacheKey, request} of groupRequests) {
+                        // Skip if already resolved
+                        if (resolvedRequests.has(cacheKey)) {
+                            continue;
+                        }
+                        
                         const account = request.params.account;
                         
                         // Only process accounts in this chunk
@@ -814,58 +834,30 @@ async function processBatchQueue() {
                             continue;
                         }
                         
-                        // Only process if this request's periods overlap with this periodChunk
                         const fromPeriod = request.params.fromPeriod;
                         const toPeriod = request.params.toPeriod;
-                        const requestPeriods = [fromPeriod, toPeriod].filter(p => p);
-                        const hasOverlap = requestPeriods.some(p => periodChunk.includes(p));
-                        
-                        if (!hasOverlap) {
-                            continue; // This request's periods are in a different chunk
-                        }
-                        
                         const accountBalances = balances[account] || {};
+                        const accum = requestAccumulators.get(cacheKey);
                         
-                        // Sum only the periods that are BOTH in this request AND in this chunk
-                        let total = 0;
-                        
-                        if (fromPeriod === toPeriod || !toPeriod) {
-                            // Single period
-                            if (periodChunk.includes(fromPeriod)) {
-                                total = accountBalances[fromPeriod] || 0;
-                            }
-                        } else {
-                            // Multiple periods - sum only those in this chunk
-                            for (const period of periodChunk) {
-                                total += accountBalances[period] || 0;
+                        // Process each period in this chunk that this request needs
+                        for (const period of periodChunk) {
+                            // Check if this request needs this period
+                            if (accum.periodsNeeded.has(period) && !accum.periodsProcessed.has(period)) {
+                                accum.total += accountBalances[period] || 0;
+                                accum.periodsProcessed.add(period);
                             }
                         }
                         
-                        // Cache the result (partial if multi-chunk request)
-                        // For multi-chunk requests, we'll accumulate the total
-                        const existing = cache.balance.get(cacheKey) || 0;
-                        cache.balance.set(cacheKey, existing + total);
+                        // Cache the accumulated result
+                        cache.balance.set(cacheKey, accum.total);
                         
-                        // Track which chunks this request has been processed in
-                        if (!request.processedChunks) {
-                            request.processedChunks = new Set();
-                        }
-                        request.processedChunks.add(`${ai}-${pi}`);
+                        // Check if all needed periods are now processed
+                        const allPeriodsProcessed = [...accum.periodsNeeded].every(p => accum.periodsProcessed.has(p));
                         
-                        // Check if we've processed ALL chunks for this request's account and periods
-                        // Account must be in exactly one chunk (the current one if we got here)
-                        // Periods may span multiple chunks
-                        const accountChunkIndex = accountChunks.findIndex(chunk => chunk.includes(account));
-                        const isLastAccountChunk = (ai === accountChunkIndex);
-                        
-                        const allPeriodsProcessed = requestPeriods.every(p => 
-                            periodChunks.slice(0, pi + 1).flat().includes(p)
-                        );
-                        
-                        // Resolve when: this is the account's chunk AND all periods are processed
-                        if (isLastAccountChunk && allPeriodsProcessed) {
-                            request.resolve(cache.balance.get(cacheKey));
-                            console.log(`    ✓ Resolved ${account} = ${cache.balance.get(cacheKey)}`);
+                        if (allPeriodsProcessed) {
+                            request.resolve(accum.total);
+                            resolvedRequests.add(cacheKey);
+                            console.log(`    ✓ Resolved ${account} = ${accum.total}`);
                         }
                     }
                 
@@ -873,8 +865,9 @@ async function processBatchQueue() {
                     console.error(`  ❌ Fetch error:`, error);
                     // Reject all promises in this chunk
                     for (const {cacheKey, request} of groupRequests) {
-                        if (accountChunk.includes(request.params.account)) {
+                        if (accountChunk.includes(request.params.account) && !resolvedRequests.has(cacheKey)) {
                             request.reject(error);
+                            resolvedRequests.add(cacheKey);
                         }
                     }
                 }
@@ -885,6 +878,22 @@ async function processBatchQueue() {
                     await new Promise(resolve => setTimeout(resolve, CHUNK_DELAY));
                 }
             }
+        }
+        
+        // CRITICAL: Resolve any remaining unresolved requests with their accumulated totals
+        // This catches edge cases where periods didn't align perfectly with chunks
+        let unresolvedCount = 0;
+        for (const {cacheKey, request} of groupRequests) {
+            if (!resolvedRequests.has(cacheKey)) {
+                const accum = requestAccumulators.get(cacheKey);
+                console.log(`  ⚠️ Force-resolving unresolved: ${request.params.account} = ${accum.total}`);
+                request.resolve(accum.total);
+                resolvedRequests.add(cacheKey);
+                unresolvedCount++;
+            }
+        }
+        if (unresolvedCount > 0) {
+            console.log(`  ⚠️ Force-resolved ${unresolvedCount} requests that weren't resolved during chunk processing`);
         }
     }
     
