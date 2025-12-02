@@ -846,15 +846,26 @@ async function processBatchQueue() {
                         const existing = cache.balance.get(cacheKey) || 0;
                         cache.balance.set(cacheKey, existing + total);
                         
-                        // Only resolve the Promise if we've processed ALL chunks for this request
-                        // Check if this is the last chunk that contains this request's periods
+                        // Track which chunks this request has been processed in
+                        if (!request.processedChunks) {
+                            request.processedChunks = new Set();
+                        }
+                        request.processedChunks.add(`${ai}-${pi}`);
+                        
+                        // Check if we've processed ALL chunks for this request's account and periods
+                        // Account must be in exactly one chunk (the current one if we got here)
+                        // Periods may span multiple chunks
+                        const accountChunkIndex = accountChunks.findIndex(chunk => chunk.includes(account));
+                        const isLastAccountChunk = (ai === accountChunkIndex);
+                        
                         const allPeriodsProcessed = requestPeriods.every(p => 
                             periodChunks.slice(0, pi + 1).flat().includes(p)
                         );
                         
-                        if (allPeriodsProcessed && ai === accountChunks.length - 1) {
-                            // This is the last chunk for this request - resolve it
+                        // Resolve when: this is the account's chunk AND all periods are processed
+                        if (isLastAccountChunk && allPeriodsProcessed) {
                             request.resolve(cache.balance.get(cacheKey));
+                            console.log(`    ✓ Resolved ${account} = ${cache.balance.get(cacheKey)}`);
                         }
                     }
                 
