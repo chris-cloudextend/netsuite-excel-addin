@@ -103,16 +103,24 @@ function checkLocalStorageCache(account, period, filters) {
         if (!cached) return null;
         
         const balances = JSON.parse(cached);
+        
+        // If account has data for this period, return it
         if (balances[account] && balances[account][period] !== undefined) {
             return balances[account][period];
         }
         
-        // Account exists but no data for this period = 0
+        // Account exists but no data for this specific period = 0
         if (balances[account]) {
             return 0;
         }
         
-        return null; // Not in cache
+        // IMPORTANT: If we have fresh cache data but account is NOT found,
+        // it means the account had NO transactions for the entire year.
+        // The full_year_refresh only returns accounts WITH transactions.
+        // So if it's not in the cache, the balance is $0.
+        // Return 0 instead of null to avoid triggering batch processing!
+        return 0;
+        
     } catch (e) {
         console.error('localStorage read error:', e);
         return null;
