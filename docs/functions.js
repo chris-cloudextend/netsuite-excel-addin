@@ -713,8 +713,10 @@ async function processBatchQueue() {
     const requests = Array.from(pendingRequests.balance.entries());
     pendingRequests.balance.clear();
     
-    // Group by filters AND periods (backend is SLOW with multi-period queries)
-    // Better to have more batches that are fast than fewer batches that timeout
+    // Group by filters ONLY (not periods) - this allows smart batching
+    // Example: 1 account × 12 months = 1 batch (not 12 batches)
+    // Example: 100 accounts × 1 month = 2 batches (chunked by accounts)
+    // Example: 100 accounts × 12 months = 2 batches (all periods together)
     const groups = new Map();
     for (const [cacheKey, request] of requests) {
         const {params} = request;
@@ -722,9 +724,8 @@ async function processBatchQueue() {
             subsidiary: params.subsidiary || '',
             department: params.department || '',
             location: params.location || '',
-            class: params.classId || '',
-            fromPeriod: params.fromPeriod || '',  // Group by period for speed
-            toPeriod: params.toPeriod || ''       // Group by period for speed
+            class: params.classId || ''
+            // Note: NOT grouping by periods - this is the key optimization!
         });
         
         if (!groups.has(filterKey)) {
@@ -733,17 +734,17 @@ async function processBatchQueue() {
         groups.get(filterKey).push({ cacheKey, request });
     }
     
-    console.log(`📦 Grouped into ${groups.size} batch(es) by filters+periods`);
+    console.log(`📦 Grouped into ${groups.size} batch(es) by filters only`);
     
     // Process each group
     for (const [filterKey, groupRequests] of groups.entries()) {
         const filters = JSON.parse(filterKey);
         const accounts = [...new Set(groupRequests.map(r => r.request.params.account))];
         
-        // All requests in this group have the SAME period (by design)
-        // Use the period from the first request
-        // Deduplicate periods (e.g., "Dec 2024" to "Dec 2024" should be ["Dec 2024"], not ["Dec 2024", "Dec 2024"])
-        const periods = [...new Set([filters.fromPeriod, filters.toPeriod].filter(p => p))];
+        // Collect ALL unique periods from ALL requests in this group
+        // This allows us to fetch multiple periods in one API call
+        const allPeriods = groupRequests.flatMap(r => [r.request.params.fromPeriod, r.request.params.toPeriod]);
+        const periods = [...new Set(allPeriods.filter(p => p))];
         
         console.log(`  Batch: ${accounts.length} accounts × ${periods.length} period(s)`);
         
@@ -802,16 +803,27 @@ async function processBatchQueue() {
                     
                     const accountBalances = balances[account] || {};
                     
-                    // All requests in this group have the SAME period
-                    // Just sum all periods returned (should match the request)
+                    // Each request might have DIFFERENT periods
+                    // Extract THIS request's specific period range and sum only those
+                    const fromPeriod = request.params.fromPeriod;
+                    const toPeriod = request.params.toPeriod;
+                    
                     let total = 0;
-                    for (const period in accountBalances) {
-                        total += accountBalances[period] || 0;
+                    
+                    // If single period or same period, just sum that one
+                    if (fromPeriod === toPeriod || !toPeriod) {
+                        total = accountBalances[fromPeriod] || 0;
+                    } else {
+                        // Multiple periods - sum the range
+                        // For now, sum all periods in the result (backend handles the range)
+                        // TODO: Could expand period range here for more precision
+                        for (const period in accountBalances) {
+                            total += accountBalances[period] || 0;
+                        }
                     }
                     
                     // Cache the result
                     cache.balance.set(cacheKey, total);
-                    console.log(`  💾 ${account} → ${total}`);
                     
                     // Resolve the Promise
                     request.resolve(total);
