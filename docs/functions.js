@@ -413,6 +413,8 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         
         // Return a Promise that will be resolved by the batch processor
         return new Promise((resolve, reject) => {
+            console.log(`📥 QUEUED: ${account} for ${fromPeriod}`);
+            
             pendingRequests.balance.set(cacheKey, {
                 params,
                 resolve,
@@ -420,18 +422,28 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
                 timestamp: Date.now()
             });
             
+            console.log(`   Queue size now: ${pendingRequests.balance.size}`);
+            console.log(`   isFullRefreshMode: ${isFullRefreshMode}`);
+            console.log(`   batchTimer exists: ${!!batchTimer}`);
+            
             // In full refresh mode, DON'T start the batch timer
             // The task pane will explicitly call processFullRefresh() when ready
             if (!isFullRefreshMode) {
                 // Start batch timer if not already running (Mode 1: small batches)
                 if (!batchTimer) {
+                    console.log(`⏱️ STARTING batch timer (${BATCH_DELAY}ms)`);
                     batchTimer = setTimeout(() => {
+                        console.log('⏱️ Batch timer FIRED!');
                         batchTimer = null;
                         processBatchQueue().catch(err => {
-                            console.error('Batch processing error:', err);
+                            console.error('❌ Batch processing error:', err);
                         });
                     }, BATCH_DELAY);
+                } else {
+                    console.log('   Timer already running, request will be batched');
                 }
+            } else {
+                console.log('   Full refresh mode - NOT starting timer');
             }
         });
         
@@ -701,13 +713,17 @@ window.processFullRefresh = processFullRefresh;
 async function processBatchQueue() {
     batchTimer = null;  // Reset timer reference
     
+    console.log('========================================');
+    console.log('🔄 processBatchQueue() CALLED');
+    console.log('========================================');
+    
     if (pendingRequests.balance.size === 0) {
-        console.log('No balance requests in queue');
+        console.log('❌ No balance requests in queue - exiting');
         return;
     }
     
     const requestCount = pendingRequests.balance.size;
-    console.log(`\n🔄 Processing batch queue: ${requestCount} requests`);
+    console.log(`✅ Found ${requestCount} pending requests`);
     console.log(`📊 Cache stats: ${cacheStats.hits} hits / ${cacheStats.misses} misses`);
     
     // Extract requests and clear queue
@@ -855,9 +871,14 @@ async function processBatchQueue() {
                         const allPeriodsProcessed = [...accum.periodsNeeded].every(p => accum.periodsProcessed.has(p));
                         
                         if (allPeriodsProcessed) {
-                            request.resolve(accum.total);
+                            console.log(`    🎯 RESOLVING: ${account} = ${accum.total}`);
+                            try {
+                                request.resolve(accum.total);
+                                console.log(`    ✅ RESOLVED: ${account}`);
+                            } catch (resolveErr) {
+                                console.error(`    ❌ RESOLVE ERROR for ${account}:`, resolveErr);
+                            }
                             resolvedRequests.add(cacheKey);
-                            console.log(`    ✓ Resolved ${account} = ${accum.total}`);
                         }
                     }
                 
@@ -882,22 +903,32 @@ async function processBatchQueue() {
         
         // CRITICAL: Resolve any remaining unresolved requests with their accumulated totals
         // This catches edge cases where periods didn't align perfectly with chunks
+        console.log(`\n🔍 Checking for unresolved requests (resolved so far: ${resolvedRequests.size}/${groupRequests.length})`);
+        
         let unresolvedCount = 0;
         for (const {cacheKey, request} of groupRequests) {
             if (!resolvedRequests.has(cacheKey)) {
                 const accum = requestAccumulators.get(cacheKey);
-                console.log(`  ⚠️ Force-resolving unresolved: ${request.params.account} = ${accum.total}`);
-                request.resolve(accum.total);
+                console.log(`  ⚠️ FORCE-RESOLVING: ${request.params.account} = ${accum.total}`);
+                console.log(`     periodsNeeded: ${[...accum.periodsNeeded].join(', ')}`);
+                console.log(`     periodsProcessed: ${[...accum.periodsProcessed].join(', ')}`);
+                try {
+                    request.resolve(accum.total);
+                    console.log(`  ✅ Force-resolved successfully`);
+                } catch (err) {
+                    console.error(`  ❌ Force-resolve FAILED:`, err);
+                }
                 resolvedRequests.add(cacheKey);
                 unresolvedCount++;
             }
         }
-        if (unresolvedCount > 0) {
-            console.log(`  ⚠️ Force-resolved ${unresolvedCount} requests that weren't resolved during chunk processing`);
-        }
+        
+        console.log(`📊 Final stats: ${resolvedRequests.size} resolved, ${unresolvedCount} force-resolved`);
     }
     
-    console.log('✅ Batch processing complete\n');
+    console.log('========================================');
+    console.log('✅ BATCH PROCESSING COMPLETE');
+    console.log('========================================\n');
 }
 
 // ============================================================================
