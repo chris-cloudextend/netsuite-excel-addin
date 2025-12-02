@@ -1061,10 +1061,24 @@
                     const STORAGE_KEY = 'netsuite_balance_cache';
                     const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
                     
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(data.balances || {}));
+                    const balancesJson = JSON.stringify(data.balances || {});
+                    localStorage.setItem(STORAGE_KEY, balancesJson);
                     localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
                     
+                    // Debug: Log sample of what we saved
+                    const sampleAccounts = Object.keys(data.balances || {}).slice(0, 10);
                     console.log(`✅ Saved ${accountCount} accounts to localStorage`);
+                    console.log(`   Sample accounts: ${sampleAccounts.join(', ')}`);
+                    console.log(`   Storage size: ${balancesJson.length} bytes`);
+                    
+                    // Verify it was saved correctly
+                    const verifyRead = localStorage.getItem(STORAGE_KEY);
+                    if (verifyRead === balancesJson) {
+                        console.log(`   ✅ Verified: localStorage write successful`);
+                    } else {
+                        console.error(`   ❌ Verification failed: localStorage may be corrupted`);
+                    }
+                    
                     updateLoading('Local cache ready!', 85, `${accountCount} accounts cached`);
                 } catch (storageError) {
                     console.error('❌ localStorage error:', storageError);

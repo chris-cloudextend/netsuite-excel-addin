@@ -95,31 +95,47 @@ const STORAGE_TTL = 300000; // 5 minutes in milliseconds
 function checkLocalStorageCache(account, period, filters) {
     try {
         const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
-        if (!timestamp || (Date.now() - parseInt(timestamp)) > STORAGE_TTL) {
+        const cacheAge = timestamp ? (Date.now() - parseInt(timestamp)) : null;
+        
+        // Debug: Log first few lookups to diagnose issues
+        if (!window._localStorageDebugCount) window._localStorageDebugCount = 0;
+        const shouldLog = window._localStorageDebugCount < 20;
+        if (shouldLog) window._localStorageDebugCount++;
+        
+        if (!timestamp || cacheAge > STORAGE_TTL) {
+            if (shouldLog) console.log(`📦 localStorage: NO CACHE (timestamp=${timestamp}, age=${cacheAge}ms)`);
             return null; // Cache expired or doesn't exist
         }
         
         const cached = localStorage.getItem(STORAGE_KEY);
-        if (!cached) return null;
+        if (!cached) {
+            if (shouldLog) console.log(`📦 localStorage: CACHE KEY EMPTY`);
+            return null;
+        }
         
         const balances = JSON.parse(cached);
+        const accountCount = Object.keys(balances).length;
         
         // If account has data for this period, return it
         if (balances[account] && balances[account][period] !== undefined) {
-            return balances[account][period];
+            const value = balances[account][period];
+            if (shouldLog) console.log(`📦 localStorage HIT: ${account}/${period} = ${value} (from ${accountCount} accounts)`);
+            return value;
         }
         
         // Account exists but no data for this specific period = 0
         if (balances[account]) {
+            if (shouldLog) console.log(`📦 localStorage: ${account} exists but no ${period}, returning 0`);
             return 0;
         }
         
-        // IMPORTANT: If we have fresh cache data but account is NOT found,
-        // it means the account had NO transactions for the entire year.
-        // The full_year_refresh only returns accounts WITH transactions.
-        // So if it's not in the cache, the balance is $0.
-        // Return 0 instead of null to avoid triggering batch processing!
-        return 0;
+        // Account not found in cache - DON'T return 0 automatically!
+        // Let batch processing handle it to get real data from NetSuite
+        if (shouldLog) {
+            const sampleAccounts = Object.keys(balances).slice(0, 5).join(', ');
+            console.log(`📦 localStorage MISS: ${account} not in cache (${accountCount} accounts: ${sampleAccounts}...)`);
+        }
+        return null;
         
     } catch (e) {
         console.error('localStorage read error:', e);
