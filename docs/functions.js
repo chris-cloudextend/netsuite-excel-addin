@@ -52,20 +52,18 @@ window.clearAllCaches = function() {
 };
 
 // ============================================================================
-// REQUEST QUEUE - Collects requests for intelligent batching
+// REQUEST QUEUE - Collects requests for intelligent batching (Phase 3)
 // ============================================================================
-const requestQueue = {
-    balance: new Map(),    // Pending balance requests
-    title: new Map(),      // Pending title requests
-    budget: new Map()      // Pending budget requests
+const pendingRequests = {
+    balance: new Map(),    // Map<cacheKey, {params, resolve, reject}>
+    budget: new Map()
 };
 
 let batchTimer = null;  // Timer reference for batching
-const BATCH_DELAY = 100;  // Reduced delay for streaming (was 500ms)
-const MAX_CONCURRENT = 3;          // Max 3 concurrent requests to NetSuite
-const CHUNK_SIZE = 30;             // Max 30 accounts per batch (increased from 10 for better performance)
-const RETRY_DELAY = 2000;          // Wait 2s before retrying 429 errors
+const BATCH_DELAY = 200;           // Wait 200ms to collect multiple requests
+const CHUNK_SIZE = 50;             // Max 50 accounts per batch
 const MAX_RETRIES = 2;             // Retry 429 errors up to 2 times
+const RETRY_DELAY = 2000;          // Wait 2s before retrying 429 errors
 
 // ============================================================================
 // UTILITY: Convert date or date serial to "Mon YYYY" format
@@ -328,7 +326,7 @@ async function GLAPARENT(accountNumber, invocation) {
 }
 
 // ============================================================================
-// GLABAL - Get GL Account Balance (NON-STREAMING ASYNC)
+// GLABAL - Get GL Account Balance (NON-STREAMING WITH BATCHING - Phase 3)
 // ============================================================================
 /**
  * @customfunction GLABAL
@@ -367,62 +365,33 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         // Check cache FIRST - return immediately if found (NO @ SYMBOL!)
         if (cache.balance.has(cacheKey)) {
             cacheStats.hits++;
-            const value = cache.balance.get(cacheKey);
-            // Silent cache hit (no console.log for performance)
-            return value;
+            // Silent cache hit for performance
+            return cache.balance.get(cacheKey);
         }
         
-        // Cache miss - need to fetch from backend
+        // Cache miss - add to batch queue and return Promise
         cacheStats.misses++;
-        console.log(`📥 CACHE MISS [balance]: ${account} (${fromPeriod} to ${toPeriod})`);
+        console.log(`📥 CACHE MISS [balance]: ${account} (${fromPeriod} to ${toPeriod}) → queuing`);
         
-        // For Phase 1: Simple single-account fetch
-        // We'll optimize with batching in Phase 3
-        try {
-            // Backend expects: accounts array, periods array, and filter fields
-            const response = await fetch(`${SERVER_URL}/batch/balance`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    accounts: [account],
-                    periods: [fromPeriod, toPeriod],
-                    subsidiary: subsidiary || '',
-                    department: department || '',
-                    location: location || '',
-                    class: classId || ''
-                })
+        // Return a Promise that will be resolved by the batch processor
+        return new Promise((resolve, reject) => {
+            pendingRequests.balance.set(cacheKey, {
+                params,
+                resolve,
+                reject,
+                timestamp: Date.now()
             });
             
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Balance API error: ${response.status}`, errorText);
-                return 0;
+            // Start batch timer if not already running
+            if (!batchTimer) {
+                batchTimer = setTimeout(() => {
+                    batchTimer = null;
+                    processBatchQueue().catch(err => {
+                        console.error('Batch processing error:', err);
+                    });
+                }, BATCH_DELAY);
             }
-            
-            const data = await response.json();
-            
-            // Backend returns: { balances: { "4220": { "Jan 2025": 123456, "Feb 2025": 234567 } } }
-            const accountBalances = data.balances?.[account];
-            
-            if (accountBalances) {
-                // Sum all periods in the range
-                let total = 0;
-                for (const period in accountBalances) {
-                    total += accountBalances[period] || 0;
-                }
-                
-                // Cache the result
-                cache.balance.set(cacheKey, total);
-                console.log(`💾 Cached balance: ${account} → ${total}`);
-                return total;
-            }
-            
-            return 0;
-            
-        } catch (error) {
-            console.error('Balance fetch error:', error);
-            return 0;
-        }
+        });
         
     } catch (error) {
         console.error('GLABAL error:', error);
@@ -431,7 +400,7 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
 }
 
 // ============================================================================
-// GLABUD - Get Budget Amount (NON-STREAMING ASYNC)
+// GLABUD - Get Budget Amount (NON-STREAMING WITH BATCHING - Phase 3)
 // ============================================================================
 /**
  * @customfunction GLABUD
@@ -470,12 +439,10 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         // Check cache FIRST - return immediately if found (NO @ SYMBOL!)
         if (cache.budget.has(cacheKey)) {
             cacheStats.hits++;
-            const value = cache.budget.get(cacheKey);
-            // Silent cache hit (no console.log for performance)
-            return value;
+            return cache.budget.get(cacheKey);
         }
         
-        // Cache miss - fetch from backend
+        // Cache miss - use individual fetch (budget endpoint doesn't support batching)
         cacheStats.misses++;
         console.log(`📥 CACHE MISS [budget]: ${account} (${fromPeriod} to ${toPeriod})`);
         
@@ -518,58 +485,54 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
 }
 
 // ============================================================================
-// BATCH PROCESSING - Streaming Model (Immediate Start)
+// BATCH PROCESSING - Non-Streaming with Promise Resolution (Phase 3)
 // ============================================================================
 async function processBatchQueue() {
     batchTimer = null;  // Reset timer reference
     
-    if (requestQueue.balance.size === 0) {
-        console.log('No requests in queue');
+    if (pendingRequests.balance.size === 0) {
+        console.log('No balance requests in queue');
         return;
     }
     
-    console.log(`\n🔄 Processing batch queue: ${requestQueue.balance.size} requests`);
-    console.log(`📊 Cache stats: ${cacheStats.hits} hits / ${cacheStats.misses} misses / ${cacheStats.size()} entries`);
+    const requestCount = pendingRequests.balance.size;
+    console.log(`\n🔄 Processing batch queue: ${requestCount} requests`);
+    console.log(`📊 Cache stats: ${cacheStats.hits} hits / ${cacheStats.misses} misses`);
     
-    // Convert queue to array (no invocation objects stored anymore!)
-    const requests = Array.from(requestQueue.balance.entries());
-    requestQueue.balance.clear();
+    // Extract requests and clear queue
+    const requests = Array.from(pendingRequests.balance.entries());
+    pendingRequests.balance.clear();
     
-    // Group by filters AND periods (correct, working solution)
-    // Each unique period gets its own batch for accurate results
+    // Group by filters and periods
     const groups = new Map();
-    for (const [key, req] of requests) {
+    for (const [cacheKey, request] of requests) {
+        const {params} = request;
         const filterKey = JSON.stringify({
-            subsidiary: req.params.subsidiary,
-            department: req.params.department,
-            location: req.params.location,
-            class: req.params.classId,
-            fromPeriod: req.params.fromPeriod || '',  // Include in grouping
-            toPeriod: req.params.toPeriod || ''       // Include in grouping
+            subsidiary: params.subsidiary || '',
+            department: params.department || '',
+            location: params.location || '',
+            class: params.classId || '',
+            fromPeriod: params.fromPeriod || '',
+            toPeriod: params.toPeriod || ''
         });
         
         if (!groups.has(filterKey)) {
             groups.set(filterKey, []);
         }
-        groups.get(filterKey).push({ key, req });
+        groups.get(filterKey).push({ cacheKey, request });
     }
     
-    console.log(`📦 Grouped into ${groups.size} filter+period group(s)`);
+    console.log(`📦 Grouped into ${groups.size} batch(es) by filters+periods`);
     
     // Process each group
     for (const [filterKey, groupRequests] of groups.entries()) {
         const filters = JSON.parse(filterKey);
-        const accounts = [...new Set(groupRequests.map(r => r.req.params.account))];
+        const accounts = [...new Set(groupRequests.map(r => r.request.params.account))];
+        const periods = [filters.fromPeriod, filters.toPeriod].filter(p => p);
         
-        // All requests in this group have the SAME period range
-        // Expand it once for the entire group
-        const firstReq = groupRequests[0].req;
-        const expandedPeriods = expandPeriodRange(firstReq.params.fromPeriod, firstReq.params.toPeriod);
-        const periods = expandedPeriods;
+        console.log(`  Batch: ${accounts.length} accounts × ${periods.length} periods`);
         
-        console.log(`  Group: ${accounts.length} accounts × ${periods.length} periods = ${accounts.length * periods.length} data points`);
-        
-        // Split into small chunks to avoid NetSuite 429 errors
+        // Split into chunks to avoid overwhelming NetSuite
         const accountChunks = [];
         for (let i = 0; i < accounts.length; i += CHUNK_SIZE) {
             accountChunks.push(accounts.slice(i, i + CHUNK_SIZE));
@@ -577,27 +540,92 @@ async function processBatchQueue() {
         
         console.log(`  Split into ${accountChunks.length} chunk(s) of max ${CHUNK_SIZE} accounts`);
         
-        // Process chunks sequentially with delays
+        // Process chunks sequentially
         for (let i = 0; i < accountChunks.length; i++) {
             const chunk = accountChunks[i];
-            console.log(`  📤 Processing chunk ${i + 1}/${accountChunks.length} (${chunk.length} accounts)...`);
+            console.log(`  📤 Chunk ${i + 1}/${accountChunks.length}: ${chunk.length} accounts`);
             
-            await fetchBatchBalances(chunk, periods, filters, groupRequests);
+            try {
+                // Make batch API call
+                const response = await fetch(`${SERVER_URL}/batch/balance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        accounts: chunk,
+                        periods: periods,
+                        subsidiary: filters.subsidiary || '',
+                        department: filters.department || '',
+                        location: filters.location || '',
+                        class: filters.class || ''
+                    })
+                });
+                
+                if (!response.ok) {
+                    console.error(`  ❌ API error: ${response.status}`);
+                    // Reject all promises in this chunk
+                    for (const {cacheKey, request} of groupRequests) {
+                        if (chunk.includes(request.params.account)) {
+                            request.reject(new Error(`API error: ${response.status}`));
+                        }
+                    }
+                    continue;
+                }
+                
+                const data = await response.json();
+                const balances = data.balances || {};
+                
+                console.log(`  ✅ Received data for ${Object.keys(balances).length} accounts`);
+                
+                // Distribute results to waiting Promises
+                for (const {cacheKey, request} of groupRequests) {
+                    const account = request.params.account;
+                    
+                    // Only process accounts in this chunk
+                    if (!chunk.includes(account)) {
+                        continue;
+                    }
+                    
+                    const accountBalances = balances[account] || {};
+                    
+                    // Sum all periods for this account
+                    let total = 0;
+                    for (const period in accountBalances) {
+                        total += accountBalances[period] || 0;
+                    }
+                    
+                    // Cache the result
+                    cache.balance.set(cacheKey, total);
+                    console.log(`  💾 Cached: ${account} → ${total}`);
+                    
+                    // Resolve the Promise
+                    request.resolve(total);
+                }
+                
+            } catch (error) {
+                console.error(`  ❌ Fetch error:`, error);
+                // Reject all promises in this chunk
+                for (const {cacheKey, request} of groupRequests) {
+                    if (chunk.includes(request.params.account)) {
+                        request.reject(error);
+                    }
+                }
+            }
             
-            // Delay between chunks to avoid 429 errors
+            // Delay between chunks to avoid rate limiting
             if (i < accountChunks.length - 1) {
-                console.log(`  ⏱️  Waiting 1 second before next chunk...`);
-                await delay(1000);
+                console.log(`  ⏱️  Waiting 500ms before next chunk...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
         }
     }
     
-    console.log('✅ Batch processing complete - results cached\n');
+    console.log('✅ Batch processing complete\n');
 }
 
 // ============================================================================
-// FETCH BATCH BALANCES - with 429 retry logic
+// OLD STREAMING CODE - REMOVED (kept for reference)
 // ============================================================================
+/*
 async function fetchBatchBalances(accounts, periods, filters, allRequests, retryCount = 0) {
     try {
         const payload = {
@@ -777,42 +805,9 @@ function expandPeriodRange(fromPeriod, toPeriod) {
         return [fromPeriod, toPeriod];
     }
 }
+*/
 
-// ============================================================================
-// HELPER: Safely finish an invocation
-// ============================================================================
-function safeFinishInvocation(invocation, value) {
-    if (!invocation) {
-        console.warn("⚠️  safeFinishInvocation called with null invocation");
-        return;
-    }
-    
-    try {
-        if (typeof invocation.setResult === "function") {
-            console.log(`  ✅ setResult(${value})`);
-            invocation.setResult(value);
-        } else {
-            console.warn("  ⚠️  invocation.setResult is not a function!");
-        }
-        
-        // Only call close if it exists (Mac Excel uses preview invocations without close)
-        if (typeof invocation.close === "function") {
-            console.log(`  ✅ close()`);
-            invocation.close();
-        } else {
-            console.log("  ℹ️  No close() method (preview invocation)");
-        }
-    } catch (e) {
-        console.error("❌ Error finishing invocation:", e);
-    }
-}
-
-// ============================================================================
-// UTILITY: Delay helper
-// ============================================================================
-function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
+// (Old streaming functions removed - not needed for Phase 3 non-streaming async)
 
 // ============================================================================
 // REGISTER FUNCTIONS WITH EXCEL
