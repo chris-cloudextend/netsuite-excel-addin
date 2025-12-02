@@ -1080,22 +1080,58 @@
                     }
                 }
                 
-                // Wait a moment for cache to settle
-                await new Promise(resolve => setTimeout(resolve, 500));
+                updateLoading('Re-applying formulas...', 88, 'Forcing fresh evaluation');
                 
-                updateLoading('Recalculating formulas from cache...', 90);
+                // CRITICAL: Re-apply all NS.GLABAL formulas to force fresh evaluation
+                // sheet.calculate() doesn't work because formulas are stuck with old Promises
+                // Re-applying the formula makes Excel treat it as NEW → invokes GLABAL fresh
+                // Fresh GLABAL invocation → checks localStorage → returns immediately!
                 
-                // Trigger recalc - formulas should now HIT the frontend cache!
+                let formulasRefreshed = 0;
+                
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    sheet.calculate(true);
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load("formulas, rowCount, columnCount");
                     await context.sync();
+                    
+                    const formulas = usedRange.formulas;
+                    const rowCount = usedRange.rowCount;
+                    const colCount = usedRange.columnCount;
+                    
+                    console.log(`Scanning ${rowCount} rows × ${colCount} cols for NS.GLABAL formulas...`);
+                    
+                    // Batch the formula re-applications for performance
+                    const cellsToUpdate = [];
+                    
+                    for (let row = 0; row < rowCount; row++) {
+                        for (let col = 0; col < colCount; col++) {
+                            const formula = formulas[row][col];
+                            if (formula && typeof formula === 'string' && 
+                                formula.toUpperCase().includes('NS.GLABAL')) {
+                                cellsToUpdate.push({ row, col, formula });
+                            }
+                        }
+                    }
+                    
+                    console.log(`Found ${cellsToUpdate.length} NS.GLABAL formulas to refresh`);
+                    updateLoading('Refreshing formulas...', 92, `${cellsToUpdate.length} formulas found`);
+                    
+                    // Re-apply each formula (forces fresh evaluation)
+                    for (const { row, col, formula } of cellsToUpdate) {
+                        const cell = usedRange.getCell(row, col);
+                        cell.formulas = [[formula]];
+                        formulasRefreshed++;
+                    }
+                    
+                    await context.sync();
+                    console.log(`✅ Re-applied ${formulasRefreshed} formulas`);
                 });
                 
-                // Wait for formulas to complete (should be fast now since they hit cache!)
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Brief wait for formulas to evaluate (should be instant from localStorage!)
+                await new Promise(resolve => setTimeout(resolve, 500));
                 
-                updateLoading('Complete!', 100, `${cachedCount} values ready`);
+                updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
                 
                 // Show success message
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1103,11 +1139,10 @@
                 
                 statusEl.innerHTML = `
                     <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
-                        <strong style="color: #059669; font-size: 14px;">✓ Backend cache ready!</strong><br>
+                        <strong style="color: #059669; font-size: 14px;">✓ Sheet Refreshed!</strong><br>
                         <span style="font-size: 12px; color: #047857;">
-                            Cached ${accountCount} accounts × 12 months in ${elapsed}s<br>
-                            Formulas will pull from backend cache (instant!)<br>
-                            <em style="opacity: 0.8;">Press Cmd+Shift+F9 to force recalc if needed</em>
+                            Fetched ${accountCount} accounts from NetSuite (${elapsed}s)<br>
+                            Refreshed ${formulasRefreshed} formulas from cache
                         </span>
                     </div>
                 `;
