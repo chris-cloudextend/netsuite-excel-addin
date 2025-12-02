@@ -1053,22 +1053,36 @@
                 console.log(`   Cached on backend: ${cachedCount} values`);
                 console.log(`   Total time: ${elapsed}s`);
                 
-                updateLoading('Backend cache ready!', 80, `Cached ${cachedCount} values in ${elapsed}s`);
+                updateLoading('Populating frontend cache...', 70, `${accountCount} accounts received`);
                 
-                // Wait a moment
-                await new Promise(resolve => setTimeout(resolve, 800));
+                // CRITICAL: Populate the FRONTEND cache so formulas hit cache immediately!
+                if (typeof window.populateFrontendCache === 'function') {
+                    const frontendCacheCount = window.populateFrontendCache(data.balances || {}, {
+                        subsidiary: '',
+                        department: '',
+                        location: '',
+                        class: ''
+                    });
+                    console.log(`✅ Frontend cache populated with ${frontendCacheCount} values`);
+                    updateLoading('Frontend cache ready!', 85, `${frontendCacheCount} values cached locally`);
+                } else {
+                    console.warn('⚠️ populateFrontendCache not available - Shared Runtime may not be active');
+                }
+                
+                // Wait a moment for cache to settle
+                await new Promise(resolve => setTimeout(resolve, 500));
                 
                 updateLoading('Recalculating formulas from cache...', 90);
                 
-                // Trigger recalc
+                // Trigger recalc - formulas should now HIT the frontend cache!
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     sheet.calculate(true);
                     await context.sync();
                 });
                 
-                // Wait for formulas to pull from cache
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                // Wait for formulas to complete (should be fast now since they hit cache!)
+                await new Promise(resolve => setTimeout(resolve, 1500));
                 
                 updateLoading('Complete!', 100, `${cachedCount} values ready`);
                 

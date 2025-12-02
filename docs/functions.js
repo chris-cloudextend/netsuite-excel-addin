@@ -84,6 +84,37 @@ window.exitFullRefreshMode = function() {
 };
 
 // ============================================================================
+// POPULATE FRONTEND CACHE - Called by taskpane after full_year_refresh
+// ============================================================================
+window.populateFrontendCache = function(balances, filters = {}) {
+    console.log('========================================');
+    console.log('📦 POPULATING FRONTEND CACHE');
+    console.log('========================================');
+    
+    const subsidiary = filters.subsidiary || '';
+    const department = filters.department || '';
+    const location = filters.location || '';
+    const classId = filters.class || '';
+    
+    let cacheCount = 0;
+    
+    for (const [account, periods] of Object.entries(balances)) {
+        for (const [period, amount] of Object.entries(periods)) {
+            // Build cache key in same format as getCacheKey()
+            const cacheKey = `balance:${account}:${period}:${period}:${subsidiary}:${department}:${location}:${classId}`;
+            cache.balance.set(cacheKey, amount);
+            cacheCount++;
+        }
+    }
+    
+    console.log(`✅ Cached ${cacheCount} values in frontend`);
+    console.log(`   Sample accounts: ${Object.keys(balances).slice(0, 5).join(', ')}`);
+    console.log('========================================');
+    
+    return cacheCount;
+};
+
+// ============================================================================
 // REQUEST QUEUE - Collects requests for intelligent batching (Phase 3)
 // ============================================================================
 const pendingRequests = {
