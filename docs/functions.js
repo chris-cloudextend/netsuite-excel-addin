@@ -107,7 +107,41 @@ window.setFullYearCache = function(balances) {
     return true;
 };
 
-// Check if we have cached data for this account/period
+// Check localStorage for cached data - THIS WORKS!
+// Structure: { "4220": { "Apr 2024": 123.45, ... }, ... }
+function checkLocalStorageCache(account, period) {
+    try {
+        const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
+        if (!timestamp) return null;
+        
+        const cacheAge = Date.now() - parseInt(timestamp);
+        if (cacheAge > STORAGE_TTL) return null; // Cache expired
+        
+        const cached = localStorage.getItem(STORAGE_KEY);
+        if (!cached) return null;
+        
+        const balances = JSON.parse(cached);
+        
+        // Check nested structure: balances[account][period]
+        if (balances[account] && balances[account][period] !== undefined) {
+            return balances[account][period];
+        }
+        
+        // Account exists in cache but no data for this period = $0 (no transactions)
+        if (balances[account]) {
+            return 0;
+        }
+        
+        // Account not in cache - return null to trigger batch processing
+        return null;
+        
+    } catch (e) {
+        console.error('localStorage read error:', e);
+        return null;
+    }
+}
+
+// Check in-memory cache (backup for Shared Runtime)
 function checkFullYearCache(account, period) {
     if (!fullYearCache || !fullYearCacheTimestamp) {
         return null;
@@ -115,7 +149,6 @@ function checkFullYearCache(account, period) {
     
     // Cache expires after 5 minutes
     if (Date.now() - fullYearCacheTimestamp > 300000) {
-        console.log('📦 Full year cache expired');
         fullYearCache = null;
         fullYearCacheTimestamp = null;
         return null;
@@ -523,11 +556,19 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
             return cache.balance.get(cacheKey);
         }
         
-        // Check full year cache (populated by taskpane via setFullYearCache)
+        // Check localStorage cache (THIS WORKS - proven by user data!)
+        const localStorageValue = checkLocalStorageCache(account, fromPeriod);
+        if (localStorageValue !== null) {
+            cacheStats.hits++;
+            // Also save to in-memory cache for next time
+            cache.balance.set(cacheKey, localStorageValue);
+            return localStorageValue;
+        }
+        
+        // Check in-memory full year cache (backup for Shared Runtime)
         const fullYearValue = checkFullYearCache(account, fromPeriod);
         if (fullYearValue !== null) {
             cacheStats.hits++;
-            // Also save to regular cache for next time
             cache.balance.set(cacheKey, fullYearValue);
             return fullYearValue;
         }

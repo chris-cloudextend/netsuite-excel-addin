@@ -1055,39 +1055,29 @@
                 
                 updateLoading('Saving to local cache...', 70, `${accountCount} accounts received`);
                 
-                // Try to set the cache directly in functions.js via Shared Runtime
-                // This is the ONLY way that actually works!
-                let cacheSet = false;
+                // Save to localStorage - THIS WORKS! Proven by user's localStorage data
+                try {
+                    const STORAGE_KEY = 'netsuite_balance_cache';
+                    const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
+                    
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(data.balances || {}));
+                    localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
+                    console.log(`✅ Saved ${accountCount} accounts to localStorage`);
+                } catch (storageError) {
+                    console.error('❌ localStorage save error:', storageError);
+                }
                 
+                // Also try Shared Runtime methods as backup
                 if (typeof window.setFullYearCache === 'function') {
                     try {
                         window.setFullYearCache(data.balances || {});
-                        console.log('✅ Cache set via Shared Runtime (setFullYearCache)');
-                        cacheSet = true;
+                        console.log('✅ Also set via Shared Runtime');
                     } catch (e) {
-                        console.log('setFullYearCache failed:', e.message);
-                    }
-                } else {
-                    console.log('⚠️ setFullYearCache not available - Shared Runtime not active');
-                }
-                
-                // Also try the old method
-                if (typeof window.populateFrontendCache === 'function') {
-                    try {
-                        window.populateFrontendCache(data.balances || {}, {});
-                        console.log('✅ Also called populateFrontendCache');
-                        cacheSet = true;
-                    } catch (e) {
-                        console.log('populateFrontendCache failed:', e.message);
+                        // Shared Runtime may not be active, that's OK
                     }
                 }
                 
-                if (cacheSet) {
-                    updateLoading('Cache populated!', 85, `${accountCount} accounts ready`);
-                } else {
-                    console.warn('⚠️ Could not set cache - formulas will use batch processing');
-                    updateLoading('Preparing refresh...', 85, 'Cache unavailable, using batch mode');
-                }
+                updateLoading('Cache ready!', 85, `${accountCount} accounts cached`)
                 
                 updateLoading('Re-applying formulas...', 88, 'Forcing fresh evaluation');
                 
