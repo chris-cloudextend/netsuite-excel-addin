@@ -33,6 +33,7 @@
             color: white;
             padding: 30px 20px;
             text-align: center;
+            position: relative;
         }
 
         .header h1 {
@@ -44,6 +45,216 @@
         .header p {
             font-size: 14px;
             opacity: 0.95;
+        }
+
+        .header .version-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-top: 8px;
+            font-weight: 500;
+        }
+
+        .settings-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .settings-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: rotate(45deg);
+        }
+
+        .settings-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
+
+        /* Settings Modal */
+        .settings-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .settings-modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .settings-panel {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .settings-header {
+            background: linear-gradient(135deg, #0066CC 0%, #00A3E0 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 16px 16px 0 0;
+        }
+
+        .settings-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .settings-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            font-size: 24px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .settings-close:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .settings-content {
+            padding: 20px;
+        }
+
+        .settings-section {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .settings-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .settings-section h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-indicator.checking {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-indicator.connected {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-indicator.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.checking { background: #f59e0b; animation: pulse 1s infinite; }
+        .status-dot.connected { background: #10b981; }
+        .status-dot.error { background: #ef4444; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .settings-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 8px;
+            transition: border-color 0.2s;
+        }
+
+        .settings-input:focus {
+            outline: none;
+            border-color: #0066CC;
+        }
+
+        .settings-btn-action {
+            background: #0066CC;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+
+        .settings-btn-action:hover {
+            background: #0052a3;
+        }
+
+        .settings-btn-action.secondary {
+            background: #6b7280;
+        }
+
+        .settings-btn-action.secondary:hover {
+            background: #4b5563;
         }
 
         .content {
@@ -347,10 +558,90 @@
         </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div class="settings-modal" id="settingsModal" onclick="if(event.target === this) closeSettings()">
+        <div class="settings-panel">
+            <div class="settings-header">
+                <h2>⚙️ Settings</h2>
+                <button class="settings-close" onclick="closeSettings()">×</button>
+            </div>
+            <div class="settings-content">
+                <!-- Server Status -->
+                <div class="settings-section">
+                    <h3>🖥️ Backend Server</h3>
+                    <div id="serverStatus" class="status-indicator checking">
+                        <span class="status-dot checking"></span>
+                        Checking...
+                    </div>
+                    <button class="settings-btn-action" onclick="checkServerStatus()" style="margin-top: 12px;">
+                        Check Server Status
+                    </button>
+                </div>
+
+                <!-- Tunnel Status -->
+                <div class="settings-section">
+                    <h3>🔗 Cloudflare Tunnel</h3>
+                    <div id="tunnelStatus" class="status-indicator checking">
+                        <span class="status-dot checking"></span>
+                        Checking...
+                    </div>
+                    <p style="font-size: 12px; color: #6b7280; margin-top: 10px;">
+                        Current tunnel URL is configured in the Cloudflare Worker.
+                    </p>
+                    <details style="margin-top: 12px;">
+                        <summary style="font-size: 12px; color: #0066CC; cursor: pointer;">
+                            Need to update tunnel URL?
+                        </summary>
+                        <div style="margin-top: 10px; padding: 12px; background: #f3f4f6; border-radius: 8px;">
+                            <p style="font-size: 11px; color: #4b5563; margin-bottom: 8px;">
+                                If the tunnel was restarted, you need to update the Cloudflare Worker with the new URL.
+                            </p>
+                            <ol style="font-size: 11px; color: #4b5563; padding-left: 20px; line-height: 1.8;">
+                                <li>Check terminal for new tunnel URL</li>
+                                <li>Go to <a href="https://dash.cloudflare.com" target="_blank" style="color: #0066CC;">Cloudflare Dashboard</a></li>
+                                <li>Workers & Pages → netsuite-proxy</li>
+                                <li>Edit code and update TUNNEL_URL</li>
+                                <li>Save and Deploy</li>
+                            </ol>
+                            <input type="text" id="newTunnelUrl" class="settings-input" 
+                                   placeholder="https://xxx.trycloudflare.com" 
+                                   style="font-size: 11px;"/>
+                            <button class="settings-btn-action secondary" onclick="copyTunnelInstructions()" style="font-size: 11px; padding: 8px 12px;">
+                                Copy URL for Worker
+                            </button>
+                        </div>
+                    </details>
+                </div>
+
+                <!-- Cache Info -->
+                <div class="settings-section">
+                    <h3>💾 Cache Status</h3>
+                    <div id="cacheInfo" style="font-size: 12px; color: #4b5563;">
+                        <p>LocalStorage: <span id="localStorageStatus">Checking...</span></p>
+                        <p style="margin-top: 4px;">Cached accounts: <span id="cachedAccountsCount">-</span></p>
+                    </div>
+                </div>
+
+                <!-- Version Info -->
+                <div class="settings-section">
+                    <h3>ℹ️ Version Info</h3>
+                    <div style="font-size: 12px; color: #4b5563;">
+                        <p>Add-in Version: <strong id="settingsVersion">1.3.5.0</strong></p>
+                        <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
+            <button class="settings-btn" onclick="openSettings()" title="Settings">
+                <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+            </button>
             <h1>NetSuite Excel Formulas</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
+            <div class="version-badge" id="versionBadge">v1.3.5.0</div>
         </div>
 
         <div class="content">
@@ -681,6 +972,121 @@
         function hideLoading() {
             const overlay = document.getElementById('loadingOverlay');
             overlay.classList.remove('active');
+        }
+
+        // ========================================================================
+        // SETTINGS MODAL
+        // ========================================================================
+        function openSettings() {
+            document.getElementById('settingsModal').classList.add('active');
+            checkServerStatus();
+            checkTunnelStatus();
+            checkCacheStatus();
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').classList.remove('active');
+        }
+
+        async function checkServerStatus() {
+            const statusEl = document.getElementById('serverStatus');
+            statusEl.className = 'status-indicator checking';
+            statusEl.innerHTML = '<span class="status-dot checking"></span> Checking...';
+
+            try {
+                const response = await fetch(`${SERVER_URL}/health`, { 
+                    method: 'GET',
+                    signal: AbortSignal.timeout(10000)
+                });
+                
+                if (response.ok) {
+                    statusEl.className = 'status-indicator connected';
+                    statusEl.innerHTML = '<span class="status-dot connected"></span> Connected ✓';
+                } else {
+                    throw new Error(`Status: ${response.status}`);
+                }
+            } catch (error) {
+                statusEl.className = 'status-indicator error';
+                statusEl.innerHTML = `<span class="status-dot error"></span> Error: ${error.message}`;
+            }
+        }
+
+        async function checkTunnelStatus() {
+            const statusEl = document.getElementById('tunnelStatus');
+            statusEl.className = 'status-indicator checking';
+            statusEl.innerHTML = '<span class="status-dot checking"></span> Checking...';
+
+            try {
+                // The health check goes through the worker → tunnel → server
+                // If it works, tunnel is working
+                const response = await fetch(`${SERVER_URL}/health`, { 
+                    method: 'GET',
+                    signal: AbortSignal.timeout(10000)
+                });
+                
+                if (response.ok) {
+                    statusEl.className = 'status-indicator connected';
+                    statusEl.innerHTML = '<span class="status-dot connected"></span> Tunnel Active ✓';
+                } else if (response.status === 530) {
+                    throw new Error('Tunnel offline (530)');
+                } else {
+                    throw new Error(`Status: ${response.status}`);
+                }
+            } catch (error) {
+                statusEl.className = 'status-indicator error';
+                if (error.message.includes('530')) {
+                    statusEl.innerHTML = '<span class="status-dot error"></span> Tunnel Offline - needs restart';
+                } else {
+                    statusEl.innerHTML = `<span class="status-dot error"></span> ${error.message}`;
+                }
+            }
+        }
+
+        function checkCacheStatus() {
+            try {
+                const STORAGE_KEY = 'netsuite_balance_cache';
+                const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
+                
+                const cached = localStorage.getItem(STORAGE_KEY);
+                const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
+                
+                const localStorageEl = document.getElementById('localStorageStatus');
+                const accountsEl = document.getElementById('cachedAccountsCount');
+                
+                if (cached && timestamp) {
+                    const balances = JSON.parse(cached);
+                    const accountCount = Object.keys(balances).length;
+                    const cacheAge = Math.round((Date.now() - parseInt(timestamp)) / 1000);
+                    
+                    localStorageEl.textContent = `Active (${cacheAge}s ago)`;
+                    localStorageEl.style.color = '#059669';
+                    accountsEl.textContent = `${accountCount} accounts`;
+                } else {
+                    localStorageEl.textContent = 'Empty';
+                    localStorageEl.style.color = '#6b7280';
+                    accountsEl.textContent = '0';
+                }
+            } catch (e) {
+                document.getElementById('localStorageStatus').textContent = 'Error';
+                document.getElementById('cachedAccountsCount').textContent = '-';
+            }
+        }
+
+        function copyTunnelInstructions() {
+            const urlInput = document.getElementById('newTunnelUrl');
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                alert('Please enter the new tunnel URL first');
+                return;
+            }
+            
+            const workerCode = `const TUNNEL_URL = '${url}';`;
+            navigator.clipboard.writeText(workerCode).then(() => {
+                alert('Copied! Paste this in the Cloudflare Worker to update the tunnel URL.');
+            }).catch(() => {
+                prompt('Copy this line to update the Worker:', workerCode);
+            });
         }
 
         // Load NetSuite lookups into dropdowns

@@ -9,15 +9,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://asia-tired-marking-relying.trycloudflare.com
+// CURRENT TUNNEL URL: https://suzuki-highs-vernon-language.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 2, 2025 - 9:24 AM
+// Last Updated: Dec 2, 2025 - 6:27 PM
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://asia-tired-marking-relying.trycloudflare.com';
+    const TUNNEL_URL = 'https://suzuki-highs-vernon-language.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
