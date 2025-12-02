@@ -127,8 +127,8 @@
         }
       ],
       "options": {
-        "stream": true,
-        "cancelable": true,
+        "stream": false,
+        "cancelable": false,
         "volatile": false
       }
     },
@@ -190,8 +190,8 @@
         }
       ],
       "options": {
-        "stream": true,
-        "cancelable": true,
+        "stream": false,
+        "cancelable": false,
         "volatile": false
       }
     }

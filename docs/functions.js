@@ -307,147 +307,28 @@ async function GLAPARENT(accountNumber, invocation) {
 }
 
 // ============================================================================
-// GLABAL - Get GL Account Balance (WITH SMART BATCHING)
+// GLABAL - Get GL Account Balance (NON-STREAMING ASYNC)
 // ============================================================================
 /**
  * @customfunction GLABAL
- * @streaming
- * @cancelable
+ * @param {any} account Account number
+ * @param {any} fromPeriod Starting period (e.g., "Jan 2025" or 1/1/2025)
+ * @param {any} toPeriod Ending period (e.g., "Mar 2025" or 3/1/2025)
+ * @param {any} [subsidiary] Subsidiary filter (optional)
+ * @param {any} [department] Department filter (optional)
+ * @param {any} [location] Location filter (optional)
+ * @param {any} [classId] Class filter (optional)
+ * @returns {Promise<number>} Account balance
+ * @requiresAddress
  */
-function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
-    // CRITICAL: For streaming functions, invocation is IMPLICIT (not in signature)
-    // Excel passes it as the last argument, accessible via arguments[arguments.length - 1]
-    // The batch processor will call invocation.setResult() and invocation.close()
-    
+async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     try {
-        // CRITICAL FIX: Excel shifts invocation object left when optional params are missing!
-        // We must find the REAL FULL STREAMING invocation (has BOTH setResult AND close)
-        let realInvocation = null;
-        const args = Array.from(arguments);
-        
-        // Find invocation by looking for BOTH setResult AND close methods
-        // (Preview invocations only have setResult, not close - we MUST reject those!)
-        for (let i = args.length - 1; i >= 0; i--) {
-            const candidate = args[i];
-            
-            if (candidate && typeof candidate === 'object') {
-                const hasSetResult = typeof candidate.setResult === 'function';
-                const hasClose = typeof candidate.close === 'function';
-                
-                if (hasSetResult && hasClose) {
-                    realInvocation = candidate;
-                    args.splice(i, 1);
-                    break;
-                } else if (hasSetResult) {
-                    // Preview invocation - still usable
-                    realInvocation = candidate;
-                    args.splice(i, 1);
-                    break;
-                }
-            }
-        }
-        
-        if (!realInvocation) {
-            console.error('❌ No invocation object found');
-            return;
-        }
-        
-            // SAFE parameter extraction: slice first 7 positions (business params only)
-            // This works regardless of how many args Excel actually passed
-            const businessArgs = args.slice(0, 7);
-            
-            const accountRaw    = businessArgs[0];
-            const fromRaw       = businessArgs[1];
-            const toRaw         = businessArgs[2];
-            const subRaw        = businessArgs[3];
-            const deptRaw       = businessArgs[4];
-            const locRaw        = businessArgs[5];
-            const clsRaw        = businessArgs[6];
-            
-            // Normalize business parameters (CRITICAL: Keep account as string, even for "15000-1")
-            account = normalizeAccountNumber(accountRaw);
-            
-            // Convert date values to "Mon YYYY" format (supports both dates and period strings)
-            fromPeriod = convertToMonthYear(fromRaw);
-            toPeriod = convertToMonthYear(toRaw);
-            
-            // Other parameters as strings
-            subsidiary = String(subRaw || '').trim();
-            department = String(deptRaw || '').trim();
-            location = String(locRaw || '').trim();
-            classId = String(clsRaw || '').trim();
-        
-            if (!account) {
-                safeFinishInvocation(realInvocation, 0);
-                return;
-            }
-        
-        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
-        const cacheKey = getCacheKey('balance', params);
-        
-            // Check cache FIRST - return immediately if found
-            if (cache.balance.has(cacheKey)) {
-                cacheStats.hits++;
-                const value = cache.balance.get(cacheKey);
-                console.log(`⚡ CACHE HIT [balance]: ${account} → ${value}`);
-                safeFinishInvocation(realInvocation, value);
-                return;
-            }
-        
-        // Cache miss → queue this invocation for batching
-        cacheStats.misses++;
-        console.log(`📥 CACHE MISS [balance]: ${account} → queuing`);
-        
-        requestQueue.balance.set(cacheKey, {
-            params,
-            invocation: realInvocation,  // Store the REAL invocation - batch processor will use it
-            retries: 0
-        });
-        
-        // Handle cancellation
-        realInvocation.onCanceled = () => {
-            console.log(`⏹ Canceled [balance]: ${account}`);
-            requestQueue.balance.delete(cacheKey);
-        };
-        
-        // Start batch processing in a microtask if not already running
-        if (!batchTimer) {
-            batchTimer = true;
-            Promise.resolve().then(() => {
-                batchTimer = null;
-                processBatchQueue().catch(err => {
-                    console.error("processBatchQueue error:", err);
-                });
-            });
-        }
-        
-        // NO return value. Streaming completes when batch processor calls invocation.close()
-        
-    } catch (error) {
-        console.error('GLABAL synchronous error:', error);
-        // NEVER fallback to arguments[last] - only use realInvocation if we found it
-        // (Fallback could grab a business parameter instead of invocation!)
-        if (realInvocation) {
-            safeFinishInvocation(realInvocation, 0);
-        }
-    }
-}
-
-// ============================================================================
-// GLABUD - Get Budget Amount (SAME LOGIC AS GLABAL)
-// ============================================================================
-/**
- * @customfunction GLABUD
- * @streaming
- * @cancelable
- */
-function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
-    // CRITICAL: Outer function must be SYNCHRONOUS (not async)
-    // No return values allowed - only invocation.setResult() + close()
-    
-    try {
-        // Normalize inputs safely
+        // Normalize business parameters
         account = normalizeAccountNumber(account);
+        
+        if (!account) {
+            return 0;
+        }
         
         // Convert date values to "Mon YYYY" format (supports both dates and period strings)
         fromPeriod = convertToMonthYear(fromPeriod);
@@ -459,75 +340,154 @@ function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location,
         location = String(location || '').trim();
         classId = String(classId || '').trim();
         
-        if (!account) {
-            safeFinishInvocation(invocation, 0);
-            return;  // Early exit is OK (no value returned)
+        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
+        const cacheKey = getCacheKey('balance', params);
+        
+        // Check cache FIRST - return immediately if found (NO @ SYMBOL!)
+        if (cache.balance.has(cacheKey)) {
+            cacheStats.hits++;
+            const value = cache.balance.get(cacheKey);
+            // Silent cache hit (no console.log for performance)
+            return value;
         }
+        
+        // Cache miss - need to fetch from backend
+        cacheStats.misses++;
+        console.log(`📥 CACHE MISS [balance]: ${account} (${fromPeriod} to ${toPeriod})`);
+        
+        // For Phase 1: Direct fetch (we'll optimize batching in Phase 3)
+        // This ensures we don't timeout (no 5-second limit in async functions)
+        try {
+            const response = await fetch(`${SERVER_URL}/batch/balance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    requests: [{
+                        account,
+                        fromPeriod,
+                        toPeriod,
+                        subsidiary,
+                        department,
+                        location,
+                        classId
+                    }]
+                })
+            });
+            
+            if (!response.ok) {
+                console.error(`Balance API error: ${response.status}`);
+                return 0;
+            }
+            
+            const data = await response.json();
+            const result = data.results?.[0];
+            
+            if (result) {
+                const value = result.balance || 0;
+                // Cache the result
+                cache.balance.set(cacheKey, value);
+                console.log(`💾 Cached balance: ${account} → ${value}`);
+                return value;
+            }
+            
+            return 0;
+            
+        } catch (error) {
+            console.error('Balance fetch error:', error);
+            return 0;
+        }
+        
+    } catch (error) {
+        console.error('GLABAL error:', error);
+        return 0;
+    }
+}
+
+// ============================================================================
+// GLABUD - Get Budget Amount (NON-STREAMING ASYNC)
+// ============================================================================
+/**
+ * @customfunction GLABUD
+ * @param {any} account Account number
+ * @param {any} fromPeriod Starting period (e.g., "Jan 2025" or 1/1/2025)
+ * @param {any} toPeriod Ending period (e.g., "Mar 2025" or 3/1/2025)
+ * @param {any} [subsidiary] Subsidiary filter (optional)
+ * @param {any} [department] Department filter (optional)
+ * @param {any} [location] Location filter (optional)
+ * @param {any} [classId] Class filter (optional)
+ * @returns {Promise<number>} Budget amount
+ * @requiresAddress
+ */
+async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+    try {
+        // Normalize inputs
+        account = normalizeAccountNumber(account);
+        
+        if (!account) {
+            return 0;
+        }
+        
+        // Convert date values to "Mon YYYY" format (supports both dates and period strings)
+        fromPeriod = convertToMonthYear(fromPeriod);
+        toPeriod = convertToMonthYear(toPeriod);
+        
+        // Other parameters as strings
+        subsidiary = String(subsidiary || '').trim();
+        department = String(department || '').trim();
+        location = String(location || '').trim();
+        classId = String(classId || '').trim();
         
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
         const cacheKey = getCacheKey('budget', params);
         
-        // Check cache FIRST - return immediately if found
+        // Check cache FIRST - return immediately if found (NO @ SYMBOL!)
         if (cache.budget.has(cacheKey)) {
             cacheStats.hits++;
             const value = cache.budget.get(cacheKey);
-            safeFinishInvocation(invocation, value);
-            return;  // Early exit is OK (no value returned)
+            // Silent cache hit (no console.log for performance)
+            return value;
         }
         
+        // Cache miss - fetch from backend
         cacheStats.misses++;
+        console.log(`📥 CACHE MISS [budget]: ${account} (${fromPeriod} to ${toPeriod})`);
         
-        // Handle cancellation
-        const controller = new AbortController();
-        invocation.onCanceled = () => {
-            console.log('Budget request canceled');
-            controller.abort();
-        };
-        
-        // Async work wrapped in IIFE (immediately invoked async function)
-        (async () => {
-            try {
-                const url = new URL(`${SERVER_URL}/budget`);
-                url.searchParams.append('account', account);
-                if (fromPeriod) url.searchParams.append('from_period', fromPeriod);
-                if (toPeriod) url.searchParams.append('to_period', toPeriod);
-                if (subsidiary) url.searchParams.append('subsidiary', subsidiary);
-                if (department) url.searchParams.append('department', department);
-                if (location) url.searchParams.append('location', location);
-                if (classId) url.searchParams.append('class', classId);
-                
-                const response = await fetch(url.toString(), { signal: controller.signal });
-                if (!response.ok) {
-                    console.error(`Budget API error: ${response.status}`);
-                    safeFinishInvocation(invocation, 0);
-                    return;
-                }
-                
-                const text = await response.text();
-                const budget = parseFloat(text);
-                const finalValue = isNaN(budget) ? 0 : budget;  // Return 0 instead of empty
-                
-                if (finalValue !== 0) {
-                    cache.budget.set(cacheKey, finalValue);
-                }
-                
-                safeFinishInvocation(invocation, finalValue);
-                
-            } catch (error) {
-                if (error.name !== 'AbortError') {
-                    console.error('Budget fetch error:', error);
-                }
-                safeFinishInvocation(invocation, 0);
+        try {
+            const url = new URL(`${SERVER_URL}/budget`);
+            url.searchParams.append('account', account);
+            if (fromPeriod) url.searchParams.append('from_period', fromPeriod);
+            if (toPeriod) url.searchParams.append('to_period', toPeriod);
+            if (subsidiary) url.searchParams.append('subsidiary', subsidiary);
+            if (department) url.searchParams.append('department', department);
+            if (location) url.searchParams.append('location', location);
+            if (classId) url.searchParams.append('class', classId);
+            
+            const response = await fetch(url.toString());
+            if (!response.ok) {
+                console.error(`Budget API error: ${response.status}`);
+                return 0;
             }
-        })();
-        
-        // NO return statement - streaming function keeps running
+            
+            const text = await response.text();
+            const budget = parseFloat(text);
+            const finalValue = isNaN(budget) ? 0 : budget;
+            
+            // Cache the result
+            if (finalValue !== 0) {
+                cache.budget.set(cacheKey, finalValue);
+                console.log(`💾 Cached budget: ${account} → ${finalValue}`);
+            }
+            
+            return finalValue;
+            
+        } catch (error) {
+            console.error('Budget fetch error:', error);
+            return 0;
+        }
         
     } catch (error) {
-        // Handle any synchronous errors
-        console.error('GLABUD synchronous error:', error);
-        safeFinishInvocation(invocation, 0);
-        return;  // Early exit is OK (no value returned)
+        console.error('GLABUD error:', error);
+        return 0;
     }
 }
 
