@@ -1,7 +1,7 @@
-CURRENT TUNNEL URL (Updated: Dec 2, 2025 - 8:00 PM)
+CURRENT TUNNEL URL (Updated: Dec 2, 2025 - 9:24 AM)
 ═══════════════════════════════════════════════════
 
-https://hired-headphones-calls-responsibility.trycloudflare.com
+https://asia-tired-marking-relying.trycloudflare.com
 
 ═══════════════════════════════════════════════════
 HOW TO UPDATE CLOUDFLARE WORKER:
@@ -11,31 +11,31 @@ HOW TO UPDATE CLOUDFLARE WORKER:
 
 2. Navigate to: Workers & Pages
 
-3. Find your worker (e.g., "netsuite-proxy" or similar)
+3. Find your worker: "netsuite-proxy"
 
 4. Click: Edit Code (or Quick Edit)
 
 5. Update the TUNNEL_URL at the top of the file:
 
-   const TUNNEL_URL = 'https://hired-headphones-calls-responsibility.trycloudflare.com';
+   const TUNNEL_URL = 'https://asia-tired-marking-relying.trycloudflare.com';
 
 6. Click: Save and Deploy
 
 7. Test in Excel:
-   - Open your Excel file with formulas
-   - Click "Refresh All" in the add-in
-   - Formulas should update with data
+   - Try the formula: =NS.GLATITLE("4220")
+   - Should now work!
 
 ═══════════════════════════════════════════════════
 CURRENT SERVER STATUS:
 ═══════════════════════════════════════════════════
 
-✅ Backend Server: http://localhost:5002
-✅ Account: TSTDRV2320150 (Sandbox)
-✅ Tunnel: https://hired-headphones-calls-responsibility.trycloudflare.com
+✅ Backend Server: http://localhost:5002 (RUNNING)
+✅ Account: 589861
+✅ Tunnel: https://asia-tired-marking-relying.trycloudflare.com (ACTIVE)
 ✅ Authentication: WORKING
 
 To test locally:
   curl http://localhost:5002/test
+  curl https://asia-tired-marking-relying.trycloudflare.com/test
 
 ═══════════════════════════════════════════════════

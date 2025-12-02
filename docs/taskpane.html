@@ -932,17 +932,6 @@
                 }, 8000);
             } finally {
                 btn.disabled = false;
-                
-            } catch (error) {
-                console.error('Error refreshing sheet:', error);
-                statusEl.textContent = '✗ Error: ' + error.message;
-                statusEl.style.color = '#dc2626';
-                
-                setTimeout(() => {
-                    statusEl.textContent = '';
-                }, 8000);
-            } finally {
-                btn.disabled = false;
                 btn.textContent = 'Refresh Current Sheet';
             }
         }
