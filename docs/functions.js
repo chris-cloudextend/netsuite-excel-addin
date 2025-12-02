@@ -84,9 +84,56 @@ window.exitFullRefreshMode = function() {
 };
 
 // ============================================================================
-// POPULATE FRONTEND CACHE - Called by taskpane after full_year_refresh
-// Also resolves any pending Promises that match the cached data!
+// SHARED STORAGE CACHE - Uses localStorage for cross-context communication
+// This works even when Shared Runtime is NOT active!
 // ============================================================================
+const STORAGE_KEY = 'netsuite_balance_cache';
+const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
+const STORAGE_TTL = 300000; // 5 minutes in milliseconds
+
+// Check localStorage for cached data (called by GLABAL)
+function checkLocalStorageCache(account, period, filters) {
+    try {
+        const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
+        if (!timestamp || (Date.now() - parseInt(timestamp)) > STORAGE_TTL) {
+            return null; // Cache expired or doesn't exist
+        }
+        
+        const cached = localStorage.getItem(STORAGE_KEY);
+        if (!cached) return null;
+        
+        const balances = JSON.parse(cached);
+        if (balances[account] && balances[account][period] !== undefined) {
+            return balances[account][period];
+        }
+        
+        // Account exists but no data for this period = 0
+        if (balances[account]) {
+            return 0;
+        }
+        
+        return null; // Not in cache
+    } catch (e) {
+        console.error('localStorage read error:', e);
+        return null;
+    }
+}
+
+// Save balances to localStorage (called by taskpane via window function)
+window.saveBalancesToLocalStorage = function(balances) {
+    try {
+        console.log('💾 Saving balances to localStorage...');
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(balances));
+        localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
+        console.log(`✅ Saved ${Object.keys(balances).length} accounts to localStorage`);
+        return true;
+    } catch (e) {
+        console.error('localStorage write error:', e);
+        return false;
+    }
+};
+
+// Also keep the window function for Shared Runtime compatibility
 window.populateFrontendCache = function(balances, filters = {}) {
     console.log('========================================');
     console.log('📦 POPULATING FRONTEND CACHE');
@@ -100,81 +147,42 @@ window.populateFrontendCache = function(balances, filters = {}) {
     let cacheCount = 0;
     let resolvedCount = 0;
     
-    // First, populate the cache
+    // First, populate the in-memory cache
     for (const [account, periods] of Object.entries(balances)) {
         for (const [period, amount] of Object.entries(periods)) {
-            // Build cache key in same format as getCacheKey()
             const cacheKey = `balance:${account}:${period}:${period}:${subsidiary}:${department}:${location}:${classId}`;
             cache.balance.set(cacheKey, amount);
             cacheCount++;
         }
     }
     
-    console.log(`✅ Cached ${cacheCount} values in frontend`);
-    console.log(`   Sample accounts: ${Object.keys(balances).slice(0, 5).join(', ')}`);
+    // Also save to localStorage for cross-context access
+    window.saveBalancesToLocalStorage(balances);
     
-    // CRITICAL: Now resolve any pending Promises that match cached data!
-    // This is what makes formulas update from "loading" to actual values
+    console.log(`✅ Cached ${cacheCount} values in frontend`);
+    
+    // Resolve pending promises
     console.log(`\n🔄 Checking ${pendingRequests.balance.size} pending requests...`);
     
-    const pendingToResolve = [];
-    
-    for (const [cacheKey, request] of pendingRequests.balance.entries()) {
-        // Check if this request can be satisfied from cache
-        const { account, fromPeriod, toPeriod } = request.params;
+    for (const [cacheKey, request] of Array.from(pendingRequests.balance.entries())) {
+        const { account, fromPeriod } = request.params;
+        let value = 0;
         
-        // For single-period requests (fromPeriod === toPeriod)
-        if (fromPeriod === toPeriod || !toPeriod) {
-            const lookupKey = `balance:${account}:${fromPeriod}:${fromPeriod}:${subsidiary}:${department}:${location}:${classId}`;
-            if (cache.balance.has(lookupKey)) {
-                const value = cache.balance.get(lookupKey);
-                pendingToResolve.push({ cacheKey, request, value });
-            }
-        } else {
-            // For multi-period requests, sum all periods in range
-            // For now, check if we have all individual periods
-            let total = 0;
-            let hasAllPeriods = true;
-            
-            // This is a simplification - we'll resolve with whatever we have
-            // The individual period keys are in the cache
-            const accountPeriods = balances[account];
-            if (accountPeriods) {
-                for (const [period, amount] of Object.entries(accountPeriods)) {
-                    total += amount;
-                }
-                pendingToResolve.push({ cacheKey, request, value: total });
-            }
+        if (balances[account] && balances[account][fromPeriod] !== undefined) {
+            value = balances[account][fromPeriod];
         }
-    }
-    
-    // Resolve the pending Promises
-    for (const { cacheKey, request, value } of pendingToResolve) {
-        console.log(`   ✅ Resolving pending: ${request.params.account} = ${value}`);
+        
+        console.log(`   ✅ Resolving: ${account} = ${value}`);
         try {
             request.resolve(value);
             pendingRequests.balance.delete(cacheKey);
             resolvedCount++;
         } catch (err) {
-            console.error(`   ❌ Failed to resolve ${request.params.account}:`, err);
+            console.error(`   ❌ Failed:`, err);
         }
     }
     
-    // Also resolve any requests with 0 for accounts not in the data (no transactions)
-    const remainingRequests = Array.from(pendingRequests.balance.entries());
-    for (const [cacheKey, request] of remainingRequests) {
-        console.log(`   ⚠️ No data for ${request.params.account}, resolving with 0`);
-        try {
-            request.resolve(0);
-            pendingRequests.balance.delete(cacheKey);
-            resolvedCount++;
-        } catch (err) {
-            console.error(`   ❌ Failed to resolve ${request.params.account}:`, err);
-        }
-    }
-    
-    console.log(`\n✅ Resolved ${resolvedCount} pending requests`);
-    console.log(`   Remaining pending: ${pendingRequests.balance.size}`);
+    console.log(`✅ Resolved ${resolvedCount} pending requests`);
     console.log('========================================');
     
     return { cacheCount, resolvedCount };
@@ -493,11 +501,20 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
         const cacheKey = getCacheKey('balance', params);
         
-        // Check cache FIRST - return immediately if found (NO @ SYMBOL!)
+        // Check in-memory cache FIRST - return immediately if found
         if (cache.balance.has(cacheKey)) {
             cacheStats.hits++;
-            // Silent cache hit for performance
             return cache.balance.get(cacheKey);
+        }
+        
+        // Check localStorage cache (works across contexts even without Shared Runtime!)
+        const localStorageValue = checkLocalStorageCache(account, fromPeriod, { subsidiary, department, location, classId });
+        if (localStorageValue !== null) {
+            cacheStats.hits++;
+            // Also save to in-memory cache for next time
+            cache.balance.set(cacheKey, localStorageValue);
+            console.log(`⚡ localStorage HIT: ${account}/${fromPeriod} = ${localStorageValue}`);
+            return localStorageValue;
         }
         
         // Cache miss - add to batch queue and return Promise

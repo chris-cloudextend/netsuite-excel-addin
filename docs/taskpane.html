@@ -1053,20 +1053,31 @@
                 console.log(`   Cached on backend: ${cachedCount} values`);
                 console.log(`   Total time: ${elapsed}s`);
                 
-                updateLoading('Populating frontend cache...', 70, `${accountCount} accounts received`);
+                updateLoading('Saving to local cache...', 70, `${accountCount} accounts received`);
                 
-                // CRITICAL: Populate the FRONTEND cache so formulas hit cache immediately!
+                // Save to localStorage - this works even WITHOUT Shared Runtime!
+                // localStorage is shared across all contexts in the same origin
+                try {
+                    const STORAGE_KEY = 'netsuite_balance_cache';
+                    const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
+                    
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(data.balances || {}));
+                    localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
+                    
+                    console.log(`✅ Saved ${accountCount} accounts to localStorage`);
+                    updateLoading('Local cache ready!', 85, `${accountCount} accounts cached`);
+                } catch (storageError) {
+                    console.error('❌ localStorage error:', storageError);
+                }
+                
+                // Also try the Shared Runtime method if available
                 if (typeof window.populateFrontendCache === 'function') {
-                    const frontendCacheCount = window.populateFrontendCache(data.balances || {}, {
-                        subsidiary: '',
-                        department: '',
-                        location: '',
-                        class: ''
-                    });
-                    console.log(`✅ Frontend cache populated with ${frontendCacheCount} values`);
-                    updateLoading('Frontend cache ready!', 85, `${frontendCacheCount} values cached locally`);
-                } else {
-                    console.warn('⚠️ populateFrontendCache not available - Shared Runtime may not be active');
+                    try {
+                        window.populateFrontendCache(data.balances || {}, {});
+                        console.log('✅ Also populated via Shared Runtime');
+                    } catch (e) {
+                        console.log('Shared Runtime method failed (expected if not active)');
+                    }
                 }
                 
                 // Wait a moment for cache to settle
