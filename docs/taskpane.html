@@ -939,7 +939,28 @@
             
             // Auto-load lookups on open
             loadNetSuiteLookups();
+            
+            // CRITICAL: Preload ALL account titles to prevent 429 rate limit errors
+            // This makes ONE query instead of 150+ concurrent queries
+            preloadAccountTitles();
         });
+        
+        async function preloadAccountTitles() {
+            try {
+                console.log('🔄 Preloading account titles...');
+                const response = await fetch(`${SERVER_URL}/account/preload_titles`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log(`✅ Preloaded ${data.loaded} account titles`);
+                } else {
+                    console.warn('⚠️  Failed to preload account titles:', response.status);
+                }
+            } catch (error) {
+                console.error('Error preloading account titles:', error);
+                // Don't throw - taskpane should still work even if preload fails
+            }
+        }
 
         async function clearCache() {
             const statusEl = document.getElementById('refreshStatus');

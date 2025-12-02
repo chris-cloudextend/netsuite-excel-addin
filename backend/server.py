@@ -1478,6 +1478,50 @@ def get_account_parent(account_number):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/account/preload_titles')
+def preload_account_titles():
+    """
+    Preload ALL account titles into cache with a single query
+    This prevents 429 rate limit errors from concurrent individual requests
+    
+    Returns: Count of titles loaded
+    """
+    global account_title_cache
+    
+    try:
+        print("🔄 Preloading ALL account titles...")
+        
+        # Query ALL active accounts in one go
+        query = """
+            SELECT acctnumber, accountsearchdisplaynamecopy AS account_name
+            FROM Account
+            WHERE isinactive = 'F'
+            ORDER BY acctnumber
+        """
+        
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        
+        # Populate cache
+        loaded_count = 0
+        if isinstance(result, list):
+            for row in result:
+                account_num = str(row.get('acctnumber', ''))
+                account_name = row.get('account_name', 'Unknown')
+                if account_num:
+                    account_title_cache[account_num] = account_name
+                    loaded_count += 1
+        
+        print(f"✅ Preloaded {loaded_count} account titles into cache")
+        return jsonify({'loaded': loaded_count, 'status': 'success'})
+            
+    except Exception as e:
+        print(f"Error preloading account titles: {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/account/<account_number>/name')
 def get_account_name(account_number):
     """
@@ -1494,7 +1538,10 @@ def get_account_name(account_number):
             # print(f"⚡ Title cache HIT: {account_number}")  # Uncomment for debugging
             return account_title_cache[account_number]
         
-        # Cache miss - query NetSuite
+        # Cache miss - query NetSuite (ONLY if not preloaded)
+        # This should rarely happen if preload_titles was called
+        print(f"⚠️  Title cache MISS for account {account_number} - querying NetSuite")
+        
         # Build SuiteQL query
         # Use accountsearchdisplaynamecopy to get name WITHOUT account number prefix
         query = f"""
