@@ -263,8 +263,11 @@
                 <h2>🔄 Data Management</h2>
                 <p>Control your NetSuite data cache and formulas.</p>
                 
-                <button class="refresh-btn" onclick="refreshSelected()" style="background: #0891b2;" onmouseover="this.style.background='#0e7490'" onmouseout="this.style.background='#0891b2'">Refresh Selected Cells</button>
-                <p style="font-size: 11px; color: #92400e; margin: 8px 0;"><strong>💡 Tip:</strong> Select all cells (Ctrl+A / Cmd+A) before clicking to refresh entire sheet efficiently.</p>
+                <button class="refresh-btn" onclick="refreshCurrentSheet()">⚡ Refresh Current Sheet</button>
+                <p style="font-size: 11px; color: #92400e; margin: 8px 0;"><strong>Optimized refresh:</strong> Fetches ALL accounts for entire year in one query (~30-60s). Best for annual reports!</p>
+                
+                <button class="refresh-btn" onclick="refreshSelected()" style="background: #0891b2; margin-top: 10px;" onmouseover="this.style.background='#0e7490'" onmouseout="this.style.background='#0891b2'">Refresh Selected Cells</button>
+                <p style="font-size: 11px; color: #92400e; margin: 8px 0;">Fast refresh for specific cells or small ranges.</p>
                 
                 <button class="refresh-btn" onclick="clearCache()" style="background: #dc2626; margin-top: 10px;" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">Clear Cache</button>
                 <p style="font-size: 11px; color: #92400e; margin: 8px 0;">Clears all cached values. Use if you see stale data.</p>
@@ -848,15 +851,90 @@
             }
         }
 
-        // NOTE: refreshCurrentSheet() disabled - requires Shared Runtime configuration
-        // Use refreshSelected() with Ctrl+A to refresh entire sheet instead
-        /*
         async function refreshCurrentSheet() {
-            // This function requires Shared Runtime to communicate between
-            // taskpane and custom functions contexts.
-            // For now, users should select all cells and use refreshSelected()
+            const statusEl = document.getElementById('refreshStatus');
+            const btn = event.target;
+            
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Refreshing...';
+                statusEl.textContent = '🚀 Starting Full Year Refresh...';
+                statusEl.style.color = '#0284c7';
+                
+                // Detect year from sheet (optional - backend will auto-detect)
+                // For now, just use current year
+                const year = new Date().getFullYear();
+                
+                // Enter full refresh mode
+                if (typeof window.enterFullRefreshMode === 'function') {
+                    window.enterFullRefreshMode(year);
+                    console.log('✅ Entered full refresh mode');
+                } else {
+                    console.error('❌ window.enterFullRefreshMode not found!');
+                    throw new Error('Full refresh mode not available - Shared Runtime may not be active');
+                }
+                
+                // Trigger recalculation to queue all formulas
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    sheet.load('name');
+                    await context.sync();
+                    
+                    statusEl.textContent = `📊 Collecting formulas from "${sheet.name}"...`;
+                    
+                    // Get all used range and recalculate
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load('formulasR1C1');
+                    await context.sync();
+                    
+                    // Trigger recalc by clearing and resetting formulas
+                    // This will queue all NS.GLABAL formulas in full refresh mode
+                    const formulas = usedRange.formulasR1C1;
+                    usedRange.formulasR1C1 = formulas;
+                    
+                    await context.sync();
+                    
+                    // Wait a moment for all formulas to queue
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                });
+                
+                // Now trigger the full refresh (ONE big backend query)
+                statusEl.textContent = '⏳ Fetching ALL accounts from NetSuite...';
+                
+                if (typeof window.processFullRefresh === 'function') {
+                    const start = Date.now();
+                    await window.processFullRefresh();
+                    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+                    
+                    statusEl.textContent = `✓ Refresh complete in ${elapsed}s!`;
+                    statusEl.style.color = '#059669';
+                } else {
+                    console.error('❌ window.processFullRefresh not found!');
+                    throw new Error('Full refresh processor not available - Shared Runtime may not be active');
+                }
+                
+                setTimeout(() => {
+                    statusEl.textContent = '';
+                }, 5000);
+                
+            } catch (error) {
+                console.error('Error refreshing sheet:', error);
+                statusEl.textContent = '✗ Error: ' + error.message;
+                statusEl.style.color = '#dc2626';
+                
+                // Make sure we exit full refresh mode
+                if (typeof window.exitFullRefreshMode === 'function') {
+                    window.exitFullRefreshMode();
+                }
+                
+                setTimeout(() => {
+                    statusEl.textContent = '';
+                }, 8000);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '⚡ Refresh Current Sheet';
+            }
         }
-        */
 
         async function refreshSelected() {
             const statusEl = document.getElementById('refreshStatus');

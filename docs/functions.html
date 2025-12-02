@@ -9,7 +9,14 @@
 </head>
 <body>
     <!-- This page hosts the custom functions runtime -->
-    <!-- No visible UI is needed -->
+    <!-- In Shared Runtime mode, this page also handles taskpane communication -->
+    <div id="runtime-status" style="display:none;">Shared Runtime Active</div>
+    <script>
+        // Initialize shared runtime
+        Office.onReady(function() {
+            console.log('✅ Shared Runtime initialized - taskpane can communicate with custom functions');
+        });
+    </script>
 </body>
 </html>
 
