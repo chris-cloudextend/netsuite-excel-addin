@@ -31,6 +31,27 @@ const cacheStats = {
 };
 
 // ============================================================================
+// GLOBAL CACHE CONTROL - Accessible from taskpane
+// ============================================================================
+window.clearAllCaches = function() {
+    console.log('🗑️  CLEARING ALL CACHES...');
+    console.log(`  Before: ${cache.balance.size} balances, ${cache.title.size} titles, ${cache.budget.size} budgets`);
+    
+    cache.balance.clear();
+    cache.title.clear();
+    cache.budget.clear();
+    cache.type.clear();
+    cache.parent.clear();
+    
+    // Reset stats
+    cacheStats.hits = 0;
+    cacheStats.misses = 0;
+    
+    console.log('✅ ALL CACHES CLEARED');
+    return true;
+};
+
+// ============================================================================
 // REQUEST QUEUE - Collects requests for intelligent batching
 // ============================================================================
 const requestQueue = {

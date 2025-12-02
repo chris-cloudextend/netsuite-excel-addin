@@ -810,7 +810,7 @@
             loadNetSuiteLookups();
         });
 
-        function clearCache() {
+        async function clearCache() {
             const statusEl = document.getElementById('refreshStatus');
             const btn = event.target;
             
@@ -820,10 +820,14 @@
                 statusEl.textContent = 'Clearing cache...';
                 statusEl.style.color = '#0284c7';
                 
-                // Clear cache in custom functions context
-                // Note: We can't directly access the functions.js cache from here,
-                // but recalculating will rebuild it
-                console.log('Requesting cache clear...');
+                // Call the global clearAllCaches function from functions.js
+                if (typeof window.clearAllCaches === 'function') {
+                    window.clearAllCaches();
+                    console.log('✅ Cache cleared via window.clearAllCaches');
+                } else {
+                    // Fallback: Try to access it from custom functions runtime
+                    console.log('⚠️  window.clearAllCaches not found, cache may not be cleared');
+                }
                 
                 // Show success message
                 statusEl.textContent = '✓ Cache cleared! Formulas will fetch fresh data on next calculation.';
@@ -854,8 +858,19 @@
             try {
                 btn.disabled = true;
                 btn.textContent = 'Refreshing...';
-                statusEl.textContent = 'Preparing to refresh...';
+                statusEl.textContent = 'Clearing cache...';
                 statusEl.style.color = '#0284c7';
+                
+                // CRITICAL: Clear cache FIRST before recalculating
+                if (typeof window.clearAllCaches === 'function') {
+                    window.clearAllCaches();
+                    console.log('✅ Cache cleared before refresh');
+                } else {
+                    console.log('⚠️  window.clearAllCaches not found');
+                }
+                
+                // Wait a moment for cache to clear
+                await new Promise(resolve => setTimeout(resolve, 100));
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -908,8 +923,19 @@
             try {
                 btn.disabled = true;
                 btn.textContent = 'Refreshing...';
-                statusEl.textContent = 'Preparing to refresh...';
+                statusEl.textContent = 'Clearing cache...';
                 statusEl.style.color = '#0284c7';
+                
+                // CRITICAL: Clear cache FIRST before recalculating
+                if (typeof window.clearAllCaches === 'function') {
+                    window.clearAllCaches();
+                    console.log('✅ Cache cleared before refresh (selected)');
+                } else {
+                    console.log('⚠️  window.clearAllCaches not found');
+                }
+                
+                // Wait a moment for cache to clear
+                await new Promise(resolve => setTimeout(resolve, 100));
                 
                 await Excel.run(async (context) => {
                     const range = context.workbook.getSelectedRange();
