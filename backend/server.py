@@ -27,6 +27,13 @@ lookup_cache = {
 }
 cache_loaded = False
 
+# In-memory cache for balance data (from full year refresh)
+# Structure: { 'account:period:filters_hash': balance_value }
+# Expires after 5 minutes
+balance_cache = {}
+balance_cache_timestamp = None
+BALANCE_CACHE_TTL = 300  # 5 minutes in seconds
+
 # Default subsidiary ID (top-level parent) - loaded at startup
 # This is used when no subsidiary is specified by the user
 default_subsidiary_id = None
@@ -1101,9 +1108,26 @@ def batch_full_year_refresh():
             balances[account][period_name] = amount
         
         print(f"📊 Returning {len(balances)} accounts")
+        
+        # CRITICAL: Cache all results in backend for fast lookups
+        # This allows individual formula requests to be instant after full refresh
+        global balance_cache, balance_cache_timestamp
+        balance_cache = {}
+        balance_cache_timestamp = datetime.now()
+        
+        filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
+        cached_count = 0
+        
+        for account, periods_data in balances.items():
+            for period, amount in periods_data.items():
+                cache_key = f"{account}:{period}:{filters_hash}"
+                balance_cache[cache_key] = amount
+                cached_count += 1
+        
+        print(f"💾 Cached {cached_count} values on backend for instant formula lookups")
         print(f"{'='*80}\n")
         
-        return jsonify({'balances': balances, 'query_time': elapsed})
+        return jsonify({'balances': balances, 'query_time': elapsed, 'cached_count': cached_count})
     
     except requests.exceptions.Timeout:
         print("❌ Query timeout (> 5 minutes)")
@@ -1166,6 +1190,46 @@ def batch_balance():
     
     if not accounts or not periods:
         return jsonify({'error': 'accounts and periods must be non-empty'}), 400
+    
+    # Check if we can serve this request from the backend balance cache
+    # (populated by full year refresh)
+    global balance_cache, balance_cache_timestamp
+    
+    if balance_cache and balance_cache_timestamp:
+        from datetime import timedelta
+        cache_age = (datetime.now() - balance_cache_timestamp).total_seconds()
+        
+        if cache_age < BALANCE_CACHE_TTL:
+            # Cache is fresh! Try to serve from cache
+            filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
+            
+            # Check if ALL requested data is in cache
+            all_in_cache = True
+            for account in accounts:
+                for period in periods:
+                    cache_key = f"{account}:{period}:{filters_hash}"
+                    if cache_key not in balance_cache:
+                        all_in_cache = False
+                        break
+                if not all_in_cache:
+                    break
+            
+            if all_in_cache:
+                # Serve entirely from cache!
+                print(f"⚡ BACKEND CACHE HIT: {len(accounts)} accounts × {len(periods)} periods (age: {cache_age:.1f}s)")
+                
+                result_balances = {}
+                for account in accounts:
+                    result_balances[account] = {}
+                    for period in periods:
+                        cache_key = f"{account}:{period}:{filters_hash}"
+                        result_balances[account][period] = balance_cache.get(cache_key, 0)
+                
+                return jsonify({'balances': result_balances, 'from_cache': True})
+            else:
+                print(f"⚠️  Partial cache hit - falling back to full query")
+        else:
+            print(f"⚠️  Backend cache expired ({cache_age:.1f}s old) - falling back to full query")
     
     try:
         # Build WHERE clause with optional filters

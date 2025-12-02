@@ -889,63 +889,31 @@
                 
                 console.log(`✅ Received ${Object.keys(data.balances || {}).length} accounts`);
                 console.log(`   Query time: ${data.query_time}s`);
+                console.log(`   Cached on backend: ${data.cached_count} values`);
                 console.log(`   Total time: ${elapsed}s`);
                 
-                statusEl.textContent = `✓ Data fetched in ${elapsed}s! Now updating formulas...`;
+                statusEl.textContent = `✓ Data cached on backend in ${elapsed}s! Now recalculating formulas...`;
                 
-                // Populate values directly into cells (much faster than triggering recalc!)
+                // Clear frontend cache to force fresh requests
+                if (typeof window.clearAllCaches === 'function') {
+                    window.clearAllCaches();
+                }
+                
+                // Trigger Excel to recalculate formulas
+                // They will make requests to backend, which will serve from cache (instant!)
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    const usedRange = sheet.getUsedRange();
-                    usedRange.load('address, formulas, values');
+                    sheet.calculate(true); // Force recalculation
                     await context.sync();
                     
-                    const formulas = usedRange.formulas;
-                    const values = usedRange.values;
-                    let updatedCount = 0;
+                    statusEl.textContent = 'Formulas recalculating (pulling from backend cache)...';
                     
-                    // Find all NS.GLABAL formulas and update their values
-                    for (let row = 0; row < formulas.length; row++) {
-                        for (let col = 0; col < formulas[row].length; col++) {
-                            const formula = formulas[row][col];
-                            
-                            // Check if this is an NS.GLABAL formula
-                            if (typeof formula === 'string' && formula.toUpperCase().includes('NS.GLABAL')) {
-                                // Parse formula to extract account and period
-                                const match = formula.match(/NS\.GLABAL\s*\(\s*["']?(\w+)["']?\s*,\s*["']?([^"']+)["']?\s*,\s*["']?([^"']+)["']?/i);
-                                
-                                if (match) {
-                                    const account = match[1];
-                                    const fromPeriod = match[2];
-                                    const toPeriod = match[3];
-                                    
-                                    // Look up value in response data
-                                    if (data.balances && data.balances[account]) {
-                                        let total = 0;
-                                        
-                                        // Sum the period range
-                                        for (const period in data.balances[account]) {
-                                            // Simple period matching (Jan-Dec)
-                                            total += data.balances[account][period] || 0;
-                                        }
-                                        
-                                        // Update the cell value
-                                        values[row][col] = total;
-                                        updatedCount++;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Write all values back at once
-                    usedRange.values = values;
-                    await context.sync();
-                    
-                    console.log(`✅ Updated ${updatedCount} formulas`);
+                    // Wait for formulas to complete
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                 });
                 
-                statusEl.textContent = `✓ Refresh complete in ${elapsed}s!`;
+                const totalElapsed = ((Date.now() - start) / 1000).toFixed(1);
+                statusEl.textContent = `✓ Refresh complete in ${totalElapsed}s!`;
                 statusEl.style.color = '#059669';
                 
                 setTimeout(() => {
