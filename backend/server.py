@@ -883,6 +883,239 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
     return full_query
 
 
+def build_full_year_pl_query(fiscal_year, target_sub, filters):
+    """
+    Build optimized full-year P&L query using CTE pattern (ChatGPT's recommendation).
+    This query consolidates FIRST (in the CTE), then groups - MUCH faster than grouping then consolidating.
+    
+    Expected performance: < 30 seconds for ALL accounts × 12 months
+    """
+    # Build optional filter clauses
+    filter_clauses = []
+    if filters.get('subsidiary'):
+        filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+    if filters.get('department'):
+        filter_clauses.append(f"tal.department = {filters['department']}")
+    if filters.get('location'):
+        filter_clauses.append(f"tal.location = {filters['location']}")
+    if filters.get('class'):
+        filter_clauses.append(f"tal.class = {filters['class']}")
+    
+    filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    
+    query = f"""
+    WITH sub_cte AS (
+      SELECT COUNT(*) AS subs_count
+      FROM Subsidiary
+      WHERE isinactive = 'F'
+    ),
+    base AS (
+      SELECT
+        tal.account AS account_id,
+        t.postingperiod AS period_id,
+        CASE
+          WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
+            TO_NUMBER(
+              BUILTIN.CONSOLIDATE(
+                tal.amount,
+                'LEDGER',
+                'DEFAULT',
+                'DEFAULT',
+                {target_sub},
+                t.postingperiod,
+                'DEFAULT'
+              )
+            )
+          ELSE tal.amount
+        END
+        * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END
+        AS cons_amt
+      FROM TransactionAccountingLine tal
+      JOIN Transaction t ON t.id = tal.transaction
+      JOIN Account a ON a.id = tal.account
+      JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+      CROSS JOIN sub_cte
+      WHERE t.posting = 'T'
+        AND tal.posting = 'T'
+        AND tal.accountingbook = 1
+        AND ap.isyear = 'F'
+        AND ap.isquarter = 'F'
+        AND EXTRACT(YEAR FROM ap.startdate) = {fiscal_year}
+        AND COALESCE(a.eliminate, 'F') = 'F'
+        AND a.accttype IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
+        {filter_sql}
+    )
+    SELECT
+      a.acctnumber AS account_number,
+      TO_CHAR(ap.startdate,'YYYY-MM') AS month,
+      SUM(b.cons_amt) AS amount
+    FROM base b
+    JOIN AccountingPeriod ap ON ap.id = b.period_id
+    JOIN Account a ON a.id = b.account_id
+    GROUP BY a.acctnumber, ap.startdate
+    HAVING SUM(b.cons_amt) <> 0
+    ORDER BY a.acctnumber, ap.startdate
+    """
+    
+    return query
+
+
+def convert_month_to_period_name(month_str):
+    """Convert 'YYYY-MM' to 'Mon YYYY' format"""
+    try:
+        dt = datetime.strptime(month_str, '%Y-%m')
+        return dt.strftime('%b %Y')
+    except:
+        return month_str
+
+
+def extract_year_from_period(period_name):
+    """Extract year from 'Jan 2024' format"""
+    try:
+        parts = period_name.split()
+        if len(parts) == 2:
+            return int(parts[1])
+    except:
+        pass
+    return datetime.now().year
+
+
+@app.route('/batch/full_year_refresh', methods=['POST'])
+def batch_full_year_refresh():
+    """
+    OPTIMIZED FULL-YEAR REFRESH - Get ALL P&L accounts for an entire fiscal year in ONE query.
+    Uses optimized CTE pattern that consolidates FIRST, then groups (much faster).
+    
+    Expected performance: < 30 seconds for ALL accounts × 12 months
+    
+    POST JSON:
+    {
+        "year": 2025,  // Optional - defaults to current year
+        "subsidiary": "",
+        "class": "",
+        "department": "",
+        "location": ""
+    }
+    
+    Returns:
+    {
+        "balances": {
+            "4010": {
+                "Jan 2025": 12400000,
+                "Feb 2025": 13200000,
+                ...
+            },
+            "5000": {
+                "Jan 2025": 5000000,
+                ...
+            }
+        }
+    }
+    """
+    data = request.get_json() or {}
+    
+    # Extract year - default to current year if not provided
+    fiscal_year = data.get('year')
+    if not fiscal_year:
+        # Try to extract from first period if provided
+        periods = data.get('periods', [])
+        if periods:
+            fiscal_year = extract_year_from_period(periods[0])
+        else:
+            fiscal_year = datetime.now().year
+    
+    # Get filters
+    subsidiary = data.get('subsidiary', '')
+    class_id = data.get('class', '')
+    department = data.get('department', '')
+    location = data.get('location', '')
+    
+    # Convert names to IDs
+    subsidiary = convert_name_to_id('subsidiary', subsidiary)
+    class_id = convert_name_to_id('class', class_id)
+    department = convert_name_to_id('department', department)
+    location = convert_name_to_id('location', location)
+    
+    # Determine target subsidiary for consolidation
+    if subsidiary and subsidiary != '':
+        target_sub = subsidiary
+    else:
+        target_sub = default_subsidiary_id or '1'
+    
+    # Build filters dict
+    filters = {}
+    if subsidiary and subsidiary != '':
+        filters['subsidiary'] = subsidiary
+    if class_id and class_id != '':
+        filters['class'] = class_id
+    if department and department != '':
+        filters['department'] = department
+    if location and location != '':
+        filters['location'] = location
+    
+    try:
+        print(f"\n{'='*80}")
+        print(f"🚀 FULL YEAR REFRESH: {fiscal_year}")
+        print(f"   Target subsidiary: {target_sub}")
+        print(f"   Filters: {filters}")
+        print(f"{'='*80}\n")
+        
+        # Build and execute optimized query
+        query = build_full_year_pl_query(fiscal_year, target_sub, filters)
+        
+        # Execute query
+        start_time = datetime.now()
+        response = requests.post(
+            suiteql_url,
+            auth=auth,
+            headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
+            json={'q': query},
+            timeout=300  # 5 minute timeout for large queries
+        )
+        elapsed = (datetime.now() - start_time).total_seconds()
+        
+        print(f"⏱️  Query execution time: {elapsed:.2f} seconds")
+        
+        if response.status_code != 200:
+            print(f"❌ NetSuite error: {response.status_code}")
+            print(f"   Response: {response.text}")
+            return jsonify({'error': f'NetSuite API error: {response.status_code}', 'details': response.text}), 500
+        
+        result = response.json()
+        items = result.get('items', [])
+        
+        print(f"✅ Received {len(items)} rows")
+        
+        # Transform results to nested dict: { account: { period: value } }
+        balances = {}
+        for row in items:
+            account = row.get('account_number')
+            month_str = row.get('month')  # 'YYYY-MM' format
+            amount = float(row.get('amount', 0))
+            
+            # Convert 'YYYY-MM' to 'Mon YYYY' format
+            period_name = convert_month_to_period_name(month_str)
+            
+            if account not in balances:
+                balances[account] = {}
+            balances[account][period_name] = amount
+        
+        print(f"📊 Returning {len(balances)} accounts")
+        print(f"{'='*80}\n")
+        
+        return jsonify({'balances': balances, 'query_time': elapsed})
+    
+    except requests.exceptions.Timeout:
+        print("❌ Query timeout (> 5 minutes)")
+        return jsonify({'error': 'Query timeout - this should not happen with optimized query!'}), 504
+    
+    except Exception as e:
+        print(f"❌ Error in full_year_refresh: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/batch/balance', methods=['POST'])
 def batch_balance():
     """

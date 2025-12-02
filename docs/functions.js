@@ -52,6 +52,38 @@ window.clearAllCaches = function() {
 };
 
 // ============================================================================
+// FULL REFRESH MODE - Optimized for bulk sheet refresh
+// ============================================================================
+let isFullRefreshMode = false;
+let fullRefreshResolver = null;
+let fullRefreshYear = null;
+
+window.enterFullRefreshMode = function(year) {
+    console.log('🚀 ENTERING FULL REFRESH MODE');
+    console.log(`   Year: ${year || 'auto-detect'}`);
+    isFullRefreshMode = true;
+    fullRefreshYear = year || null;
+    
+    // Clear cache to force fresh data
+    window.clearAllCaches();
+    
+    // Return a Promise that resolves when full refresh completes
+    return new Promise((resolve) => {
+        fullRefreshResolver = resolve;
+    });
+};
+
+window.exitFullRefreshMode = function() {
+    console.log('✅ EXITING FULL REFRESH MODE');
+    isFullRefreshMode = false;
+    fullRefreshYear = null;
+    if (fullRefreshResolver) {
+        fullRefreshResolver();
+        fullRefreshResolver = null;
+    }
+};
+
+// ============================================================================
 // REQUEST QUEUE - Collects requests for intelligent batching (Phase 3)
 // ============================================================================
 const pendingRequests = {
@@ -372,7 +404,11 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         
         // Cache miss - add to batch queue and return Promise
         cacheStats.misses++;
-        console.log(`📥 CACHE MISS [balance]: ${account} (${fromPeriod} to ${toPeriod}) → queuing`);
+        
+        // In full refresh mode, queue silently (task pane will trigger processFullRefresh)
+        if (!isFullRefreshMode) {
+            console.log(`📥 CACHE MISS [balance]: ${account} (${fromPeriod} to ${toPeriod}) → queuing`);
+        }
         
         // Return a Promise that will be resolved by the batch processor
         return new Promise((resolve, reject) => {
@@ -383,14 +419,18 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
                 timestamp: Date.now()
             });
             
-            // Start batch timer if not already running
-            if (!batchTimer) {
-                batchTimer = setTimeout(() => {
-                    batchTimer = null;
-                    processBatchQueue().catch(err => {
-                        console.error('Batch processing error:', err);
-                    });
-                }, BATCH_DELAY);
+            // In full refresh mode, DON'T start the batch timer
+            // The task pane will explicitly call processFullRefresh() when ready
+            if (!isFullRefreshMode) {
+                // Start batch timer if not already running (Mode 1: small batches)
+                if (!batchTimer) {
+                    batchTimer = setTimeout(() => {
+                        batchTimer = null;
+                        processBatchQueue().catch(err => {
+                            console.error('Batch processing error:', err);
+                        });
+                    }, BATCH_DELAY);
+                }
             }
         });
         
@@ -488,6 +528,175 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
 // ============================================================================
 // BATCH PROCESSING - Non-Streaming with Promise Resolution (Phase 3)
 // ============================================================================
+// ============================================================================
+// FULL REFRESH PROCESSOR - ONE big query for ALL accounts
+// ============================================================================
+async function processFullRefresh() {
+    console.log('');
+    console.log('════════════════════════════════════════════════════════════════════');
+    console.log('🚀 PROCESSING FULL REFRESH');
+    console.log('════════════════════════════════════════════════════════════════════');
+    
+    const allRequests = Array.from(pendingRequests.balance.entries());
+    
+    if (allRequests.length === 0) {
+        console.log('⚠️  No requests to process');
+        window.exitFullRefreshMode();
+        return;
+    }
+    
+    // Extract year from requests (or use provided year)
+    let year = fullRefreshYear;
+    if (!year && allRequests.length > 0) {
+        const firstPeriod = allRequests[0][1].params.fromPeriod;
+        if (firstPeriod) {
+            const match = firstPeriod.match(/\d{4}/);
+            year = match ? parseInt(match[0]) : new Date().getFullYear();
+        } else {
+            year = new Date().getFullYear();
+        }
+    }
+    
+    // Get filters from first request (assume all same filters)
+    const filters = {};
+    if (allRequests.length > 0) {
+        const firstRequest = allRequests[0][1];
+        filters.subsidiary = firstRequest.params.subsidiary || '';
+        filters.department = firstRequest.params.department || '';
+        filters.location = firstRequest.params.location || '';
+        filters.class = firstRequest.params.classId || '';
+    }
+    
+    console.log(`📊 Full Refresh Request:`);
+    console.log(`   Formulas: ${allRequests.length}`);
+    console.log(`   Year: ${year}`);
+    console.log(`   Filters:`, filters);
+    console.log('');
+    
+    try {
+        // Call optimized backend endpoint
+        const payload = {
+            year: year,
+            ...filters
+        };
+        
+        console.log('📤 Fetching ALL accounts for entire year...');
+        const start = Date.now();
+        
+        const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        
+        const data = await response.json();
+        const balances = data.balances || {};
+        const queryTime = data.query_time || 0;
+        const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+        
+        console.log('');
+        console.log(`✅ DATA RECEIVED`);
+        console.log(`   Backend Query Time: ${queryTime.toFixed(2)}s`);
+        console.log(`   Total Time: ${elapsed}s`);
+        console.log(`   Accounts: ${Object.keys(balances).length}`);
+        console.log('');
+        
+        // Populate cache with ALL results
+        console.log('💾 Populating cache...');
+        let cachedCount = 0;
+        for (const account in balances) {
+            for (const period in balances[account]) {
+                // Create cache key for this account-period combination
+                const cacheKey = getCacheKey('balance', {
+                    account: account,
+                    fromPeriod: period,
+                    toPeriod: period,
+                    ...filters
+                });
+                cache.balance.set(cacheKey, balances[account][period]);
+                cachedCount++;
+            }
+        }
+        console.log(`   Cached ${cachedCount} account-period combinations`);
+        console.log('');
+        
+        // Resolve ALL pending requests from cache
+        console.log('📝 Resolving formulas...');
+        let resolvedCount = 0;
+        let errorCount = 0;
+        
+        for (const [cacheKey, request] of allRequests) {
+            try {
+                const account = request.params.account;
+                const fromPeriod = request.params.fromPeriod;
+                const toPeriod = request.params.toPeriod;
+                
+                // Sum requested period range
+                let total = 0;
+                if (fromPeriod === toPeriod) {
+                    // Single period
+                    if (balances[account] && balances[account][fromPeriod] !== undefined) {
+                        total = balances[account][fromPeriod];
+                    }
+                } else {
+                    // Multiple periods - sum them
+                    const periodRange = expandPeriodRange(fromPeriod, toPeriod);
+                    for (const period of periodRange) {
+                        if (balances[account] && balances[account][period] !== undefined) {
+                            total += balances[account][period];
+                        }
+                    }
+                }
+                
+                request.resolve(total);
+                resolvedCount++;
+                
+            } catch (error) {
+                console.error(`❌ Error resolving ${request.params.account}:`, error);
+                request.reject(error);
+                errorCount++;
+            }
+        }
+        
+        console.log(`   ✅ Resolved: ${resolvedCount} formulas`);
+        if (errorCount > 0) {
+            console.log(`   ❌ Errors: ${errorCount} formulas`);
+        }
+        console.log('');
+        console.log('════════════════════════════════════════════════════════════════════');
+        console.log(`✅ FULL REFRESH COMPLETE (${elapsed}s)`);
+        console.log('════════════════════════════════════════════════════════════════════');
+        console.log('');
+        
+        pendingRequests.balance.clear();
+        
+    } catch (error) {
+        console.error('');
+        console.error('════════════════════════════════════════════════════════════════════');
+        console.error('❌ FULL REFRESH FAILED');
+        console.error('════════════════════════════════════════════════════════════════════');
+        console.error(error);
+        console.error('');
+        
+        // Reject all pending requests
+        for (const [cacheKey, request] of allRequests) {
+            request.reject(error);
+        }
+        
+        pendingRequests.balance.clear();
+        
+    } finally {
+        window.exitFullRefreshMode();
+    }
+}
+
+// Make it globally accessible for taskpane
+window.processFullRefresh = processFullRefresh;
+
 async function processBatchQueue() {
     batchTimer = null;  // Reset timer reference
     
