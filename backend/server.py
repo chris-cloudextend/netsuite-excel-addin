@@ -34,6 +34,10 @@ balance_cache = {}
 balance_cache_timestamp = None
 BALANCE_CACHE_TTL = 300  # 5 minutes in seconds
 
+# In-memory cache for account titles (permanent, rarely changes)
+# Structure: { 'account_number': 'account_name' }
+account_title_cache = {}
+
 # Default subsidiary ID (top-level parent) - loaded at startup
 # This is used when no subsidiary is specified by the user
 default_subsidiary_id = None
@@ -1118,11 +1122,19 @@ def batch_full_year_refresh():
         filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
         cached_count = 0
         
+        print(f"🔑 Cache key format:")
+        print(f"   subsidiary='{subsidiary}', department='{department}', location='{location}', class='{class_id}'")
+        print(f"   filters_hash='{filters_hash}' (length: {len(filters_hash)}, colons: {filters_hash.count(':')})")
+        
         for account, periods_data in balances.items():
             for period, amount in periods_data.items():
                 cache_key = f"{account}:{period}:{filters_hash}"
                 balance_cache[cache_key] = amount
                 cached_count += 1
+                
+                # Show first 3 keys as examples
+                if cached_count <= 3:
+                    print(f"   Example key #{cached_count}: '{cache_key}' (length: {len(cache_key)}, colons: {cache_key.count(':')})")
         
         print(f"💾 Cached {cached_count} values on backend for instant formula lookups")
         print(f"{'='*80}\n")
@@ -1204,11 +1216,18 @@ def batch_balance():
             filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
             
             print(f"🔍 Cache lookup:")
-            print(f"   Filters hash: '{filters_hash}'")
+            print(f"   subsidiary='{subsidiary}', department='{department}', location='{location}', class='{class_id}'")
+            print(f"   Filters hash: '{filters_hash}' (length: {len(filters_hash)}, colons: {filters_hash.count(':')})")
             print(f"   Sample accounts: {accounts[:3]}")
             print(f"   Sample periods: {periods[:3]}")
             print(f"   Total cached keys: {len(balance_cache)}")
-            print(f"   Sample cached keys: {list(balance_cache.keys())[:5]}")
+            print(f"   Sample cached keys: {list(balance_cache.keys())[:3]}")
+            
+            # Try building a sample key to compare
+            if accounts and periods:
+                sample_key = f"{accounts[0]}:{periods[0]}:{filters_hash}"
+                print(f"   Sample lookup key: '{sample_key}' (length: {len(sample_key)}, colons: {sample_key.count(':')})")
+                print(f"   Key exists in cache: {sample_key in balance_cache}")
             
             # Check if ALL requested data is in cache
             all_in_cache = True
@@ -1467,7 +1486,15 @@ def get_account_name(account_number):
     
     Returns: Account display name (string)
     """
+    global account_title_cache
+    
     try:
+        # Check cache first
+        if account_number in account_title_cache:
+            # print(f"⚡ Title cache HIT: {account_number}")  # Uncomment for debugging
+            return account_title_cache[account_number]
+        
+        # Cache miss - query NetSuite
         # Build SuiteQL query
         # Use accountsearchdisplaynamecopy to get name WITHOUT account number prefix
         query = f"""
@@ -1484,9 +1511,15 @@ def get_account_name(account_number):
         
         # Return account name or "Not Found"
         if result and len(result) > 0:
-            return result[0].get('account_name', 'Not Found')
+            account_name = result[0].get('account_name', 'Not Found')
         else:
-            return 'Not Found'
+            account_name = 'Not Found'
+        
+        # Cache the result (even if Not Found, to avoid repeated queries)
+        account_title_cache[account_number] = account_name
+        print(f"📝 Cached title for account {account_number}: {account_name}")
+        
+        return account_name
             
     except Exception as e:
         print(f"Error in get_account_name: {str(e)}", file=sys.stderr)
