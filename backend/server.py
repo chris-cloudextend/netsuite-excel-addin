@@ -507,11 +507,12 @@ def search_accounts():
         where_clause = " AND ".join(where_conditions)
         
         # Build SuiteQL query
+        # Use accountsearchdisplaynamecopy for clean name (without number prefix)
         query = f"""
             SELECT 
                 id,
                 acctnumber,
-                accountsearchdisplayname AS accountname,
+                accountsearchdisplaynamecopy AS accountname,
                 accttype
             FROM 
                 Account
