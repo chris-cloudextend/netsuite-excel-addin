@@ -355,39 +355,45 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         cacheStats.misses++;
         console.log(`📥 CACHE MISS [balance]: ${account} (${fromPeriod} to ${toPeriod})`);
         
-        // For Phase 1: Direct fetch (we'll optimize batching in Phase 3)
-        // This ensures we don't timeout (no 5-second limit in async functions)
+        // For Phase 1: Simple single-account fetch
+        // We'll optimize with batching in Phase 3
         try {
+            // Backend expects: accounts array, periods array, and filter fields
             const response = await fetch(`${SERVER_URL}/batch/balance`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    requests: [{
-                        account,
-                        fromPeriod,
-                        toPeriod,
-                        subsidiary,
-                        department,
-                        location,
-                        classId
-                    }]
+                    accounts: [account],
+                    periods: [fromPeriod, toPeriod],
+                    subsidiary: subsidiary || '',
+                    department: department || '',
+                    location: location || '',
+                    class: classId || ''
                 })
             });
             
             if (!response.ok) {
-                console.error(`Balance API error: ${response.status}`);
+                const errorText = await response.text();
+                console.error(`Balance API error: ${response.status}`, errorText);
                 return 0;
             }
             
             const data = await response.json();
-            const result = data.results?.[0];
             
-            if (result) {
-                const value = result.balance || 0;
+            // Backend returns: { balances: { "4220": { "Jan 2025": 123456, "Feb 2025": 234567 } } }
+            const accountBalances = data.balances?.[account];
+            
+            if (accountBalances) {
+                // Sum all periods in the range
+                let total = 0;
+                for (const period in accountBalances) {
+                    total += accountBalances[period] || 0;
+                }
+                
                 // Cache the result
-                cache.balance.set(cacheKey, value);
-                console.log(`💾 Cached balance: ${account} → ${value}`);
-                return value;
+                cache.balance.set(cacheKey, total);
+                console.log(`💾 Cached balance: ${account} → ${total}`);
+                return total;
             }
             
             return 0;
@@ -464,7 +470,8 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
             
             const response = await fetch(url.toString());
             if (!response.ok) {
-                console.error(`Budget API error: ${response.status}`);
+                const errorText = await response.text();
+                console.error(`Budget API error: ${response.status}`, errorText);
                 return 0;
             }
             
@@ -473,10 +480,8 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
             const finalValue = isNaN(budget) ? 0 : budget;
             
             // Cache the result
-            if (finalValue !== 0) {
-                cache.budget.set(cacheKey, finalValue);
-                console.log(`💾 Cached budget: ${account} → ${finalValue}`);
-            }
+            cache.budget.set(cacheKey, finalValue);
+            console.log(`💾 Cached budget: ${account} → ${finalValue}`);
             
             return finalValue;
             
