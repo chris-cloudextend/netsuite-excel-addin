@@ -1,1 +1,41 @@
-https://wallace-journey-legend-variation.trycloudflare.com
+CURRENT TUNNEL URL (Updated: Dec 2, 2025 - 8:00 PM)
+═══════════════════════════════════════════════════
+
+https://hired-headphones-calls-responsibility.trycloudflare.com
+
+═══════════════════════════════════════════════════
+HOW TO UPDATE CLOUDFLARE WORKER:
+═══════════════════════════════════════════════════
+
+1. Go to: https://dash.cloudflare.com
+
+2. Navigate to: Workers & Pages
+
+3. Find your worker (e.g., "netsuite-proxy" or similar)
+
+4. Click: Edit Code (or Quick Edit)
+
+5. Update the TUNNEL_URL at the top of the file:
+
+   const TUNNEL_URL = 'https://hired-headphones-calls-responsibility.trycloudflare.com';
+
+6. Click: Save and Deploy
+
+7. Test in Excel:
+   - Open your Excel file with formulas
+   - Click "Refresh All" in the add-in
+   - Formulas should update with data
+
+═══════════════════════════════════════════════════
+CURRENT SERVER STATUS:
+═══════════════════════════════════════════════════
+
+✅ Backend Server: http://localhost:5002
+✅ Account: TSTDRV2320150 (Sandbox)
+✅ Tunnel: https://hired-headphones-calls-responsibility.trycloudflare.com
+✅ Authentication: WORKING
+
+To test locally:
+  curl http://localhost:5002/test
+
+═══════════════════════════════════════════════════
