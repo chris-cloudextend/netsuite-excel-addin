@@ -91,56 +91,48 @@ const STORAGE_KEY = 'netsuite_balance_cache';
 const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
 const STORAGE_TTL = 300000; // 5 minutes in milliseconds
 
-// Check localStorage for cached data (called by GLABAL)
-function checkLocalStorageCache(account, period, filters) {
-    try {
-        const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
-        const cacheAge = timestamp ? (Date.now() - parseInt(timestamp)) : null;
-        
-        // Debug: Log first few lookups to diagnose issues
-        if (!window._localStorageDebugCount) window._localStorageDebugCount = 0;
-        const shouldLog = window._localStorageDebugCount < 20;
-        if (shouldLog) window._localStorageDebugCount++;
-        
-        if (!timestamp || cacheAge > STORAGE_TTL) {
-            if (shouldLog) console.log(`📦 localStorage: NO CACHE (timestamp=${timestamp}, age=${cacheAge}ms)`);
-            return null; // Cache expired or doesn't exist
-        }
-        
-        const cached = localStorage.getItem(STORAGE_KEY);
-        if (!cached) {
-            if (shouldLog) console.log(`📦 localStorage: CACHE KEY EMPTY`);
-            return null;
-        }
-        
-        const balances = JSON.parse(cached);
-        const accountCount = Object.keys(balances).length;
-        
-        // If account has data for this period, return it
-        if (balances[account] && balances[account][period] !== undefined) {
-            const value = balances[account][period];
-            if (shouldLog) console.log(`📦 localStorage HIT: ${account}/${period} = ${value} (from ${accountCount} accounts)`);
-            return value;
-        }
-        
-        // Account exists but no data for this specific period = 0
-        if (balances[account]) {
-            if (shouldLog) console.log(`📦 localStorage: ${account} exists but no ${period}, returning 0`);
-            return 0;
-        }
-        
-        // Account not found in cache - DON'T return 0 automatically!
-        // Let batch processing handle it to get real data from NetSuite
-        if (shouldLog) {
-            const sampleAccounts = Object.keys(balances).slice(0, 5).join(', ');
-            console.log(`📦 localStorage MISS: ${account} not in cache (${accountCount} accounts: ${sampleAccounts}...)`);
-        }
-        return null;
-        
-    } catch (e) {
-        console.error('localStorage read error:', e);
+// In-memory cache that can be populated via window function
+// This is populated by taskpane when full_year_refresh completes
+let fullYearCache = null;
+let fullYearCacheTimestamp = null;
+
+// Function to populate the cache from taskpane (via Shared Runtime if available)
+window.setFullYearCache = function(balances) {
+    console.log('========================================');
+    console.log('📦 SETTING FULL YEAR CACHE IN FUNCTIONS.JS');
+    console.log(`   Accounts: ${Object.keys(balances).length}`);
+    console.log('========================================');
+    fullYearCache = balances;
+    fullYearCacheTimestamp = Date.now();
+    return true;
+};
+
+// Check if we have cached data for this account/period
+function checkFullYearCache(account, period) {
+    if (!fullYearCache || !fullYearCacheTimestamp) {
         return null;
     }
+    
+    // Cache expires after 5 minutes
+    if (Date.now() - fullYearCacheTimestamp > 300000) {
+        console.log('📦 Full year cache expired');
+        fullYearCache = null;
+        fullYearCacheTimestamp = null;
+        return null;
+    }
+    
+    // Check if account has data for this period
+    if (fullYearCache[account] && fullYearCache[account][period] !== undefined) {
+        return fullYearCache[account][period];
+    }
+    
+    // Account exists but no data for this specific period = 0
+    if (fullYearCache[account]) {
+        return 0;
+    }
+    
+    // Account not in cache at all - return null to trigger batch processing
+    return null;
 }
 
 // Save balances to localStorage (called by taskpane via window function)
@@ -531,14 +523,13 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
             return cache.balance.get(cacheKey);
         }
         
-        // Check localStorage cache (works across contexts even without Shared Runtime!)
-        const localStorageValue = checkLocalStorageCache(account, fromPeriod, { subsidiary, department, location, classId });
-        if (localStorageValue !== null) {
+        // Check full year cache (populated by taskpane via setFullYearCache)
+        const fullYearValue = checkFullYearCache(account, fromPeriod);
+        if (fullYearValue !== null) {
             cacheStats.hits++;
-            // Also save to in-memory cache for next time
-            cache.balance.set(cacheKey, localStorageValue);
-            console.log(`⚡ localStorage HIT: ${account}/${fromPeriod} = ${localStorageValue}`);
-            return localStorageValue;
+            // Also save to regular cache for next time
+            cache.balance.set(cacheKey, fullYearValue);
+            return fullYearValue;
         }
         
         // Cache miss - add to batch queue and return Promise
