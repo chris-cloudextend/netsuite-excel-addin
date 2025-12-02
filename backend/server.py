@@ -1071,55 +1071,29 @@ def batch_full_year_refresh():
         print(f"   Filters: {filters}")
         print(f"{'='*80}\n")
         
-        # Build and execute optimized query
+        # Build and execute optimized query - NO PAGINATION (it doesn't work with complex CTEs)
+        # NetSuite returns max 1000 rows, which is ~83 accounts × 12 months
         query = build_full_year_pl_query(fiscal_year, target_sub, filters)
         
-        # Execute query WITH PAGINATION to get ALL rows (NetSuite limit is 1000 per page)
         start_time = datetime.now()
-        all_items = []
-        offset = 0
-        page_size = 1000
-        page_num = 0
-        
-        while True:
-            page_num += 1
-            # Add OFFSET to query for pagination
-            paginated_query = f"{query} OFFSET {offset} ROWS FETCH NEXT {page_size} ROWS ONLY"
-            
-            response = requests.post(
-                suiteql_url,
-                auth=auth,
-                headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
-                json={'q': paginated_query},
-                timeout=300  # 5 minute timeout for large queries
-            )
-            
-            if response.status_code != 200:
-                print(f"❌ NetSuite error on page {page_num}: {response.status_code}", flush=True)
-                print(f"   Response: {response.text}", flush=True)
-                return jsonify({'error': f'NetSuite API error: {response.status_code}', 'details': response.text}), 500
-            
-            result = response.json()
-            items = result.get('items', [])
-            all_items.extend(items)
-            
-            print(f"   Page {page_num}: {len(items)} rows (total: {len(all_items)})", flush=True)
-            
-            # If we got fewer than page_size, we've reached the end
-            if len(items) < page_size:
-                break
-            
-            offset += page_size
-            
-            # Safety limit - max 10 pages (10,000 rows = ~800 accounts × 12 months)
-            if page_num >= 10:
-                print(f"⚠️ Reached page limit of 10", flush=True)
-                break
+        response = requests.post(
+            suiteql_url,
+            auth=auth,
+            headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
+            json={'q': query},
+            timeout=300  # 5 minute timeout for large queries
+        )
         
         elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"⏱️  Query execution time: {elapsed:.2f} seconds ({page_num} page(s))", flush=True)
+        print(f"⏱️  Query execution time: {elapsed:.2f} seconds", flush=True)
         
-        items = all_items
+        if response.status_code != 200:
+            print(f"❌ NetSuite error: {response.status_code}", flush=True)
+            print(f"   Response: {response.text}", flush=True)
+            return jsonify({'error': f'NetSuite API error: {response.status_code}', 'details': response.text}), 500
+        
+        result = response.json()
+        items = result.get('items', [])
         
         print(f"✅ Received {len(items)} rows")
         
