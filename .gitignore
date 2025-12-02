@@ -37,3 +37,4 @@ key.pem
 **/netsuite_config*.json
 **/*secret*.json
 **/*credentials*.json
+*.save

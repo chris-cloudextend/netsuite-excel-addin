@@ -1198,8 +1198,8 @@ def get_balance():
             else:
                 # Convert period names to DATE ranges
                 # Period IDs don't work because they include quarterly/fiscal periods
-                from_start, from_end = get_period_dates_from_name(from_period)
-                to_start, to_end = get_period_dates_from_name(to_period)
+                from_start, from_end, _ = get_period_dates_from_name(from_period)
+                to_start, to_end, _ = get_period_dates_from_name(to_period)
                 if from_start and to_end:
                     # Use date strings directly (NetSuite returns dates as strings)
                     where_clauses.append(f"ap.startdate >= '{from_start}'")
