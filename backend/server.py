@@ -1203,16 +1203,23 @@ def batch_balance():
             # Cache is fresh! Try to serve from cache
             filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
             
+            print(f"🔍 Cache lookup:")
+            print(f"   Filters hash: '{filters_hash}'")
+            print(f"   Sample accounts: {accounts[:3]}")
+            print(f"   Sample periods: {periods[:3]}")
+            print(f"   Total cached keys: {len(balance_cache)}")
+            print(f"   Sample cached keys: {list(balance_cache.keys())[:5]}")
+            
             # Check if ALL requested data is in cache
             all_in_cache = True
+            missing_keys = []
             for account in accounts:
                 for period in periods:
                     cache_key = f"{account}:{period}:{filters_hash}"
                     if cache_key not in balance_cache:
                         all_in_cache = False
-                        break
-                if not all_in_cache:
-                    break
+                        if len(missing_keys) < 5:  # Only collect first 5 for debugging
+                            missing_keys.append(cache_key)
             
             if all_in_cache:
                 # Serve entirely from cache!
@@ -1227,7 +1234,9 @@ def batch_balance():
                 
                 return jsonify({'balances': result_balances, 'from_cache': True})
             else:
-                print(f"⚠️  Partial cache hit - falling back to full query")
+                print(f"⚠️  Partial cache miss - missing keys (showing first 5):")
+                for key in missing_keys:
+                    print(f"     Missing: '{key}'")
         else:
             print(f"⚠️  Backend cache expired ({cache_age:.1f}s old) - falling back to full query")
     
