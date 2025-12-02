@@ -30,13 +30,13 @@
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
                     xsi:type="VersionOverridesV1_0">
 
-    <!-- Enable Shared Runtime for communication between taskpane and custom functions -->
-    <Runtimes>
-      <Runtime resid="Functions.Page.Url" lifetime="long"/>
-    </Runtimes>
-
     <Hosts>
       <Host xsi:type="Workbook">
+
+        <!-- Enable Shared Runtime for communication between taskpane and custom functions -->
+        <Runtimes>
+          <Runtime resid="Functions.Page.Url" lifetime="long"/>
+        </Runtimes>
 
         <!-- Custom Functions (valid under AllFormFactors) -->
         <AllFormFactors>
