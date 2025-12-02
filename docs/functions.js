@@ -94,6 +94,7 @@ const pendingRequests = {
 let batchTimer = null;  // Timer reference for batching
 const BATCH_DELAY = 150;           // Wait 150ms to collect multiple requests
 const CHUNK_SIZE = 50;             // Max 50 accounts per batch (balances NetSuite limits)
+const MAX_PERIODS_PER_BATCH = 6;   // Max 6 periods per batch (prevents backend timeout)
 const CHUNK_DELAY = 300;           // Wait 300ms between chunks (prevent rate limiting)
 const MAX_RETRIES = 2;             // Retry 429 errors up to 2 times
 const RETRY_DELAY = 2000;          // Wait 2s before retrying 429 errors
@@ -749,100 +750,129 @@ async function processBatchQueue() {
         console.log(`  Batch: ${accounts.length} accounts × ${periods.length} period(s)`);
         
         // Split into chunks to avoid overwhelming NetSuite
+        // Chunk by BOTH accounts AND periods to prevent backend timeouts
         const accountChunks = [];
         for (let i = 0; i < accounts.length; i += CHUNK_SIZE) {
             accountChunks.push(accounts.slice(i, i + CHUNK_SIZE));
         }
         
-        console.log(`  Split into ${accountChunks.length} chunk(s) of max ${CHUNK_SIZE} accounts`);
+        const periodChunks = [];
+        for (let i = 0; i < periods.length; i += MAX_PERIODS_PER_BATCH) {
+            periodChunks.push(periods.slice(i, i + MAX_PERIODS_PER_BATCH));
+        }
         
-        // Process chunks sequentially
-        for (let i = 0; i < accountChunks.length; i++) {
-            const chunk = accountChunks[i];
-            console.log(`  📤 Chunk ${i + 1}/${accountChunks.length}: ${chunk.length} accounts`);
+        console.log(`  Split into ${accountChunks.length} account chunk(s) × ${periodChunks.length} period chunk(s) = ${accountChunks.length * periodChunks.length} total batches`);
+        
+        // Process chunks sequentially (both accounts AND periods)
+        let chunkIndex = 0;
+        const totalChunks = accountChunks.length * periodChunks.length;
+        
+        for (let ai = 0; ai < accountChunks.length; ai++) {
+            for (let pi = 0; pi < periodChunks.length; pi++) {
+                chunkIndex++;
+                const accountChunk = accountChunks[ai];
+                const periodChunk = periodChunks[pi];
+                console.log(`  📤 Chunk ${chunkIndex}/${totalChunks}: ${accountChunk.length} accounts × ${periodChunk.length} periods`);
             
-            try {
-                // Make batch API call
-                const response = await fetch(`${SERVER_URL}/batch/balance`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        accounts: chunk,
-                        periods: periods,
-                        subsidiary: filters.subsidiary || '',
-                        department: filters.department || '',
-                        location: filters.location || '',
-                        class: filters.class || ''
-                    })
-                });
+                try {
+                    // Make batch API call
+                    const response = await fetch(`${SERVER_URL}/batch/balance`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            accounts: accountChunk,
+                            periods: periodChunk,
+                            subsidiary: filters.subsidiary || '',
+                            department: filters.department || '',
+                            location: filters.location || '',
+                            class: filters.class || ''
+                        })
+                    });
                 
-                if (!response.ok) {
-                    console.error(`  ❌ API error: ${response.status}`);
-                    // Reject all promises in this chunk
-                    for (const {cacheKey, request} of groupRequests) {
-                        if (chunk.includes(request.params.account)) {
-                            request.reject(new Error(`API error: ${response.status}`));
+                    if (!response.ok) {
+                        console.error(`  ❌ API error: ${response.status}`);
+                        // Reject all promises in this chunk
+                        for (const {cacheKey, request} of groupRequests) {
+                            if (accountChunk.includes(request.params.account)) {
+                                request.reject(new Error(`API error: ${response.status}`));
+                            }
                         }
+                        continue;
                     }
-                    continue;
-                }
                 
                 const data = await response.json();
                 const balances = data.balances || {};
                 
                 console.log(`  ✅ Received data for ${Object.keys(balances).length} accounts`);
                 
-                // Distribute results to waiting Promises
-                for (const {cacheKey, request} of groupRequests) {
-                    const account = request.params.account;
-                    
-                    // Only process accounts in this chunk
-                    if (!chunk.includes(account)) {
-                        continue;
-                    }
-                    
-                    const accountBalances = balances[account] || {};
-                    
-                    // Each request might have DIFFERENT periods
-                    // Extract THIS request's specific period range and sum only those
-                    const fromPeriod = request.params.fromPeriod;
-                    const toPeriod = request.params.toPeriod;
-                    
-                    let total = 0;
-                    
-                    // If single period or same period, just sum that one
-                    if (fromPeriod === toPeriod || !toPeriod) {
-                        total = accountBalances[fromPeriod] || 0;
-                    } else {
-                        // Multiple periods - sum the range
-                        // For now, sum all periods in the result (backend handles the range)
-                        // TODO: Could expand period range here for more precision
-                        for (const period in accountBalances) {
-                            total += accountBalances[period] || 0;
+                    // Distribute results to waiting Promises
+                    for (const {cacheKey, request} of groupRequests) {
+                        const account = request.params.account;
+                        
+                        // Only process accounts in this chunk
+                        if (!accountChunk.includes(account)) {
+                            continue;
+                        }
+                        
+                        // Only process if this request's periods overlap with this periodChunk
+                        const fromPeriod = request.params.fromPeriod;
+                        const toPeriod = request.params.toPeriod;
+                        const requestPeriods = [fromPeriod, toPeriod].filter(p => p);
+                        const hasOverlap = requestPeriods.some(p => periodChunk.includes(p));
+                        
+                        if (!hasOverlap) {
+                            continue; // This request's periods are in a different chunk
+                        }
+                        
+                        const accountBalances = balances[account] || {};
+                        
+                        // Sum only the periods that are BOTH in this request AND in this chunk
+                        let total = 0;
+                        
+                        if (fromPeriod === toPeriod || !toPeriod) {
+                            // Single period
+                            if (periodChunk.includes(fromPeriod)) {
+                                total = accountBalances[fromPeriod] || 0;
+                            }
+                        } else {
+                            // Multiple periods - sum only those in this chunk
+                            for (const period of periodChunk) {
+                                total += accountBalances[period] || 0;
+                            }
+                        }
+                        
+                        // Cache the result (partial if multi-chunk request)
+                        // For multi-chunk requests, we'll accumulate the total
+                        const existing = cache.balance.get(cacheKey) || 0;
+                        cache.balance.set(cacheKey, existing + total);
+                        
+                        // Only resolve the Promise if we've processed ALL chunks for this request
+                        // Check if this is the last chunk that contains this request's periods
+                        const allPeriodsProcessed = requestPeriods.every(p => 
+                            periodChunks.slice(0, pi + 1).flat().includes(p)
+                        );
+                        
+                        if (allPeriodsProcessed && ai === accountChunks.length - 1) {
+                            // This is the last chunk for this request - resolve it
+                            request.resolve(cache.balance.get(cacheKey));
                         }
                     }
-                    
-                    // Cache the result
-                    cache.balance.set(cacheKey, total);
-                    
-                    // Resolve the Promise
-                    request.resolve(total);
-                }
                 
-            } catch (error) {
-                console.error(`  ❌ Fetch error:`, error);
-                // Reject all promises in this chunk
-                for (const {cacheKey, request} of groupRequests) {
-                    if (chunk.includes(request.params.account)) {
-                        request.reject(error);
+                } catch (error) {
+                    console.error(`  ❌ Fetch error:`, error);
+                    // Reject all promises in this chunk
+                    for (const {cacheKey, request} of groupRequests) {
+                        if (accountChunk.includes(request.params.account)) {
+                            request.reject(error);
+                        }
                     }
                 }
-            }
-            
-            // Delay between chunks to avoid rate limiting
-            if (i < accountChunks.length - 1) {
-                console.log(`  ⏱️  Waiting ${CHUNK_DELAY}ms before next chunk...`);
-                await new Promise(resolve => setTimeout(resolve, CHUNK_DELAY));
+                
+                // Delay between chunks to avoid rate limiting
+                if (chunkIndex < totalChunks) {
+                    console.log(`  ⏱️  Waiting ${CHUNK_DELAY}ms before next chunk...`);
+                    await new Promise(resolve => setTimeout(resolve, CHUNK_DELAY));
+                }
             }
         }
     }
