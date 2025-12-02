@@ -229,6 +229,91 @@
             text-decoration: underline;
         }
 
+        /* Loading Overlay - Modern & Animated */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .loading-content {
+            text-align: center;
+            color: white;
+            max-width: 400px;
+            padding: 40px;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top: 4px solid #00A3E0;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 25px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: white;
+        }
+
+        .loading-message {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.85);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .loading-progress {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            height: 6px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        .loading-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00A3E0, #0066CC);
+            border-radius: 20px;
+            width: 0%;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 20px rgba(0, 163, 224, 0.5);
+        }
+
+        .loading-stats {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 15px;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
         .info-box {
             background: #eff6ff;
             border: 1px solid #bfdbfe;
@@ -249,6 +334,19 @@
     </style>
 </head>
 <body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <div class="loading-title" id="loadingTitle">Processing...</div>
+            <div class="loading-message" id="loadingMessage">Please wait while we fetch data from NetSuite</div>
+            <div class="loading-progress">
+                <div class="loading-progress-bar" id="loadingProgressBar"></div>
+            </div>
+            <div class="loading-stats" id="loadingStats"></div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
             <h1>NetSuite Excel Formulas</h1>
@@ -552,6 +650,39 @@
     <script>
         const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 
+        // ========================================================================
+        // LOADING OVERLAY - Modern Progress Indicator
+        // ========================================================================
+        function showLoading(title, message, progress = 0) {
+            const overlay = document.getElementById('loadingOverlay');
+            const titleEl = document.getElementById('loadingTitle');
+            const messageEl = document.getElementById('loadingMessage');
+            const progressBar = document.getElementById('loadingProgressBar');
+            const statsEl = document.getElementById('loadingStats');
+            
+            titleEl.textContent = title || 'Processing...';
+            messageEl.textContent = message || 'Please wait';
+            progressBar.style.width = progress + '%';
+            statsEl.textContent = '';
+            
+            overlay.classList.add('active');
+        }
+
+        function updateLoading(message, progress, stats) {
+            const messageEl = document.getElementById('loadingMessage');
+            const progressBar = document.getElementById('loadingProgressBar');
+            const statsEl = document.getElementById('loadingStats');
+            
+            if (message) messageEl.textContent = message;
+            if (progress !== undefined) progressBar.style.width = progress + '%';
+            if (stats) statsEl.textContent = stats;
+        }
+
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.classList.remove('active');
+        }
+
         // Load NetSuite lookups into dropdowns
         async function loadNetSuiteLookups() {
             const statusEl = document.getElementById('lookupStatus');
@@ -817,8 +948,8 @@
             try {
                 btn.disabled = true;
                 btn.textContent = 'Clearing...';
-                statusEl.textContent = 'Clearing cache...';
-                statusEl.style.color = '#0284c7';
+                
+                showLoading('Clear Cache', 'Clearing all cached data...', 50);
                 
                 // Call the global clearAllCaches function from functions.js
                 if (typeof window.clearAllCaches === 'function') {
@@ -829,9 +960,12 @@
                     console.log('⚠️  window.clearAllCaches not found, cache may not be cleared');
                 }
                 
+                updateLoading('Cache cleared!', 100);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                hideLoading();
+                
                 // Show success message
-                statusEl.textContent = '✓ Cache cleared! Formulas will fetch fresh data on next calculation.';
-                statusEl.style.color = '#059669';
+                statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Cache cleared!</strong><br><span style="font-size: 11px;">Formulas will fetch fresh data</span></div>`;
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
@@ -839,8 +973,9 @@
                 
             } catch (error) {
                 console.error('Error clearing cache:', error);
-                statusEl.textContent = '✗ Error: ' + error.message;
-                statusEl.style.color = '#dc2626';
+                hideLoading();
+                
+                statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px;"><strong style="color: #dc2626;">✗ Error:</strong> ${error.message}</div>`;
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
@@ -858,14 +993,14 @@
             try {
                 btn.disabled = true;
                 btn.textContent = 'Refreshing...';
-                statusEl.textContent = '🚀 Starting optimized refresh...';
-                statusEl.style.color = '#0284c7';
                 
-                // Direct API call approach (works without Shared Runtime)
-                // Get year and filters from sheet
+                // Show loading overlay
+                showLoading('Full Year Refresh', 'Initializing...', 0);
+                
+                // Detect year from sheet
                 const year = 2024; // TODO: Auto-detect from formulas
                 
-                statusEl.textContent = '⏳ Fetching ALL accounts from NetSuite...';
+                updateLoading('Fetching ALL accounts from NetSuite...', 10, `Year: ${year}`);
                 
                 const start = Date.now();
                 const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
@@ -884,46 +1019,67 @@
                     throw new Error(`Backend error: ${response.status}`);
                 }
                 
+                updateLoading('Processing NetSuite response...', 60);
+                
                 const data = await response.json();
                 const elapsed = ((Date.now() - start) / 1000).toFixed(1);
                 
-                console.log(`✅ Received ${Object.keys(data.balances || {}).length} accounts`);
+                const accountCount = Object.keys(data.balances || {}).length;
+                const cachedCount = data.cached_count || 0;
+                
+                console.log(`✅ Received ${accountCount} accounts`);
                 console.log(`   Query time: ${data.query_time}s`);
-                console.log(`   Cached on backend: ${data.cached_count} values`);
+                console.log(`   Cached on backend: ${cachedCount} values`);
                 console.log(`   Total time: ${elapsed}s`);
                 
-                statusEl.textContent = `✓ Data cached on backend in ${elapsed}s! Now recalculating formulas...`;
+                updateLoading('Backend cache ready!', 80, `Cached ${cachedCount} values in ${elapsed}s`);
                 
-                // Clear frontend cache to force fresh requests
-                if (typeof window.clearAllCaches === 'function') {
-                    window.clearAllCaches();
-                }
+                // Wait a moment
+                await new Promise(resolve => setTimeout(resolve, 800));
                 
-                // Trigger Excel to recalculate formulas
-                // They will make requests to backend, which will serve from cache (instant!)
+                updateLoading('Recalculating formulas from cache...', 90);
+                
+                // Trigger recalc
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    sheet.calculate(true); // Force recalculation
+                    sheet.calculate(true);
                     await context.sync();
-                    
-                    statusEl.textContent = 'Formulas recalculating (pulling from backend cache)...';
-                    
-                    // Wait for formulas to complete
-                    await new Promise(resolve => setTimeout(resolve, 2000));
                 });
                 
-                const totalElapsed = ((Date.now() - start) / 1000).toFixed(1);
-                statusEl.textContent = `✓ Refresh complete in ${totalElapsed}s!`;
-                statusEl.style.color = '#059669';
+                // Wait for formulas to pull from cache
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                updateLoading('Complete!', 100, `${cachedCount} values ready`);
+                
+                // Show success message
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                hideLoading();
+                
+                statusEl.innerHTML = `
+                    <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
+                        <strong style="color: #059669; font-size: 14px;">✓ Backend cache ready!</strong><br>
+                        <span style="font-size: 12px; color: #047857;">
+                            Cached ${accountCount} accounts × 12 months in ${elapsed}s<br>
+                            Formulas will pull from backend cache (instant!)<br>
+                            <em style="opacity: 0.8;">Press Cmd+Shift+F9 to force recalc if needed</em>
+                        </span>
+                    </div>
+                `;
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
-                }, 5000);
+                }, 10000);
                 
             } catch (error) {
                 console.error('Error refreshing sheet:', error);
-                statusEl.textContent = '✗ Error: ' + error.message;
-                statusEl.style.color = '#dc2626';
+                hideLoading();
+                
+                statusEl.innerHTML = `
+                    <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px;">
+                        <strong style="color: #dc2626;">✗ Error</strong><br>
+                        <span style="font-size: 12px; color: #991b1b;">${error.message}</span>
+                    </div>
+                `;
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
@@ -941,8 +1097,8 @@
             try {
                 btn.disabled = true;
                 btn.textContent = 'Refreshing...';
-                statusEl.textContent = 'Clearing cache...';
-                statusEl.style.color = '#0284c7';
+                
+                showLoading('Refresh Selected', 'Clearing frontend cache...', 10);
                 
                 // CRITICAL: Clear cache FIRST before recalculating
                 if (typeof window.clearAllCaches === 'function') {
@@ -955,12 +1111,14 @@
                 // Wait a moment for cache to clear
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
+                updateLoading('Recalculating selected formulas...', 30);
+                
                 await Excel.run(async (context) => {
                     const range = context.workbook.getSelectedRange();
                     range.load('address, formulasR1C1');
                     await context.sync();
                     
-                    statusEl.textContent = `Recalculating ${range.address}...`;
+                    updateLoading(`Recalculating ${range.address}...`, 50);
                     
                     // Trigger recalc by clearing and resetting formulas
                     const formulas = range.formulasR1C1;
@@ -968,12 +1126,16 @@
                     
                     await context.sync();
                     
+                    updateLoading('Fetching data from NetSuite...', 70);
+                    
                     // Add a delay to let batching complete
-                    statusEl.textContent = 'Waiting for data from NetSuite...';
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     
-                    statusEl.textContent = `✓ Selected cells refreshed with latest NetSuite data!`;
-                    statusEl.style.color = '#059669';
+                    updateLoading('Complete!', 100);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    hideLoading();
+                    
+                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Selected cells refreshed!</strong></div>`;
                     
                     setTimeout(() => {
                         statusEl.textContent = '';
@@ -982,8 +1144,9 @@
                 
             } catch (error) {
                 console.error('Error refreshing selection:', error);
-                statusEl.textContent = '✗ Error: ' + error.message;
-                statusEl.style.color = '#dc2626';
+                hideLoading();
+                
+                statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px;"><strong style="color: #dc2626;">✗ Error:</strong> ${error.message}</div>`;
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
@@ -1351,8 +1514,8 @@
                 
                 btn.disabled = true;
                 btn.textContent = 'Searching...';
-                statusEl.textContent = `Searching NetSuite for "${pattern}"...`;
-                statusEl.style.color = '#0284c7';
+                
+                showLoading('Account Search', `Searching for "${pattern}"...`, 20);
                 
                 console.log('=== ACCOUNT SEARCH START ===');
                 console.log('Pattern:', pattern);
@@ -1375,6 +1538,7 @@
                 const accounts = data.accounts || [];
                 
                 if (accounts.length === 0) {
+                    hideLoading();
                     statusEl.textContent = `✓ No accounts found matching "${pattern}"`;
                     statusEl.style.color = '#059669';
                     setTimeout(() => { statusEl.textContent = ''; }, 5000);
@@ -1383,26 +1547,31 @@
                 
                 console.log(`Found ${accounts.length} accounts, creating sheet...`);
                 
+                updateLoading(`Inserting ${accounts.length} accounts...`, 70);
+                
                 // Create results sheet
                 await Excel.run(async (context) => {
                     await createAccountSearchSheet(context, accounts, pattern);
-                    
-                    statusEl.textContent = `✓ Inserted ${accounts.length} account(s) at cursor position!`;
-                    statusEl.style.color = '#059669';
-                    
-                    setTimeout(() => {
-                        statusEl.textContent = '';
-                    }, 5000);
                 });
+                
+                updateLoading('Complete!', 100);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                hideLoading();
+                
+                statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Inserted ${accounts.length} accounts!</strong></div>`;
+                
+                setTimeout(() => {
+                    statusEl.textContent = '';
+                }, 5000);
                 
                 console.log('=== ACCOUNT SEARCH COMPLETE ===');
                 
             } catch (error) {
                 console.error('=== ACCOUNT SEARCH ERROR ===');
                 console.error('Error:', error);
+                hideLoading();
                 
-                statusEl.textContent = `✗ Error: ${error.message}`;
-                statusEl.style.color = '#dc2626';
+                statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px;"><strong style="color: #dc2626;">✗ Error:</strong> ${error.message}</div>`;
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
