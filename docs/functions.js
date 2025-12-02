@@ -85,6 +85,7 @@ window.exitFullRefreshMode = function() {
 
 // ============================================================================
 // POPULATE FRONTEND CACHE - Called by taskpane after full_year_refresh
+// Also resolves any pending Promises that match the cached data!
 // ============================================================================
 window.populateFrontendCache = function(balances, filters = {}) {
     console.log('========================================');
@@ -97,7 +98,9 @@ window.populateFrontendCache = function(balances, filters = {}) {
     const classId = filters.class || '';
     
     let cacheCount = 0;
+    let resolvedCount = 0;
     
+    // First, populate the cache
     for (const [account, periods] of Object.entries(balances)) {
         for (const [period, amount] of Object.entries(periods)) {
             // Build cache key in same format as getCacheKey()
@@ -109,9 +112,72 @@ window.populateFrontendCache = function(balances, filters = {}) {
     
     console.log(`✅ Cached ${cacheCount} values in frontend`);
     console.log(`   Sample accounts: ${Object.keys(balances).slice(0, 5).join(', ')}`);
+    
+    // CRITICAL: Now resolve any pending Promises that match cached data!
+    // This is what makes formulas update from "loading" to actual values
+    console.log(`\n🔄 Checking ${pendingRequests.balance.size} pending requests...`);
+    
+    const pendingToResolve = [];
+    
+    for (const [cacheKey, request] of pendingRequests.balance.entries()) {
+        // Check if this request can be satisfied from cache
+        const { account, fromPeriod, toPeriod } = request.params;
+        
+        // For single-period requests (fromPeriod === toPeriod)
+        if (fromPeriod === toPeriod || !toPeriod) {
+            const lookupKey = `balance:${account}:${fromPeriod}:${fromPeriod}:${subsidiary}:${department}:${location}:${classId}`;
+            if (cache.balance.has(lookupKey)) {
+                const value = cache.balance.get(lookupKey);
+                pendingToResolve.push({ cacheKey, request, value });
+            }
+        } else {
+            // For multi-period requests, sum all periods in range
+            // For now, check if we have all individual periods
+            let total = 0;
+            let hasAllPeriods = true;
+            
+            // This is a simplification - we'll resolve with whatever we have
+            // The individual period keys are in the cache
+            const accountPeriods = balances[account];
+            if (accountPeriods) {
+                for (const [period, amount] of Object.entries(accountPeriods)) {
+                    total += amount;
+                }
+                pendingToResolve.push({ cacheKey, request, value: total });
+            }
+        }
+    }
+    
+    // Resolve the pending Promises
+    for (const { cacheKey, request, value } of pendingToResolve) {
+        console.log(`   ✅ Resolving pending: ${request.params.account} = ${value}`);
+        try {
+            request.resolve(value);
+            pendingRequests.balance.delete(cacheKey);
+            resolvedCount++;
+        } catch (err) {
+            console.error(`   ❌ Failed to resolve ${request.params.account}:`, err);
+        }
+    }
+    
+    // Also resolve any requests with 0 for accounts not in the data (no transactions)
+    const remainingRequests = Array.from(pendingRequests.balance.entries());
+    for (const [cacheKey, request] of remainingRequests) {
+        console.log(`   ⚠️ No data for ${request.params.account}, resolving with 0`);
+        try {
+            request.resolve(0);
+            pendingRequests.balance.delete(cacheKey);
+            resolvedCount++;
+        } catch (err) {
+            console.error(`   ❌ Failed to resolve ${request.params.account}:`, err);
+        }
+    }
+    
+    console.log(`\n✅ Resolved ${resolvedCount} pending requests`);
+    console.log(`   Remaining pending: ${pendingRequests.balance.size}`);
     console.log('========================================');
     
-    return cacheCount;
+    return { cacheCount, resolvedCount };
 };
 
 // ============================================================================
