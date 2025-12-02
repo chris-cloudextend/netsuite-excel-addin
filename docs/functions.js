@@ -122,17 +122,14 @@ function checkLocalStorageCache(account, period) {
         
         const balances = JSON.parse(cached);
         
-        // Check nested structure: balances[account][period]
+        // ONLY return if we have an explicit value for this account+period
+        // Don't assume $0 for missing periods - the query may have been truncated!
         if (balances[account] && balances[account][period] !== undefined) {
             return balances[account][period];
         }
         
-        // Account exists in cache but no data for this period = $0 (no transactions)
-        if (balances[account]) {
-            return 0;
-        }
-        
-        // Account not in cache - return null to trigger batch processing
+        // Period not found - return null to trigger batch processing
+        // (Could be missing due to 1000 row limit, not because it's truly $0)
         return null;
         
     } catch (e) {
@@ -154,17 +151,12 @@ function checkFullYearCache(account, period) {
         return null;
     }
     
-    // Check if account has data for this period
+    // ONLY return if we have an explicit value for this account+period
     if (fullYearCache[account] && fullYearCache[account][period] !== undefined) {
         return fullYearCache[account][period];
     }
     
-    // Account exists but no data for this specific period = 0
-    if (fullYearCache[account]) {
-        return 0;
-    }
-    
-    // Account not in cache at all - return null to trigger batch processing
+    // Not found - return null to trigger batch processing
     return null;
 }
 
