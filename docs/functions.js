@@ -742,7 +742,8 @@ async function processBatchQueue() {
         
         // All requests in this group have the SAME period (by design)
         // Use the period from the first request
-        const periods = [filters.fromPeriod, filters.toPeriod].filter(p => p);
+        // Deduplicate periods (e.g., "Dec 2024" to "Dec 2024" should be ["Dec 2024"], not ["Dec 2024", "Dec 2024"])
+        const periods = [...new Set([filters.fromPeriod, filters.toPeriod].filter(p => p))];
         
         console.log(`  Batch: ${accounts.length} accounts × ${periods.length} period(s)`);
         
