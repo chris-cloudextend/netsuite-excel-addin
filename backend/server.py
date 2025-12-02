@@ -469,17 +469,20 @@ def health():
 @app.route('/accounts/search', methods=['GET'])
 def search_accounts():
     """
-    Search for accounts by partial account number
+    Search for accounts by account number OR account type
     
     Query params:
-        - pattern: Search pattern (e.g., "4*", "42*", "*")
+        - pattern: Search pattern
+          Examples:
+            - "4*"        → Accounts starting with "4"
+            - "*"         → All accounts
+            - "*income"   → All accounts with type containing "income" (Income, Other Income)
+            - "income*"   → All accounts with type starting with "income"
+            - "expense"   → All accounts with type containing "expense"
+            - "bank"      → All accounts with type containing "bank"
         - active_only: Filter to active accounts only (default: true)
     
     Returns: List of matching accounts with number, name, ID, and type
-    
-    Example:
-        GET /accounts/search?pattern=4*
-        Returns all accounts starting with "4"
     """
     try:
         pattern = request.args.get('pattern', '')
@@ -488,17 +491,58 @@ def search_accounts():
         if not pattern:
             return jsonify({'error': 'Pattern parameter is required'}), 400
         
-        # Convert Excel wildcard (*) to SQL wildcard (%)
-        sql_pattern = pattern.replace('*', '%')
-        
-        # Escape any existing special characters
-        sql_pattern = escape_sql(sql_pattern)
+        # Determine if this is a TYPE search or ACCOUNT NUMBER search
+        # Type search: contains letters (other than wildcards)
+        # Account number search: only numbers and wildcards
+        pattern_without_wildcards = pattern.replace('*', '').strip()
+        is_type_search = bool(pattern_without_wildcards) and any(c.isalpha() for c in pattern_without_wildcards)
         
         # Build WHERE clause
         where_conditions = []
         
-        # Filter by pattern
-        where_conditions.append(f"acctnumber LIKE '{sql_pattern}'")
+        if is_type_search:
+            # ACCOUNT TYPE search
+            # Convert pattern to SQL LIKE pattern
+            sql_pattern = pattern.replace('*', '%').upper()
+            sql_pattern = escape_sql(sql_pattern)
+            
+            # NetSuite account type mapping for better matching
+            # Map common user inputs to actual NetSuite type values
+            type_mappings = {
+                'INCOME': ['Income', 'OthIncome'],
+                'EXPENSE': ['Expense', 'OthExpense'],
+                'COGS': ['COGS', 'Cost of Goods Sold'],
+                'ASSET': ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense', 'Unbilled'],
+                'LIABILITY': ['AcctPay', 'CreditCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue'],
+                'EQUITY': ['Equity']
+            }
+            
+            # Check if pattern matches a category
+            pattern_upper = pattern_without_wildcards.upper()
+            matched_types = []
+            
+            for category, types in type_mappings.items():
+                if category.startswith(pattern_upper) or pattern_upper in category:
+                    matched_types.extend(types)
+            
+            if matched_types:
+                # Use exact match for mapped types
+                type_list = "','".join(matched_types)
+                where_conditions.append(f"accttype IN ('{type_list}')")
+            else:
+                # Use LIKE for direct type matching
+                where_conditions.append(f"UPPER(accttype) LIKE '{sql_pattern}'")
+            
+            print(f"DEBUG - Type search: pattern='{pattern}', sql_pattern='{sql_pattern}', mapped_types={matched_types}", file=sys.stderr)
+            
+        else:
+            # ACCOUNT NUMBER search
+            # Convert Excel wildcard (*) to SQL wildcard (%)
+            sql_pattern = pattern.replace('*', '%')
+            sql_pattern = escape_sql(sql_pattern)
+            where_conditions.append(f"acctnumber LIKE '{sql_pattern}'")
+            
+            print(f"DEBUG - Account number search: pattern='{pattern}', sql_pattern='{sql_pattern}'", file=sys.stderr)
         
         # Filter by active status
         if active_only:
@@ -541,6 +585,7 @@ def search_accounts():
         
         return jsonify({
             'pattern': pattern,
+            'search_type': 'account_type' if is_type_search else 'account_number',
             'count': len(accounts),
             'accounts': accounts
         })

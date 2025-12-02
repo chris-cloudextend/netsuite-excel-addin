@@ -319,13 +319,34 @@
             <!-- ACCOUNT SEARCH SECTION -->
             <div class="refresh-section" style="background: #f0fdf4; border-color: #22c55e;">
                 <h2>📥 Enter Accounts</h2>
-                <p style="color: #15803d; font-size: 13px;">Search NetSuite accounts by prefix. Results insert at cursor position. Use * as wildcard.</p>
+                <p style="color: #15803d; font-size: 13px; margin-bottom: 8px;">
+                    Search by account number OR account type. Results insert at cursor position.
+                </p>
+                <details style="margin-bottom: 10px;">
+                    <summary style="color: #15803d; font-size: 12px; cursor: pointer; user-select: none;">
+                        Examples (click to expand)
+                    </summary>
+                    <div style="padding: 8px 0; font-size: 12px; color: #166534; line-height: 1.6;">
+                        <strong>By Number:</strong><br/>
+                        • <code>4*</code> = Accounts starting with 4<br/>
+                        • <code>42*</code> = Accounts starting with 42<br/>
+                        • <code>*</code> = All accounts<br/>
+                        <br/>
+                        <strong>By Type:</strong><br/>
+                        • <code>*income</code> = All income accounts<br/>
+                        • <code>income*</code> = Only Income (not Other Income)<br/>
+                        • <code>expense</code> = All expense accounts<br/>
+                        • <code>bank</code> = Bank accounts<br/>
+                        • <code>asset</code> = All asset accounts<br/>
+                        • <code>liability</code> = All liability accounts
+                    </div>
+                </details>
                 
                 <div style="margin: 15px 0;">
                     <input 
                         type="text" 
                         id="accountSearchInput" 
-                        placeholder="e.g., 4*, 42*, or * for all"
+                        placeholder="e.g., 4*, *income, expense"
                         style="width: 100%; padding: 10px; border: 2px solid #bbf7d0; border-radius: 6px; font-size: 14px; font-family: 'Segoe UI', sans-serif;"
                         onkeypress="if(event.key === 'Enter') searchAccounts()"
                     />
