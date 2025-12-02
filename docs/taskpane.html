@@ -1083,16 +1083,15 @@
                 updateLoading('Re-applying formulas...', 88, 'Forcing fresh evaluation');
                 
                 // CRITICAL: Re-apply all NS.GLABAL formulas to force fresh evaluation
-                // sheet.calculate() doesn't work because formulas are stuck with old Promises
-                // Re-applying the formula makes Excel treat it as NEW → invokes GLABAL fresh
-                // Fresh GLABAL invocation → checks localStorage → returns immediately!
+                // Must batch in small chunks to avoid Excel API limits!
                 
                 let formulasRefreshed = 0;
+                const BATCH_SIZE = 100; // Process 100 formulas at a time to avoid API limits
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     const usedRange = sheet.getUsedRange();
-                    usedRange.load("formulas, rowCount, columnCount");
+                    usedRange.load("formulas, rowCount, columnCount, address");
                     await context.sync();
                     
                     const formulas = usedRange.formulas;
@@ -1100,35 +1099,57 @@
                     const colCount = usedRange.columnCount;
                     
                     console.log(`Scanning ${rowCount} rows × ${colCount} cols for NS.GLABAL formulas...`);
+                    console.log(`Used range: ${usedRange.address}`);
                     
-                    // Batch the formula re-applications for performance
+                    // First, collect ALL cells that need updating
                     const cellsToUpdate = [];
                     
                     for (let row = 0; row < rowCount; row++) {
                         for (let col = 0; col < colCount; col++) {
                             const formula = formulas[row][col];
                             if (formula && typeof formula === 'string' && 
-                                formula.toUpperCase().includes('NS.GLABAL')) {
+                                formula.toUpperCase().includes('NS.GLA')) {
                                 cellsToUpdate.push({ row, col, formula });
                             }
                         }
                     }
                     
-                    console.log(`Found ${cellsToUpdate.length} NS.GLABAL formulas to refresh`);
-                    updateLoading('Refreshing formulas...', 92, `${cellsToUpdate.length} formulas found`);
+                    console.log(`Found ${cellsToUpdate.length} NS.GLA* formulas to refresh`);
                     
-                    // Re-apply each formula (forces fresh evaluation)
-                    for (const { row, col, formula } of cellsToUpdate) {
-                        const cell = usedRange.getCell(row, col);
-                        cell.formulas = [[formula]];
-                        formulasRefreshed++;
+                    // Process in batches to avoid Excel API limits
+                    const totalBatches = Math.ceil(cellsToUpdate.length / BATCH_SIZE);
+                    console.log(`Processing in ${totalBatches} batches of ${BATCH_SIZE}`);
+                    
+                    for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
+                        const start = batchNum * BATCH_SIZE;
+                        const end = Math.min(start + BATCH_SIZE, cellsToUpdate.length);
+                        const batch = cellsToUpdate.slice(start, end);
+                        
+                        const progress = 88 + Math.round((batchNum / totalBatches) * 10);
+                        updateLoading(`Refreshing batch ${batchNum + 1}/${totalBatches}...`, progress, 
+                            `${start} of ${cellsToUpdate.length} formulas`);
+                        
+                        // Re-apply formulas in this batch
+                        for (const { row, col, formula } of batch) {
+                            const cell = usedRange.getCell(row, col);
+                            cell.formulas = [[formula]];
+                            formulasRefreshed++;
+                        }
+                        
+                        // Sync after each batch!
+                        await context.sync();
+                        console.log(`✅ Batch ${batchNum + 1}/${totalBatches}: refreshed ${batch.length} formulas`);
+                        
+                        // Brief pause between batches to let Excel process
+                        if (batchNum < totalBatches - 1) {
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                        }
                     }
                     
-                    await context.sync();
-                    console.log(`✅ Re-applied ${formulasRefreshed} formulas`);
+                    console.log(`✅ Total: Re-applied ${formulasRefreshed} formulas`);
                 });
                 
-                // Brief wait for formulas to evaluate (should be instant from localStorage!)
+                // Brief wait for final formulas to evaluate
                 await new Promise(resolve => setTimeout(resolve, 500));
                 
                 updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
