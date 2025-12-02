@@ -18,14 +18,16 @@ const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
 const cache = {
     balance: new Map(),    // balance cache
     title: new Map(),      // account title cache  
-    budget: new Map()      // budget cache
+    budget: new Map(),     // budget cache
+    type: new Map(),       // account type cache
+    parent: new Map()      // parent account cache
 };
 
 // Track last access time to implement LRU if needed
 const cacheStats = {
     hits: 0,
     misses: 0,
-    size: () => cache.balance.size + cache.title.size + cache.budget.size
+    size: () => cache.balance.size + cache.title.size + cache.budget.size + cache.type.size + cache.parent.size
 };
 
 // ============================================================================
@@ -176,6 +178,130 @@ async function GLATITLE(accountNumber, invocation) {
             return '#N/A';
         }
         console.error('Title fetch error:', error);
+        return '#N/A';
+    }
+}
+
+// ============================================================================
+// GLACCTTYPE - Get Account Type
+// ============================================================================
+/**
+ * @customfunction GLACCTTYPE
+ * @param {any} accountNumber The account number
+ * @param {CustomFunctions.Invocation} invocation Invocation object
+ * @returns {Promise<string>} Account type (e.g., "Income", "Expense")
+ * @requiresAddress
+ * @cancelable
+ */
+async function GLACCTTYPE(accountNumber, invocation) {
+    const account = normalizeAccountNumber(accountNumber);
+    if (!account) return '#N/A';
+    
+    const cacheKey = getCacheKey('type', { account });
+    
+    // Check cache FIRST
+    if (!cache.type) cache.type = new Map();
+    if (cache.type.has(cacheKey)) {
+        cacheStats.hits++;
+        console.log(`⚡ CACHE HIT [type]: ${account}`);
+        return cache.type.get(cacheKey);
+    }
+    
+    cacheStats.misses++;
+    console.log(`📥 CACHE MISS [type]: ${account}`);
+    
+    // Single request - make immediately
+    try {
+        const controller = new AbortController();
+        const signal = controller.signal;
+        
+        // Listen for cancellation
+        if (invocation) {
+            invocation.onCanceled = () => {
+                console.log(`Type request canceled for ${account}`);
+                controller.abort();
+            };
+        }
+        
+        const response = await fetch(`${SERVER_URL}/account/${account}/type`, { signal });
+        if (!response.ok) {
+            console.error(`Type API error: ${response.status}`);
+            return '#N/A';
+        }
+        
+        const type = await response.text();
+        cache.type.set(cacheKey, type);
+        console.log(`💾 Cached type: ${account} → "${type}"`);
+        return type;
+        
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            console.log('Type request was canceled');
+            return '#N/A';
+        }
+        console.error('Type fetch error:', error);
+        return '#N/A';
+    }
+}
+
+// ============================================================================
+// GLAPARENT - Get Parent Account
+// ============================================================================
+/**
+ * @customfunction GLAPARENT
+ * @param {any} accountNumber The account number
+ * @param {CustomFunctions.Invocation} invocation Invocation object
+ * @returns {Promise<string>} Parent account number
+ * @requiresAddress
+ * @cancelable
+ */
+async function GLAPARENT(accountNumber, invocation) {
+    const account = normalizeAccountNumber(accountNumber);
+    if (!account) return '#N/A';
+    
+    const cacheKey = getCacheKey('parent', { account });
+    
+    // Check cache FIRST
+    if (!cache.parent) cache.parent = new Map();
+    if (cache.parent.has(cacheKey)) {
+        cacheStats.hits++;
+        console.log(`⚡ CACHE HIT [parent]: ${account}`);
+        return cache.parent.get(cacheKey);
+    }
+    
+    cacheStats.misses++;
+    console.log(`📥 CACHE MISS [parent]: ${account}`);
+    
+    // Single request - make immediately
+    try {
+        const controller = new AbortController();
+        const signal = controller.signal;
+        
+        // Listen for cancellation
+        if (invocation) {
+            invocation.onCanceled = () => {
+                console.log(`Parent request canceled for ${account}`);
+                controller.abort();
+            };
+        }
+        
+        const response = await fetch(`${SERVER_URL}/account/${account}/parent`, { signal });
+        if (!response.ok) {
+            console.error(`Parent API error: ${response.status}`);
+            return '#N/A';
+        }
+        
+        const parent = await response.text();
+        cache.parent.set(cacheKey, parent);
+        console.log(`💾 Cached parent: ${account} → "${parent}"`);
+        return parent;
+        
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            console.log('Parent request was canceled');
+            return '#N/A';
+        }
+        console.error('Parent fetch error:', error);
         return '#N/A';
     }
 }
