@@ -7,7 +7,7 @@
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-5678-90ab-cdef-123456789abc</Id>
-  <Version>1.1.0.0</Version>
+  <Version>1.1.0.1</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="NetSuite Formulas"/>
@@ -150,7 +150,7 @@
       <!-- External Files (cache-busted) -->
       <bt:Urls>
         <bt:Url id="Commands.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/commands.html?v=1085"/>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=1110"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=1111"/>
         <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=1100"/>
         <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=1094"/>
         <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=1110"/>

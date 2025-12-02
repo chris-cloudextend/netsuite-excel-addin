@@ -858,60 +858,56 @@
             try {
                 btn.disabled = true;
                 btn.textContent = 'Refreshing...';
-                statusEl.textContent = '🚀 Starting Full Year Refresh...';
+                statusEl.textContent = '🚀 Starting optimized refresh...';
                 statusEl.style.color = '#0284c7';
                 
-                // Detect year from sheet (optional - backend will auto-detect)
-                // For now, just use current year
-                const year = new Date().getFullYear();
+                // Direct API call approach (works without Shared Runtime)
+                // Get year and filters from sheet
+                const year = 2024; // TODO: Auto-detect from formulas
                 
-                // Enter full refresh mode
-                if (typeof window.enterFullRefreshMode === 'function') {
-                    window.enterFullRefreshMode(year);
-                    console.log('✅ Entered full refresh mode');
-                } else {
-                    console.error('❌ window.enterFullRefreshMode not found!');
-                    throw new Error('Full refresh mode not available - Shared Runtime may not be active');
+                statusEl.textContent = '⏳ Fetching ALL accounts from NetSuite...';
+                
+                const start = Date.now();
+                const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: year,
+                        subsidiary: '',
+                        department: '',
+                        location: '',
+                        class: ''
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Backend error: ${response.status}`);
                 }
                 
-                // Trigger recalculation to queue all formulas
+                const data = await response.json();
+                const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+                
+                console.log(`✅ Received ${Object.keys(data.balances || {}).length} accounts`);
+                console.log(`   Query time: ${data.query_time}s`);
+                console.log(`   Total time: ${elapsed}s`);
+                
+                statusEl.textContent = `✓ Data fetched in ${elapsed}s! Now triggering Excel recalculation...`;
+                
+                // Trigger Excel to recalculate formulas (they'll use cached data on backend)
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    sheet.load('name');
-                    await context.sync();
-                    
-                    statusEl.textContent = `📊 Collecting formulas from "${sheet.name}"...`;
-                    
-                    // Get all used range and recalculate
                     const usedRange = sheet.getUsedRange();
                     usedRange.load('formulasR1C1');
                     await context.sync();
                     
-                    // Trigger recalc by clearing and resetting formulas
-                    // This will queue all NS.GLABAL formulas in full refresh mode
+                    // Trigger recalc
                     const formulas = usedRange.formulasR1C1;
                     usedRange.formulasR1C1 = formulas;
-                    
                     await context.sync();
-                    
-                    // Wait a moment for all formulas to queue
-                    await new Promise(resolve => setTimeout(resolve, 500));
                 });
                 
-                // Now trigger the full refresh (ONE big backend query)
-                statusEl.textContent = '⏳ Fetching ALL accounts from NetSuite...';
-                
-                if (typeof window.processFullRefresh === 'function') {
-                    const start = Date.now();
-                    await window.processFullRefresh();
-                    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-                    
-                    statusEl.textContent = `✓ Refresh complete in ${elapsed}s!`;
-                    statusEl.style.color = '#059669';
-                } else {
-                    console.error('❌ window.processFullRefresh not found!');
-                    throw new Error('Full refresh processor not available - Shared Runtime may not be active');
-                }
+                statusEl.textContent = `✓ Refresh complete in ${elapsed}s!`;
+                statusEl.style.color = '#059669';
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
@@ -921,11 +917,6 @@
                 console.error('Error refreshing sheet:', error);
                 statusEl.textContent = '✗ Error: ' + error.message;
                 statusEl.style.color = '#dc2626';
-                
-                // Make sure we exit full refresh mode
-                if (typeof window.exitFullRefreshMode === 'function') {
-                    window.exitFullRefreshMode();
-                }
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
