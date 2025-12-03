@@ -2541,18 +2541,22 @@ def test_connection():
 @app.route('/lookups/accounts')
 def get_all_accounts():
     """
-    Get all accounts for the Guide Me wizard.
+    Get Income accounts for the Guide Me wizard.
     Returns account number, name, and type.
+    Filters to Income accounts only for a cleaner starter report.
     """
     try:
+        # Filter to Income accounts for a focused starter report
+        # User can add other account types later
         query = """
             SELECT 
-                a.acctnumber AS number,
-                a.displayname AS name,
-                a.accttype AS type
-            FROM Account a
-            WHERE a.isinactive = 'F'
-            ORDER BY a.acctnumber
+                acctnumber AS number,
+                fullname AS name,
+                accttype AS type
+            FROM Account
+            WHERE isinactive = 'F'
+              AND accttype = 'Income'
+            ORDER BY acctnumber
         """
         
         result = query_netsuite(query)
@@ -2569,9 +2573,11 @@ def get_all_accounts():
                     'type': row.get('type', '')
                 })
         
+        print(f"✓ Returning {len(accounts)} Income accounts")
         return jsonify(accounts)
         
     except Exception as e:
+        print(f"❌ Account lookup error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
