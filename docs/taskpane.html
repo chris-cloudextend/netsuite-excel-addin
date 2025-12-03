@@ -451,6 +451,10 @@
             font-weight: 600;
         }
 
+        .guide-me-overlay .loading-tip {
+            transition: opacity 0.3s ease;
+        }
+
         /* Settings Modal */
         .settings-modal {
             display: none;
@@ -1157,7 +1161,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.22.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.23.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1172,7 +1176,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.22.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.23.0</div>
         </div>
 
         <div class="content">
@@ -1671,6 +1675,26 @@
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             
+            // Excel tips to show during loading
+            const excelTips = [
+                '💡 =SUMIF(range, criteria, sum_range) - Sum values that meet a condition',
+                '💡 =VLOOKUP(value, table, col, FALSE) - Look up values in a table',
+                '💡 =INDEX(array, MATCH(value, range, 0)) - More flexible than VLOOKUP',
+                '💡 =IFERROR(formula, "fallback") - Handle errors gracefully',
+                '💡 =SUMPRODUCT((A:A="X")*(B:B>100)) - Count with multiple conditions',
+                '💡 =EOMONTH(date, 0) - Get the last day of a month',
+                '💡 =TEXT(date, "mmmm yyyy") - Format dates as text',
+                '💡 =ROUND(number, 0) - Round to nearest whole number',
+                '💡 =ABS(number) - Get absolute value (remove negatives)',
+                '💡 =IF(AND(A1>0, B1>0), "Yes", "No") - Multiple conditions',
+                '💡 Ctrl+Shift+L - Toggle filters on your data',
+                '💡 Alt+= - Auto-sum selected cells',
+                '💡 Ctrl+D - Fill down from cell above',
+                '💡 F4 - Toggle absolute references ($A$1)',
+                '💡 Ctrl+` - Show all formulas in cells'
+            ];
+            let tipIndex = 0;
+            
             // Create and show loading overlay
             const overlay = document.createElement('div');
             overlay.className = 'guide-me-overlay';
@@ -1681,13 +1705,31 @@
                 <div class="loading-message">
                     We're connecting to NetSuite to find accounts with actual transaction data. 
                     This ensures your report only includes meaningful accounts—not empty placeholders.
+                    <br><br>
+                    <em style="opacity: 0.8;">⏱️ The first run typically takes 30-60 seconds as we load and cache all your data. 
+                    Future operations will be much faster!</em>
                 </div>
                 <div class="loading-step" id="guideMeStep">Connecting to NetSuite...</div>
+                <div class="loading-tip" id="guideMeTip" style="margin-top: 20px; font-size: 13px; color: var(--anenome); max-width: 350px; text-align: center;">${excelTips[0]}</div>
             `;
             document.body.appendChild(overlay);
             
+            // Rotate tips every 3 seconds
+            const tipInterval = setInterval(() => {
+                tipIndex = (tipIndex + 1) % excelTips.length;
+                const tipEl = document.getElementById('guideMeTip');
+                if (tipEl) {
+                    tipEl.style.opacity = '0';
+                    setTimeout(() => {
+                        tipEl.textContent = excelTips[tipIndex];
+                        tipEl.style.opacity = '1';
+                    }, 300);
+                }
+            }, 3000);
+            
             const updateStep = (text) => {
-                document.getElementById('guideMeStep').textContent = text;
+                const stepEl = document.getElementById('guideMeStep');
+                if (stepEl) stepEl.textContent = text;
             };
             
             btn.disabled = true;
@@ -1723,15 +1765,11 @@
                 const accountsWithData = [];
                 for (const acctNum in allBalances) {
                     const monthData = allBalances[acctNum];
-                    // Check if any month has a non-zero value
                     const hasData = Object.values(monthData).some(val => val !== 0 && val !== null && val !== undefined);
                     if (hasData) {
-                        // Calculate the values for each month in order
                         const monthValues = monthNames.map(m => monthData[`${m} ${currentYear}`] || 0);
                         accountsWithData.push({
                             number: acctNum,
-                            type: 'Income', // We're filtering to Income accounts
-                            name: '', // Will fetch names separately
                             monthValues: monthValues,
                             total: monthValues.reduce((a, b) => a + b, 0)
                         });
@@ -1744,29 +1782,11 @@
                     throw new Error('No accounts with transaction data found for ' + currentYear);
                 }
                 
-                // Take first 25 accounts with data
-                const accountsToUse = accountsWithData.slice(0, 25);
+                // Take first 35 accounts (25 with formulas, 10 more with just account numbers)
+                const allAccounts = accountsWithData.slice(0, 35);
+                const formulaRows = 25; // Only first 25 get formulas
                 
-                // Step 3: Fetch account names for selected accounts
-                updateStep('📋 Getting account names...');
-                
-                // Fetch names in parallel
-                const namePromises = accountsToUse.map(async (acct) => {
-                    try {
-                        const resp = await fetch(`${SERVER_URL}/account/${acct.number}/name`);
-                        if (resp.ok) {
-                            const data = await resp.json();
-                            acct.name = data.name || acct.number;
-                        } else {
-                            acct.name = acct.number;
-                        }
-                    } catch (e) {
-                        acct.name = acct.number;
-                    }
-                });
-                await Promise.all(namePromises);
-                
-                // Step 4: Build the Excel template with FORMULAS (so users can learn and drag)
+                // Step 3: Build the Excel template
                 updateStep('📊 Building your report with formulas...');
                 
                 await Excel.run(async (context) => {
@@ -1774,14 +1794,11 @@
                     
                     try {
                         sheet.name = "Financial Report";
-                    } catch (e) {
-                        // Ignore if name already exists
-                    }
+                    } catch (e) {}
                     
                     sheet.showGridlines = false;
                     
                     // Write text headers (A1:C1)
-                    // Column A = Type (formula), Column B = Account # (value), Column C = Name (formula)
                     const textHeaderRange = sheet.getRange("A1:C1");
                     textHeaderRange.values = [['Type', 'Account #', 'Account Name']];
                     textHeaderRange.format.font.bold = true;
@@ -1814,37 +1831,38 @@
                     
                     await context.sync();
                     
-                    const rowCount = accountsToUse.length;
-                    
-                    // Write ALL FORMULAS so users can see how they work and drag them!
-                    for (let i = 0; i < rowCount; i++) {
-                        const acct = accountsToUse[i];
+                    // Write ALL 35 rows of account numbers, but only first 25 get formulas
+                    for (let i = 0; i < allAccounts.length; i++) {
+                        const acct = allAccounts[i];
                         const rowNum = i + 2;
                         
-                        // Column A: Account TYPE formula (looks up from account number in B)
-                        const typeCell = sheet.getRange(`A${rowNum}`);
-                        typeCell.formulas = [[`=NS.GLACCTTYPE(B${rowNum})`]];
-                        
-                        // Column B: Account NUMBER (the only hard value - users add new ones here)
+                        // Column B: Account NUMBER (always populated)
                         const numCell = sheet.getRange(`B${rowNum}`);
                         numCell.values = [[acct.number]];
                         
-                        // Column C: Account NAME formula (looks up from account number in B)
-                        const nameCell = sheet.getRange(`C${rowNum}`);
-                        nameCell.formulas = [[`=NS.GLATITLE(B${rowNum})`]];
-                        
-                        // Columns D-O: BALANCE formulas (reference account number in B, date in header)
-                        for (let m = 0; m < 12; m++) {
-                            const colLetter = String.fromCharCode(68 + m);
-                            const cell = sheet.getRange(`${colLetter}${rowNum}`);
-                            cell.formulas = [[`=NS.GLABAL($B${rowNum},TEXT(${colLetter}$1,"mmm yyyy"),TEXT(${colLetter}$1,"mmm yyyy"))`]];
+                        // Only add formulas for first 25 rows
+                        if (i < formulaRows) {
+                            // Column A: Account TYPE formula
+                            const typeCell = sheet.getRange(`A${rowNum}`);
+                            typeCell.formulas = [[`=NS.GLACCTTYPE(B${rowNum})`]];
+                            
+                            // Column C: Account NAME formula
+                            const nameCell = sheet.getRange(`C${rowNum}`);
+                            nameCell.formulas = [[`=NS.GLATITLE(B${rowNum})`]];
+                            
+                            // Columns D-O: BALANCE formulas
+                            for (let m = 0; m < 12; m++) {
+                                const colLetter = String.fromCharCode(68 + m);
+                                const cell = sheet.getRange(`${colLetter}${rowNum}`);
+                                cell.formulas = [[`=NS.GLABAL($B${rowNum},TEXT(${colLetter}$1,"mmm yyyy"),TEXT(${colLetter}$1,"mmm yyyy"))`]];
+                            }
+                            
+                            // Column P: YTD Total formula
+                            const totalCell = sheet.getRange(`P${rowNum}`);
+                            totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
                         }
                         
-                        // Column P: YTD Total formula
-                        const totalCell = sheet.getRange(`P${rowNum}`);
-                        totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
-                        
-                        // Alternating row colors
+                        // Alternating row colors for all 35 rows
                         if (i % 2 === 0) {
                             const rowRange = sheet.getRange(`A${rowNum}:P${rowNum}`);
                             rowRange.format.fill.color = "#F5F7FA";
@@ -1853,15 +1871,12 @@
                     
                     await context.sync();
                     
-                    // Format number columns
-                    const numRange = sheet.getRange(`D2:P${rowCount + 1}`);
-                    numRange.numberFormat = '#,##0';
+                    // Format number columns as CURRENCY with no decimals
+                    const numRange = sheet.getRange(`D2:P${allAccounts.length + 1}`);
+                    numRange.numberFormat = '"$"#,##0';
                     
-                    // Auto-fit and adjust columns
+                    // Auto-fit ALL columns
                     sheet.getRange("A:P").format.autofitColumns();
-                    sheet.getRange("A:A").format.columnWidth = 80;
-                    sheet.getRange("B:B").format.columnWidth = 100;
-                    sheet.getRange("C:C").format.columnWidth = 200;
                     
                     // Freeze header row
                     sheet.freezePanes.freezeRows(1);
@@ -1869,27 +1884,36 @@
                     await context.sync();
                 });
                 
+                // Stop tip rotation
+                clearInterval(tipInterval);
+                
                 // Remove overlay
                 overlay.remove();
+                
+                // Calculate how many rows need formulas extended
+                const extraRows = Math.min(10, allAccounts.length - formulaRows);
                 
                 // Success message
                 progress.style.display = 'block';
                 progress.innerHTML = `✅ <strong>Here's your jump-start!</strong><br><br>
-                    We found <strong>${accountsToUse.length} accounts with actual data</strong> for ${currentYear}. 
-                    Empty accounts were automatically skipped.<br><br>
-                    <strong>How it works:</strong><br>
-                    • <strong>Column B</strong> has account numbers (the only hard values)<br>
-                    • <strong>Column A</strong> uses <code>=NS.GLACCTTYPE(B2)</code> to get the type<br>
-                    • <strong>Column C</strong> uses <code>=NS.GLATITLE(B2)</code> to get the name<br>
-                    • <strong>Month columns</strong> use <code>=NS.GLABAL()</code> formulas<br><br>
-                    <strong>To add more accounts:</strong> Type a new account number in column B, then drag the formulas from the row above!`;
+                    We loaded <strong>${allAccounts.length} accounts</strong> with data for ${currentYear}. 
+                    The first <strong>${formulaRows} rows have formulas</strong>—the remaining ${extraRows} rows have account numbers ready for you to extend.<br><br>
+                    <strong>To extend formulas to rows 27-36:</strong><br>
+                    1. Select cells <strong>A26:C26</strong> (Type, Account#, Name)<br>
+                    2. Drag the fill handle down to row 36<br>
+                    3. Then select <strong>D26:P26</strong> (Jan through YTD Total)<br>
+                    4. Drag down to row 36<br><br>
+                    <strong>Formula Reference:</strong><br>
+                    • <code>=NS.GLACCTTYPE(B2)</code> → Account Type<br>
+                    • <code>=NS.GLATITLE(B2)</code> → Account Name<br>
+                    • <code>=NS.GLABAL($B2, ...)</code> → Monthly Balance`;
                 progress.style.lineHeight = '1.6';
                 btnText.textContent = '✓ Report Created!';
                 btn.style.background = '#4CAF50';
                 
             } catch (error) {
                 console.error('Guide Me error:', error);
-                // Remove overlay on error
+                clearInterval(tipInterval);
                 if (document.getElementById('guideMeOverlay')) {
                     document.getElementById('guideMeOverlay').remove();
                 }
