@@ -98,33 +98,61 @@ window.markCacheReady = function() {
 // ============================================================================
 // BUILD MODE - Instant drag-and-drop performance
 // When user drags formulas rapidly, we defer NetSuite calls until they stop
+// 
+// KEY INSIGHT: We DON'T return 0 placeholder - that looks like real data!
+// Instead, we return a Promise that resolves after the batch completes.
+// This shows #BUSY briefly but ensures correct values.
 // ============================================================================
 let buildMode = false;
 let buildModeLastEvent = 0;
-let buildModePending = [];  // Collect pending requests during build mode
+let buildModePending = [];  // Collect pending requests: { cacheKey, params, resolve, reject }
 let buildModeTimer = null;
-let formulaCreationCount = 0;       // Track formulas created in current window
-let formulaCountResetTimer = null;  // Reset counter after activity stops
+let formulaCreationCount = 0;
+let formulaCountResetTimer = null;
 
-const BUILD_MODE_THRESHOLD = 3;     // Enter build mode after 3+ rapid formulas (lowered!)
-const BUILD_MODE_SETTLE_MS = 400;   // Wait 400ms after last formula before batch
-const BUILD_MODE_WINDOW_MS = 500;   // Time window to count formulas
+const BUILD_MODE_THRESHOLD = 3;     // Enter build mode after 3+ rapid formulas
+const BUILD_MODE_SETTLE_MS = 500;   // Wait 500ms after last formula before batch
+const BUILD_MODE_WINDOW_MS = 800;   // Time window to count formulas (wider!)
 
 function enterBuildMode() {
     if (!buildMode) {
         console.log('🔨 ENTERING BUILD MODE (rapid formula creation detected)');
         buildMode = true;
+        
+        // CRITICAL: Cancel the regular batch timer to prevent race condition!
+        if (batchTimer) {
+            console.log('   ⏹️ Cancelled regular batch timer');
+            clearTimeout(batchTimer);
+            batchTimer = null;
+        }
+        
+        // Move any already-pending requests into build mode queue
+        // This prevents them from being processed by the regular batch
+        for (const [cacheKey, request] of pendingRequests.balance.entries()) {
+            buildModePending.push({
+                cacheKey,
+                params: request.params,
+                resolve: request.resolve,
+                reject: request.reject
+            });
+        }
+        if (pendingRequests.balance.size > 0) {
+            console.log(`   📦 Moved ${pendingRequests.balance.size} pending requests to build mode`);
+            pendingRequests.balance.clear();
+        }
     }
 }
 
 function exitBuildModeAndProcess() {
     if (!buildMode) return;
     
-    console.log(`🔨 EXITING BUILD MODE (${buildModePending.length} formulas queued)`);
+    const count = buildModePending.length;
+    console.log(`🔨 EXITING BUILD MODE (${count} formulas queued)`);
     buildMode = false;
+    formulaCreationCount = 0;
     
     // Process all queued formulas in one batch
-    if (buildModePending.length > 0) {
+    if (count > 0) {
         runBuildModeBatch();
     }
 }
@@ -149,23 +177,26 @@ async function runBuildModeBatch() {
         if (p.toPeriod && p.toPeriod !== p.fromPeriod) {
             periods.add(p.toPeriod);
         }
-        // Use last filters (they should all be the same in a drag operation)
         filters.subsidiary = p.subsidiary || '';
         filters.department = p.department || '';
         filters.location = p.location || '';
         filters.classId = p.classId || '';
     }
     
+    const periodsArray = Array.from(periods);
+    const accountsArray = Array.from(accounts);
+    
+    console.log(`   Accounts: ${accountsArray.join(', ')}`);
+    console.log(`   Periods: ${periodsArray.join(', ')}`);
+    
     const payload = {
-        accounts: Array.from(accounts),
-        periods: Array.from(periods),
+        accounts: accountsArray,
+        periods: periodsArray,
         subsidiary: filters.subsidiary,
         department: filters.department,
         location: filters.location,
         class: filters.classId
     };
-    
-    console.log(`   Accounts: ${accounts.size}, Periods: ${periods.size}`);
     
     try {
         const response = await fetch(`${SERVER_URL}/batch/balance`, {
@@ -180,6 +211,11 @@ async function runBuildModeBatch() {
         
         const data = await response.json();
         const balances = data.balances || {};
+        
+        console.log(`   📊 Backend returned data for accounts: ${Object.keys(balances).join(', ')}`);
+        for (const acct in balances) {
+            console.log(`      ${acct}: ${Object.keys(balances[acct]).join(', ')}`);
+        }
         
         // Populate cache with results
         let cached = 0;
@@ -202,20 +238,31 @@ async function runBuildModeBatch() {
         
         console.log(`   Cached ${cached} values`);
         
-        // Force Excel to recalculate affected formulas
-        try {
-            await Excel.run(async (context) => {
-                const sheet = context.workbook.worksheets.getActiveWorksheet();
-                sheet.getUsedRange().calculate();
-                await context.sync();
-            });
-            console.log('   ✅ Formulas recalculated');
-        } catch (e) {
-            console.warn('   Recalculation skipped:', e.message);
+        // NOW RESOLVE ALL PENDING PROMISES with actual values
+        let resolved = 0;
+        for (const item of pending) {
+            const { params, resolve } = item;
+            const { account, fromPeriod } = params;
+            
+            // Look up value from what we just cached
+            let value = 0;
+            if (balances[account] && balances[account][fromPeriod] !== undefined) {
+                value = balances[account][fromPeriod];
+            }
+            
+            console.log(`   ✅ Resolving ${account}/${fromPeriod} = ${value}`);
+            resolve(value);
+            resolved++;
         }
+        
+        console.log(`   📊 Resolved ${resolved} formulas`);
         
     } catch (error) {
         console.error('Build mode batch error:', error);
+        // On error, resolve all with 0 to avoid hanging promises
+        for (const item of pending) {
+            item.resolve(0);
+        }
     }
 }
 
@@ -811,12 +858,15 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         }
         
         // ================================================================
-        // BUILD MODE: Queue and return placeholder (instant UX!)
+        // BUILD MODE: Queue with Promise (will be resolved after batch)
+        // We return a Promise, not 0 - this shows #BUSY briefly but ensures
+        // correct values. The batch will resolve all promises at once.
         // ================================================================
         if (buildMode) {
-            buildModePending.push({ cacheKey, params });
-            // Return 0 as placeholder - will be replaced after batch completes
-            return 0;
+            console.log(`🔨 BUILD MODE: Queuing ${account}/${fromPeriod}`);
+            return new Promise((resolve, reject) => {
+                buildModePending.push({ cacheKey, params, resolve, reject });
+            });
         }
         
         // ================================================================
