@@ -1109,7 +1109,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.16.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.17.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1124,7 +1124,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.16.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.17.0</div>
         </div>
 
         <div class="content">
@@ -1663,7 +1663,8 @@
                                            'July', 'August', 'September', 'October', 'November', 'December'];
                     
                     // Build header row - 16 columns: A-C (account info), D-O (12 months), P (total)
-                    const headers = ['Account #', 'Account Name', 'Type'];
+                    // Order: Type, Number, Name (matches Add Accounts feature)
+                    const headers = ['Type', 'Account #', 'Account Name'];
                     fullMonthNames.forEach(m => headers.push(m));
                     headers.push('YTD Total');
                     
@@ -1683,10 +1684,11 @@
                     progress.textContent = `📊 Adding ${rowCount} accounts...`;
                     
                     // Build and write account data (columns A, B, C)
+                    // Order: Type, Number, Name (matches Add Accounts feature)
                     const dataRows = accountsToUse.map(acct => [
+                        acct.type || '',
                         acct.number || '',
-                        acct.name || '',
-                        acct.type || ''
+                        acct.name || ''
                     ]);
                     
                     if (rowCount > 0) {
@@ -1716,7 +1718,7 @@
                             const colLetter = String.fromCharCode(68 + m); // D=68
                             const cell = sheet.getRange(`${colLetter}${rowNum}`);
                             const monthPeriod = `${monthNames[m]} ${currentYear}`;
-                            cell.formulas = [[`=NS.GLABAL($A${rowNum}, "${monthPeriod}", "${monthPeriod}")`]];
+                            cell.formulas = [[`=NS.GLABAL($B${rowNum}, "${monthPeriod}", "${monthPeriod}")`]];
                         }
                         
                         // YTD Total formula (column P)
@@ -3076,10 +3078,11 @@ export default {
             console.log(`Inserting ${accounts.length} accounts at ${range.address}`);
             
             // Prepare data WITHOUT headers (just the data)
+            // Order: Type, Number, Name (matches Guide Me wizard)
             const dataRows = accounts.map(acc => [
+                acc.accttype || '',
                 acc.accountnumber || '',
-                acc.accountname || '',
-                acc.accttype || ''
+                acc.accountname || ''
             ]);
             
             // Get the range starting at cursor position

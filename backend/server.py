@@ -2542,16 +2542,16 @@ def test_connection():
 def get_all_accounts():
     """
     Get Income accounts for the Guide Me wizard.
-    Returns account number, name, and type.
+    Returns account type, number, and name (clean display name).
     Filters to Income accounts only for a cleaner starter report.
     """
     try:
         # Filter to Income accounts for a focused starter report
-        # User can add other account types later
+        # Use accountsearchdisplaynamecopy for clean name (without hierarchy prefix)
         query = """
             SELECT 
                 acctnumber AS number,
-                fullname AS name,
+                accountsearchdisplaynamecopy AS name,
                 accttype AS type
             FROM Account
             WHERE isinactive = 'F'
@@ -2568,9 +2568,9 @@ def get_all_accounts():
         if isinstance(result, list):
             for row in result:
                 accounts.append({
+                    'type': row.get('type', ''),
                     'number': str(row.get('number', '')),
-                    'name': row.get('name', ''),
-                    'type': row.get('type', '')
+                    'name': row.get('name', '')
                 })
         
         print(f"✓ Returning {len(accounts)} Income accounts")
