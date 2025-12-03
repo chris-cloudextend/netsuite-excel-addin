@@ -225,10 +225,16 @@ async function runBuildModeBatch() {
     const years = new Set(periodsArray.map(p => p.split(' ')[1]));
     const singleYear = years.size === 1 ? Array.from(years)[0] : null;
     
-    // OPTIMIZATION: If 6+ periods from same year, use full_year_refresh endpoint
+    // OPTIMIZATION: Use full_year_refresh when:
+    // - 6+ periods from same year (dragging across columns), OR
+    // - 5+ accounts from same year (dragging down rows)
     // This fetches BOTH P&L AND Balance Sheet accounts in one call
-    if (periodsArray.length >= 6 && singleYear) {
-        console.log(`   ⚡ FAST PATH: Using full_year_refresh for year ${singleYear}`);
+    // Once cached, ALL subsequent requests are instant
+    const manyPeriods = periodsArray.length >= 6;
+    const manyAccounts = accountsArray.length >= 5;
+    
+    if (singleYear && (manyPeriods || manyAccounts)) {
+        console.log(`   ⚡ FAST PATH: Using full_year_refresh for year ${singleYear} (${periodsArray.length} periods, ${accountsArray.length} accounts)`);
         
         try {
             const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
