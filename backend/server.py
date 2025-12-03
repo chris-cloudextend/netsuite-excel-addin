@@ -2048,6 +2048,14 @@ def get_transactions():
         if not account or not period:
             return jsonify({'error': 'Missing required parameters: account and period'}), 400
         
+        print(f"DEBUG - Transaction drill-down request:", file=sys.stderr)
+        print(f"  Account: {account}", file=sys.stderr)
+        print(f"  Period: {period}", file=sys.stderr)
+        print(f"  Subsidiary: {subsidiary}", file=sys.stderr)
+        print(f"  Department: {department}", file=sys.stderr)
+        print(f"  Class: {class_id}", file=sys.stderr)
+        print(f"  Location: {location}", file=sys.stderr)
+        
         # Build WHERE clause with filters
         where_conditions = [
             "t.posting = 'T'",
@@ -2085,8 +2093,8 @@ def get_transactions():
                     e.entityid AS entity_name,
                     e.id AS entity_id,
                     t.memo,
-                    {debit_expr} AS debit,
-                    {credit_expr} AS credit,
+                    SUM(COALESCE(tal.debit, 0)) AS debit,
+                    SUM(COALESCE(tal.credit, 0)) AS credit,
                     a.acctnumber AS account_number,
                     a.accountsearchdisplayname AS account_name
                 FROM 
@@ -2143,10 +2151,15 @@ def get_transactions():
                     t.trandate, t.tranid
             """
         
-        print(f"DEBUG - Transaction drill-down query:\n{query}", file=sys.stderr)
+        print(f"DEBUG - Transaction drill-down query:\n{query[:500]}...", file=sys.stderr)
         result = query_netsuite(query)
         
+        print(f"DEBUG - Query result type: {type(result)}", file=sys.stderr)
+        if isinstance(result, list):
+            print(f"DEBUG - Found {len(result)} transactions", file=sys.stderr)
+        
         if isinstance(result, dict) and 'error' in result:
+            print(f"DEBUG - Query error: {result}", file=sys.stderr)
             return jsonify(result), 500
         
         # Add NetSuite URL to each transaction
