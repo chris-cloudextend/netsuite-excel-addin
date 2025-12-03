@@ -477,6 +477,30 @@ def health():
     return jsonify({'status': 'healthy', 'account': account_id})
 
 
+@app.route('/admin/restart', methods=['POST'])
+def admin_restart():
+    """
+    Restart the server (called from add-in settings)
+    Uses os.execv to replace the current process with a fresh one
+    """
+    print("=" * 60, file=sys.stderr)
+    print("🔄 SERVER RESTART REQUESTED FROM ADD-IN", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    
+    def do_restart():
+        import time
+        time.sleep(1)  # Give time for response to be sent
+        os.execv(sys.executable, ['python3', '-u'] + sys.argv)
+    
+    import threading
+    threading.Thread(target=do_restart).start()
+    
+    return jsonify({
+        'status': 'restarting',
+        'message': 'Server will restart in 1 second. Refresh the taskpane in a few seconds.'
+    })
+
+
 @app.route('/accounts/search', methods=['GET'])
 def search_accounts():
     """

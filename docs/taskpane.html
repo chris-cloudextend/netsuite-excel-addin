@@ -932,14 +932,20 @@
                         <span class="status-dot checking"></span>
                         Checking...
                     </div>
-                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
                         <button class="settings-btn-action" onclick="checkServerStatus()">
                             Check Status
                         </button>
                         <button class="settings-btn-action secondary" onclick="reloadLookups()">
                             Reload Lookups
                         </button>
+                        <button class="settings-btn-action" onclick="restartServer()" style="background: #dc2626;">
+                            🔄 Restart Server
+                        </button>
                     </div>
+                    <p style="font-size: 11px; color: var(--bottlenose); margin-top: 8px;">
+                        Restart if you've updated backend code or see connection issues.
+                    </p>
                 </div>
 
                 <!-- Tunnel Status -->
@@ -949,29 +955,42 @@
                         <span class="status-dot checking"></span>
                         Checking...
                     </div>
-                    <p style="font-size: 12px; color: #6b7280; margin-top: 10px;">
-                        Current tunnel URL is configured in the Cloudflare Worker.
-                    </p>
+                    
+                    <div style="margin-top: 12px; padding: 12px; background: linear-gradient(135deg, rgba(10, 226, 193, 0.1) 0%, rgba(0, 121, 255, 0.05) 100%); border-radius: 8px; border: 1px solid var(--anenome);">
+                        <p style="font-size: 11px; color: var(--deep-dive); margin-bottom: 8px; font-weight: 600;">
+                            ⚠️ Tunnel cannot be auto-restarted from add-in
+                        </p>
+                        <p style="font-size: 11px; color: var(--bottlenose); margin-bottom: 10px;">
+                            To restart tunnel, run in Terminal:
+                        </p>
+                        <div style="background: var(--deep-dive); padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 10px; color: var(--anenome); margin-bottom: 10px;">
+                            pkill cloudflared; cloudflared tunnel --url http://localhost:5002
+                        </div>
+                        <button class="settings-btn-action" onclick="copyTunnelCommand()" style="font-size: 11px; padding: 6px 12px; width: 100%;">
+                            📋 Copy Command
+                        </button>
+                    </div>
+                    
                     <details style="margin-top: 12px;">
-                        <summary style="font-size: 12px; color: #0066CC; cursor: pointer;">
-                            Need to update tunnel URL?
+                        <summary style="font-size: 12px; color: var(--tidal-wave); cursor: pointer; font-weight: 500;">
+                            📝 Update Worker with new tunnel URL
                         </summary>
-                        <div style="margin-top: 10px; padding: 12px; background: #f3f4f6; border-radius: 8px;">
-                            <p style="font-size: 11px; color: #4b5563; margin-bottom: 8px;">
-                                If the tunnel was restarted, you need to update the Cloudflare Worker with the new URL.
+                        <div style="margin-top: 10px; padding: 12px; background: var(--barnacle); border-radius: 8px;">
+                            <p style="font-size: 11px; color: var(--deep-dive); margin-bottom: 8px;">
+                                After restarting tunnel, copy the new URL (shown in terminal) and update Cloudflare Worker:
                             </p>
-                            <ol style="font-size: 11px; color: #4b5563; padding-left: 20px; line-height: 1.8;">
-                                <li>Check terminal for new tunnel URL</li>
-                                <li>Go to <a href="https://dash.cloudflare.com" target="_blank" style="color: #0066CC;">Cloudflare Dashboard</a></li>
-                                <li>Workers & Pages → netsuite-proxy</li>
-                                <li>Edit code and update TUNNEL_URL</li>
+                            <ol style="font-size: 11px; color: var(--bottlenose); padding-left: 20px; line-height: 1.8;">
+                                <li>Copy the new <code>https://xxx.trycloudflare.com</code> URL from terminal</li>
+                                <li>Go to <a href="https://dash.cloudflare.com" target="_blank" style="color: var(--tidal-wave);">Cloudflare Dashboard</a></li>
+                                <li>Workers & Pages → <strong>netsuite-proxy</strong></li>
+                                <li>Edit code → Update <code>TUNNEL_URL</code></li>
                                 <li>Save and Deploy</li>
                             </ol>
                             <input type="text" id="newTunnelUrl" class="settings-input" 
-                                   placeholder="https://xxx.trycloudflare.com" 
-                                   style="font-size: 11px;"/>
-                            <button class="settings-btn-action secondary" onclick="copyTunnelInstructions()" style="font-size: 11px; padding: 8px 12px;">
-                                Copy URL for Worker
+                                   placeholder="Paste new tunnel URL here" 
+                                   style="font-size: 11px; margin-top: 8px;"/>
+                            <button class="settings-btn-action" onclick="copyWorkerCode()" style="font-size: 11px; padding: 6px 12px; margin-top: 8px; width: 100%;">
+                                📋 Copy Worker Code with New URL
                             </button>
                         </div>
                     </details>
@@ -990,7 +1009,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.7.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.8.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1006,7 +1025,7 @@
             </button>
             <h1>NetSuite Excel Formulas</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.7.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.8.0</div>
         </div>
 
         <div class="content">
@@ -1499,6 +1518,131 @@
                 statusEl.className = 'status-indicator error';
                 statusEl.innerHTML = `<span class="status-dot error"></span> Error: ${error.message}`;
             }
+        }
+
+        async function restartServer() {
+            const statusEl = document.getElementById('serverStatus');
+            
+            if (!confirm('Restart the backend server? This will briefly interrupt connections.')) {
+                return;
+            }
+            
+            statusEl.className = 'status-indicator checking';
+            statusEl.innerHTML = '<span class="status-dot checking"></span> Restarting...';
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/admin/restart`, { 
+                    method: 'POST',
+                    signal: AbortSignal.timeout(10000)
+                });
+                
+                if (response.ok) {
+                    statusEl.innerHTML = '<span class="status-dot checking"></span> Server restarting...';
+                    
+                    // Wait 3 seconds then check status
+                    setTimeout(async () => {
+                        await checkServerStatus();
+                    }, 3000);
+                } else {
+                    throw new Error(`Status: ${response.status}`);
+                }
+            } catch (error) {
+                // Connection error is expected during restart
+                statusEl.innerHTML = '<span class="status-dot checking"></span> Waiting for restart...';
+                
+                // Keep checking until server is back
+                let attempts = 0;
+                const checkInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const healthResponse = await fetch(`${SERVER_URL}/health`, { 
+                            method: 'GET',
+                            signal: AbortSignal.timeout(3000)
+                        });
+                        if (healthResponse.ok) {
+                            clearInterval(checkInterval);
+                            statusEl.className = 'status-indicator connected';
+                            statusEl.innerHTML = '<span class="status-dot connected"></span> Restarted ✓';
+                        }
+                    } catch (e) {
+                        if (attempts > 10) {
+                            clearInterval(checkInterval);
+                            statusEl.className = 'status-indicator error';
+                            statusEl.innerHTML = '<span class="status-dot error"></span> Restart failed - check terminal';
+                        }
+                    }
+                }, 2000);
+            }
+        }
+
+        function copyTunnelCommand() {
+            const command = 'pkill cloudflared; cloudflared tunnel --url http://localhost:5002';
+            navigator.clipboard.writeText(command).then(() => {
+                alert('Command copied! Paste in Terminal to restart tunnel.');
+            }).catch(err => {
+                prompt('Copy this command:', command);
+            });
+        }
+
+        function copyWorkerCode() {
+            const newUrl = document.getElementById('newTunnelUrl').value.trim();
+            if (!newUrl || !newUrl.includes('trycloudflare.com')) {
+                alert('Please paste the new tunnel URL first (e.g., https://xxx.trycloudflare.com)');
+                return;
+            }
+            
+            const workerCode = `// Cloudflare Worker - NetSuite Proxy
+// Updated: ${new Date().toISOString()}
+const TUNNEL_URL = '${newUrl}';
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const targetUrl = TUNNEL_URL + url.pathname + url.search;
+    
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
+    
+    try {
+      const response = await fetch(targetUrl, {
+        method: request.method,
+        headers: request.headers,
+        body: request.method !== 'GET' ? await request.text() : undefined,
+      });
+      
+      const newResponse = new Response(response.body, response);
+      newResponse.headers.set('Access-Control-Allow-Origin', '*');
+      return newResponse;
+    } catch (error) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+  },
+};`;
+            
+            navigator.clipboard.writeText(workerCode).then(() => {
+                alert('Worker code copied with new tunnel URL!\\n\\nGo to Cloudflare Dashboard → Workers → netsuite-proxy → Edit Code → Paste → Deploy');
+            }).catch(err => {
+                // Fallback for browsers that don't support clipboard
+                const textarea = document.createElement('textarea');
+                textarea.value = workerCode;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('Worker code copied!');
+            });
         }
 
         async function reloadLookups() {
