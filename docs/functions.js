@@ -189,67 +189,118 @@ async function runBuildModeBatch() {
     console.log(`   Accounts: ${accountsArray.join(', ')}`);
     console.log(`   Periods (${periodsArray.length}): ${periodsArray.join(', ')}`);
     
-    // CHUNK PERIODS to avoid timeout! Same as processBatchQueue
-    const MAX_PERIODS_PER_CHUNK = 3;
     const allBalances = {};
     let hasError = false;
     
-    // Split periods into chunks
-    const periodChunks = [];
-    for (let i = 0; i < periodsArray.length; i += MAX_PERIODS_PER_CHUNK) {
-        periodChunks.push(periodsArray.slice(i, i + MAX_PERIODS_PER_CHUNK));
-    }
+    // OPTIMIZATION: If 6+ periods from same year, use full_year_refresh endpoint!
+    // This is MUCH faster because it runs ONE P&L query instead of separate BS queries per period
+    const years = new Set(periodsArray.map(p => p.split(' ')[1]));
+    const singleYear = years.size === 1 ? Array.from(years)[0] : null;
     
-    console.log(`   📦 Split into ${periodChunks.length} chunks of max ${MAX_PERIODS_PER_CHUNK} periods`);
-    
-    // Process each chunk
-    for (let chunkIdx = 0; chunkIdx < periodChunks.length; chunkIdx++) {
-        const chunk = periodChunks[chunkIdx];
-        console.log(`   🔄 Chunk ${chunkIdx + 1}/${periodChunks.length}: ${chunk.join(', ')}`);
-        
-        const payload = {
-            accounts: accountsArray,
-            periods: chunk,
-            subsidiary: filters.subsidiary,
-            department: filters.department,
-            location: filters.location,
-            class: filters.classId
-        };
+    if (periodsArray.length >= 6 && singleYear) {
+        console.log(`   ⚡ FAST PATH: Using full_year_refresh for year ${singleYear}`);
         
         try {
-            const response = await fetch(`${SERVER_URL}/batch/balance`, {
+            const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    year: parseInt(singleYear),
+                    subsidiary: filters.subsidiary,
+                    department: filters.department,
+                    location: filters.location,
+                    class: filters.classId
+                })
             });
             
-            if (!response.ok) {
-                console.error(`   ❌ Chunk ${chunkIdx + 1} error: ${response.status}`);
-                hasError = true;
-                continue; // Try next chunk
-            }
-            
-            const data = await response.json();
-            const balances = data.balances || {};
-            
-            // Merge into allBalances
-            for (const acct in balances) {
-                if (!allBalances[acct]) allBalances[acct] = {};
-                for (const period in balances[acct]) {
-                    allBalances[acct][period] = balances[acct][period];
+            if (response.ok) {
+                const data = await response.json();
+                const balances = data.balances || {};
+                
+                // Copy requested accounts/periods to allBalances
+                for (const acct of accountsArray) {
+                    if (balances[acct]) {
+                        allBalances[acct] = {};
+                        for (const period of periodsArray) {
+                            if (balances[acct][period] !== undefined) {
+                                allBalances[acct][period] = balances[acct][period];
+                            }
+                        }
+                    }
                 }
+                
+                console.log(`   ✅ Full year refresh: got ${Object.keys(allBalances).length} accounts`);
+            } else {
+                console.error(`   ❌ Full year refresh error: ${response.status}`);
+                hasError = true;
             }
-            
-            console.log(`   ✅ Chunk ${chunkIdx + 1}: got ${Object.keys(balances).length} accounts`);
-            
-            // Small delay between chunks to avoid rate limiting
-            if (chunkIdx < periodChunks.length - 1) {
-                await new Promise(r => setTimeout(r, 200));
-            }
-            
         } catch (error) {
-            console.error(`   ❌ Chunk ${chunkIdx + 1} fetch error:`, error);
+            console.error(`   ❌ Full year refresh fetch error:`, error);
             hasError = true;
+        }
+    } else {
+        // FALLBACK: Use chunked batch/balance for mixed years or few periods
+        console.log(`   📦 Using chunked batch/balance (mixed years or few periods)`);
+        
+        const MAX_PERIODS_PER_CHUNK = 3;
+        
+        // Split periods into chunks
+        const periodChunks = [];
+        for (let i = 0; i < periodsArray.length; i += MAX_PERIODS_PER_CHUNK) {
+            periodChunks.push(periodsArray.slice(i, i + MAX_PERIODS_PER_CHUNK));
+        }
+        
+        console.log(`   📦 Split into ${periodChunks.length} chunks of max ${MAX_PERIODS_PER_CHUNK} periods`);
+        
+        // Process each chunk
+        for (let chunkIdx = 0; chunkIdx < periodChunks.length; chunkIdx++) {
+            const chunk = periodChunks[chunkIdx];
+            console.log(`   🔄 Chunk ${chunkIdx + 1}/${periodChunks.length}: ${chunk.join(', ')}`);
+            
+            const payload = {
+                accounts: accountsArray,
+                periods: chunk,
+                subsidiary: filters.subsidiary,
+                department: filters.department,
+                location: filters.location,
+                class: filters.classId
+            };
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/batch/balance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    console.error(`   ❌ Chunk ${chunkIdx + 1} error: ${response.status}`);
+                    hasError = true;
+                    continue; // Try next chunk
+                }
+                
+                const data = await response.json();
+                const balances = data.balances || {};
+                
+                // Merge into allBalances
+                for (const acct in balances) {
+                    if (!allBalances[acct]) allBalances[acct] = {};
+                    for (const period in balances[acct]) {
+                        allBalances[acct][period] = balances[acct][period];
+                    }
+                }
+                
+                console.log(`   ✅ Chunk ${chunkIdx + 1}: got ${Object.keys(balances).length} accounts`);
+                
+                // Small delay between chunks to avoid rate limiting
+                if (chunkIdx < periodChunks.length - 1) {
+                    await new Promise(r => setTimeout(r, 200));
+                }
+                
+            } catch (error) {
+                console.error(`   ❌ Chunk ${chunkIdx + 1} fetch error:`, error);
+                hasError = true;
+            }
         }
     }
     
