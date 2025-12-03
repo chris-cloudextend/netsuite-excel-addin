@@ -2538,6 +2538,43 @@ def test_connection():
 # LOOKUP ENDPOINTS - For Excel dropdowns/data validation
 # ============================================================================
 
+@app.route('/lookups/accounts')
+def get_all_accounts():
+    """
+    Get all accounts for the Guide Me wizard.
+    Returns account number, name, and type.
+    """
+    try:
+        query = """
+            SELECT 
+                a.acctnumber AS number,
+                a.displayname AS name,
+                a.accttype AS type
+            FROM Account a
+            WHERE a.isinactive = 'F'
+            ORDER BY a.acctnumber
+        """
+        
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+            
+        accounts = []
+        if isinstance(result, list):
+            for row in result:
+                accounts.append({
+                    'number': str(row.get('number', '')),
+                    'name': row.get('name', ''),
+                    'type': row.get('type', '')
+                })
+        
+        return jsonify(accounts)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/lookups/all')
 def get_all_lookups():
     """

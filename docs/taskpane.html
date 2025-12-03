@@ -294,6 +294,115 @@
 
         /* Help button in header */
 
+        /* Guide Me Wizard */
+        .guide-me-card {
+            background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .guide-me-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .guide-me-card h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .guide-me-card p {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .guide-me-btn {
+            background: var(--anenome);
+            color: var(--deep-dive);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .guide-me-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(10, 226, 193, 0.4);
+        }
+
+        .guide-me-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .guide-me-btn .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top-color: var(--deep-dive);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .guide-me-dismiss {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            color: white;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .guide-me-dismiss:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .guide-me-progress {
+            margin-top: 16px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .guide-me-hidden {
+            display: none;
+        }
+
         /* Settings Modal */
         .settings-modal {
             display: none;
@@ -1000,7 +1109,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.14.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.15.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1015,11 +1124,22 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.14.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.15.0</div>
         </div>
 
         <div class="content">
             <div class="status-badge">Connected to NetSuite</div>
+
+            <!-- GUIDE ME WIZARD -->
+            <div class="guide-me-card" id="guideMeCard">
+                <button class="guide-me-dismiss" onclick="dismissGuideMe()" title="Dismiss">×</button>
+                <h3>🚀 New Here?</h3>
+                <p>Let me build you a starter financial report with your NetSuite accounts, monthly columns, and formulas ready to go!</p>
+                <button class="guide-me-btn" id="guideMeBtn" onclick="runGuideMe()">
+                    <span id="guideMeBtnText">Build My Starter Report</span>
+                </button>
+                <div class="guide-me-progress" id="guideMeProgress" style="display: none;"></div>
+            </div>
 
             <!-- GETTING STARTED HELP SECTION -->
             <details class="collapsible-section help-section" id="helpSection">
@@ -1477,6 +1597,176 @@
 
         function closeSettings() {
             document.getElementById('settingsModal').classList.remove('active');
+        }
+
+        // ================================================================
+        // GUIDE ME WIZARD - Build starter financial report
+        // ================================================================
+        
+        function dismissGuideMe() {
+            document.getElementById('guideMeCard').classList.add('guide-me-hidden');
+            localStorage.setItem('guideMeDismissed', 'true');
+        }
+
+        function showGuideMe() {
+            // Only show if not previously dismissed
+            if (localStorage.getItem('guideMeDismissed') !== 'true') {
+                document.getElementById('guideMeCard').classList.remove('guide-me-hidden');
+            }
+        }
+
+        async function runGuideMe() {
+            const btn = document.getElementById('guideMeBtn');
+            const btnText = document.getElementById('guideMeBtnText');
+            const progress = document.getElementById('guideMeProgress');
+            
+            btn.disabled = true;
+            btnText.innerHTML = '<div class="spinner"></div> Building...';
+            progress.style.display = 'block';
+            
+            try {
+                // Step 1: Fetch accounts
+                progress.textContent = '📥 Fetching accounts from NetSuite...';
+                
+                const response = await fetch(`${SERVER_URL}/lookups/accounts`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch accounts: ${response.status}`);
+                }
+                
+                const accounts = await response.json();
+                console.log(`Guide Me: Fetched ${accounts.length} accounts`);
+                
+                if (accounts.length === 0) {
+                    throw new Error('No accounts returned from NetSuite');
+                }
+
+                // Step 2: Build the Excel template
+                progress.textContent = '📊 Building your report template...';
+                
+                await Excel.run(async (context) => {
+                    // Get active sheet or create new one
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    sheet.name = "Financial Report";
+                    
+                    // Remove gridlines for cleaner look
+                    sheet.showGridlines = false;
+                    
+                    // Get current year
+                    const currentYear = new Date().getFullYear();
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    
+                    // Build header row
+                    const headers = ['Account #', 'Account Name', 'Type'];
+                    months.forEach(m => headers.push(`${m} ${currentYear}`));
+                    headers.push('YTD Total');
+                    
+                    // Write headers (row 1)
+                    const headerRange = sheet.getRange(`A1:Q1`);
+                    headerRange.values = [headers];
+                    headerRange.format.font.bold = true;
+                    headerRange.format.font.color = "#FFFFFF";
+                    headerRange.format.fill.color = "#09235C"; // deep-dive
+                    headerRange.format.horizontalAlignment = "Center";
+                    
+                    // Limit accounts to first 50 for performance
+                    const accountsToUse = accounts.slice(0, 50);
+                    progress.textContent = `📊 Adding ${accountsToUse.length} accounts...`;
+                    
+                    // Build data rows
+                    const dataRows = [];
+                    const formulaRows = [];
+                    
+                    accountsToUse.forEach((acct, idx) => {
+                        const rowNum = idx + 2; // Data starts at row 2
+                        const acctNum = acct.number || acct.acctnumber || '';
+                        const acctName = acct.name || acct.displayname || '';
+                        const acctType = acct.type || acct.accttype || '';
+                        
+                        // Data columns (A, B, C)
+                        const dataRow = [acctNum, acctName, acctType];
+                        
+                        // Formula columns (D through P = months, Q = total)
+                        const formulaRow = ['', '', '']; // Placeholders for A, B, C
+                        
+                        months.forEach((m, mIdx) => {
+                            const colLetter = String.fromCharCode(68 + mIdx); // D=68
+                            // Use cell reference for account number (column A)
+                            const formula = `=NS.GLABAL($A${rowNum}, "${m} ${currentYear}", "${m} ${currentYear}")`;
+                            formulaRow.push(formula);
+                        });
+                        
+                        // YTD Total formula (sum of D through O)
+                        formulaRow.push(`=SUM(D${rowNum}:O${rowNum})`);
+                        
+                        dataRows.push(dataRow);
+                        formulaRows.push(formulaRow);
+                    });
+                    
+                    // Write account data (columns A, B, C)
+                    if (dataRows.length > 0) {
+                        const dataRange = sheet.getRange(`A2:C${dataRows.length + 1}`);
+                        dataRange.values = dataRows.map(r => r.slice(0, 3));
+                        
+                        // Alternate row colors for readability
+                        for (let i = 0; i < dataRows.length; i++) {
+                            const rowRange = sheet.getRange(`A${i + 2}:Q${i + 2}`);
+                            if (i % 2 === 0) {
+                                rowRange.format.fill.color = "#F5F7FA";
+                            }
+                        }
+                    }
+                    
+                    // Write formulas (only first 5 rows to start - user can drag)
+                    const formulaCount = Math.min(5, formulaRows.length);
+                    progress.textContent = `📝 Adding formulas to first ${formulaCount} rows...`;
+                    
+                    for (let i = 0; i < formulaCount; i++) {
+                        const rowNum = i + 2;
+                        // Set month formulas (D through O)
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(68 + m);
+                            const cell = sheet.getRange(`${colLetter}${rowNum}`);
+                            cell.formulas = [[formulaRows[i][m + 3]]]; // +3 to skip A,B,C placeholders
+                        }
+                        // Set YTD total formula
+                        const totalCell = sheet.getRange(`P${rowNum}`);
+                        totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
+                    }
+                    
+                    // Format number columns
+                    const numberRange = sheet.getRange(`D2:Q${dataRows.length + 1}`);
+                    numberRange.numberFormat = [['#,##0']];
+                    
+                    // Auto-fit columns
+                    sheet.getRange("A:Q").format.autofitColumns();
+                    
+                    // Make account # column narrower
+                    sheet.getRange("A:A").format.columnWidth = 80;
+                    
+                    // Freeze header row
+                    sheet.freezePanes.freezeRows(1);
+                    
+                    await context.sync();
+                });
+                
+                // Success!
+                progress.textContent = '✅ Done! Drag formulas down for more rows, delete rows you don\'t need.';
+                btnText.textContent = '✓ Report Created!';
+                btn.style.background = '#4CAF50';
+                
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    dismissGuideMe();
+                }, 5000);
+                
+            } catch (error) {
+                console.error('Guide Me error:', error);
+                progress.textContent = `❌ Error: ${error.message}`;
+                btnText.textContent = 'Try Again';
+                btn.disabled = false;
+                btn.style.background = '';
+            }
         }
 
         async function checkServerStatus() {
