@@ -1109,7 +1109,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.15.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.16.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1124,7 +1124,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.15.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.16.0</div>
         </div>
 
         <div class="content">
@@ -1644,105 +1644,100 @@
                 progress.textContent = '📊 Building your report template...';
                 
                 await Excel.run(async (context) => {
-                    // Get active sheet or create new one
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    sheet.name = "Financial Report";
+                    
+                    try {
+                        sheet.name = "Financial Report";
+                    } catch (e) {
+                        // Sheet might already have this name, ignore
+                    }
                     
                     // Remove gridlines for cleaner look
                     sheet.showGridlines = false;
                     
                     // Get current year
                     const currentYear = new Date().getFullYear();
-                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const fullMonthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                           'July', 'August', 'September', 'October', 'November', 'December'];
                     
-                    // Build header row
+                    // Build header row - 16 columns: A-C (account info), D-O (12 months), P (total)
                     const headers = ['Account #', 'Account Name', 'Type'];
-                    months.forEach(m => headers.push(`${m} ${currentYear}`));
+                    fullMonthNames.forEach(m => headers.push(m));
                     headers.push('YTD Total');
                     
-                    // Write headers (row 1)
-                    const headerRange = sheet.getRange(`A1:Q1`);
+                    // Write headers (row 1) - A1:P1 = 16 columns
+                    const headerRange = sheet.getRange("A1:P1");
                     headerRange.values = [headers];
                     headerRange.format.font.bold = true;
                     headerRange.format.font.color = "#FFFFFF";
-                    headerRange.format.fill.color = "#09235C"; // deep-dive
+                    headerRange.format.fill.color = "#09235C";
                     headerRange.format.horizontalAlignment = "Center";
                     
-                    // Limit accounts to first 50 for performance
-                    const accountsToUse = accounts.slice(0, 50);
-                    progress.textContent = `📊 Adding ${accountsToUse.length} accounts...`;
+                    await context.sync();
                     
-                    // Build data rows
-                    const dataRows = [];
-                    const formulaRows = [];
+                    // Limit to 25 accounts
+                    const accountsToUse = accounts.slice(0, 25);
+                    const rowCount = accountsToUse.length;
+                    progress.textContent = `📊 Adding ${rowCount} accounts...`;
                     
-                    accountsToUse.forEach((acct, idx) => {
-                        const rowNum = idx + 2; // Data starts at row 2
-                        const acctNum = acct.number || acct.acctnumber || '';
-                        const acctName = acct.name || acct.displayname || '';
-                        const acctType = acct.type || acct.accttype || '';
-                        
-                        // Data columns (A, B, C)
-                        const dataRow = [acctNum, acctName, acctType];
-                        
-                        // Formula columns (D through P = months, Q = total)
-                        const formulaRow = ['', '', '']; // Placeholders for A, B, C
-                        
-                        months.forEach((m, mIdx) => {
-                            const colLetter = String.fromCharCode(68 + mIdx); // D=68
-                            // Use cell reference for account number (column A)
-                            const formula = `=NS.GLABAL($A${rowNum}, "${m} ${currentYear}", "${m} ${currentYear}")`;
-                            formulaRow.push(formula);
-                        });
-                        
-                        // YTD Total formula (sum of D through O)
-                        formulaRow.push(`=SUM(D${rowNum}:O${rowNum})`);
-                        
-                        dataRows.push(dataRow);
-                        formulaRows.push(formulaRow);
-                    });
+                    // Build and write account data (columns A, B, C)
+                    const dataRows = accountsToUse.map(acct => [
+                        acct.number || '',
+                        acct.name || '',
+                        acct.type || ''
+                    ]);
                     
-                    // Write account data (columns A, B, C)
-                    if (dataRows.length > 0) {
-                        const dataRange = sheet.getRange(`A2:C${dataRows.length + 1}`);
-                        dataRange.values = dataRows.map(r => r.slice(0, 3));
-                        
-                        // Alternate row colors for readability
-                        for (let i = 0; i < dataRows.length; i++) {
-                            const rowRange = sheet.getRange(`A${i + 2}:Q${i + 2}`);
-                            if (i % 2 === 0) {
-                                rowRange.format.fill.color = "#F5F7FA";
-                            }
-                        }
+                    if (rowCount > 0) {
+                        const dataRange = sheet.getRange(`A2:C${rowCount + 1}`);
+                        dataRange.values = dataRows;
+                        await context.sync();
                     }
                     
-                    // Write formulas (only first 5 rows to start - user can drag)
-                    const formulaCount = Math.min(5, formulaRows.length);
+                    // Apply alternating row colors
+                    for (let i = 0; i < rowCount; i++) {
+                        if (i % 2 === 0) {
+                            const rowRange = sheet.getRange(`A${i + 2}:P${i + 2}`);
+                            rowRange.format.fill.color = "#F5F7FA";
+                        }
+                    }
+                    await context.sync();
+                    
+                    // Write formulas for first 5 rows only
+                    const formulaCount = Math.min(5, rowCount);
                     progress.textContent = `📝 Adding formulas to first ${formulaCount} rows...`;
                     
                     for (let i = 0; i < formulaCount; i++) {
                         const rowNum = i + 2;
-                        // Set month formulas (D through O)
+                        
+                        // Month formulas (D through O = 12 months)
                         for (let m = 0; m < 12; m++) {
-                            const colLetter = String.fromCharCode(68 + m);
+                            const colLetter = String.fromCharCode(68 + m); // D=68
                             const cell = sheet.getRange(`${colLetter}${rowNum}`);
-                            cell.formulas = [[formulaRows[i][m + 3]]]; // +3 to skip A,B,C placeholders
+                            const monthPeriod = `${monthNames[m]} ${currentYear}`;
+                            cell.formulas = [[`=NS.GLABAL($A${rowNum}, "${monthPeriod}", "${monthPeriod}")`]];
                         }
-                        // Set YTD total formula
+                        
+                        // YTD Total formula (column P)
                         const totalCell = sheet.getRange(`P${rowNum}`);
                         totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
                     }
+                    await context.sync();
                     
-                    // Format number columns
-                    const numberRange = sheet.getRange(`D2:Q${dataRows.length + 1}`);
-                    numberRange.numberFormat = [['#,##0']];
+                    // Format number columns (D through P) - apply to each cell individually to avoid dimension issues
+                    for (let row = 2; row <= rowCount + 1; row++) {
+                        const numRange = sheet.getRange(`D${row}:P${row}`);
+                        numRange.numberFormat = '#,##0';
+                    }
                     
                     // Auto-fit columns
-                    sheet.getRange("A:Q").format.autofitColumns();
+                    sheet.getRange("A:P").format.autofitColumns();
                     
-                    // Make account # column narrower
+                    // Adjust specific column widths
                     sheet.getRange("A:A").format.columnWidth = 80;
+                    sheet.getRange("B:B").format.columnWidth = 200;
+                    sheet.getRange("C:C").format.columnWidth = 80;
                     
                     // Freeze header row
                     sheet.freezePanes.freezeRows(1);
@@ -1750,15 +1745,13 @@
                     await context.sync();
                 });
                 
-                // Success!
-                progress.textContent = '✅ Done! Drag formulas down for more rows, delete rows you don\'t need.';
+                // Success message
+                progress.innerHTML = `✅ <strong>Here's your jump-start!</strong><br><br>We've included sample accounts, 12 months of data, and ready-to-use formulas in the first few rows. Explore how they work and drag the formulas down to expand the model on your own.`;
+                progress.style.lineHeight = '1.5';
                 btnText.textContent = '✓ Report Created!';
                 btn.style.background = '#4CAF50';
                 
-                // Auto-dismiss after 5 seconds
-                setTimeout(() => {
-                    dismissGuideMe();
-                }, 5000);
+                // Don't auto-dismiss - let user read the message
                 
             } catch (error) {
                 console.error('Guide Me error:', error);
