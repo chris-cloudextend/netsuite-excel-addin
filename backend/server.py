@@ -978,8 +978,11 @@ def run_paginated_suiteql(base_query, page_size=1000, max_pages=20):
     """
     Execute a SuiteQL query with pagination to overcome NetSuite's 1000-row limit.
     
+    NetSuite SuiteQL uses API-level pagination via URL parameters, NOT SQL OFFSET/LIMIT.
+    The 'offset' parameter is added to the API URL.
+    
     Args:
-        base_query: SQL query WITHOUT OFFSET/LIMIT (must have ORDER BY for stable pagination)
+        base_query: SQL query (the API handles pagination)
         page_size: Rows per page (max 1000 for NetSuite)
         max_pages: Safety limit to prevent infinite loops
     
@@ -993,14 +996,15 @@ def run_paginated_suiteql(base_query, page_size=1000, max_pages=20):
     while page_num < max_pages:
         page_num += 1
         
-        # Add OFFSET and LIMIT to the query
-        paginated_query = f"{base_query}\nOFFSET {offset} LIMIT {page_size}"
+        # NetSuite pagination is done via URL parameters, not SQL syntax!
+        # Add offset to the URL: /query/v1/suiteql?offset=X&limit=Y
+        paginated_url = f"{suiteql_url}?limit={page_size}&offset={offset}"
         
         response = requests.post(
-            suiteql_url,
+            paginated_url,
             auth=auth,
             headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
-            json={'q': paginated_query},
+            json={'q': base_query},
             timeout=120  # 2 minute timeout per page
         )
         
