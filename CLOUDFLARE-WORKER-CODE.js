@@ -9,15 +9,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://hero-manufactured-fridge-signature.trycloudflare.com
+// CURRENT TUNNEL URL: https://publishing-increased-hrs-why.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 2, 2025 - 7:07 PM
+// Last Updated: Dec 3, 2025 - 1:58 PM
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://roller-exceptions-accidents-ultram.trycloudflare.com';
+    const TUNNEL_URL = 'https://publishing-increased-hrs-why.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {

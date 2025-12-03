@@ -157,6 +157,35 @@ function exitBuildModeAndProcess() {
     }
 }
 
+// Helper: Check if account type is Balance Sheet
+function isBalanceSheetType(acctType) {
+    if (!acctType) return false;
+    const bsTypes = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 
+                     'DeferExpense', 'Unbilled', 'AcctPay', 'CreditCard', 'OthCurrLiab', 
+                     'LongTermLiab', 'DeferRevenue', 'Equity'];
+    return bsTypes.includes(acctType);
+}
+
+// Helper: Get account type from cache or fetch it
+async function getAccountType(account) {
+    const cacheKey = getCacheKey('type', { account });
+    if (cache.type.has(cacheKey)) {
+        return cache.type.get(cacheKey);
+    }
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/account/${account}/type`);
+        if (response.ok) {
+            const type = await response.text();
+            cache.type.set(cacheKey, type);
+            return type;
+        }
+    } catch (e) {
+        console.warn(`   ⚠️ Failed to get type for ${account}:`, e.message);
+    }
+    return null;
+}
+
 async function runBuildModeBatch() {
     const pending = buildModePending.slice();
     buildModePending = [];
@@ -192,11 +221,12 @@ async function runBuildModeBatch() {
     const allBalances = {};
     let hasError = false;
     
-    // OPTIMIZATION: If 6+ periods from same year, use full_year_refresh endpoint!
-    // This is MUCH faster because it runs ONE P&L query instead of separate BS queries per period
+    // SMART DETECTION: Detect years from periods
     const years = new Set(periodsArray.map(p => p.split(' ')[1]));
     const singleYear = years.size === 1 ? Array.from(years)[0] : null;
     
+    // OPTIMIZATION: If 6+ periods from same year, use full_year_refresh endpoint
+    // This fetches BOTH P&L AND Balance Sheet accounts in one call
     if (periodsArray.length >= 6 && singleYear) {
         console.log(`   ⚡ FAST PATH: Using full_year_refresh for year ${singleYear}`);
         
@@ -217,7 +247,7 @@ async function runBuildModeBatch() {
                 const data = await response.json();
                 const balances = data.balances || {};
                 
-                console.log(`   📊 Full year refresh returned ${Object.keys(balances).length} accounts`);
+                console.log(`   📊 Full year refresh returned ${Object.keys(balances).length} accounts (P&L + BS)`);
                 
                 // CACHE ALL ACCOUNTS from full_year_refresh (not just requested!)
                 // This way, subsequent drags for different accounts are INSTANT
@@ -238,7 +268,7 @@ async function runBuildModeBatch() {
                         totalCached++;
                     }
                 }
-                console.log(`   💾 Cached ${totalCached} values for ALL accounts (5 min TTL)`);
+                console.log(`   💾 Cached ${totalCached} values for ALL accounts`);
                 
                 // Also save to localStorage for persistence across refreshes
                 try {
@@ -277,7 +307,7 @@ async function runBuildModeBatch() {
                     }
                 }
                 
-                console.log(`   ✅ Resolving ${Object.keys(allBalances).length} requested accounts (including $0 for missing periods)`);
+                console.log(`   ✅ Resolving ${Object.keys(allBalances).length} requested accounts (including $0 for missing)`);
             } else {
                 console.error(`   ❌ Full year refresh error: ${response.status}`);
                 hasError = true;
@@ -330,7 +360,7 @@ async function runBuildModeBatch() {
                 const data = await response.json();
                 const balances = data.balances || {};
                 
-                // Merge into allBalances
+                // Merge into allBalances AND cache $0 for missing account/period combos
                 for (const acct in balances) {
                     if (!allBalances[acct]) allBalances[acct] = {};
                     for (const period in balances[acct]) {
@@ -338,7 +368,28 @@ async function runBuildModeBatch() {
                     }
                 }
                 
-                console.log(`   ✅ Chunk ${chunkIdx + 1}: got ${Object.keys(balances).length} accounts`);
+                // IMPORTANT: Cache $0 for any requested account/period not returned
+                // This prevents #BUSY from lingering for accounts with no transactions
+                for (const acct of accountsArray) {
+                    if (!allBalances[acct]) allBalances[acct] = {};
+                    for (const period of chunk) {
+                        if (allBalances[acct][period] === undefined) {
+                            allBalances[acct][period] = 0;
+                            const ck = getCacheKey('balance', {
+                                account: acct,
+                                fromPeriod: period,
+                                toPeriod: period,
+                                subsidiary: filters.subsidiary,
+                                department: filters.department,
+                                location: filters.location,
+                                classId: filters.classId
+                            });
+                            cache.balance.set(ck, 0);
+                        }
+                    }
+                }
+                
+                console.log(`   ✅ Chunk ${chunkIdx + 1}: got ${Object.keys(balances).length} accounts (+ $0 cached for missing)`);
                 
                 // Small delay between chunks to avoid rate limiting
                 if (chunkIdx < periodChunks.length - 1) {

@@ -920,17 +920,16 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
 
 def build_full_year_bs_query(fiscal_year, target_sub, filters):
     """
-    Build optimized full-year BALANCE SHEET query.
+    Build optimized full-year BALANCE SHEET query using CASE WHEN pattern.
     Balance Sheet = CUMULATIVE balance from inception through each period end.
     
-    For each month in the fiscal year, calculates the cumulative balance AS OF that month end.
-    Uses a CTE approach with period-specific consolidation.
+    Uses 12 single-row CROSS JOINs (one per month) instead of a row-multiplying approach.
+    Each period's balance is calculated using CASE WHEN t.trandate <= period.enddate.
     
-    Key difference from P&L:
-    - P&L: Activity FOR a specific period (ap.periodname = 'Jan 2025')
-    - BS: Cumulative AS OF period end (ap.startdate <= period.enddate)
+    Returns WIDE format: one row per account with 12 monthly columns.
+    Python code transforms this to our standard nested dict format.
     
-    Expected performance: ~20-30 seconds for full year (heavier than P&L due to cumulative nature)
+    Expected performance: ~15-30 seconds for full year
     """
     # Build optional filter clauses
     filter_clauses = []
@@ -945,60 +944,61 @@ def build_full_year_bs_query(fiscal_year, target_sub, filters):
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
-    # For balance sheet, we need to query each period separately due to cumulative nature
-    # But we can do it in ONE query using UNION ALL
-    # Each sub-query gets balances AS OF that period's end date
+    # Build 12 period CROSS JOINs - each returns exactly ONE row
+    period_joins = []
+    period_columns = []
     
+    months = [
+        ('jan', '01', 'Jan'), ('feb', '02', 'Feb'), ('mar', '03', 'Mar'),
+        ('apr', '04', 'Apr'), ('may', '05', 'May'), ('jun', '06', 'Jun'),
+        ('jul', '07', 'Jul'), ('aug', '08', 'Aug'), ('sep', '09', 'Sep'),
+        ('oct', '10', 'Oct'), ('nov', '11', 'Nov'), ('dec', '12', 'Dec')
+    ]
+    
+    for abbrev, num, display in months:
+        # CROSS JOIN for this month's period (returns 1 row)
+        period_joins.append(f"""
+  CROSS JOIN (
+    SELECT id, enddate FROM AccountingPeriod 
+    WHERE TO_CHAR(startdate, 'YYYY-MM') = '{fiscal_year}-{num}' 
+      AND isquarter = 'F' AND isyear = 'F'
+    FETCH FIRST 1 ROWS ONLY
+  ) p_{abbrev}""")
+        
+        # SUM with CASE WHEN for this month's cumulative balance
+        period_columns.append(f"""
+  SUM(
+    CASE 
+      WHEN t.trandate <= p_{abbrev}.enddate 
+      THEN TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, p_{abbrev}.id, 'DEFAULT'))
+      ELSE 0
+    END
+  ) AS {display}_{fiscal_year}""")
+    
+    # Combine into final query
     query = f"""
-    WITH sub_cte AS (
-      SELECT COUNT(*) AS subs_count
-      FROM Subsidiary
-      WHERE isinactive = 'F'
-    ),
-    periods AS (
-      SELECT id, periodname, enddate, startdate,
-             ROW_NUMBER() OVER (ORDER BY startdate) AS rn
-      FROM AccountingPeriod
-      WHERE isquarter = 'F'
-        AND isyear = 'F'
-        AND EXTRACT(YEAR FROM startdate) = {fiscal_year}
-    )
-    SELECT
-      a.acctnumber AS account_number,
-      p.periodname AS period_name,
-      SUM(
-        CASE
-          WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
-            TO_NUMBER(
-              BUILTIN.CONSOLIDATE(
-                tal.amount,
-                'LEDGER',
-                'DEFAULT',
-                'DEFAULT',
-                {target_sub},
-                p.id,
-                'DEFAULT'
-              )
-            )
-          ELSE tal.amount
-        END
-      ) AS balance
-    FROM TransactionAccountingLine tal
-    JOIN Transaction t ON t.id = tal.transaction
-    JOIN Account a ON a.id = tal.account
-    JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-    CROSS JOIN sub_cte
-    CROSS JOIN periods p
-    WHERE t.posting = 'T'
-      AND tal.posting = 'T'
-      AND tal.accountingbook = 1
-      AND COALESCE(a.eliminate, 'F') = 'F'
-      AND a.accttype NOT IN ('Income', 'OthIncome', 'COGS', 'Cost of Goods Sold', 'Expense', 'OthExpense')
-      AND ap.startdate <= p.enddate
-      {filter_sql}
-    GROUP BY a.acctnumber, p.periodname, p.startdate
-    ORDER BY a.acctnumber, p.startdate
-    """
+SELECT
+  a.acctnumber AS account_number,
+  a.accttype AS account_type,
+{','.join(period_columns)}
+FROM TransactionAccountingLine tal
+  INNER JOIN Transaction t ON t.id = tal.transaction
+  INNER JOIN Account a ON a.id = tal.account
+{' '.join(period_joins)}
+WHERE 
+  t.posting = 'T'
+  AND tal.posting = 'T'
+  AND tal.accountingbook = 1
+  AND COALESCE(a.eliminate, 'F') = 'F'
+  AND a.accttype NOT IN ('Income', 'OthIncome', 'COGS', 'Cost of Goods Sold', 'Expense', 'OthExpense')
+  AND t.trandate <= p_dec.enddate
+  {filter_sql}
+GROUP BY 
+  a.acctnumber, 
+  a.accttype
+ORDER BY 
+  a.acctnumber
+"""
     
     return query
 
@@ -1083,7 +1083,7 @@ def build_full_year_pl_query(fiscal_year, target_sub, filters):
     return query
 
 
-def run_paginated_suiteql(base_query, page_size=1000, max_pages=20):
+def run_paginated_suiteql(base_query, page_size=1000, max_pages=20, timeout=120):
     """
     Execute a SuiteQL query with pagination to overcome NetSuite's 1000-row limit.
     
@@ -1094,6 +1094,7 @@ def run_paginated_suiteql(base_query, page_size=1000, max_pages=20):
         base_query: SQL query (the API handles pagination)
         page_size: Rows per page (max 1000 for NetSuite)
         max_pages: Safety limit to prevent infinite loops
+        timeout: Request timeout in seconds
     
     Returns:
         List of all rows from all pages
@@ -1114,7 +1115,7 @@ def run_paginated_suiteql(base_query, page_size=1000, max_pages=20):
             auth=auth,
             headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
             json={'q': base_query},
-            timeout=120  # 2 minute timeout per page
+            timeout=timeout
         )
         
         if response.status_code != 200:
@@ -1307,28 +1308,53 @@ def batch_full_year_refresh():
         
         try:
             bs_query = build_full_year_bs_query(fiscal_year, target_sub, filters)
+            print(f"   BS Query (first 500 chars):\n{bs_query[:500]}...", flush=True)
             bs_start = datetime.now()
-            bs_items = run_paginated_suiteql(bs_query, page_size=1000, max_pages=30)
+            # BS query with WIDE format returns 1 row per account, unlikely to exceed 1000
+            # Use 4-minute timeout since this is a complex query with 12 CONSOLIDATE calls
+            bs_items = run_paginated_suiteql(bs_query, page_size=1000, max_pages=5, timeout=240)
             bs_elapsed = (datetime.now() - bs_start).total_seconds()
             print(f"⏱️  BS query time: {bs_elapsed:.2f} seconds", flush=True)
-            print(f"✅ BS returned {len(bs_items)} rows", flush=True)
+            print(f"✅ BS returned {len(bs_items)} rows (accounts)", flush=True)
             
-            # Process BS results and merge into balances
+            # Process BS results - WIDE format with columns like Jan_2024, Feb_2024, etc.
+            # Transform to our nested dict format
             bs_account_count = 0
+            month_map = {
+                'jan': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'apr': 'Apr',
+                'may': 'May', 'jun': 'Jun', 'jul': 'Jul', 'aug': 'Aug',
+                'sep': 'Sep', 'oct': 'Oct', 'nov': 'Nov', 'dec': 'Dec'
+            }
+            
             for row in bs_items:
                 account = row.get('account_number')
-                period_name = row.get('period_name')  # Already in 'Mon YYYY' format
-                amount = float(row.get('balance', 0) or 0)
+                if not account:
+                    continue
                 
                 if account not in balances:
                     balances[account] = {}
                     bs_account_count += 1
-                balances[account][period_name] = amount
                 
-                # Also cache this result
-                cache_key = f"{account}:{period_name}:{filters_hash}"
-                balance_cache[cache_key] = amount
-                cached_count += 1
+                # Extract month columns (format: Jan_2024, Feb_2024, etc.)
+                for key, value in row.items():
+                    if key in ('account_number', 'account_type'):
+                        continue
+                    
+                    # Parse column name like "Jan_2024" -> "Jan 2024"
+                    if '_' in str(key):
+                        parts = key.split('_')
+                        if len(parts) == 2:
+                            month_abbrev = parts[0].lower()
+                            year = parts[1]
+                            if month_abbrev in month_map:
+                                period_name = f"{month_map[month_abbrev]} {year}"
+                                amount = float(value or 0)
+                                balances[account][period_name] = amount
+                                
+                                # Also cache this result
+                                cache_key = f"{account}:{period_name}:{filters_hash}"
+                                balance_cache[cache_key] = amount
+                                cached_count += 1
             
             print(f"📊 Added {bs_account_count} Balance Sheet accounts", flush=True)
             
@@ -1407,39 +1433,61 @@ def batch_full_year_refresh_bs():
         print(f"{'='*80}\n", flush=True)
         
         bs_query = build_full_year_bs_query(fiscal_year, target_sub, filters)
+        print(f"   BS Query (first 500 chars):\n{bs_query[:500]}...", flush=True)
         
         start_time = datetime.now()
-        items = run_paginated_suiteql(bs_query, page_size=1000, max_pages=30)
+        # BS query with WIDE format returns 1 row per account, unlikely to exceed 1000
+        # Use 4-minute timeout since this is a complex query with 12 CONSOLIDATE calls
+        items = run_paginated_suiteql(bs_query, page_size=1000, max_pages=5, timeout=240)
         elapsed = (datetime.now() - start_time).total_seconds()
         
         print(f"⏱️  Query time: {elapsed:.2f} seconds", flush=True)
         print(f"✅ Received {len(items)} rows")
         
+        # Process BS results - WIDE format with columns like Jan_2024, Feb_2024, etc.
         balances = {}
-        for row in items:
-            account = row.get('account_number')
-            period_name = row.get('period_name')
-            amount = float(row.get('balance', 0) or 0)
-            
-            if account not in balances:
-                balances[account] = {}
-            balances[account][period_name] = amount
+        month_map = {
+            'jan': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'apr': 'Apr',
+            'may': 'May', 'jun': 'Jun', 'jul': 'Jul', 'aug': 'Aug',
+            'sep': 'Sep', 'oct': 'Oct', 'nov': 'Nov', 'dec': 'Dec'
+        }
         
-        print(f"📊 Returning {len(balances)} BS accounts")
-        
-        # Cache results
         global balance_cache, balance_cache_timestamp
         filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
         cached_count = 0
         
-        for account, periods_data in balances.items():
-            for period, amount in periods_data.items():
-                cache_key = f"{account}:{period}:{filters_hash}"
-                balance_cache[cache_key] = amount
-                cached_count += 1
+        for row in items:
+            account = row.get('account_number')
+            if not account:
+                continue
+                
+            if account not in balances:
+                balances[account] = {}
+            
+            # Extract month columns (format: Jan_2024, Feb_2024, etc.)
+            for key, value in row.items():
+                if key in ('account_number', 'account_type'):
+                    continue
+                
+                # Parse column name like "Jan_2024" -> "Jan 2024"
+                if '_' in str(key):
+                    parts = key.split('_')
+                    if len(parts) == 2:
+                        month_abbrev = parts[0].lower()
+                        year = parts[1]
+                        if month_abbrev in month_map:
+                            period_name = f"{month_map[month_abbrev]} {year}"
+                            amount = float(value or 0)
+                            balances[account][period_name] = amount
+                            
+                            # Cache this result
+                            cache_key = f"{account}:{period_name}:{filters_hash}"
+                            balance_cache[cache_key] = amount
+                            cached_count += 1
         
         balance_cache_timestamp = datetime.now()
         
+        print(f"📊 Returning {len(balances)} BS accounts")
         print(f"💾 Cached {cached_count} BS values")
         print(f"{'='*80}\n")
         
