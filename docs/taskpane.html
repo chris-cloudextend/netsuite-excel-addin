@@ -626,7 +626,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.3.5.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.3.7.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -641,7 +641,7 @@
             </button>
             <h1>NetSuite Excel Formulas</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.3.5.0</div>
+            <div class="version-badge" id="versionBadge">v1.3.7.0</div>
         </div>
 
         <div class="content">
@@ -1427,6 +1427,12 @@
                 // Detect year from sheet
                 const year = 2024; // TODO: Auto-detect from formulas
                 
+                // STEP 1: Enter full refresh mode (blocks premature evaluations)
+                if (typeof window.enterFullRefreshMode === 'function') {
+                    window.enterFullRefreshMode(year);
+                    console.log('🚀 Full refresh mode activated');
+                }
+                
                 updateLoading('Fetching ALL accounts from NetSuite...', 10, `Year: ${year}`);
                 
                 const start = Date.now();
@@ -1483,7 +1489,18 @@
                     }
                 }
                 
-                updateLoading('Cache ready!', 85, `${accountCount} accounts cached`)
+                // STEP 4: Mark cache as READY - allows formulas to evaluate
+                if (typeof window.markCacheReady === 'function') {
+                    window.markCacheReady();
+                }
+                
+                // STEP 5: Resolve any pending requests that queued during download
+                if (typeof window.resolvePendingRequests === 'function') {
+                    const { resolved, failed } = window.resolvePendingRequests();
+                    console.log(`📦 Resolved ${resolved} pending requests, ${failed} not in cache`);
+                }
+                
+                updateLoading('Cache ready!', 85, `${accountCount} accounts cached`);
                 
                 updateLoading('Re-applying formulas...', 88, 'Forcing fresh evaluation');
                 
@@ -1552,10 +1569,23 @@
                     }
                     
                     console.log(`✅ Total: Re-applied ${formulasRefreshed} formulas`);
+                    
+                    // STEP 7: Final sheet-wide recalculation to resolve any stragglers
+                    updateLoading('Final recalculation...', 98, 'Resolving remaining cells');
+                    console.log('🔄 Final recalculation pass...');
+                    usedRange.calculate();
+                    await context.sync();
+                    console.log('✅ Final recalculation complete');
                 });
                 
                 // Brief wait for final formulas to evaluate
                 await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // STEP 8: Exit full refresh mode
+                if (typeof window.exitFullRefreshMode === 'function') {
+                    window.exitFullRefreshMode();
+                    console.log('✅ Full refresh mode deactivated');
+                }
                 
                 updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
                 

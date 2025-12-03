@@ -58,11 +58,16 @@ let isFullRefreshMode = false;
 let fullRefreshResolver = null;
 let fullRefreshYear = null;
 
+// CACHE READY SEMAPHORE - Prevents premature formula evaluation
+// Formulas check this before returning values during full refresh
+window.__NS_CACHE_READY = true;  // Default to true for normal operation
+
 window.enterFullRefreshMode = function(year) {
     console.log('🚀 ENTERING FULL REFRESH MODE');
     console.log(`   Year: ${year || 'auto-detect'}`);
     isFullRefreshMode = true;
     fullRefreshYear = year || null;
+    window.__NS_CACHE_READY = false;  // Block premature evaluations
     
     // Clear cache to force fresh data
     window.clearAllCaches();
@@ -77,10 +82,53 @@ window.exitFullRefreshMode = function() {
     console.log('✅ EXITING FULL REFRESH MODE');
     isFullRefreshMode = false;
     fullRefreshYear = null;
+    window.__NS_CACHE_READY = true;  // Allow normal evaluation
     if (fullRefreshResolver) {
         fullRefreshResolver();
         fullRefreshResolver = null;
     }
+};
+
+// Mark cache as ready (called by taskpane after populating cache)
+window.markCacheReady = function() {
+    console.log('✅ CACHE MARKED AS READY');
+    window.__NS_CACHE_READY = true;
+};
+
+// Resolve ALL pending balance requests from cache (called by taskpane after cache is ready)
+window.resolvePendingRequests = function() {
+    console.log('🔄 RESOLVING ALL PENDING REQUESTS FROM CACHE...');
+    let resolved = 0;
+    let failed = 0;
+    
+    for (const [cacheKey, request] of Array.from(pendingRequests.balance.entries())) {
+        const { params, resolve } = request;
+        const { account, fromPeriod } = params;
+        
+        // Try to get value from localStorage cache
+        let value = checkLocalStorageCache(account, fromPeriod);
+        
+        // Fallback to fullYearCache
+        if (value === null) {
+            value = checkFullYearCache(account, fromPeriod);
+        }
+        
+        if (value !== null) {
+            resolve(value);
+            cache.balance.set(cacheKey, value);
+            resolved++;
+        } else {
+            // No value found - resolve with 0 (account has no transactions)
+            resolve(0);
+            failed++;
+        }
+        
+        pendingRequests.balance.delete(cacheKey);
+    }
+    
+    console.log(`   Resolved: ${resolved}, Not in cache (set to 0): ${failed}`);
+    console.log(`   Remaining pending: ${pendingRequests.balance.size}`);
+    return { resolved, failed };
 };
 
 // ============================================================================
