@@ -1455,6 +1455,8 @@ async function processBatchQueue() {
                 const balances = data.balances || {};
                 
                 console.log(`  ✅ Received data for ${Object.keys(balances).length} accounts`);
+                console.log(`  📦 Raw response:`, JSON.stringify(data, null, 2).substring(0, 500));
+                console.log(`  📦 Balances object:`, JSON.stringify(balances, null, 2).substring(0, 500));
                 
                     // Distribute results to waiting Promises
                     for (const {cacheKey, request} of groupRequests) {
@@ -1474,6 +1476,8 @@ async function processBatchQueue() {
                         const toPeriod = request.params.toPeriod;
                         const accountBalances = balances[account] || {};
                         const accum = requestAccumulators.get(cacheKey);
+                        
+                        console.log(`    🔍 Account ${account}: accountBalances =`, JSON.stringify(accountBalances));
                         
                         // Process each period in this chunk that this request needs
                         for (const period of periodChunk) {
