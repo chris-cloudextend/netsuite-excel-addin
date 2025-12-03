@@ -252,18 +252,32 @@ async function runBuildModeBatch() {
                 }
                 
                 // Copy requested accounts/periods to allBalances (for resolving pending promises)
+                // IMPORTANT: Also cache $0 for periods NOT in response (no transactions = $0)
                 for (const acct of accountsArray) {
-                    if (balances[acct]) {
-                        allBalances[acct] = {};
-                        for (const period of periodsArray) {
-                            if (balances[acct][period] !== undefined) {
-                                allBalances[acct][period] = balances[acct][period];
-                            }
+                    allBalances[acct] = {};
+                    for (const period of periodsArray) {
+                        if (balances[acct] && balances[acct][period] !== undefined) {
+                            allBalances[acct][period] = balances[acct][period];
+                        } else {
+                            // Period not in response = $0 balance (cache this to avoid future misses!)
+                            allBalances[acct][period] = 0;
+                            
+                            // Also add to in-memory cache so subsequent lookups are instant
+                            const ck = getCacheKey('balance', {
+                                account: acct,
+                                fromPeriod: period,
+                                toPeriod: period,
+                                subsidiary: filters.subsidiary,
+                                department: filters.department,
+                                location: filters.location,
+                                classId: filters.classId
+                            });
+                            cache.balance.set(ck, 0);
                         }
                     }
                 }
                 
-                console.log(`   ✅ Resolving ${Object.keys(allBalances).length} requested accounts`);
+                console.log(`   ✅ Resolving ${Object.keys(allBalances).length} requested accounts (including $0 for missing periods)`);
             } else {
                 console.error(`   ❌ Full year refresh error: ${response.status}`);
                 hasError = true;
