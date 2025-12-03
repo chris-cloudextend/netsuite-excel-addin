@@ -403,6 +403,54 @@
             display: none;
         }
 
+        /* Guide Me Loading Overlay */
+        .guide-me-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(9, 35, 92, 0.92);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 30px;
+            text-align: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .guide-me-overlay h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .guide-me-overlay .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255,255,255,0.2);
+            border-top-color: var(--anenome);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 24px;
+        }
+
+        .guide-me-overlay .loading-message {
+            font-size: 16px;
+            line-height: 1.6;
+            max-width: 320px;
+            opacity: 0.9;
+        }
+
+        .guide-me-overlay .loading-step {
+            font-size: 14px;
+            margin-top: 20px;
+            color: var(--anenome);
+            font-weight: 600;
+        }
+
         /* Settings Modal */
         .settings-modal {
             display: none;
@@ -1109,7 +1157,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.20.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.21.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1124,7 +1172,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.20.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.21.0</div>
         </div>
 
         <div class="content">
@@ -1619,29 +1667,107 @@
             const btn = document.getElementById('guideMeBtn');
             const btnText = document.getElementById('guideMeBtnText');
             const progress = document.getElementById('guideMeProgress');
+            const currentYear = new Date().getFullYear();
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            
+            // Create and show loading overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'guide-me-overlay';
+            overlay.id = 'guideMeOverlay';
+            overlay.innerHTML = `
+                <div class="loading-spinner"></div>
+                <h2>Building Your Financial Report</h2>
+                <div class="loading-message">
+                    We're connecting to NetSuite to find accounts with actual transaction data. 
+                    This ensures your report only includes meaningful accounts—not empty placeholders.
+                </div>
+                <div class="loading-step" id="guideMeStep">Connecting to NetSuite...</div>
+            `;
+            document.body.appendChild(overlay);
+            
+            const updateStep = (text) => {
+                document.getElementById('guideMeStep').textContent = text;
+            };
             
             btn.disabled = true;
-            btnText.innerHTML = '<div class="spinner"></div> Building...';
-            progress.style.display = 'block';
             
             try {
-                // Step 1: Fetch accounts
-                progress.textContent = '📥 Fetching accounts from NetSuite...';
+                // Step 1: Fetch ALL account data via full_year_refresh (preloads cache!)
+                updateStep('📥 Loading all account balances for ' + currentYear + '...');
                 
-                const response = await fetch(`${SERVER_URL}/lookups/accounts`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch accounts: ${response.status}`);
+                const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: currentYear,
+                        subsidiary: '',
+                        department: '',
+                        location: '',
+                        class: ''
+                    })
+                });
+                
+                if (!refreshResponse.ok) {
+                    throw new Error(`Failed to load data: ${refreshResponse.status}`);
                 }
                 
-                const accounts = await response.json();
-                console.log(`Guide Me: Fetched ${accounts.length} accounts`);
+                const refreshData = await refreshResponse.json();
+                const allBalances = refreshData.balances || {};
                 
-                if (accounts.length === 0) {
-                    throw new Error('No accounts returned from NetSuite');
+                console.log(`Guide Me: Loaded ${Object.keys(allBalances).length} accounts from full_year_refresh`);
+                
+                // Step 2: Filter to accounts with actual data (at least one non-zero month)
+                updateStep('🔍 Finding accounts with transaction data...');
+                
+                const accountsWithData = [];
+                for (const acctNum in allBalances) {
+                    const monthData = allBalances[acctNum];
+                    // Check if any month has a non-zero value
+                    const hasData = Object.values(monthData).some(val => val !== 0 && val !== null && val !== undefined);
+                    if (hasData) {
+                        // Calculate the values for each month in order
+                        const monthValues = monthNames.map(m => monthData[`${m} ${currentYear}`] || 0);
+                        accountsWithData.push({
+                            number: acctNum,
+                            type: 'Income', // We're filtering to Income accounts
+                            name: '', // Will fetch names separately
+                            monthValues: monthValues,
+                            total: monthValues.reduce((a, b) => a + b, 0)
+                        });
+                    }
                 }
-
-                // Step 2: Build the Excel template
-                progress.textContent = '📊 Building your report template...';
+                
+                console.log(`Guide Me: Found ${accountsWithData.length} accounts with data`);
+                
+                if (accountsWithData.length === 0) {
+                    throw new Error('No accounts with transaction data found for ' + currentYear);
+                }
+                
+                // Take first 25 accounts with data
+                const accountsToUse = accountsWithData.slice(0, 25);
+                
+                // Step 3: Fetch account names for selected accounts
+                updateStep('📋 Getting account names...');
+                
+                // Fetch names in parallel
+                const namePromises = accountsToUse.map(async (acct) => {
+                    try {
+                        const resp = await fetch(`${SERVER_URL}/account/${acct.number}/name`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            acct.name = data.name || acct.number;
+                        } else {
+                            acct.name = acct.number;
+                        }
+                    } catch (e) {
+                        acct.name = acct.number;
+                    }
+                });
+                await Promise.all(namePromises);
+                
+                // Step 4: Build the Excel template
+                updateStep('📊 Building your report...');
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -1649,38 +1775,27 @@
                     try {
                         sheet.name = "Financial Report";
                     } catch (e) {
-                        // Sheet might already have this name, ignore
+                        // Ignore if name already exists
                     }
                     
-                    // Remove gridlines for cleaner look
                     sheet.showGridlines = false;
                     
-                    // Get current year
-                    const currentYear = new Date().getFullYear();
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    
-                    // Build header row - 16 columns: A-C (account info), D-O (12 months), P (total)
-                    // Order: Type, Number, Name (matches Add Accounts feature)
-                    const textHeaders = ['Type', 'Account #', 'Account Name'];
-                    
-                    // Write text headers first (A1:C1)
+                    // Write text headers (A1:C1)
                     const textHeaderRange = sheet.getRange("A1:C1");
-                    textHeaderRange.values = [textHeaders];
+                    textHeaderRange.values = [['Type', 'Account #', 'Account Name']];
                     textHeaderRange.format.font.bold = true;
                     textHeaderRange.format.font.color = "#FFFFFF";
                     textHeaderRange.format.fill.color = "#09235C";
                     textHeaderRange.format.horizontalAlignment = "Center";
                     
-                    // Write date headers separately (D1:O1) using DATE formula for proper Excel dates
-                    // This ensures Excel treats them as real dates regardless of locale
+                    // Write date headers (D1:O1) using DATE formula
                     for (let m = 0; m < 12; m++) {
-                        const colLetter = String.fromCharCode(68 + m); // D=68
+                        const colLetter = String.fromCharCode(68 + m);
                         const cell = sheet.getRange(`${colLetter}1`);
                         cell.formulas = [[`=DATE(${currentYear},${m + 1},1)`]];
                     }
                     
-                    // Format month columns as "mmmm" to display full month name (January, February, etc.)
+                    // Format month headers as "mmmm"
                     const monthHeaderRange = sheet.getRange("D1:O1");
                     monthHeaderRange.numberFormat = 'mmmm';
                     monthHeaderRange.format.font.bold = true;
@@ -1698,69 +1813,46 @@
                     
                     await context.sync();
                     
-                    // Limit to 50 accounts
-                    const accountsToUse = accounts.slice(0, 50);
                     const rowCount = accountsToUse.length;
-                    progress.textContent = `📊 Adding ${rowCount} accounts...`;
                     
-                    // Build and write account data (columns A, B, C)
-                    // Order: Type, Number, Name (matches Add Accounts feature)
-                    const dataRows = accountsToUse.map(acct => [
-                        acct.type || '',
-                        acct.number || '',
-                        acct.name || ''
-                    ]);
-                    
-                    if (rowCount > 0) {
-                        const dataRange = sheet.getRange(`A2:C${rowCount + 1}`);
-                        dataRange.values = dataRows;
-                        await context.sync();
-                    }
-                    
-                    // Apply alternating row colors
+                    // Write account data AND actual values (no formulas needed - data is preloaded!)
                     for (let i = 0; i < rowCount; i++) {
+                        const acct = accountsToUse[i];
+                        const rowNum = i + 2;
+                        
+                        // Account info (A, B, C)
+                        const infoRange = sheet.getRange(`A${rowNum}:C${rowNum}`);
+                        infoRange.values = [[acct.type, acct.number, acct.name]];
+                        
+                        // Month values (D through O) - actual values, not formulas!
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(68 + m);
+                            const cell = sheet.getRange(`${colLetter}${rowNum}`);
+                            cell.values = [[acct.monthValues[m]]];
+                        }
+                        
+                        // YTD Total formula
+                        const totalCell = sheet.getRange(`P${rowNum}`);
+                        totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
+                        
+                        // Alternating row colors
                         if (i % 2 === 0) {
-                            const rowRange = sheet.getRange(`A${i + 2}:P${i + 2}`);
+                            const rowRange = sheet.getRange(`A${rowNum}:P${rowNum}`);
                             rowRange.format.fill.color = "#F5F7FA";
                         }
                     }
+                    
                     await context.sync();
                     
-                    // Write formulas for first 5 rows only
-                    const formulaCount = Math.min(5, rowCount);
-                    progress.textContent = `📝 Adding formulas to first ${formulaCount} rows...`;
+                    // Format number columns
+                    const numRange = sheet.getRange(`D2:P${rowCount + 1}`);
+                    numRange.numberFormat = '#,##0';
                     
-                    for (let i = 0; i < formulaCount; i++) {
-                        const rowNum = i + 2;
-                        
-                        // Month formulas (D through O = 12 months)
-                        // Reference the date in row 1 and format it as "mmm yyyy" for the period parameter
-                        for (let m = 0; m < 12; m++) {
-                            const colLetter = String.fromCharCode(68 + m); // D=68
-                            const cell = sheet.getRange(`${colLetter}${rowNum}`);
-                            // Use TEXT() to convert the date in header row to "mmm yyyy" format for NS.GLABAL
-                            cell.formulas = [[`=NS.GLABAL($B${rowNum}, TEXT(${colLetter}$1,"mmm yyyy"), TEXT(${colLetter}$1,"mmm yyyy"))`]];
-                        }
-                        
-                        // YTD Total formula (column P)
-                        const totalCell = sheet.getRange(`P${rowNum}`);
-                        totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
-                    }
-                    await context.sync();
-                    
-                    // Format number columns (D through P) - apply to each cell individually to avoid dimension issues
-                    for (let row = 2; row <= rowCount + 1; row++) {
-                        const numRange = sheet.getRange(`D${row}:P${row}`);
-                        numRange.numberFormat = '#,##0';
-                    }
-                    
-                    // Auto-fit columns
+                    // Auto-fit and adjust columns
                     sheet.getRange("A:P").format.autofitColumns();
-                    
-                    // Adjust specific column widths
                     sheet.getRange("A:A").format.columnWidth = 80;
-                    sheet.getRange("B:B").format.columnWidth = 200;
-                    sheet.getRange("C:C").format.columnWidth = 80;
+                    sheet.getRange("B:B").format.columnWidth = 100;
+                    sheet.getRange("C:C").format.columnWidth = 180;
                     
                     // Freeze header row
                     sheet.freezePanes.freezeRows(1);
@@ -1768,16 +1860,26 @@
                     await context.sync();
                 });
                 
+                // Remove overlay
+                overlay.remove();
+                
                 // Success message
-                progress.innerHTML = `✅ <strong>Here's your jump-start!</strong><br><br>We've included sample accounts, 12 months of data, and ready-to-use formulas in the first few rows. Explore how they work and drag the formulas down to expand the model on your own.`;
+                progress.style.display = 'block';
+                progress.innerHTML = `✅ <strong>Here's your jump-start!</strong><br><br>
+                    We found <strong>${accountsToUse.length} accounts with actual data</strong> for ${currentYear}. 
+                    Empty accounts were automatically skipped.<br><br>
+                    The data is already loaded—your cache is prewarmed! Add formulas to new rows and they'll resolve instantly.`;
                 progress.style.lineHeight = '1.5';
                 btnText.textContent = '✓ Report Created!';
                 btn.style.background = '#4CAF50';
                 
-                // Don't auto-dismiss - let user read the message
-                
             } catch (error) {
                 console.error('Guide Me error:', error);
+                // Remove overlay on error
+                if (document.getElementById('guideMeOverlay')) {
+                    document.getElementById('guideMeOverlay').remove();
+                }
+                progress.style.display = 'block';
                 progress.textContent = `❌ Error: ${error.message}`;
                 btnText.textContent = 'Try Again';
                 btn.disabled = false;
