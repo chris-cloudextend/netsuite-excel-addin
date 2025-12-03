@@ -1109,7 +1109,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.19.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.20.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1124,7 +1124,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.19.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.20.0</div>
         </div>
 
         <div class="content">
@@ -1662,24 +1662,39 @@
                     
                     // Build header row - 16 columns: A-C (account info), D-O (12 months), P (total)
                     // Order: Type, Number, Name (matches Add Accounts feature)
-                    const headers = ['Type', 'Account #', 'Account Name'];
-                    // Add date values for months (1/1/2025, 2/1/2025, etc.) - will be formatted as "mmmm"
+                    const textHeaders = ['Type', 'Account #', 'Account Name'];
+                    
+                    // Write text headers first (A1:C1)
+                    const textHeaderRange = sheet.getRange("A1:C1");
+                    textHeaderRange.values = [textHeaders];
+                    textHeaderRange.format.font.bold = true;
+                    textHeaderRange.format.font.color = "#FFFFFF";
+                    textHeaderRange.format.fill.color = "#09235C";
+                    textHeaderRange.format.horizontalAlignment = "Center";
+                    
+                    // Write date headers separately (D1:O1) using DATE formula for proper Excel dates
+                    // This ensures Excel treats them as real dates regardless of locale
                     for (let m = 0; m < 12; m++) {
-                        headers.push(new Date(currentYear, m, 1)); // JavaScript Date for each month
+                        const colLetter = String.fromCharCode(68 + m); // D=68
+                        const cell = sheet.getRange(`${colLetter}1`);
+                        cell.formulas = [[`=DATE(${currentYear},${m + 1},1)`]];
                     }
-                    headers.push('YTD Total');
                     
-                    // Write headers (row 1) - A1:P1 = 16 columns
-                    const headerRange = sheet.getRange("A1:P1");
-                    headerRange.values = [headers];
-                    headerRange.format.font.bold = true;
-                    headerRange.format.font.color = "#FFFFFF";
-                    headerRange.format.fill.color = "#09235C";
-                    headerRange.format.horizontalAlignment = "Center";
-                    
-                    // Format month columns (D1:O1) as "mmmm" to display full month name
+                    // Format month columns as "mmmm" to display full month name (January, February, etc.)
                     const monthHeaderRange = sheet.getRange("D1:O1");
                     monthHeaderRange.numberFormat = 'mmmm';
+                    monthHeaderRange.format.font.bold = true;
+                    monthHeaderRange.format.font.color = "#FFFFFF";
+                    monthHeaderRange.format.fill.color = "#09235C";
+                    monthHeaderRange.format.horizontalAlignment = "Center";
+                    
+                    // Write YTD Total header (P1)
+                    const totalHeaderRange = sheet.getRange("P1");
+                    totalHeaderRange.values = [['YTD Total']];
+                    totalHeaderRange.format.font.bold = true;
+                    totalHeaderRange.format.font.color = "#FFFFFF";
+                    totalHeaderRange.format.fill.color = "#09235C";
+                    totalHeaderRange.format.horizontalAlignment = "Center";
                     
                     await context.sync();
                     
