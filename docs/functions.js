@@ -95,6 +95,126 @@ window.markCacheReady = function() {
     window.__NS_CACHE_READY = true;
 };
 
+// ============================================================================
+// BUILD MODE - Instant drag-and-drop performance
+// When user drags formulas rapidly, we defer NetSuite calls until they stop
+// ============================================================================
+let buildMode = false;
+let buildModeLastEvent = 0;
+let buildModePending = [];  // Collect pending requests during build mode
+let buildModeTimer = null;
+const BUILD_MODE_THRESHOLD = 8;     // Enter build mode after 8+ rapid formulas
+const BUILD_MODE_SETTLE_MS = 350;   // Wait 350ms after last formula before batch
+
+function enterBuildMode() {
+    if (!buildMode) {
+        console.log('🔨 ENTERING BUILD MODE (rapid formula creation detected)');
+        buildMode = true;
+    }
+}
+
+function exitBuildModeAndProcess() {
+    if (!buildMode) return;
+    
+    console.log(`🔨 EXITING BUILD MODE (${buildModePending.length} formulas queued)`);
+    buildMode = false;
+    
+    // Process all queued formulas in one batch
+    if (buildModePending.length > 0) {
+        runBuildModeBatch();
+    }
+}
+
+async function runBuildModeBatch() {
+    const pending = buildModePending.slice();
+    buildModePending = [];
+    
+    if (pending.length === 0) return;
+    
+    console.log(`🔨 BUILD MODE BATCH: ${pending.length} formulas`);
+    
+    // Collect unique accounts and periods
+    const accounts = new Set();
+    const periods = new Set();
+    let filters = { subsidiary: '', department: '', location: '', classId: '' };
+    
+    for (const item of pending) {
+        const p = item.params;
+        accounts.add(p.account);
+        periods.add(p.fromPeriod);
+        if (p.toPeriod && p.toPeriod !== p.fromPeriod) {
+            periods.add(p.toPeriod);
+        }
+        // Use last filters (they should all be the same in a drag operation)
+        filters.subsidiary = p.subsidiary || '';
+        filters.department = p.department || '';
+        filters.location = p.location || '';
+        filters.classId = p.classId || '';
+    }
+    
+    const payload = {
+        accounts: Array.from(accounts),
+        periods: Array.from(periods),
+        subsidiary: filters.subsidiary,
+        department: filters.department,
+        location: filters.location,
+        class: filters.classId
+    };
+    
+    console.log(`   Accounts: ${accounts.size}, Periods: ${periods.size}`);
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/batch/balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Batch error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const balances = data.balances || {};
+        
+        // Populate cache with results
+        let cached = 0;
+        for (const acct in balances) {
+            for (const period in balances[acct]) {
+                const amount = balances[acct][period];
+                const ck = getCacheKey('balance', {
+                    account: acct,
+                    fromPeriod: period,
+                    toPeriod: period,
+                    subsidiary: filters.subsidiary,
+                    department: filters.department,
+                    location: filters.location,
+                    classId: filters.classId
+                });
+                cache.balance.set(ck, amount);
+                cached++;
+            }
+        }
+        
+        console.log(`   Cached ${cached} values`);
+        
+        // Force Excel to recalculate affected formulas
+        try {
+            await Excel.run(async (context) => {
+                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                sheet.getUsedRange().calculate();
+                await context.sync();
+            });
+            console.log('   ✅ Formulas recalculated');
+        } catch (e) {
+            console.warn('   Recalculation skipped:', e.message);
+        }
+        
+    } catch (error) {
+        console.error('Build mode batch error:', error);
+    }
+}
+
 // Resolve ALL pending balance requests from cache (called by taskpane after cache is ready)
 window.resolvePendingRequests = function() {
     console.log('🔄 RESOLVING ALL PENDING REQUESTS FROM CACHE...');
@@ -616,6 +736,34 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
         const cacheKey = getCacheKey('balance', params);
         
+        // ================================================================
+        // BUILD MODE DETECTION: Detect rapid formula creation (drag/paste)
+        // ================================================================
+        const now = Date.now();
+        const timeSinceLastFormula = now - buildModeLastEvent;
+        buildModeLastEvent = now;
+        
+        // Enter build mode if formulas are being created rapidly
+        const queueSize = pendingRequests.balance.size + buildModePending.length;
+        if (!buildMode && queueSize >= BUILD_MODE_THRESHOLD && timeSinceLastFormula < 200) {
+            enterBuildMode();
+        }
+        
+        // Reset the settle timer on every formula (we'll process after user stops)
+        if (buildModeTimer) {
+            clearTimeout(buildModeTimer);
+        }
+        buildModeTimer = setTimeout(() => {
+            buildModeTimer = null;
+            if (buildMode) {
+                exitBuildModeAndProcess();
+            }
+        }, BUILD_MODE_SETTLE_MS);
+        
+        // ================================================================
+        // CACHE CHECKS (same priority order as before)
+        // ================================================================
+        
         // Check in-memory cache FIRST - return immediately if found
         if (cache.balance.has(cacheKey)) {
             cacheStats.hits++;
@@ -639,7 +787,18 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
             return fullYearValue;
         }
         
-        // Cache miss - add to batch queue and return Promise
+        // ================================================================
+        // BUILD MODE: Queue and return placeholder (instant UX!)
+        // ================================================================
+        if (buildMode) {
+            buildModePending.push({ cacheKey, params });
+            // Return 0 as placeholder - will be replaced after batch completes
+            return 0;
+        }
+        
+        // ================================================================
+        // NORMAL MODE: Cache miss - add to batch queue and return Promise
+        // ================================================================
         cacheStats.misses++;
         
         // In full refresh mode, queue silently (task pane will trigger processFullRefresh)
