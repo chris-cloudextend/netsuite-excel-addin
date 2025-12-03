@@ -395,7 +395,10 @@ async function GLATITLE(accountNumber, invocation) {
     cacheStats.misses++;
     console.log(`📥 CACHE MISS [title]: ${account}`);
     
-    // Single request - make immediately (don't batch titles)
+    // Single request - make with retry for rate limiting
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS = [1000, 2000, 4000]; // Exponential backoff
+    
     try {
         const controller = new AbortController();
         const signal = controller.signal;
@@ -408,16 +411,39 @@ async function GLATITLE(accountNumber, invocation) {
             };
         }
         
-        const response = await fetch(`${SERVER_URL}/account/${account}/name`, { signal });
-        if (!response.ok) {
-            console.error(`Title API error: ${response.status}`);
-            return '#N/A';
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const response = await fetch(`${SERVER_URL}/account/${account}/name`, { signal });
+                
+                if (response.ok) {
+                    const title = await response.text();
+                    cache.title.set(cacheKey, title);
+                    console.log(`💾 Cached title: ${account} → "${title}"`);
+                    return title;
+                }
+                
+                // Retry on 429 (rate limit) or 500 (server error from rate limit)
+                if ((response.status === 429 || response.status === 500) && attempt < MAX_RETRIES) {
+                    console.warn(`⏳ Title rate limited for ${account}, retry ${attempt + 1}/${MAX_RETRIES} in ${RETRY_DELAYS[attempt]}ms`);
+                    await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+                    continue;
+                }
+                
+                console.error(`Title API error: ${response.status}`);
+                return '#N/A';
+                
+            } catch (fetchError) {
+                if (fetchError.name === 'AbortError') throw fetchError;
+                if (attempt < MAX_RETRIES) {
+                    console.warn(`⏳ Title fetch error for ${account}, retry ${attempt + 1}/${MAX_RETRIES}`);
+                    await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+                    continue;
+                }
+                throw fetchError;
+            }
         }
         
-        const title = await response.text();
-        cache.title.set(cacheKey, title);
-        console.log(`💾 Cached title: ${account} → "${title}"`);
-        return title;
+        return '#N/A';
         
     } catch (error) {
         if (error.name === 'AbortError') {

@@ -17,7 +17,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://hero-manufactured-fridge-signature.trycloudflare.com';
+    const TUNNEL_URL = 'https://roller-exceptions-accidents-ultram.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
