@@ -103,8 +103,12 @@ let buildMode = false;
 let buildModeLastEvent = 0;
 let buildModePending = [];  // Collect pending requests during build mode
 let buildModeTimer = null;
-const BUILD_MODE_THRESHOLD = 8;     // Enter build mode after 8+ rapid formulas
-const BUILD_MODE_SETTLE_MS = 350;   // Wait 350ms after last formula before batch
+let formulaCreationCount = 0;       // Track formulas created in current window
+let formulaCountResetTimer = null;  // Reset counter after activity stops
+
+const BUILD_MODE_THRESHOLD = 3;     // Enter build mode after 3+ rapid formulas (lowered!)
+const BUILD_MODE_SETTLE_MS = 400;   // Wait 400ms after last formula before batch
+const BUILD_MODE_WINDOW_MS = 500;   // Time window to count formulas
 
 function enterBuildMode() {
     if (!buildMode) {
@@ -290,12 +294,21 @@ function checkLocalStorageCache(account, period) {
         
         const balances = JSON.parse(cached);
         
+        // Debug: Log what we're looking for vs what's available
+        console.log(`🔍 Cache lookup: account=${account}, period="${period}"`);
+        if (balances[account]) {
+            const availablePeriods = Object.keys(balances[account]);
+            console.log(`   Available periods for ${account}: ${availablePeriods.slice(0, 6).join(', ')}${availablePeriods.length > 6 ? '...' : ''}`);
+        }
+        
         // ONLY return if we have an explicit value for this account+period
         // Don't assume $0 for missing periods - the query may have been truncated!
         if (balances[account] && balances[account][period] !== undefined) {
+            console.log(`   ✅ HIT: ${balances[account][period]}`);
             return balances[account][period];
         }
         
+        console.log(`   ❌ MISS: period "${period}" not found`);
         // Period not found - return null to trigger batch processing
         // (Could be missing due to 1000 row limit, not because it's truly $0)
         return null;
@@ -738,14 +751,23 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         
         // ================================================================
         // BUILD MODE DETECTION: Detect rapid formula creation (drag/paste)
+        // More aggressive detection - lower threshold, wider time window
         // ================================================================
         const now = Date.now();
-        const timeSinceLastFormula = now - buildModeLastEvent;
         buildModeLastEvent = now;
         
-        // Enter build mode if formulas are being created rapidly
-        const queueSize = pendingRequests.balance.size + buildModePending.length;
-        if (!buildMode && queueSize >= BUILD_MODE_THRESHOLD && timeSinceLastFormula < 200) {
+        // Count formulas created in the current window
+        formulaCreationCount++;
+        
+        // Reset counter after inactivity
+        if (formulaCountResetTimer) clearTimeout(formulaCountResetTimer);
+        formulaCountResetTimer = setTimeout(() => {
+            formulaCreationCount = 0;
+        }, BUILD_MODE_WINDOW_MS);
+        
+        // Enter build mode if we see rapid formula creation
+        if (!buildMode && formulaCreationCount >= BUILD_MODE_THRESHOLD) {
+            console.log(`🔨 BUILD MODE: Detected ${formulaCreationCount} formulas in ${BUILD_MODE_WINDOW_MS}ms`);
             enterBuildMode();
         }
         
@@ -755,6 +777,7 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         }
         buildModeTimer = setTimeout(() => {
             buildModeTimer = null;
+            formulaCreationCount = 0;
             if (buildMode) {
                 exitBuildModeAndProcess();
             }
