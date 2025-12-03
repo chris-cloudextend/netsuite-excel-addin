@@ -187,83 +187,136 @@ async function runBuildModeBatch() {
     const accountsArray = Array.from(accounts);
     
     console.log(`   Accounts: ${accountsArray.join(', ')}`);
-    console.log(`   Periods: ${periodsArray.join(', ')}`);
+    console.log(`   Periods (${periodsArray.length}): ${periodsArray.join(', ')}`);
     
-    const payload = {
-        accounts: accountsArray,
-        periods: periodsArray,
-        subsidiary: filters.subsidiary,
-        department: filters.department,
-        location: filters.location,
-        class: filters.classId
-    };
+    // CHUNK PERIODS to avoid timeout! Same as processBatchQueue
+    const MAX_PERIODS_PER_CHUNK = 3;
+    const allBalances = {};
+    let hasError = false;
     
-    try {
-        const response = await fetch(`${SERVER_URL}/batch/balance`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+    // Split periods into chunks
+    const periodChunks = [];
+    for (let i = 0; i < periodsArray.length; i += MAX_PERIODS_PER_CHUNK) {
+        periodChunks.push(periodsArray.slice(i, i + MAX_PERIODS_PER_CHUNK));
+    }
+    
+    console.log(`   📦 Split into ${periodChunks.length} chunks of max ${MAX_PERIODS_PER_CHUNK} periods`);
+    
+    // Process each chunk
+    for (let chunkIdx = 0; chunkIdx < periodChunks.length; chunkIdx++) {
+        const chunk = periodChunks[chunkIdx];
+        console.log(`   🔄 Chunk ${chunkIdx + 1}/${periodChunks.length}: ${chunk.join(', ')}`);
         
-        if (!response.ok) {
-            throw new Error(`Batch error: ${response.status}`);
-        }
+        const payload = {
+            accounts: accountsArray,
+            periods: chunk,
+            subsidiary: filters.subsidiary,
+            department: filters.department,
+            location: filters.location,
+            class: filters.classId
+        };
         
-        const data = await response.json();
-        const balances = data.balances || {};
-        
-        console.log(`   📊 Backend returned data for accounts: ${Object.keys(balances).join(', ')}`);
-        for (const acct in balances) {
-            console.log(`      ${acct}: ${Object.keys(balances[acct]).join(', ')}`);
-        }
-        
-        // Populate cache with results
-        let cached = 0;
-        for (const acct in balances) {
-            for (const period in balances[acct]) {
-                const amount = balances[acct][period];
-                const ck = getCacheKey('balance', {
-                    account: acct,
-                    fromPeriod: period,
-                    toPeriod: period,
-                    subsidiary: filters.subsidiary,
-                    department: filters.department,
-                    location: filters.location,
-                    classId: filters.classId
-                });
-                cache.balance.set(ck, amount);
-                cached++;
-            }
-        }
-        
-        console.log(`   Cached ${cached} values`);
-        
-        // NOW RESOLVE ALL PENDING PROMISES with actual values
-        let resolved = 0;
-        for (const item of pending) {
-            const { params, resolve } = item;
-            const { account, fromPeriod } = params;
+        try {
+            const response = await fetch(`${SERVER_URL}/batch/balance`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
             
-            // Look up value from what we just cached
-            let value = 0;
-            if (balances[account] && balances[account][fromPeriod] !== undefined) {
-                value = balances[account][fromPeriod];
+            if (!response.ok) {
+                console.error(`   ❌ Chunk ${chunkIdx + 1} error: ${response.status}`);
+                hasError = true;
+                continue; // Try next chunk
             }
             
-            console.log(`   ✅ Resolving ${account}/${fromPeriod} = ${value}`);
-            resolve(value);
-            resolved++;
-        }
-        
-        console.log(`   📊 Resolved ${resolved} formulas`);
-        
-    } catch (error) {
-        console.error('Build mode batch error:', error);
-        // On error, resolve all with 0 to avoid hanging promises
-        for (const item of pending) {
-            item.resolve(0);
+            const data = await response.json();
+            const balances = data.balances || {};
+            
+            // Merge into allBalances
+            for (const acct in balances) {
+                if (!allBalances[acct]) allBalances[acct] = {};
+                for (const period in balances[acct]) {
+                    allBalances[acct][period] = balances[acct][period];
+                }
+            }
+            
+            console.log(`   ✅ Chunk ${chunkIdx + 1}: got ${Object.keys(balances).length} accounts`);
+            
+            // Small delay between chunks to avoid rate limiting
+            if (chunkIdx < periodChunks.length - 1) {
+                await new Promise(r => setTimeout(r, 200));
+            }
+            
+        } catch (error) {
+            console.error(`   ❌ Chunk ${chunkIdx + 1} fetch error:`, error);
+            hasError = true;
         }
     }
+    
+    console.log(`   📊 Total accounts with data: ${Object.keys(allBalances).join(', ') || 'none'}`);
+    for (const acct in allBalances) {
+        console.log(`      ${acct}: ${Object.keys(allBalances[acct]).join(', ')}`);
+    }
+    
+    // Populate cache with results
+    let cached = 0;
+    for (const acct in allBalances) {
+        for (const period in allBalances[acct]) {
+            const amount = allBalances[acct][period];
+            const ck = getCacheKey('balance', {
+                account: acct,
+                fromPeriod: period,
+                toPeriod: period,
+                subsidiary: filters.subsidiary,
+                department: filters.department,
+                location: filters.location,
+                classId: filters.classId
+            });
+            cache.balance.set(ck, amount);
+            cached++;
+        }
+    }
+    
+    console.log(`   💾 Cached ${cached} values`);
+    
+    // NOW RESOLVE ALL PENDING PROMISES
+    let resolved = 0;
+    let zeros = 0;
+    
+    // Track which periods had successful responses (even if no data)
+    const successfulPeriods = new Set();
+    for (const acct in allBalances) {
+        for (const period in allBalances[acct]) {
+            successfulPeriods.add(period);
+        }
+    }
+    
+    for (const item of pending) {
+        const { params, resolve } = item;
+        const { account, fromPeriod } = params;
+        
+        // Look up value from what we cached
+        if (allBalances[account] && allBalances[account][fromPeriod] !== undefined) {
+            const value = allBalances[account][fromPeriod];
+            console.log(`   ✅ ${account}/${fromPeriod} = ${value}`);
+            resolve(value);
+            resolved++;
+        } else if (hasError && !successfulPeriods.has(fromPeriod)) {
+            // This period's chunk failed - we genuinely don't know the value
+            // Return empty string to indicate error (not 0 which looks like real data)
+            console.log(`   ❌ ${account}/${fromPeriod} = "" (request failed)`);
+            resolve('');
+            zeros++;
+        } else {
+            // Period was in a successful response but account not returned
+            // This means the account has $0 for this period (not in NetSuite results)
+            console.log(`   💰 ${account}/${fromPeriod} = 0 (no transactions)`);
+            resolve(0);
+            zeros++;
+        }
+    }
+    
+    console.log(`   📊 Resolved: ${resolved} with values, ${zeros} zeros/errors`);
 }
 
 // Resolve ALL pending balance requests from cache (called by taskpane after cache is ready)
