@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NetSuite Excel Formulas v1.1</title>
     <style>
+        /* ============================================
+           BRAND COLORS
+           Primary: Blue Light #004fb6, Deep Dive #09235c, Chrome #a8b1ce
+           Secondary: Anenome #0ae2c1, Tidal Wave #0079ff, Barnacle #d3d8e6, Bottlenose #6b7b9d
+           ============================================ */
+        :root {
+            --blue-light: #004fb6;
+            --deep-dive: #09235c;
+            --chrome: #a8b1ce;
+            --anenome: #0ae2c1;
+            --tidal-wave: #0079ff;
+            --barnacle: #d3d8e6;
+            --bottlenose: #6b7b9d;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,7 +28,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #0066CC 0%, #00A3E0 100%);
+            background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
             color: #333;
             padding: 0;
             height: 100vh;
@@ -25,43 +40,223 @@
             margin: 0 auto;
             background: white;
             min-height: 100vh;
-            box-shadow: 0 0 40px rgba(0, 102, 204, 0.2);
+            box-shadow: 0 0 40px rgba(9, 35, 92, 0.3);
         }
 
         .header {
-            background: linear-gradient(135deg, #0066CC 0%, #00A3E0 100%);
+            background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
             color: white;
-            padding: 30px 20px;
+            padding: 24px 20px 20px;
             text-align: center;
             position: relative;
         }
 
         .header h1 {
-            font-size: 24px;
+            font-size: 22px;
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
 
         .header p {
-            font-size: 14px;
-            opacity: 0.95;
+            font-size: 13px;
+            opacity: 0.9;
+            color: var(--chrome);
         }
 
         .header .version-badge {
             display: inline-block;
-            background: rgba(255,255,255,0.2);
-            padding: 3px 10px;
+            background: var(--anenome);
+            color: var(--deep-dive);
+            padding: 4px 12px;
             border-radius: 12px;
             font-size: 11px;
             margin-top: 8px;
+            font-weight: 600;
+        }
+
+        /* Collapsible Section Styles */
+        .collapsible-section {
+            border: 1px solid var(--barnacle);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+            background: white;
+            transition: all 0.3s ease;
+        }
+
+        .collapsible-section:hover {
+            box-shadow: 0 4px 12px rgba(9, 35, 92, 0.1);
+        }
+
+        .collapsible-header {
+            background: linear-gradient(135deg, var(--barnacle) 0%, #e8ebf2 100%);
+            padding: 14px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .collapsible-header:hover {
+            background: linear-gradient(135deg, var(--chrome) 0%, var(--barnacle) 100%);
+        }
+
+        .collapsible-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--deep-dive);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .collapsible-header .icon {
+            font-size: 18px;
+        }
+
+        .collapsible-header .chevron {
+            width: 20px;
+            height: 20px;
+            fill: var(--bottlenose);
+            transition: transform 0.3s ease;
+        }
+
+        .collapsible-section[open] .chevron {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            padding: 16px;
+            background: white;
+        }
+
+        details.collapsible-section > summary {
+            list-style: none;
+        }
+        details.collapsible-section > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        /* Help Section Special Styles */
+        .help-section {
+            border-color: var(--anenome);
+        }
+
+        .help-section .collapsible-header {
+            background: linear-gradient(135deg, rgba(10, 226, 193, 0.15) 0%, rgba(10, 226, 193, 0.05) 100%);
+        }
+
+        .help-section .collapsible-header h3 {
+            color: var(--deep-dive);
+        }
+
+        .help-tip {
+            background: linear-gradient(135deg, rgba(10, 226, 193, 0.1) 0%, rgba(0, 121, 255, 0.05) 100%);
+            border-left: 4px solid var(--anenome);
+            padding: 12px 14px;
+            border-radius: 0 8px 8px 0;
+            margin: 12px 0;
+        }
+
+        .help-tip h4 {
+            color: var(--deep-dive);
+            font-size: 13px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .help-tip p {
+            color: var(--bottlenose);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .formula-example-box {
+            background: var(--deep-dive);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+
+        .formula-example-box code {
+            color: var(--anenome);
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 12px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .formula-example-box .result {
+            color: var(--chrome);
+            font-size: 11px;
+        }
+
+        .dynamic-demo {
+            background: white;
+            border: 2px solid var(--tidal-wave);
+            border-radius: 8px;
+            padding: 14px;
+            margin: 12px 0;
+        }
+
+        .dynamic-demo h5 {
+            color: var(--tidal-wave);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .excel-grid {
+            display: grid;
+            grid-template-columns: 40px repeat(3, 1fr);
+            gap: 2px;
+            font-size: 11px;
+            margin: 10px 0;
+        }
+
+        .excel-cell {
+            background: white;
+            border: 1px solid var(--barnacle);
+            padding: 6px 8px;
+            text-align: center;
+            min-height: 28px;
+        }
+
+        .excel-cell.header {
+            background: var(--barnacle);
+            font-weight: 600;
+            color: var(--deep-dive);
+        }
+
+        .excel-cell.row-header {
+            background: var(--barnacle);
+            font-weight: 600;
+            color: var(--deep-dive);
+        }
+
+        .excel-cell.formula {
+            background: rgba(10, 226, 193, 0.1);
+            color: var(--deep-dive);
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 9px;
+        }
+
+        .excel-cell.value {
+            background: rgba(0, 121, 255, 0.1);
+            color: var(--blue-light);
             font-weight: 500;
         }
 
         .settings-btn {
             position: absolute;
-            top: 15px;
-            right: 15px;
-            background: rgba(255,255,255,0.2);
+            top: 12px;
+            right: 12px;
+            background: rgba(10, 226, 193, 0.2);
             border: none;
             border-radius: 50%;
             width: 36px;
@@ -74,7 +269,7 @@
         }
 
         .settings-btn:hover {
-            background: rgba(255,255,255,0.3);
+            background: var(--anenome);
             transform: rotate(45deg);
         }
 
@@ -82,6 +277,30 @@
             width: 20px;
             height: 20px;
             fill: white;
+        }
+
+        /* Help button in header */
+        .help-btn {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: rgba(10, 226, 193, 0.2);
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            font-size: 18px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .help-btn:hover {
+            background: var(--anenome);
         }
 
         /* Settings Modal */
@@ -92,9 +311,14 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(9, 35, 92, 0.7);
             z-index: 1000;
             animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .settings-modal.active {
@@ -110,7 +334,7 @@
             max-width: 400px;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: 0 20px 60px rgba(9, 35, 92, 0.4);
             animation: slideUp 0.3s ease;
         }
 
@@ -120,7 +344,7 @@
         }
 
         .settings-header {
-            background: linear-gradient(135deg, #0066CC 0%, #00A3E0 100%);
+            background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
             color: white;
             padding: 20px;
             display: flex;
@@ -135,7 +359,7 @@
         }
 
         .settings-close {
-            background: rgba(255,255,255,0.2);
+            background: rgba(10, 226, 193, 0.3);
             border: none;
             color: white;
             font-size: 24px;
@@ -149,7 +373,7 @@
         }
 
         .settings-close:hover {
-            background: rgba(255,255,255,0.3);
+            background: var(--anenome);
         }
 
         .settings-content {
@@ -233,7 +457,7 @@
         }
 
         .settings-btn-action {
-            background: #0066CC;
+            background: var(--blue-light);
             color: white;
             border: none;
             padding: 10px 16px;
@@ -242,203 +466,335 @@
             font-weight: 500;
             cursor: pointer;
             margin-top: 10px;
-            transition: background 0.2s;
+            transition: all 0.2s;
         }
 
         .settings-btn-action:hover {
-            background: #0052a3;
+            background: var(--deep-dive);
+            transform: translateY(-1px);
         }
 
         .settings-btn-action.secondary {
-            background: #6b7280;
+            background: var(--bottlenose);
         }
 
         .settings-btn-action.secondary:hover {
-            background: #4b5563;
+            background: var(--deep-dive);
         }
 
         .content {
-            padding: 30px 20px;
+            padding: 16px;
         }
 
         .status-badge {
-            display: inline-block;
-            background: #10b981;
-            color: white;
-            padding: 6px 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, var(--anenome) 0%, #06d6a0 100%);
+            color: var(--deep-dive);
+            padding: 8px 14px;
             border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
-        .refresh-section {
-            background: #fef3c7;
-            border: 2px solid #fbbf24;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 25px;
+        .status-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--deep-dive);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
         }
 
-        .refresh-section h2 {
-            font-size: 16px;
-            color: #92400e;
-            margin-bottom: 12px;
-            font-weight: 600;
-        }
-
-        .refresh-section p {
-            font-size: 13px;
-            color: #78350f;
-            margin-bottom: 15px;
-            line-height: 1.5;
-        }
-
-        .refresh-btn {
-            background: #0066CC;
+        /* Primary action button */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--blue-light) 0%, var(--tidal-wave) 100%);
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 12px 20px;
             border-radius: 8px;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
             width: 100%;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
-        .refresh-btn:hover {
-            background: #0052A3;
+        .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 6px 20px rgba(0, 79, 182, 0.35);
         }
 
-        .refresh-btn:active {
+        .btn-primary:active {
             transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: var(--bottlenose);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+
+        .btn-secondary:hover {
+            background: var(--deep-dive);
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c;
         }
 
         .refresh-status {
             font-size: 12px;
-            color: #059669;
+            color: var(--anenome);
             text-align: center;
             margin-top: 10px;
             min-height: 20px;
+            font-weight: 500;
+        }
+
+        .btn-hint {
+            font-size: 11px;
+            color: var(--bottlenose);
+            margin: 4px 0 12px;
+            line-height: 1.4;
+        }
+
+        /* Filter Groups */
+        .filter-group {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: end;
+            margin-bottom: 12px;
+        }
+
+        .filter-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--deep-dive);
+            margin-bottom: 4px;
+            grid-column: 1 / -1;
+        }
+
+        .filter-select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid var(--barnacle);
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--deep-dive);
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .filter-select:focus {
+            outline: none;
+            border-color: var(--tidal-wave);
+        }
+
+        .btn-filter {
+            background: var(--tidal-wave);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-filter:hover {
+            background: var(--blue-light);
+        }
+
+        /* Account Search Styles */
+        .search-input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid var(--barnacle);
+            border-radius: 8px;
+            font-size: 14px;
+            color: var(--deep-dive);
+            transition: all 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--anenome);
+            box-shadow: 0 0 0 3px rgba(10, 226, 193, 0.15);
+        }
+
+        .search-input::placeholder {
+            color: var(--chrome);
+        }
+
+        .search-hints {
+            background: rgba(10, 226, 193, 0.08);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-top: 10px;
+        }
+
+        .search-hints code {
+            background: var(--deep-dive);
+            color: var(--anenome);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--deep-dive);
+            color: var(--chrome);
+            padding: 16px;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        .footer a {
+            color: var(--anenome);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
         }
 
         .formula-card {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
+            background: linear-gradient(135deg, rgba(168, 177, 206, 0.1) 0%, rgba(211, 216, 230, 0.3) 100%);
+            border: 1px solid var(--barnacle);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 14px;
             transition: all 0.3s ease;
         }
 
         .formula-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-color: var(--tidal-wave);
+            box-shadow: 0 4px 12px rgba(0, 79, 182, 0.1);
         }
 
         .formula-name {
-            font-size: 18px;
-            font-weight: 600;
-            color: #667eea;
-            margin-bottom: 8px;
-            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--blue-light);
+            margin-bottom: 6px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
         }
 
         .formula-description {
-            font-size: 14px;
-            color: #64748b;
-            margin-bottom: 15px;
-            line-height: 1.6;
+            font-size: 12px;
+            color: var(--bottlenose);
+            margin-bottom: 12px;
+            line-height: 1.5;
         }
 
         .formula-syntax {
-            background: white;
-            border: 1px solid #e2e8f0;
+            background: var(--deep-dive);
             border-radius: 6px;
-            padding: 12px;
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 12px;
-            color: #334155;
-            margin-bottom: 12px;
+            padding: 10px 12px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 11px;
+            color: var(--anenome);
+            margin-bottom: 10px;
             overflow-x: auto;
         }
 
         .parameters {
-            margin-top: 12px;
+            margin-top: 10px;
         }
 
         .param-title {
-            font-size: 12px;
+            font-size: 10px;
             font-weight: 600;
-            color: #475569;
-            margin-bottom: 8px;
+            color: var(--deep-dive);
+            margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         .param-item {
-            font-size: 13px;
-            color: #64748b;
-            margin-bottom: 6px;
-            padding-left: 12px;
-            line-height: 1.5;
+            font-size: 12px;
+            color: var(--bottlenose);
+            margin-bottom: 4px;
+            padding-left: 10px;
+            line-height: 1.4;
         }
         
         .param-name {
             font-weight: 600;
-            color: #334155;
-            font-family: 'Monaco', 'Courier New', monospace;
+            color: var(--deep-dive);
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 11px;
         }
 
         .example {
-            background: #f1f5f9;
-            border-left: 3px solid #667eea;
+            background: rgba(10, 226, 193, 0.08);
+            border-left: 3px solid var(--anenome);
             padding: 12px;
             margin-top: 12px;
             border-radius: 4px;
         }
         
         .example-title {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
-            color: #667eea;
+            color: var(--deep-dive);
             margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         .example-code {
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 12px;
-            color: #334155;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 11px;
+            color: var(--deep-dive);
+            background: var(--barnacle);
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 2px 0;
         }
 
-        .footer {
-            background: #f8fafc;
-            padding: 20px;
-            text-align: center;
-            border-top: 1px solid #e2e8f0;
-            margin-top: 30px;
+        .example-result {
+            font-size: 10px;
+            color: var(--bottlenose);
+            margin-left: 8px;
+            font-style: italic;
         }
 
-        .footer p {
-            font-size: 12px;
-            color: #64748b;
-        }
-
-        .footer a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .footer a:hover {
-            text-decoration: underline;
-        }
 
         /* Loading Overlay - Modern & Animated */
         .loading-overlay {
@@ -447,7 +803,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(15, 23, 42, 0.95);
+            background: linear-gradient(135deg, rgba(9, 35, 92, 0.97) 0%, rgba(0, 79, 182, 0.97) 100%);
             backdrop-filter: blur(8px);
             display: none;
             align-items: center;
@@ -460,11 +816,6 @@
             display: flex;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
         .loading-content {
             text-align: center;
             color: white;
@@ -475,8 +826,8 @@
         .spinner {
             width: 60px;
             height: 60px;
-            border: 4px solid rgba(255, 255, 255, 0.2);
-            border-top: 4px solid #00A3E0;
+            border: 4px solid rgba(168, 177, 206, 0.3);
+            border-top: 4px solid var(--anenome);
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin: 0 auto 25px;
@@ -496,13 +847,13 @@
 
         .loading-message {
             font-size: 14px;
-            color: rgba(255, 255, 255, 0.85);
+            color: var(--chrome);
             line-height: 1.6;
             margin-bottom: 20px;
         }
 
         .loading-progress {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(168, 177, 206, 0.2);
             border-radius: 20px;
             height: 6px;
             overflow: hidden;
@@ -511,11 +862,11 @@
 
         .loading-progress-bar {
             height: 100%;
-            background: linear-gradient(90deg, #00A3E0, #0066CC);
+            background: linear-gradient(90deg, var(--anenome), var(--tidal-wave));
             border-radius: 20px;
             width: 0%;
             transition: width 0.5s ease;
-            box-shadow: 0 0 20px rgba(0, 163, 224, 0.5);
+            box-shadow: 0 0 20px rgba(10, 226, 193, 0.5);
         }
 
         .loading-stats {
@@ -526,21 +877,29 @@
         }
 
         .info-box {
-            background: #eff6ff;
-            border: 1px solid #bfdbfe;
+            background: linear-gradient(135deg, rgba(10, 226, 193, 0.1) 0%, rgba(0, 121, 255, 0.05) 100%);
+            border: 1px solid var(--anenome);
             border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 25px;
+            padding: 12px;
+            margin: 12px 0;
         }
 
         .info-box p {
-            font-size: 13px;
-            color: #1e40af;
-            line-height: 1.6;
+            font-size: 12px;
+            color: var(--deep-dive);
+            line-height: 1.5;
         }
 
         .info-box strong {
-            color: #1e3a8a;
+            color: var(--blue-light);
+        }
+
+        .info-box code {
+            background: var(--deep-dive);
+            color: var(--anenome);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
         }
     </style>
 </head>
@@ -631,7 +990,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.6.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.7.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -641,141 +1000,256 @@
 
     <div class="container">
         <div class="header">
+            <button class="help-btn" onclick="scrollToHelp()" title="Help">?</button>
             <button class="settings-btn" onclick="openSettings()" title="Settings">
                 <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
             </button>
             <h1>NetSuite Excel Formulas</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.6.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.7.0</div>
         </div>
 
         <div class="content">
-            <div class="status-badge">✓ Connected to NetSuite</div>
+            <div class="status-badge">Connected to NetSuite</div>
 
-            <!-- REFRESH SECTION -->
-            <div class="refresh-section">
-                <h2>🔄 Data Management</h2>
-                <p>Control your NetSuite data cache and formulas.</p>
-                
-                <button class="refresh-btn" onclick="refreshCurrentSheet()">⚡ Refresh Current Sheet</button>
-                <p style="font-size: 11px; color: #92400e; margin: 8px 0;"><strong>Optimized refresh:</strong> Fetches ALL accounts for entire year in one query (~30-60s). Best for annual reports!</p>
-                
-                <button class="refresh-btn" onclick="refreshSelected()" style="background: #0891b2; margin-top: 10px;" onmouseover="this.style.background='#0e7490'" onmouseout="this.style.background='#0891b2'">Refresh Selected Cells</button>
-                <p style="font-size: 11px; color: #92400e; margin: 8px 0;">Fast refresh for specific cells or small ranges.</p>
-                
-                <button class="refresh-btn" onclick="clearCache()" style="background: #dc2626; margin-top: 10px;" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">Clear Cache</button>
-                <p style="font-size: 11px; color: #92400e; margin: 8px 0;">Clears all cached values. Use if you see stale data.</p>
-                
-                <div class="refresh-status" id="refreshStatus"></div>
-            </div>
+            <!-- GETTING STARTED HELP SECTION -->
+            <details class="collapsible-section help-section" id="helpSection" open>
+                <summary class="collapsible-header">
+                    <h3><span class="icon">📚</span> Getting Started Guide</h3>
+                    <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                </summary>
+                <div class="collapsible-content">
+                    <div class="help-tip">
+                        <h4>💡 Quick Start</h4>
+                        <p>Type formulas directly in any Excel cell. Start with <code>=NS.GLABAL("4220", "Jan 2024", "Jan 2024")</code> to get account 4220's January balance!</p>
+                    </div>
+                    
+                    <h4 style="color: var(--deep-dive); margin: 16px 0 10px; font-size: 14px;">Available Formulas</h4>
+                    
+                    <div class="formula-example-box">
+                        <code>=NS.GLABAL(account, startPeriod, endPeriod, [subsidiary], [dept], [location], [class])</code>
+                        <span class="result">Returns: Account balance for the period</span>
+                    </div>
+                    
+                    <div class="formula-example-box">
+                        <code>=NS.GLATITLE(account)</code>
+                        <span class="result">Returns: Account name (e.g., "Revenue - Products")</span>
+                    </div>
+                    
+                    <div class="formula-example-box">
+                        <code>=NS.GLACCTTYPE(account)</code>
+                        <span class="result">Returns: Account type (e.g., "Income", "Expense")</span>
+                    </div>
+                    
+                    <div class="formula-example-box">
+                        <code>=NS.GLAPARENT(account)</code>
+                        <span class="result">Returns: Parent account number</span>
+                    </div>
+                    
+                    <h4 style="color: var(--deep-dive); margin: 20px 0 10px; font-size: 14px;">🎯 Making Formulas Dynamic</h4>
+                    <p style="color: var(--bottlenose); font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
+                        The real power comes from using <strong>cell references</strong> instead of hardcoded values. This lets you drag formulas and build dynamic reports!
+                    </p>
+                    
+                    <div class="dynamic-demo">
+                        <h5>Example: Dynamic Income Statement</h5>
+                        <div class="excel-grid">
+                            <div class="excel-cell header"></div>
+                            <div class="excel-cell header">A</div>
+                            <div class="excel-cell header">B</div>
+                            <div class="excel-cell header">C</div>
+                            
+                            <div class="excel-cell row-header">1</div>
+                            <div class="excel-cell value">Account</div>
+                            <div class="excel-cell value">Jan 2024</div>
+                            <div class="excel-cell value">Feb 2024</div>
+                            
+                            <div class="excel-cell row-header">2</div>
+                            <div class="excel-cell">4220</div>
+                            <div class="excel-cell formula">=NS.GLABAL($A2, B$1, B$1)</div>
+                            <div class="excel-cell formula">=NS.GLABAL($A2, C$1, C$1)</div>
+                        </div>
+                        <p style="font-size: 11px; color: var(--bottlenose); margin-top: 8px;">
+                            <strong>Key:</strong> Use <code>$A2</code> (lock column) and <code>B$1</code> (lock row) to drag formulas horizontally & vertically!
+                        </p>
+                    </div>
+                    
+                    <div class="help-tip" style="margin-top: 16px;">
+                        <h4>⚡ Pro Tip: Fast Data Entry</h4>
+                        <p>1. Enter one formula in cell B2<br>
+                        2. Drag horizontally across months (B2:M2)<br>
+                        3. Then drag down for all accounts<br>
+                        <strong>The add-in automatically batches requests!</strong></p>
+                    </div>
+                    
+                    <h4 style="color: var(--deep-dive); margin: 20px 0 10px; font-size: 14px;">🏢 Using Filters (Optional)</h4>
+                    <p style="color: var(--bottlenose); font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
+                        Filter by subsidiary, department, location, or class. You can use names OR IDs:
+                    </p>
+                    
+                    <div class="formula-example-box">
+                        <code>=NS.GLABAL("4220", "Jan 2024", "Jan 2024", "Celigo Inc.")</code>
+                        <span class="result">Filter by subsidiary name</span>
+                    </div>
+                    
+                    <div class="formula-example-box">
+                        <code>=NS.GLABAL("4220", "Jan 2024", "Jan 2024", "", "Sales")</code>
+                        <span class="result">Filter by department (leave subsidiary blank with "")</span>
+                    </div>
+                    
+                    <div class="dynamic-demo" style="border-color: var(--anenome);">
+                        <h5 style="color: var(--anenome);">Dynamic Filters with Cell References</h5>
+                        <div class="excel-grid" style="grid-template-columns: 40px repeat(2, 1fr);">
+                            <div class="excel-cell header"></div>
+                            <div class="excel-cell header">A</div>
+                            <div class="excel-cell header">B</div>
+                            
+                            <div class="excel-cell row-header">1</div>
+                            <div class="excel-cell value">Subsidiary:</div>
+                            <div class="excel-cell">Celigo Inc.</div>
+                            
+                            <div class="excel-cell row-header">2</div>
+                            <div class="excel-cell value">Department:</div>
+                            <div class="excel-cell">Sales</div>
+                            
+                            <div class="excel-cell row-header">4</div>
+                            <div class="excel-cell">4220</div>
+                            <div class="excel-cell formula" style="font-size: 8px;">=NS.GLABAL(A4, "Jan 2024", "Jan 2024", $B$1, $B$2)</div>
+                        </div>
+                        <p style="font-size: 11px; color: var(--bottlenose); margin-top: 8px;">
+                            Reference filter values from cells using <code>$B$1</code> (fully locked) to change all formulas at once!
+                        </p>
+                    </div>
+                </div>
+            </details>
 
-            <!-- NETSUITE LOOKUPS SECTION -->
-            <div class="refresh-section" style="background: #dbeafe; border-color: #3b82f6;">
-                <h2>🏷️ NetSuite Filters</h2>
-                <p style="color: #1e40af; font-size: 13px; margin-bottom: 15px;">Select a filter name from the dropdown below and click "Insert" to add it to your cell. You can also type the name directly! The formula automatically converts names like "Hardware" or "Sales" to their internal IDs.</p>
-                
-                <div style="margin: 15px 0;">
-                    <label style="display: block; font-weight: 600; color: #1e3a8a; margin-bottom: 5px;">Subsidiary:</label>
-                    <select id="subsidiarySelect" style="width: 100%; padding: 8px; border: 1px solid #3b82f6; border-radius: 4px; margin-bottom: 8px;">
-                        <option value="">Loading...</option>
-                    </select>
-                    <button class="refresh-btn" style="background: #3b82f6; padding: 8px 16px; font-size: 13px;" onclick="insertLookupValue('subsidiary')">Insert Subsidiary ID</button>
+            <!-- DATA MANAGEMENT SECTION -->
+            <details class="collapsible-section" open>
+                <summary class="collapsible-header">
+                    <h3><span class="icon">🔄</span> Data Management</h3>
+                    <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                </summary>
+                <div class="collapsible-content">
+                    <button class="btn-primary" onclick="refreshCurrentSheet()">
+                        <span>⚡</span> Refresh Current Sheet
+                    </button>
+                    <p class="btn-hint">Fetches ALL accounts for the year in one optimized query. Best for full reports!</p>
+                    
+                    <button class="btn-secondary" onclick="refreshSelected()">Refresh Selected Cells</button>
+                    <p class="btn-hint">Quick refresh for specific cells or small ranges.</p>
+                    
+                    <button class="btn-danger" onclick="clearCache()">Clear Cache</button>
+                    <p class="btn-hint">Clears all cached values. Use if you see stale data.</p>
+                    
+                    <div class="refresh-status" id="refreshStatus"></div>
                 </div>
-                
-                <div style="margin: 15px 0;">
-                    <label style="display: block; font-weight: 600; color: #1e3a8a; margin-bottom: 5px;">Department:</label>
-                    <select id="departmentSelect" style="width: 100%; padding: 8px; border: 1px solid #3b82f6; border-radius: 4px; margin-bottom: 8px;">
-                        <option value="">Loading...</option>
-                    </select>
-                    <button class="refresh-btn" style="background: #3b82f6; padding: 8px 16px; font-size: 13px;" onclick="insertLookupValue('department')">Insert Department ID</button>
+            </details>
+
+            <!-- NETSUITE FILTERS SECTION -->
+            <details class="collapsible-section">
+                <summary class="collapsible-header">
+                    <h3><span class="icon">🏷️</span> NetSuite Filters</h3>
+                    <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                </summary>
+                <div class="collapsible-content">
+                    <p style="color: var(--bottlenose); font-size: 12px; margin-bottom: 14px; line-height: 1.5;">
+                        Select a filter and click "Insert" to add it to your cell. <strong>Tip:</strong> You can also type names directly in formulas!
+                    </p>
+                    
+                    <div class="filter-group">
+                        <label class="filter-label">Subsidiary</label>
+                        <select id="subsidiarySelect" class="filter-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        <button class="btn-filter" onclick="insertLookupValue('subsidiary')">Insert</button>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label class="filter-label">Department</label>
+                        <select id="departmentSelect" class="filter-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        <button class="btn-filter" onclick="insertLookupValue('department')">Insert</button>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label class="filter-label">Class</label>
+                        <select id="classSelect" class="filter-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        <button class="btn-filter" onclick="insertLookupValue('class')">Insert</button>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label class="filter-label">Location</label>
+                        <select id="locationSelect" class="filter-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        <button class="btn-filter" onclick="insertLookupValue('location')">Insert</button>
+                    </div>
+                    
+                    <div class="refresh-status" id="lookupStatus"></div>
                 </div>
-                
-                <div style="margin: 15px 0;">
-                    <label style="display: block; font-weight: 600; color: #1e3a8a; margin-bottom: 5px;">Class:</label>
-                    <select id="classSelect" style="width: 100%; padding: 8px; border: 1px solid #3b82f6; border-radius: 4px; margin-bottom: 8px;">
-                        <option value="">Loading...</option>
-                    </select>
-                    <button class="refresh-btn" style="background: #3b82f6; padding: 8px 16px; font-size: 13px;" onclick="insertLookupValue('class')">Insert Class ID</button>
-                </div>
-                
-                <div style="margin: 15px 0;">
-                    <label style="display: block; font-weight: 600; color: #1e3a8a; margin-bottom: 5px;">Location:</label>
-                    <select id="locationSelect" style="width: 100%; padding: 8px; border: 1px solid #3b82f6; border-radius: 4px; margin-bottom: 8px;">
-                        <option value="">Loading...</option>
-                    </select>
-                    <button class="refresh-btn" style="background: #3b82f6; padding: 8px 16px; font-size: 13px;" onclick="insertLookupValue('location')">Insert Location ID</button>
-                </div>
-                
-                <div class="refresh-status" id="lookupStatus"></div>
-                </details>
-            </div>
+            </details>
 
             <!-- ACCOUNT SEARCH SECTION -->
-            <div class="refresh-section" style="background: #f0fdf4; border-color: #22c55e;">
-                <h2>📥 Enter Accounts</h2>
-                <p style="color: #15803d; font-size: 13px; margin-bottom: 8px;">
-                    Search by account number OR account type. Results insert at cursor position.
-                </p>
-                <details style="margin-bottom: 10px;">
-                    <summary style="color: #15803d; font-size: 12px; cursor: pointer; user-select: none;">
-                        Examples (click to expand)
-                    </summary>
-                    <div style="padding: 8px 0; font-size: 12px; color: #166534; line-height: 1.6;">
-                        <strong>By Number:</strong><br/>
-                        • <code>4*</code> = Accounts starting with 4<br/>
-                        • <code>42*</code> = Accounts starting with 42<br/>
-                        • <code>*</code> = All accounts<br/>
-                        <br/>
-                        <strong>By Type:</strong><br/>
-                        • <code>*income</code> = All income accounts<br/>
-                        • <code>income*</code> = Only Income (not Other Income)<br/>
-                        • <code>expense</code> = All expense accounts<br/>
-                        • <code>bank</code> = Bank accounts<br/>
-                        • <code>asset</code> = All asset accounts<br/>
-                        • <code>liability</code> = All liability accounts
-                    </div>
-                </details>
-                
-                <div style="margin: 15px 0;">
+            <details class="collapsible-section">
+                <summary class="collapsible-header">
+                    <h3><span class="icon">📥</span> Add Accounts</h3>
+                    <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                </summary>
+                <div class="collapsible-content">
+                    <p style="color: var(--bottlenose); font-size: 12px; margin-bottom: 12px; line-height: 1.5;">
+                        Search by account number or type. Results insert at your cursor position.
+                    </p>
+                    
                     <input 
                         type="text" 
                         id="accountSearchInput" 
+                        class="search-input"
                         placeholder="e.g., 4*, *income, expense"
-                        style="width: 100%; padding: 10px; border: 2px solid #bbf7d0; border-radius: 6px; font-size: 14px; font-family: 'Segoe UI', sans-serif;"
                         onkeypress="if(event.key === 'Enter') searchAccounts()"
                     />
+                    
+                    <div class="search-hints">
+                        <p style="color: var(--bottlenose); font-size: 11px; margin: 0; line-height: 1.6;">
+                            <strong>By Number:</strong> <code>4*</code> <code>42*</code> <code>*</code><br>
+                            <strong>By Type:</strong> <code>income</code> <code>expense</code> <code>bank</code> <code>asset</code>
+                        </p>
+                    </div>
+                    
+                    <button class="btn-primary" style="margin-top: 12px; background: linear-gradient(135deg, var(--anenome) 0%, #06d6a0 100%); color: var(--deep-dive);" onclick="searchAccounts()">
+                        <span>➕</span> Add Accounts
+                    </button>
+                    
+                    <div class="refresh-status" id="searchStatus"></div>
                 </div>
-                
-                <button 
-                    class="refresh-btn" 
-                    style="background: #22c55e; width: 100%;" 
-                    onmouseover="this.style.background='#16a34a'" 
-                    onmouseout="this.style.background='#22c55e'" 
-                    onclick="searchAccounts()">
-                    Add Accounts
-                </button>
-                
-                <div class="refresh-status" id="searchStatus"></div>
-                
-                <p style="font-size: 11px; color: #15803d; margin: 8px 0;">
-                    <strong>Examples:</strong><br>
-                    • <code>4*</code> - All accounts starting with 4<br>
-                    • <code>42*</code> - All accounts starting with 42<br>
-                    • <code>*</code> - All active accounts
-                </p>
-            </div>
+            </details>
 
             <!-- DRILL-DOWN SECTION -->
-            <div class="refresh-section" style="background: #e0f2fe; border-color: #0ea5e9;">
-                <h2>🔍 Transaction Drill-Down</h2>
-                <p style="color: #075985;">Select any cell with an NS.GLABAL formula and click below to see the underlying NetSuite transactions with links to the original records.</p>
-                <button class="refresh-btn" style="background: #0ea5e9;" onmouseover="this.style.background='#0284c7'" onmouseout="this.style.background='#0ea5e9'" onclick="drillDownTransactions()">View Transactions</button>
-                <div class="refresh-status" id="drillStatus"></div>
-            </div>
+            <details class="collapsible-section">
+                <summary class="collapsible-header">
+                    <h3><span class="icon">🔍</span> Transaction Drill-Down</h3>
+                    <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                </summary>
+                <div class="collapsible-content">
+                    <p style="color: var(--bottlenose); font-size: 12px; margin-bottom: 12px; line-height: 1.5;">
+                        Select any cell with an NS.GLABAL formula to see the underlying NetSuite transactions with links to original records.
+                    </p>
+                    <button class="btn-secondary" style="background: var(--tidal-wave);" onclick="drillDownTransactions()">
+                        View Transactions
+                    </button>
+                    <div class="refresh-status" id="drillStatus"></div>
+                </div>
+            </details>
 
-            <div class="info-box">
-                <p><strong>Getting Started:</strong> Use the formulas below in any Excel cell. They will automatically query your NetSuite data in real-time. All formulas accept both numeric and text account numbers.</p>
-    </div>
+            <!-- FORMULA REFERENCE SECTION -->
+            <details class="collapsible-section">
+                <summary class="collapsible-header">
+                    <h3><span class="icon">📋</span> Formula Reference</h3>
+                    <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                </summary>
+                <div class="collapsible-content">
     
             <!-- NS.GLATITLE -->
             <div class="formula-card">
@@ -928,17 +1402,20 @@
                     <div class="example-title">Examples</div>
                     <div class="example-code">=NS.GLABUD("5000", "Jan 2025", "Dec 2025")</div>
                     <div class="example-code">=NS.GLABUD(A4, B1, C1)</div>
-        </div>
-    </div>
-    
-            <div class="info-box" style="background: #fef3c7; border-color: #fde68a;">
-                <p style="color: #92400e;"><strong>💡 Pro Tip:</strong> Use TEXT() to format date cells: <code>=NS.GLABAL("4010", TEXT(C3,"mmm yyyy"), TEXT(D3,"mmm yyyy"))</code></p>
+                </div>
             </div>
+    
+                    <div class="help-tip" style="margin-top: 16px;">
+                        <h4>💡 Pro Tip: Date Formatting</h4>
+                        <p>Use TEXT() to format date cells:<br>
+                        <code style="background: var(--deep-dive); color: var(--anenome); padding: 2px 6px; border-radius: 4px; font-size: 11px;">=NS.GLABAL("4010", TEXT(C3,"mmm yyyy"), TEXT(D3,"mmm yyyy"))</code></p>
+                    </div>
+                </div>
+            </details>
         </div>
 
         <div class="footer">
             <p>NetSuite Excel Add-in by <a href="https://www.cloudextend.io" target="_blank">CloudExtend</a></p>
-            <p style="margin-top: 8px; font-size: 11px;">For support, visit <a href="https://www.cloudextend.io" target="_blank">cloudextend.io</a></p>
         </div>
     </div>
     
@@ -991,6 +1468,14 @@
 
         function closeSettings() {
             document.getElementById('settingsModal').classList.remove('active');
+        }
+
+        function scrollToHelp() {
+            const helpSection = document.getElementById('helpSection');
+            if (helpSection) {
+                helpSection.open = true;
+                helpSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
 
         async function checkServerStatus() {
