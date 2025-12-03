@@ -896,10 +896,13 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
 
 def build_full_year_pl_query(fiscal_year, target_sub, filters):
     """
-    Build optimized full-year P&L query using CTE pattern (ChatGPT's recommendation).
+    Build optimized full-year P&L query using CTE pattern.
     This query consolidates FIRST (in the CTE), then groups - MUCH faster than grouping then consolidating.
     
-    Expected performance: < 30 seconds for ALL accounts × 12 months
+    IMPORTANT: Query ends with ORDER BY for stable pagination.
+    OFFSET/LIMIT will be added by the paginator.
+    
+    Expected performance: ~15 seconds per 1000 rows
     """
     # Build optional filter clauses
     filter_clauses = []
@@ -914,6 +917,7 @@ def build_full_year_pl_query(fiscal_year, target_sub, filters):
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
+    # Base query WITHOUT OFFSET/LIMIT - those are added by paginator
     query = f"""
     WITH sub_cte AS (
       SELECT COUNT(*) AS subs_count
@@ -964,11 +968,64 @@ def build_full_year_pl_query(fiscal_year, target_sub, filters):
     JOIN AccountingPeriod ap ON ap.id = b.period_id
     JOIN Account a ON a.id = b.account_id
     GROUP BY a.acctnumber, ap.startdate
-    HAVING SUM(b.cons_amt) <> 0
     ORDER BY a.acctnumber, ap.startdate
     """
     
     return query
+
+
+def run_paginated_suiteql(base_query, page_size=1000, max_pages=20):
+    """
+    Execute a SuiteQL query with pagination to overcome NetSuite's 1000-row limit.
+    
+    Args:
+        base_query: SQL query WITHOUT OFFSET/LIMIT (must have ORDER BY for stable pagination)
+        page_size: Rows per page (max 1000 for NetSuite)
+        max_pages: Safety limit to prevent infinite loops
+    
+    Returns:
+        List of all rows from all pages
+    """
+    all_rows = []
+    offset = 0
+    page_num = 0
+    
+    while page_num < max_pages:
+        page_num += 1
+        
+        # Add OFFSET and LIMIT to the query
+        paginated_query = f"{base_query}\nOFFSET {offset} LIMIT {page_size}"
+        
+        response = requests.post(
+            suiteql_url,
+            auth=auth,
+            headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
+            json={'q': paginated_query},
+            timeout=120  # 2 minute timeout per page
+        )
+        
+        if response.status_code != 200:
+            print(f"❌ NetSuite error on page {page_num}: {response.status_code}", flush=True)
+            print(f"   Response: {response.text[:500]}", flush=True)
+            raise Exception(f"NetSuite API error: {response.status_code}")
+        
+        result = response.json()
+        rows = result.get('items', [])
+        
+        print(f"   Page {page_num}: {len(rows)} rows (total: {len(all_rows) + len(rows)})", flush=True)
+        
+        all_rows.extend(rows)
+        
+        # If we got fewer rows than page_size, we've reached the end
+        if len(rows) < page_size:
+            break
+        
+        offset += page_size
+    
+    if page_num >= max_pages:
+        print(f"⚠️ Reached max page limit ({max_pages})", flush=True)
+    
+    return all_rows
 
 
 def convert_month_to_period_name(month_str):
@@ -1065,35 +1122,27 @@ def batch_full_year_refresh():
         filters['location'] = location
     
     try:
-        print(f"\n{'='*80}")
-        print(f"🚀 FULL YEAR REFRESH: {fiscal_year}")
-        print(f"   Target subsidiary: {target_sub}")
-        print(f"   Filters: {filters}")
-        print(f"{'='*80}\n")
+        print(f"\n{'='*80}", flush=True)
+        print(f"🚀 FULL YEAR REFRESH: {fiscal_year}", flush=True)
+        print(f"   Target subsidiary: {target_sub}", flush=True)
+        print(f"   Filters: {filters}", flush=True)
+        print(f"{'='*80}\n", flush=True)
         
-        # Build and execute optimized query - NO PAGINATION (it doesn't work with complex CTEs)
-        # NetSuite returns max 1000 rows, which is ~83 accounts × 12 months
-        query = build_full_year_pl_query(fiscal_year, target_sub, filters)
+        # Build the base query (WITHOUT OFFSET/LIMIT)
+        base_query = build_full_year_pl_query(fiscal_year, target_sub, filters)
         
+        # Execute with pagination to overcome NetSuite's 1000-row limit
+        # Using OFFSET X LIMIT Y syntax for stable pagination
         start_time = datetime.now()
-        response = requests.post(
-            suiteql_url,
-            auth=auth,
-            headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
-            json={'q': query},
-            timeout=300  # 5 minute timeout for large queries
-        )
+        
+        try:
+            items = run_paginated_suiteql(base_query, page_size=1000, max_pages=20)
+        except Exception as e:
+            print(f"❌ Pagination error: {e}", flush=True)
+            return jsonify({'error': f'NetSuite query failed: {str(e)}'}), 500
         
         elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"⏱️  Query execution time: {elapsed:.2f} seconds", flush=True)
-        
-        if response.status_code != 200:
-            print(f"❌ NetSuite error: {response.status_code}", flush=True)
-            print(f"   Response: {response.text}", flush=True)
-            return jsonify({'error': f'NetSuite API error: {response.status_code}', 'details': response.text}), 500
-        
-        result = response.json()
-        items = result.get('items', [])
+        print(f"⏱️  Total query time: {elapsed:.2f} seconds", flush=True)
         
         print(f"✅ Received {len(items)} rows")
         
