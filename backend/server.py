@@ -918,6 +918,91 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
     return full_query
 
 
+def build_full_year_bs_query(fiscal_year, target_sub, filters):
+    """
+    Build optimized full-year BALANCE SHEET query.
+    Balance Sheet = CUMULATIVE balance from inception through each period end.
+    
+    For each month in the fiscal year, calculates the cumulative balance AS OF that month end.
+    Uses a CTE approach with period-specific consolidation.
+    
+    Key difference from P&L:
+    - P&L: Activity FOR a specific period (ap.periodname = 'Jan 2025')
+    - BS: Cumulative AS OF period end (ap.startdate <= period.enddate)
+    
+    Expected performance: ~20-30 seconds for full year (heavier than P&L due to cumulative nature)
+    """
+    # Build optional filter clauses
+    filter_clauses = []
+    if filters.get('subsidiary'):
+        filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+    if filters.get('department'):
+        filter_clauses.append(f"tal.department = {filters['department']}")
+    if filters.get('location'):
+        filter_clauses.append(f"tal.location = {filters['location']}")
+    if filters.get('class'):
+        filter_clauses.append(f"tal.class = {filters['class']}")
+    
+    filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    
+    # For balance sheet, we need to query each period separately due to cumulative nature
+    # But we can do it in ONE query using UNION ALL
+    # Each sub-query gets balances AS OF that period's end date
+    
+    query = f"""
+    WITH sub_cte AS (
+      SELECT COUNT(*) AS subs_count
+      FROM Subsidiary
+      WHERE isinactive = 'F'
+    ),
+    periods AS (
+      SELECT id, periodname, enddate, startdate,
+             ROW_NUMBER() OVER (ORDER BY startdate) AS rn
+      FROM AccountingPeriod
+      WHERE isquarter = 'F'
+        AND isyear = 'F'
+        AND EXTRACT(YEAR FROM startdate) = {fiscal_year}
+    )
+    SELECT
+      a.acctnumber AS account_number,
+      p.periodname AS period_name,
+      SUM(
+        CASE
+          WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
+            TO_NUMBER(
+              BUILTIN.CONSOLIDATE(
+                tal.amount,
+                'LEDGER',
+                'DEFAULT',
+                'DEFAULT',
+                {target_sub},
+                p.id,
+                'DEFAULT'
+              )
+            )
+          ELSE tal.amount
+        END
+      ) AS balance
+    FROM TransactionAccountingLine tal
+    JOIN Transaction t ON t.id = tal.transaction
+    JOIN Account a ON a.id = tal.account
+    JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+    CROSS JOIN sub_cte
+    CROSS JOIN periods p
+    WHERE t.posting = 'T'
+      AND tal.posting = 'T'
+      AND tal.accountingbook = 1
+      AND COALESCE(a.eliminate, 'F') = 'F'
+      AND a.accttype NOT IN ('Income', 'OthIncome', 'COGS', 'Cost of Goods Sold', 'Expense', 'OthExpense')
+      AND ap.startdate <= p.enddate
+      {filter_sql}
+    GROUP BY a.acctnumber, p.periodname, p.startdate
+    ORDER BY a.acctnumber, p.startdate
+    """
+    
+    return query
+
+
 def build_full_year_pl_query(fiscal_year, target_sub, filters):
     """
     Build optimized full-year P&L query using CTE pattern.
@@ -1216,7 +1301,54 @@ def batch_full_year_refresh():
         print(f"💾 Cached {cached_count} values on backend for instant formula lookups")
         print(f"{'='*80}\n")
         
-        return jsonify({'balances': balances, 'query_time': elapsed, 'cached_count': cached_count})
+        # ALSO fetch Balance Sheet accounts for the same year
+        # This ensures BS accounts are cached alongside P&L
+        print(f"\n📊 Now fetching Balance Sheet accounts...", flush=True)
+        
+        try:
+            bs_query = build_full_year_bs_query(fiscal_year, target_sub, filters)
+            bs_start = datetime.now()
+            bs_items = run_paginated_suiteql(bs_query, page_size=1000, max_pages=30)
+            bs_elapsed = (datetime.now() - bs_start).total_seconds()
+            print(f"⏱️  BS query time: {bs_elapsed:.2f} seconds", flush=True)
+            print(f"✅ BS returned {len(bs_items)} rows", flush=True)
+            
+            # Process BS results and merge into balances
+            bs_account_count = 0
+            for row in bs_items:
+                account = row.get('account_number')
+                period_name = row.get('period_name')  # Already in 'Mon YYYY' format
+                amount = float(row.get('balance', 0) or 0)
+                
+                if account not in balances:
+                    balances[account] = {}
+                    bs_account_count += 1
+                balances[account][period_name] = amount
+                
+                # Also cache this result
+                cache_key = f"{account}:{period_name}:{filters_hash}"
+                balance_cache[cache_key] = amount
+                cached_count += 1
+            
+            print(f"📊 Added {bs_account_count} Balance Sheet accounts", flush=True)
+            
+        except Exception as bs_error:
+            print(f"⚠️  BS query error (P&L still succeeded): {bs_error}", flush=True)
+            # Don't fail the whole request - P&L data is still valid
+        
+        total_elapsed = elapsed + bs_elapsed if 'bs_elapsed' in dir() else elapsed
+        print(f"💾 Total cached: {cached_count} values (P&L + BS)")
+        print(f"📊 Total accounts: {len(balances)} (P&L + BS)")
+        print(f"⏱️  Total time: {total_elapsed:.2f} seconds")
+        print(f"{'='*80}\n")
+        
+        return jsonify({
+            'balances': balances, 
+            'query_time': total_elapsed, 
+            'cached_count': cached_count,
+            'pl_time': elapsed,
+            'bs_time': bs_elapsed if 'bs_elapsed' in dir() else 0
+        })
     
     except requests.exceptions.Timeout:
         print("❌ Query timeout (> 5 minutes)")
@@ -1224,6 +1356,97 @@ def batch_full_year_refresh():
     
     except Exception as e:
         print(f"❌ Error in full_year_refresh: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/batch/full_year_refresh_bs', methods=['POST'])
+def batch_full_year_refresh_bs():
+    """
+    BALANCE SHEET ONLY full-year refresh.
+    Use this when you specifically need BS accounts without P&L.
+    
+    POST JSON:
+    {
+        "year": 2025,
+        "subsidiary": "",
+        ...
+    }
+    
+    Returns same structure as full_year_refresh but only BS accounts.
+    """
+    data = request.get_json() or {}
+    
+    fiscal_year = data.get('year')
+    if not fiscal_year:
+        periods = data.get('periods', [])
+        if periods:
+            fiscal_year = extract_year_from_period(periods[0])
+        else:
+            fiscal_year = datetime.now().year
+    
+    subsidiary = convert_name_to_id('subsidiary', data.get('subsidiary', ''))
+    class_id = convert_name_to_id('class', data.get('class', ''))
+    department = convert_name_to_id('department', data.get('department', ''))
+    location = convert_name_to_id('location', data.get('location', ''))
+    
+    target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
+    
+    filters = {}
+    if subsidiary: filters['subsidiary'] = subsidiary
+    if class_id: filters['class'] = class_id
+    if department: filters['department'] = department
+    if location: filters['location'] = location
+    
+    try:
+        print(f"\n{'='*80}", flush=True)
+        print(f"📊 BALANCE SHEET FULL YEAR REFRESH: {fiscal_year}", flush=True)
+        print(f"   Target subsidiary: {target_sub}", flush=True)
+        print(f"   Filters: {filters}", flush=True)
+        print(f"{'='*80}\n", flush=True)
+        
+        bs_query = build_full_year_bs_query(fiscal_year, target_sub, filters)
+        
+        start_time = datetime.now()
+        items = run_paginated_suiteql(bs_query, page_size=1000, max_pages=30)
+        elapsed = (datetime.now() - start_time).total_seconds()
+        
+        print(f"⏱️  Query time: {elapsed:.2f} seconds", flush=True)
+        print(f"✅ Received {len(items)} rows")
+        
+        balances = {}
+        for row in items:
+            account = row.get('account_number')
+            period_name = row.get('period_name')
+            amount = float(row.get('balance', 0) or 0)
+            
+            if account not in balances:
+                balances[account] = {}
+            balances[account][period_name] = amount
+        
+        print(f"📊 Returning {len(balances)} BS accounts")
+        
+        # Cache results
+        global balance_cache, balance_cache_timestamp
+        filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
+        cached_count = 0
+        
+        for account, periods_data in balances.items():
+            for period, amount in periods_data.items():
+                cache_key = f"{account}:{period}:{filters_hash}"
+                balance_cache[cache_key] = amount
+                cached_count += 1
+        
+        balance_cache_timestamp = datetime.now()
+        
+        print(f"💾 Cached {cached_count} BS values")
+        print(f"{'='*80}\n")
+        
+        return jsonify({'balances': balances, 'query_time': elapsed, 'cached_count': cached_count})
+        
+    except Exception as e:
+        print(f"❌ Error in full_year_refresh_bs: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
