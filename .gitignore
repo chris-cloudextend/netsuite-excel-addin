@@ -38,3 +38,6 @@ key.pem
 **/*secret*.json
 **/*credentials*.json
 *.save
+
+# SSL certificates (never commit private keys)
+*.pem
