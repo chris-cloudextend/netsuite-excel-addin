@@ -231,38 +231,65 @@ async function runBuildModeBatch() {
     let hasError = false;
     
     // SMART DETECTION: Detect years from periods
-    const years = new Set(periodsArray.map(p => p.split(' ')[1]));
-    const singleYear = years.size === 1 ? Array.from(years)[0] : null;
+    const years = new Set(periodsArray.filter(p => p && p.includes(' ')).map(p => p.split(' ')[1]));
+    const yearsArray = Array.from(years).filter(y => y && !isNaN(parseInt(y)));
     
-    // OPTIMIZATION: Use full_year_refresh when:
-    // - 6+ periods from same year (dragging across columns), OR
-    // - 5+ accounts from same year (dragging down rows)
-    // This fetches BOTH P&L AND Balance Sheet accounts in one call
-    // Once cached, ALL subsequent requests are instant
-    const manyPeriods = periodsArray.length >= 6;
-    const manyAccounts = accountsArray.length >= 5;
+    // OPTIMIZATION: Use full_year_refresh aggressively because Balance Sheet 
+    // cumulative queries are VERY slow (2+ minutes for 4 accounts × 3 periods).
+    // full_year_refresh uses activity-based queries which are 10x faster.
+    // For multiple years, make separate calls per year.
+    // This fetches BOTH P&L AND Balance Sheet accounts in one call per year.
+    // Once cached, ALL subsequent requests are instant.
+    const manyPeriods = periodsArray.length >= 2;
+    const manyAccounts = accountsArray.length >= 2;
+    const useFullYearRefresh = yearsArray.length > 0 && (manyPeriods || manyAccounts);
     
-    if (singleYear && (manyPeriods || manyAccounts)) {
-        console.log(`   ⚡ FAST PATH: Using full_year_refresh for year ${singleYear} (${periodsArray.length} periods, ${accountsArray.length} accounts)`);
+    if (useFullYearRefresh) {
+        console.log(`   ⚡ FAST PATH: Using full_year_refresh for ${yearsArray.length} year(s): ${yearsArray.join(', ')} (${periodsArray.length} periods, ${accountsArray.length} accounts)`);
         
         try {
-            const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    year: parseInt(singleYear),
-                    subsidiary: filters.subsidiary,
-                    department: filters.department,
-                    location: filters.location,
-                    class: filters.classId
-                })
-            });
+            // Fetch data for ALL years (may be multiple for cross-year queries)
+            let combinedBalances = {};
             
-            if (response.ok) {
-                const data = await response.json();
-                const balances = data.balances || {};
+            for (const year of yearsArray) {
+                const yearStartTime = Date.now();
+                console.log(`   📡 Fetching year ${year}...`);
                 
-                console.log(`   📊 Full year refresh returned ${Object.keys(balances).length} accounts (P&L + BS)`);
+                const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: parseInt(year),
+                        subsidiary: filters.subsidiary,
+                        department: filters.department,
+                        location: filters.location,
+                        class: filters.classId
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const yearBalances = data.balances || {};
+                    const yearTime = ((Date.now() - yearStartTime) / 1000).toFixed(1);
+                    console.log(`   ✅ Year ${year}: ${Object.keys(yearBalances).length} accounts in ${yearTime}s`);
+                    
+                    // Merge into combined balances
+                    for (const acct in yearBalances) {
+                        if (!combinedBalances[acct]) combinedBalances[acct] = {};
+                        for (const period in yearBalances[acct]) {
+                            combinedBalances[acct][period] = yearBalances[acct][period];
+                        }
+                    }
+                } else {
+                    console.error(`   ❌ Year ${year} error: ${response.status}`);
+                    hasError = true;
+                }
+            }
+            
+            const balances = combinedBalances;
+            
+            if (Object.keys(balances).length > 0) {
+                console.log(`   📊 Combined: ${Object.keys(balances).length} accounts total`);
                 
                 // CACHE ALL ACCOUNTS from full_year_refresh (not just requested!)
                 // This way, subsequent drags for different accounts are INSTANT
@@ -323,9 +350,6 @@ async function runBuildModeBatch() {
                 }
                 
                 console.log(`   ✅ Resolving ${Object.keys(allBalances).length} requested accounts (including $0 for missing)`);
-            } else {
-                console.error(`   ❌ Full year refresh error: ${response.status}`);
-                hasError = true;
             }
         } catch (error) {
             console.error(`   ❌ Full year refresh fetch error:`, error);
