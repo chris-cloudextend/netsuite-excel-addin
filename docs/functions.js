@@ -1493,10 +1493,11 @@ async function processFullRefresh() {
 window.processFullRefresh = processFullRefresh;
 
 async function processBatchQueue() {
+    const batchStartTime = Date.now();
     batchTimer = null;  // Reset timer reference
     
     console.log('========================================');
-    console.log('🔄 processBatchQueue() CALLED');
+    console.log(`🔄 processBatchQueue() CALLED at ${new Date().toLocaleTimeString()}`);
     console.log('========================================');
     
     if (pendingRequests.balance.size === 0) {
@@ -1584,7 +1585,8 @@ async function processBatchQueue() {
                 chunkIndex++;
                 const accountChunk = accountChunks[ai];
                 const periodChunk = periodChunks[pi];
-                console.log(`  📤 Chunk ${chunkIndex}/${totalChunks}: ${accountChunk.length} accounts × ${periodChunk.length} periods`);
+                const chunkStartTime = Date.now();
+                console.log(`  📤 Chunk ${chunkIndex}/${totalChunks}: ${accountChunk.length} accounts × ${periodChunk.length} periods (fetching...)`);
             
                 try {
                     // Make batch API call
@@ -1615,8 +1617,9 @@ async function processBatchQueue() {
                 
                 const data = await response.json();
                 const balances = data.balances || {};
+                const chunkTime = ((Date.now() - chunkStartTime) / 1000).toFixed(1);
                 
-                console.log(`  ✅ Received data for ${Object.keys(balances).length} accounts`);
+                console.log(`  ✅ Received data for ${Object.keys(balances).length} accounts in ${chunkTime}s`);
                 console.log(`  📦 Raw response:`, JSON.stringify(data, null, 2).substring(0, 500));
                 console.log(`  📦 Balances object:`, JSON.stringify(balances, null, 2).substring(0, 500));
                 
@@ -1712,8 +1715,9 @@ async function processBatchQueue() {
         console.log(`📊 Final stats: ${resolvedRequests.size} resolved, ${unresolvedCount} force-resolved`);
     }
     
+    const totalBatchTime = ((Date.now() - batchStartTime) / 1000).toFixed(1);
     console.log('========================================');
-    console.log('✅ BATCH PROCESSING COMPLETE');
+    console.log(`✅ BATCH PROCESSING COMPLETE in ${totalBatchTime}s`);
     console.log('========================================\n');
 }
 
