@@ -784,6 +784,9 @@ function normalizeAccountNumber(account) {
 function getCacheKey(type, params) {
     if (type === 'title') {
         return `title:${normalizeAccountNumber(params.account)}`;
+    } else if (type === 'type') {
+        // FIX: Account type cache key was missing! All accounts shared '' key!
+        return `type:${normalizeAccountNumber(params.account)}`;
     } else if (type === 'balance' || type === 'budget') {
         return JSON.stringify({
             type,
