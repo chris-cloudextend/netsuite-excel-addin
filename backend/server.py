@@ -2103,6 +2103,17 @@ def get_balance():
                 where_clauses.append(f"t.postingperiod = {from_period}")
             else:
                 where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
+        elif to_period:
+            # BALANCE SHEET CASE: Empty from_period, only to_period provided
+            # This means "cumulative from beginning of time through to_period"
+            if to_period.isdigit():
+                where_clauses.append(f"t.postingperiod <= {to_period}")
+            else:
+                _, to_end, _ = get_period_dates_from_name(to_period)
+                if to_end:
+                    where_clauses.append(f"ap.enddate <= '{to_end}'")
+                else:
+                    where_clauses.append(f"ap.periodname = '{escape_sql(to_period)}'")
         
         if class_id and class_id != '':
             where_clauses.append(f"tl.class = {class_id}")
