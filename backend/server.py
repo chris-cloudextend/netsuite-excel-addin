@@ -2186,7 +2186,8 @@ def get_balance():
         print(f"DEBUG - Department param: {department}", file=sys.stderr)
         
         # Determine target subsidiary for consolidation
-        target_sub = subsidiary if subsidiary and subsidiary != '' else 'NULL'
+        # Must use valid subsidiary ID (not NULL) for BUILTIN.CONSOLIDATE
+        target_sub = subsidiary if subsidiary and subsidiary != '' else (default_subsidiary_id or '1')
         
         # Need TransactionLine join if filtering by department, class, or location
         needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
@@ -2432,7 +2433,8 @@ def get_budget():
         where_clause = " AND ".join(where_clauses)
         
         # Determine target subsidiary for consolidation
-        target_sub = subsidiary if subsidiary and subsidiary != '' else 'NULL'
+        # Must use valid subsidiary ID (not NULL) for BUILTIN.CONSOLIDATE
+        target_sub = subsidiary if subsidiary and subsidiary != '' else (default_subsidiary_id or '1')
         
         # Build SuiteQL query - only join AccountingPeriod if using period names
         # Note: Budget amounts also need BUILTIN.CONSOLIDATE for multi-currency
