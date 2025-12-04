@@ -1594,11 +1594,10 @@ def batch_full_year_refresh():
 @app.route('/batch/periods_refresh', methods=['POST'])
 def batch_periods_refresh():
     """
-    OPTIMIZED: Pre-load data for SPECIFIC PERIODS only (not full years).
+    OPTIMIZED: Pre-load data for SPECIFIC PERIODS only.
     
-    This is faster than full_year_refresh when you only need a subset of periods,
-    especially when spanning multiple years (e.g., Dec 2024 + Jan-Mar 2025 = 4 periods
-    instead of 24 periods from 2 full years).
+    Uses full_year_refresh internally but filters results to only requested periods.
+    This reuses the proven query patterns while only caching what's needed.
     
     POST JSON:
     {
@@ -1607,15 +1606,6 @@ def batch_periods_refresh():
         "department": "",
         "location": "",
         "class": ""
-    }
-    
-    Returns:
-    {
-        "balances": { account: { period: balance } },
-        "account_types": { account: type },
-        "account_names": { account: name },
-        "query_time": seconds,
-        "periods_loaded": ["Dec 2024", ...]
     }
     """
     data = request.get_json() or {}
@@ -1629,47 +1619,28 @@ def batch_periods_refresh():
     print(f"   Periods: {periods}")
     print(f"{'='*80}")
     
-    start_time = time.time()
+    start_time = datetime.now()
     
     # Parse periods to get year(s) needed
     years_needed = set()
-    period_map = {}  # { "Dec 2024": { month_abbrev: "Dec", year: 2024 } }
     month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     
     for period in periods:
         parts = period.split()
         if len(parts) == 2:
-            month_abbrev = parts[0][:3]  # "January" -> "Jan"
-            year = int(parts[1])
-            years_needed.add(year)
-            period_map[period] = {'month': month_abbrev, 'year': year}
+            try:
+                year = int(parts[1])
+                years_needed.add(year)
+            except ValueError:
+                pass
     
     if not years_needed:
         return jsonify({'error': 'Could not parse periods'}), 400
     
     print(f"📅 Years spanned: {sorted(years_needed)}")
     
-    # Get filter parameters
-    subsidiary = convert_name_to_id('subsidiary', data.get('subsidiary', ''))
-    department = convert_name_to_id('department', data.get('department', ''))
-    location = convert_name_to_id('location', data.get('location', ''))
-    class_id = convert_name_to_id('class', data.get('class', ''))
-    
-    filters = {
-        'subsidiary': subsidiary,
-        'department': department,
-        'location': location,
-        'class': class_id
-    }
-    filters_hash = f"sub{subsidiary or 'all'}_dept{department or 'all'}_loc{location or 'all'}_cls{class_id or 'all'}"
-    
-    # Build filter clauses
-    subsidiary_filter = f"AND tal.subsidiary = {subsidiary}" if subsidiary else ""
-    department_filter = f"AND tal.department = {department}" if department else ""
-    location_filter = f"AND tal.location = {location}" if location else ""
-    class_filter = f"AND tal.class = {class_id}" if class_id else ""
-    
-    target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
+    # Build set of requested periods for filtering
+    requested_periods_set = set(periods)
     
     balances = {}
     account_types = {}
@@ -1677,247 +1648,182 @@ def batch_periods_refresh():
     cached_count = 0
     
     try:
-        # ========================================
-        # STEP 1: Query P&L accounts for specific periods only
-        # This is much faster than querying full years!
-        # ========================================
-        print(f"\n📊 Step 1: P&L accounts (activity for specific periods)")
-        
-        # Build period filter for the specific months
-        min_year = min(years_needed)
-        max_year = max(years_needed)
-        
-        pl_query = f"""
-            WITH sub_cte AS (
-                SELECT COUNT(*) AS subs_count
-                FROM subsidiary
-                WHERE isinactive = 'F'
-            )
-            SELECT 
-                a.acctnumber AS account_number,
-                a.accttype AS account_type,
-                ap.periodname AS period_name,
-                CASE 
-                    WHEN (SELECT subs_count FROM sub_cte) > 1 THEN 
-                        TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, t.postingperiod, 'DEFAULT'))
-                    ELSE tal.amount
-                END AS amount
-            FROM TransactionAccountingLine tal
-            INNER JOIN transaction t ON t.id = tal.transaction
-            INNER JOIN account a ON a.id = tal.account
-            INNER JOIN accountingperiod ap ON ap.id = t.postingperiod
-            CROSS JOIN sub_cte
-            WHERE t.posting = 'T'
-            AND tal.posting = 'T'
-            AND tal.accountingbook = 1
-            AND ap.isyear = 'F'
-            AND ap.isquarter = 'F'
-            AND EXTRACT(YEAR FROM ap.startdate) BETWEEN {min_year} AND {max_year}
-            AND a.accttype IN ('Income', 'OthIncome', 'COGS', 'Cost of Goods Sold', 'Expense', 'OthExpense')
-            {subsidiary_filter}
-            {department_filter}
-            {location_filter}
-            {class_filter}
-        """
-        
-        pl_start = time.time()
-        pl_result = run_paginated_suiteql(pl_query)
-        pl_elapsed = time.time() - pl_start
-        print(f"⏱️  P&L query time: {pl_elapsed:.2f} seconds ({len(pl_result)} rows)")
-        
-        # Process P&L results - only keep requested periods
-        requested_periods_set = set(periods)
-        for row in pl_result:
-            account = str(row.get('account_number', ''))
-            acct_type = row.get('account_type', '')
-            period_name = row.get('period_name', '')
-            amount = float(row.get('amount', 0) or 0)
+        # For each year, call the existing full_year_refresh logic internally
+        # This reuses proven query patterns
+        for year in sorted(years_needed):
+            print(f"\n📊 Loading year {year}...")
             
-            # Only include if this period was requested
-            if period_name not in requested_periods_set:
-                continue
+            # Build request data for internal call
+            year_data = {
+                'year': year,
+                'subsidiary': data.get('subsidiary', ''),
+                'department': data.get('department', ''),
+                'location': data.get('location', ''),
+                'class': data.get('class', '')
+            }
             
-            if account not in balances:
-                balances[account] = {}
-            if account not in account_types:
-                account_types[account] = acct_type
+            # Get filter parameters
+            subsidiary = convert_name_to_id('subsidiary', year_data.get('subsidiary', ''))
+            department = convert_name_to_id('department', year_data.get('department', ''))
+            location = convert_name_to_id('location', year_data.get('location', ''))
+            class_id = convert_name_to_id('class', year_data.get('class', ''))
             
-            if period_name not in balances[account]:
-                balances[account][period_name] = 0
-            balances[account][period_name] += amount
+            filters = {
+                'subsidiary': subsidiary,
+                'department': department,
+                'location': location,
+                'class': class_id
+            }
+            filters_hash = f"sub{subsidiary or 'all'}_dept{department or 'all'}_loc{location or 'all'}_cls{class_id or 'all'}"
             
-            # Cache
-            cache_key = f"{account}:{period_name}:{filters_hash}"
-            balance_cache[cache_key] = balances[account][period_name]
-            cached_count += 1
-        
-        print(f"✅ P&L: {len([a for a in balances if account_types.get(a, '') in PL_TYPES])} accounts")
-        
-        # ========================================
-        # STEP 2: Query BS accounts
-        # For BS, we need cumulative calculation
-        # Strategy: Get activity for all needed months, plus prior balance
-        # ========================================
-        print(f"\n📊 Step 2: Balance Sheet accounts (cumulative)")
-        
-        bs_start = time.time()
-        
-        # Get BS activity for all periods in the year range
-        bs_query = f"""
-            WITH sub_cte AS (
-                SELECT COUNT(*) AS subs_count
-                FROM subsidiary
-                WHERE isinactive = 'F'
-            )
-            SELECT 
-                a.acctnumber AS account_number,
-                a.accttype AS account_type,
-                ap.periodname AS period_name,
-                CASE 
-                    WHEN (SELECT subs_count FROM sub_cte) > 1 THEN 
-                        TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, t.postingperiod, 'DEFAULT'))
-                    ELSE tal.amount
-                END AS amount
-            FROM TransactionAccountingLine tal
-            INNER JOIN transaction t ON t.id = tal.transaction
-            INNER JOIN account a ON a.id = tal.account
-            INNER JOIN accountingperiod ap ON ap.id = t.postingperiod
-            CROSS JOIN sub_cte
-            WHERE t.posting = 'T'
-            AND tal.posting = 'T'
-            AND tal.accountingbook = 1
-            AND ap.isyear = 'F'
-            AND ap.isquarter = 'F'
-            AND EXTRACT(YEAR FROM ap.startdate) BETWEEN {min_year} AND {max_year}
-            AND a.accttype NOT IN ('Income', 'OthIncome', 'COGS', 'Cost of Goods Sold', 'Expense', 'OthExpense')
-            {subsidiary_filter}
-            {department_filter}
-            {location_filter}
-            {class_filter}
-        """
-        
-        bs_result = run_paginated_suiteql(bs_query)
-        print(f"⏱️  BS activity query: {time.time() - bs_start:.2f} seconds ({len(bs_result)} rows)")
-        
-        # Organize BS activity by account
-        bs_activity = {}  # { account: { "Jan 2025": amount, ... } }
-        for row in bs_result:
-            account = str(row.get('account_number', ''))
-            acct_type = row.get('account_type', '')
-            period_name = row.get('period_name', '')
-            amount = float(row.get('amount', 0) or 0)
+            target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
             
-            if account not in bs_activity:
-                bs_activity[account] = {}
-            if account not in account_types:
-                account_types[account] = acct_type
+            # Run P&L query for this year using existing function
+            pl_query = build_full_year_pl_query(year, target_sub, filters)
+            pl_result = run_paginated_suiteql(pl_query, page_size=1000, max_pages=20, timeout=120)
+            print(f"✅ P&L: {len(pl_result)} rows for {year}")
             
-            if period_name not in bs_activity[account]:
-                bs_activity[account][period_name] = 0
-            bs_activity[account][period_name] += amount
-        
-        # Get prior year ending balance for BS accounts
-        prior_year = min_year - 1
-        prior_year_balances = {}
-        
-        if bs_activity:
-            bs_account_list = "', '".join([escape_sql(str(a)) for a in bs_activity.keys()])
-            prior_query = f"""
-                WITH sub_cte AS (
-                    SELECT COUNT(*) AS subs_count
-                    FROM subsidiary
-                    WHERE isinactive = 'F'
-                )
-                SELECT 
-                    a.acctnumber AS acctnumber,
-                    SUM(
-                        CASE 
-                            WHEN (SELECT subs_count FROM sub_cte) > 1 THEN 
+            # Process P&L results
+            for row in pl_result:
+                account = str(row.get('account_number', ''))
+                acct_type = row.get('account_type', '')
+                month_str = row.get('month', '')  # "2025-01" format
+                amount = float(row.get('amount', 0) or 0)
+                
+                # Convert "2025-01" to "Jan 2025"
+                if month_str and '-' in month_str:
+                    year_part, month_part = month_str.split('-')
+                    month_idx = int(month_part) - 1
+                    if 0 <= month_idx < 12:
+                        period_name = f"{month_order[month_idx]} {year_part}"
+                    else:
+                        continue
+                else:
+                    continue
+                
+                # Only include if this period was requested
+                if period_name not in requested_periods_set:
+                    continue
+                
+                if account not in balances:
+                    balances[account] = {}
+                if account not in account_types:
+                    account_types[account] = acct_type
+                
+                if period_name not in balances[account]:
+                    balances[account][period_name] = 0
+                balances[account][period_name] += amount
+                
+                # Cache
+                cache_key = f"{account}:{period_name}:{filters_hash}"
+                balance_cache[cache_key] = balances[account][period_name]
+                cached_count += 1
+            
+            # Run BS query for this year using existing function
+            bs_query = build_full_year_bs_query(year, target_sub, filters)
+            bs_result = run_paginated_suiteql(bs_query, page_size=1000, max_pages=20, timeout=120)
+            print(f"✅ BS: {len(bs_result)} rows for {year}")
+            
+            # Organize BS activity by account
+            bs_activity = {}
+            for row in bs_result:
+                account = str(row.get('account_number', ''))
+                acct_type = row.get('account_type', '')
+                month_str = row.get('month', '')
+                amount = float(row.get('amount', 0) or 0)
+                
+                # Convert "2025-01" to "Jan 2025"
+                if month_str and '-' in month_str:
+                    year_part, month_part = month_str.split('-')
+                    month_idx = int(month_part) - 1
+                    if 0 <= month_idx < 12:
+                        period_name = f"{month_order[month_idx]} {year_part}"
+                    else:
+                        continue
+                else:
+                    continue
+                
+                if account not in bs_activity:
+                    bs_activity[account] = {}
+                if account not in account_types:
+                    account_types[account] = acct_type
+                
+                if period_name not in bs_activity[account]:
+                    bs_activity[account][period_name] = 0
+                bs_activity[account][period_name] += amount
+            
+            # Get prior year balance for BS accounts
+            prior_year = year - 1
+            prior_year_balances = {}
+            
+            if bs_activity:
+                bs_account_list = "', '".join([escape_sql(str(a)) for a in bs_activity.keys()])
+                prior_query = f"""
+                    WITH sub_cte AS (
+                        SELECT COUNT(*) AS subs_count FROM Subsidiary WHERE isinactive = 'F'
+                    )
+                    SELECT 
+                        a.acctnumber AS acctnumber,
+                        SUM(
+                            CASE WHEN (SELECT subs_count FROM sub_cte) > 1 THEN 
                                 TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, t.postingperiod, 'DEFAULT'))
-                            ELSE tal.amount
-                        END
-                    ) AS balance
-                FROM TransactionAccountingLine tal
-                INNER JOIN transaction t ON t.id = tal.transaction
-                INNER JOIN account a ON a.id = tal.account
-                INNER JOIN accountingperiod ap ON ap.id = t.postingperiod
-                CROSS JOIN sub_cte
-                WHERE t.posting = 'T'
-                AND tal.posting = 'T'
-                AND tal.accountingbook = 1
-                AND ap.isyear = 'F'
-                AND ap.isquarter = 'F'
-                AND ap.enddate <= TO_DATE('{prior_year}-12-31', 'YYYY-MM-DD')
-                AND a.acctnumber IN ('{bs_account_list}')
-                {subsidiary_filter}
-                {department_filter}
-                {location_filter}
-                {class_filter}
-                GROUP BY a.acctnumber
-            """
+                            ELSE tal.amount END
+                        ) AS balance
+                    FROM TransactionAccountingLine tal
+                    JOIN Transaction t ON t.id = tal.transaction
+                    JOIN Account a ON a.id = tal.account
+                    JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                    CROSS JOIN sub_cte
+                    WHERE t.posting = 'T' AND tal.posting = 'T' AND tal.accountingbook = 1
+                    AND ap.isyear = 'F' AND ap.isquarter = 'F'
+                    AND ap.enddate <= TO_DATE('{prior_year}-12-31', 'YYYY-MM-DD')
+                    AND a.acctnumber IN ('{bs_account_list}')
+                    GROUP BY a.acctnumber
+                """
+                prior_result = query_netsuite(prior_query, timeout=120)
+                if isinstance(prior_result, list):
+                    for row in prior_result:
+                        acc = str(row.get('acctnumber', ''))
+                        bal = float(row.get('balance', 0) or 0)
+                        if abs(bal) < 0.01:
+                            bal = 0
+                        prior_year_balances[acc] = bal
             
-            prior_result = query_netsuite(prior_query, timeout=120)
-            if isinstance(prior_result, list):
-                for row in prior_result:
-                    acc = str(row.get('acctnumber', ''))
-                    bal = float(row.get('balance', 0) or 0)
-                    # Fix floating-point precision
-                    if abs(bal) < 0.01:
-                        bal = 0
-                    prior_year_balances[acc] = bal
-            print(f"✅ Got prior year ({prior_year}) balances for {len(prior_year_balances)} BS accounts")
-        
-        # Compute cumulative balances for BS accounts
-        # We need to compute for ALL months up to the max requested period
-        # then return only the requested periods
-        for account, activity_by_period in bs_activity.items():
-            if account not in balances:
-                balances[account] = {}
-            
-            cumulative = prior_year_balances.get(account, 0)
-            
-            # Iterate through all months in year order
-            for year in sorted(years_needed):
+            # Compute cumulative for BS accounts
+            for account, activity_by_period in bs_activity.items():
+                if account not in balances:
+                    balances[account] = {}
+                
+                cumulative = prior_year_balances.get(account, 0)
+                
                 for month_abbrev in month_order:
                     period_name = f"{month_abbrev} {year}"
-                    
                     activity = activity_by_period.get(period_name, 0)
                     cumulative += activity
                     
-                    # Fix floating-point precision
                     if abs(cumulative) < 0.01:
                         cumulative = 0
                     
-                    # Only store if this period was requested
                     if period_name in requested_periods_set:
                         balances[account][period_name] = cumulative
-                        
                         cache_key = f"{account}:{period_name}:{filters_hash}"
                         balance_cache[cache_key] = cumulative
                         cached_count += 1
         
-        bs_elapsed = time.time() - bs_start
-        print(f"✅ BS: {len(bs_activity)} accounts with cumulative balances")
-        print(f"⏱️  Total BS time: {bs_elapsed:.2f} seconds")
-        
-        # ========================================
-        # STEP 3: Fetch account names
-        # ========================================
+        # Fetch account names
         all_accounts = list(balances.keys())
         if all_accounts:
             account_list = "', '".join([escape_sql(str(a)) for a in all_accounts])
             names_query = f"""
                 SELECT acctnumber AS number, accountsearchdisplaynamecopy AS name
-                FROM Account
-                WHERE acctnumber IN ('{account_list}')
+                FROM Account WHERE acctnumber IN ('{account_list}')
             """
             names_result = query_netsuite(names_query)
             if isinstance(names_result, list):
                 for row in names_result:
                     account_names[str(row.get('number', ''))] = row.get('name', '')
-            print(f"📛 Fetched {len(account_names)} account names")
         
-        total_elapsed = time.time() - start_time
+        total_elapsed = (datetime.now() - start_time).total_seconds()
         print(f"\n✅ PERIODS REFRESH COMPLETE")
         print(f"   Accounts: {len(balances)}")
         print(f"   Periods loaded: {len(periods)}")
