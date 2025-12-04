@@ -9,15 +9,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://voip-packets-telecharger-smithsonian.trycloudflare.com
+// CURRENT TUNNEL URL: https://athletics-climbing-forming-exercise.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 4, 2025
+// Last Updated: Dec 4, 2025 - 12:34 PM
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://voip-packets-telecharger-smithsonian.trycloudflare.com';
+    const TUNNEL_URL = 'https://athletics-climbing-forming-exercise.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
