@@ -1381,7 +1381,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.40.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.41.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1396,7 +1396,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.40.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.41.0</div>
         </div>
 
         <div class="content">
@@ -1413,19 +1413,19 @@
                 <div class="guide-me-progress" id="guideMeProgress" style="display: none;"></div>
             </div>
 
-            <!-- PRE-LOAD SHEET DATA -->
+            <!-- PREPARE WORKBOOK -->
             <div class="preload-card" id="preloadCard">
                 <button class="preload-dismiss" onclick="dismissPreload()" title="Dismiss">×</button>
-                <h3>⚡ Pre-load Sheet Data</h3>
-                <p>Speed up your workflow! Pre-cache all data for your date range so formulas resolve instantly.</p>
+                <h3>⚡ Prepare your workbook for fast analysis</h3>
+                <p>Select your date range and click below. We'll load all relevant GL data so your formulas respond instantly as you work.</p>
                 <div class="instruction-box">
                     <strong>How to use:</strong><br>
                     1. Select the cells containing your date headers (e.g., D1:P1)<br>
                     2. Click the button below<br>
-                    3. We'll detect the years and pre-load all account data
+                    3. We'll detect the periods and load all account data
                 </div>
                 <button class="preload-btn" id="preloadBtn" onclick="runPreloadSheet()">
-                    <span id="preloadBtnText">📊 Pre-load Selected Dates</span>
+                    <span id="preloadBtnText">📊 Load Data for Selected Dates</span>
                 </button>
                 <div class="guide-me-progress" id="preloadProgress" style="display: none;"></div>
             </div>
@@ -2072,7 +2072,7 @@
                 
                 // CRITICAL: Populate the frontend cache so formulas can use the data!
                 // This prevents #BUSY from appearing and makes formulas resolve instantly
-                updateProgress(42, '💾 Caching Data', 'Storing data for instant formula resolution...');
+                updateProgress(42, '💾 Preparing Data', 'Getting everything ready for fast analysis...');
                 
                 // IMPORTANT: Fill in $0 for ALL 12 months for each account
                 // This prevents #BUSY for months with no transactions (they should show $0 instantly)
@@ -2602,7 +2602,7 @@
                     throw fetchError;
                 }
 
-                updateProgress(92, '💾 Caching Data', 'Storing data for instant formula resolution...');
+                updateProgress(92, '💾 Preparing Data', 'Getting everything ready for fast analysis...');
 
                 // Save to localStorage
                 try {
@@ -2656,15 +2656,15 @@
                     const loadedPeriodCount = selectedPeriods.length;
                     
                     progress.style.display = 'block';
-                    progress.innerHTML = `✅ <strong>Pre-load complete!</strong><br><br>
-                        Cached <strong>${accountCount} accounts</strong> × <strong>${loadedPeriodCount} periods</strong><br>
+                    progress.innerHTML = `✅ <strong>You're all set!</strong><br><br>
+                        Loaded <strong>${accountCount} accounts</strong> × <strong>${loadedPeriodCount} periods</strong><br>
                         <span style="font-size: 11px; color: #666;">${selectedPeriods.slice(0, 4).join(', ')}${selectedPeriods.length > 4 ? ` + ${selectedPeriods.length - 4} more` : ''}</span><br><br>
                         <div style="background: rgba(125, 255, 179, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid #7dffb3;">
-                            💡 Now when you enter formulas or drag to fill, they'll resolve <strong>instantly</strong> from cache!
+                            💡 Your formulas will calculate <strong>instantly</strong> as you edit or expand your sheet.
                         </div>`;
                     progress.style.lineHeight = '1.6';
                     
-                    btnText.textContent = '✓ Data Pre-loaded!';
+                    btnText.textContent = '✓ Ready!';
                     btn.style.background = '#4CAF50';
                 }, 500);
 
