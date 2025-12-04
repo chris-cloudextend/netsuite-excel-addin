@@ -187,12 +187,13 @@ async function getAccountType(account) {
 }
 
 async function runBuildModeBatch() {
+    const batchStartTime = Date.now();
     const pending = buildModePending.slice();
     buildModePending = [];
     
     if (pending.length === 0) return;
     
-    console.log(`🔨 BUILD MODE BATCH: ${pending.length} formulas`);
+    console.log(`🔨 BUILD MODE BATCH: ${pending.length} formulas (started at ${new Date().toLocaleTimeString()})`);
     
     // Collect unique accounts and periods
     const accounts = new Set();
@@ -202,8 +203,15 @@ async function runBuildModeBatch() {
     for (const item of pending) {
         const p = item.params;
         accounts.add(p.account);
-        periods.add(p.fromPeriod);
-        if (p.toPeriod && p.toPeriod !== p.fromPeriod) {
+        // Only add non-empty periods (empty fromPeriod means cumulative Balance Sheet query)
+        if (p.fromPeriod && p.fromPeriod !== '') {
+            periods.add(p.fromPeriod);
+        }
+        if (p.toPeriod && p.toPeriod !== '' && p.toPeriod !== p.fromPeriod) {
+            periods.add(p.toPeriod);
+        }
+        // For cumulative queries (empty fromPeriod), just add the toPeriod
+        if (!p.fromPeriod && p.toPeriod) {
             periods.add(p.toPeriod);
         }
         filters.subsidiary = p.subsidiary || '';
@@ -212,7 +220,8 @@ async function runBuildModeBatch() {
         filters.classId = p.classId || '';
     }
     
-    const periodsArray = Array.from(periods);
+    // Filter out any empty strings that might have snuck in
+    const periodsArray = Array.from(periods).filter(p => p && p !== '');
     const accountsArray = Array.from(accounts);
     
     console.log(`   Accounts: ${accountsArray.join(', ')}`);
@@ -338,8 +347,9 @@ async function runBuildModeBatch() {
         
         // Process each chunk
         for (let chunkIdx = 0; chunkIdx < periodChunks.length; chunkIdx++) {
+            const chunkStartTime = Date.now();
             const chunk = periodChunks[chunkIdx];
-            console.log(`   🔄 Chunk ${chunkIdx + 1}/${periodChunks.length}: ${chunk.join(', ')}`);
+            console.log(`   🔄 Chunk ${chunkIdx + 1}/${periodChunks.length}: ${chunk.join(', ')} (starting...)`);
             
             const payload = {
                 accounts: accountsArray,
@@ -395,7 +405,8 @@ async function runBuildModeBatch() {
                     }
                 }
                 
-                console.log(`   ✅ Chunk ${chunkIdx + 1}: got ${Object.keys(balances).length} accounts (+ $0 cached for missing)`);
+                const chunkTime = ((Date.now() - chunkStartTime) / 1000).toFixed(1);
+                console.log(`   ✅ Chunk ${chunkIdx + 1}: got ${Object.keys(balances).length} accounts in ${chunkTime}s`);
                 
                 // Small delay between chunks to avoid rate limiting
                 if (chunkIdx < periodChunks.length - 1) {
@@ -448,31 +459,46 @@ async function runBuildModeBatch() {
     }
     
     for (const item of pending) {
-        const { params, resolve } = item;
-        const { account, fromPeriod } = params;
+        const { params, resolve, cacheKey } = item;
+        const { account, fromPeriod, toPeriod } = params;
+        
+        // For cumulative queries (empty fromPeriod), look up using toPeriod
+        // For range queries, we'd need to sum fromPeriod through toPeriod
+        const lookupPeriod = (fromPeriod && fromPeriod !== '') ? fromPeriod : toPeriod;
         
         // Look up value from what we cached
-        if (allBalances[account] && allBalances[account][fromPeriod] !== undefined) {
-            const value = allBalances[account][fromPeriod];
-            console.log(`   ✅ ${account}/${fromPeriod} = ${value}`);
+        if (allBalances[account] && allBalances[account][lookupPeriod] !== undefined) {
+            const value = allBalances[account][lookupPeriod];
+            console.log(`   ✅ ${account}/${lookupPeriod} = ${value}`);
+            
+            // CRITICAL: Cache with the ORIGINAL request's fromPeriod/toPeriod
+            // so future lookups with the same params find it!
+            cache.balance.set(cacheKey, value);
+            
             resolve(value);
             resolved++;
-        } else if (hasError && !successfulPeriods.has(fromPeriod)) {
+        } else if (hasError && !successfulPeriods.has(lookupPeriod)) {
             // This period's chunk failed - we genuinely don't know the value
             // Return empty string to indicate error (not 0 which looks like real data)
-            console.log(`   ❌ ${account}/${fromPeriod} = "" (request failed)`);
+            console.log(`   ❌ ${account}/${lookupPeriod} = "" (request failed)`);
             resolve('');
             zeros++;
         } else {
             // Period was in a successful response but account not returned
             // This means the account has $0 for this period (not in NetSuite results)
-            console.log(`   💰 ${account}/${fromPeriod} = 0 (no transactions)`);
+            console.log(`   💰 ${account}/${lookupPeriod} = 0 (no transactions)`);
+            
+            // Cache the $0 so future lookups are instant
+            cache.balance.set(cacheKey, 0);
+            
             resolve(0);
             zeros++;
         }
     }
     
+    const totalTime = ((Date.now() - batchStartTime) / 1000).toFixed(1);
     console.log(`   📊 Resolved: ${resolved} with values, ${zeros} zeros/errors`);
+    console.log(`   ⏱️ TOTAL BUILD MODE TIME: ${totalTime}s`);
 }
 
 // Resolve ALL pending balance requests from cache (called by taskpane after cache is ready)
