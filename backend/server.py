@@ -1458,16 +1458,60 @@ def batch_full_year_refresh():
             print(f"📊 Loaded activity for {bs_account_count} Balance Sheet accounts", flush=True)
             
             # Now compute CUMULATIVE balances from activity
-            # This is instant in Python (vs 60-90s in NetSuite)
+            # CRITICAL: Balance Sheet cumulative must include PRIOR YEAR ending balance!
+            # Activity in 2025 alone doesn't give cumulative - we need Dec 2024 balance first
+            
             month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
             cumulative_count = 0
             
+            # Step 1: Query prior year ending balance for ALL BS accounts (ONE query)
+            # This is much faster than 12 cumulative queries per account
+            prior_year = fiscal_year - 1
+            prior_year_balances = {}
+            
+            try:
+                bs_account_list = "', '".join([escape_sql(str(a)) for a in bs_activity_data.keys()])
+                if bs_account_list:
+                    prior_year_query = f"""
+                        SELECT a.acctnumber, SUM(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub},
+                                t.postingperiod,
+                                'DEFAULT'
+                            )
+                        ) AS balance
+                        FROM TransactionAccountingLine tal
+                        JOIN Transaction t ON t.id = tal.transaction
+                        JOIN Account a ON a.id = tal.account
+                        WHERE t.posting = 'T'
+                            AND tal.posting = 'T'
+                            AND tal.accountingbook = 1
+                            AND a.acctnumber IN ('{bs_account_list}')
+                            AND t.trandate <= TO_DATE('{prior_year}-12-31', 'YYYY-MM-DD')
+                        GROUP BY a.acctnumber
+                    """
+                    print(f"📊 Fetching prior year ({prior_year}) ending balances for {len(bs_activity_data)} BS accounts...", flush=True)
+                    prior_result = query_netsuite(prior_year_query, timeout=120)
+                    if isinstance(prior_result, list):
+                        for row in prior_result:
+                            acc = str(row.get('acctnumber', ''))
+                            bal = float(row.get('balance', 0))
+                            prior_year_balances[acc] = bal
+                        print(f"✅ Got prior year balances for {len(prior_year_balances)} accounts", flush=True)
+            except Exception as prior_err:
+                print(f"⚠️  Prior year balance query failed (using 0 as starting point): {prior_err}", flush=True)
+            
+            # Step 2: Compute cumulative by adding activity to prior year balance
             for account, activity_by_period in bs_activity_data.items():
                 if account not in balances:
                     balances[account] = {}
                 
-                cumulative = 0
+                # Start with prior year ending balance (or 0 if not found)
+                cumulative = prior_year_balances.get(account, 0)
+                
                 for month_abbrev in month_order:
                     period_name = f"{month_abbrev} {fiscal_year}"
                     
@@ -1484,8 +1528,8 @@ def batch_full_year_refresh():
                     cached_count += 1
                     cumulative_count += 1
             
-            print(f"📊 Computed {cumulative_count} cumulative BS balances from activity", flush=True)
-            print(f"⚡ Cumulative calculation: instant (vs 60-90s with old query)", flush=True)
+            print(f"📊 Computed {cumulative_count} cumulative BS balances (prior year + activity)", flush=True)
+            print(f"⚡ Method: 1 query for prior year balance + activity from optimized query", flush=True)
             
         except Exception as bs_error:
             print(f"⚠️  BS query error (P&L still succeeded): {bs_error}", flush=True)

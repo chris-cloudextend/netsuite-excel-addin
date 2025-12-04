@@ -533,14 +533,17 @@ window.resolvePendingRequests = function() {
     
     for (const [cacheKey, request] of Array.from(pendingRequests.balance.entries())) {
         const { params, resolve } = request;
-        const { account, fromPeriod } = params;
+        const { account, fromPeriod, toPeriod } = params;
+        
+        // For cumulative queries (empty fromPeriod), use toPeriod for lookup
+        const lookupPeriod = (fromPeriod && fromPeriod !== '') ? fromPeriod : toPeriod;
         
         // Try to get value from localStorage cache
-        let value = checkLocalStorageCache(account, fromPeriod);
+        let value = checkLocalStorageCache(account, fromPeriod, toPeriod);
         
         // Fallback to fullYearCache
         if (value === null) {
-            value = checkFullYearCache(account, fromPeriod);
+            value = checkFullYearCache(account, lookupPeriod);
         }
         
         if (value !== null) {
@@ -629,7 +632,7 @@ window.setAccountNameCache = function(accountNames) {
 
 // Check localStorage for cached data - THIS WORKS!
 // Structure: { "4220": { "Apr 2024": 123.45, ... }, ... }
-function checkLocalStorageCache(account, period) {
+function checkLocalStorageCache(account, period, toPeriod = null) {
     try {
         const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
         if (!timestamp) return null;
@@ -642,8 +645,11 @@ function checkLocalStorageCache(account, period) {
         
         const balances = JSON.parse(cached);
         
+        // For cumulative queries (empty fromPeriod), use toPeriod for lookup
+        const lookupPeriod = (period && period !== '') ? period : toPeriod;
+        
         // Debug: Log what we're looking for vs what's available
-        console.log(`🔍 Cache lookup: account=${account}, period="${period}"`);
+        console.log(`🔍 Cache lookup: account=${account}, period="${lookupPeriod}" (from="${period}", to="${toPeriod}")`);
         if (balances[account]) {
             const availablePeriods = Object.keys(balances[account]);
             console.log(`   Available periods for ${account}: ${availablePeriods.slice(0, 6).join(', ')}${availablePeriods.length > 6 ? '...' : ''}`);
@@ -651,12 +657,12 @@ function checkLocalStorageCache(account, period) {
         
         // ONLY return if we have an explicit value for this account+period
         // Don't assume $0 for missing periods - the query may have been truncated!
-        if (balances[account] && balances[account][period] !== undefined) {
-            console.log(`   ✅ HIT: ${balances[account][period]}`);
-            return balances[account][period];
+        if (lookupPeriod && balances[account] && balances[account][lookupPeriod] !== undefined) {
+            console.log(`   ✅ HIT: ${balances[account][lookupPeriod]}`);
+            return balances[account][lookupPeriod];
         }
         
-        console.log(`   ❌ MISS: period "${period}" not found`);
+        console.log(`   ❌ MISS: period "${lookupPeriod}" not found`);
         // Period not found - return null to trigger batch processing
         // (Could be missing due to 1000 row limit, not because it's truly $0)
         return null;
@@ -1179,7 +1185,8 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         }
         
         // Check localStorage cache (THIS WORKS - proven by user data!)
-        const localStorageValue = checkLocalStorageCache(account, fromPeriod);
+        // Pass both fromPeriod and toPeriod - for cumulative queries, we lookup by toPeriod
+        const localStorageValue = checkLocalStorageCache(account, fromPeriod, toPeriod);
         if (localStorageValue !== null) {
             cacheStats.hits++;
             // Also save to in-memory cache for next time
