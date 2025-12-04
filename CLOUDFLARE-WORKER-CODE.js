@@ -17,7 +17,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://frost-polar-pst-screenshots.trycloudflare.com';
+    const TUNNEL_URL = 'https://foundation-sip-became-elder.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {

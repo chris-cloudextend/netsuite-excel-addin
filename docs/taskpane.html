@@ -1381,7 +1381,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.39.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.40.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1396,7 +1396,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.39.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.40.0</div>
         </div>
 
         <div class="content">
@@ -2399,8 +2399,8 @@
             btnText.textContent = 'Reading selection...';
 
             try {
-                // Step 1: Read selected range from Excel
-                let selectedDates = [];
+                // Step 1: Read selected range from Excel and build period strings
+                let selectedPeriods = [];  // ["Dec 2024", "Jan 2025", ...]
                 let selectedYears = new Set();
 
                 await Excel.run(async (context) => {
@@ -2441,8 +2441,13 @@
 
                             if (dateValue && !isNaN(dateValue.getTime())) {
                                 const year = dateValue.getFullYear();
+                                const month = dateValue.getMonth();
                                 if (year >= 2000 && year <= 2100) { // Reasonable year range
-                                    selectedDates.push(dateValue);
+                                    // Convert to period string like "Dec 2024"
+                                    const periodStr = `${monthNames[month]} ${year}`;
+                                    if (!selectedPeriods.includes(periodStr)) {
+                                        selectedPeriods.push(periodStr);
+                                    }
                                     selectedYears.add(year);
                                 }
                             }
@@ -2450,12 +2455,28 @@
                     }
                 });
 
-                if (selectedYears.size === 0) {
+                if (selectedPeriods.length === 0) {
                     throw new Error('No valid dates found in selection. Please select cells containing dates (e.g., 1/1/2025 or "Jan 2025").');
                 }
 
+                // Sort periods chronologically
+                selectedPeriods.sort((a, b) => {
+                    const [aMonth, aYear] = a.split(' ');
+                    const [bMonth, bYear] = b.split(' ');
+                    const aIdx = monthNames.indexOf(aMonth) + parseInt(aYear) * 12;
+                    const bIdx = monthNames.indexOf(bMonth) + parseInt(bYear) * 12;
+                    return aIdx - bIdx;
+                });
+
                 const yearsArray = Array.from(selectedYears).sort();
-                console.log('Pre-load: Detected years:', yearsArray);
+                console.log('Pre-load: Detected periods:', selectedPeriods);
+                console.log('Pre-load: Years spanned:', yearsArray);
+
+                // Estimate time based on periods (not full years!)
+                const periodCount = selectedPeriods.length;
+                const estimatedTime = periodCount <= 4 ? '30-45 seconds' : 
+                                     periodCount <= 8 ? '45-60 seconds' : 
+                                     periodCount <= 13 ? '60-90 seconds' : '90-120 seconds';
 
                 // Create and show loading overlay
                 const overlay = document.createElement('div');
@@ -2463,9 +2484,10 @@
                 overlay.id = 'preloadOverlay';
                 overlay.innerHTML = `
                     <div class="loading-spinner"></div>
-                    <h2>Pre-loading Your Data</h2>
+                    <h2>Pre-loading ${periodCount} Periods</h2>
                     <div class="loading-subtitle" style="max-width: 320px; margin-bottom: 24px;">
-                        ⏱️ This takes ${yearsArray.length > 1 ? '2-4 minutes' : '1-2 minutes'} but will make all your formulas resolve instantly!
+                        ⏱️ Estimated time: <strong>${estimatedTime}</strong><br>
+                        <span style="opacity: 0.7; font-size: 12px;">(Much faster than loading ${yearsArray.length * 12} months from full years!)</span>
                     </div>
                     
                     <div class="progress-container" style="max-width: 320px; margin-bottom: 20px;">
@@ -2475,9 +2497,9 @@
                         <div class="progress-text" id="preloadProgressText" style="font-size: 12px; opacity: 0.7; margin-top: 8px;">0% complete</div>
                     </div>
                     
-                    <div class="loading-step" id="preloadStep" style="color: #7dffb3; font-weight: 600;">Preparing...</div>
+                    <div class="loading-step" id="preloadStep" style="color: #7dffb3; font-weight: 600;">Connecting to NetSuite...</div>
                     <div class="loading-step-desc" id="preloadStepDesc" style="font-size: 12px; opacity: 0.7; margin-top: 6px; max-width: 300px;">
-                        Loading ${yearsArray.join(' and ')} data for all accounts
+                        Loading: ${selectedPeriods.slice(0, 3).join(', ')}${selectedPeriods.length > 3 ? ` + ${selectedPeriods.length - 3} more` : ''}
                     </div>
                     
                     <div style="background: rgba(255,255,255,0.1); border-radius: 10px; padding: 14px; margin-top: 24px; max-width: 320px; text-align: left;">
@@ -2521,78 +2543,63 @@
                     if (descEl) descEl.textContent = desc;
                 };
 
-                // Step 2: Load data for each year
+                // Step 2: Load data for specific periods only (optimized!)
                 let allBalances = {};
                 let allTypes = {};
                 let allNames = {};
                 
-                for (let i = 0; i < yearsArray.length; i++) {
-                    const year = yearsArray[i];
-                    const basePercent = Math.floor((i / yearsArray.length) * 90);
-                    
-                    updateProgress(basePercent + 5, `📥 Loading ${year} Data`, `Fetching P&L and Balance Sheet accounts for ${year}...`);
-                    
-                    // Start artificial progress for this year
-                    let artificialProgress = basePercent + 5;
-                    const maxProgress = basePercent + Math.floor(90 / yearsArray.length);
-                    const progressInterval = setInterval(() => {
-                        if (artificialProgress < maxProgress - 5) {
-                            artificialProgress += 2;
-                            updateProgress(artificialProgress, `📥 Loading ${year} Data`, 
-                                `Querying NetSuite for all ${year} account balances...`);
-                        }
-                    }, 3000);
-
-                    try {
-                        const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                year: year,
-                                subsidiary: '',
-                                department: '',
-                                location: '',
-                                class: ''
-                            })
-                        });
-
-                        clearInterval(progressInterval);
-
-                        if (!response.ok) {
-                            throw new Error(`Failed to load ${year} data: ${response.status}`);
-                        }
-
-                        const data = await response.json();
-                        console.log(`Pre-load: Loaded ${Object.keys(data.balances || {}).length} accounts for ${year}`);
-
-                        // Merge data into combined objects
-                        const yearBalances = data.balances || {};
-                        const yearTypes = data.account_types || {};
-                        const yearNames = data.account_names || {};
-
-                        // Fill in $0 for all 12 months for each account in this year
-                        const allMonthNames = monthNames.map(m => `${m} ${year}`);
-                        for (const acctNum in yearBalances) {
-                            if (!allBalances[acctNum]) {
-                                allBalances[acctNum] = {};
-                            }
-                            for (const monthName of allMonthNames) {
-                                if (yearBalances[acctNum][monthName] !== undefined) {
-                                    allBalances[acctNum][monthName] = yearBalances[acctNum][monthName];
-                                } else {
-                                    allBalances[acctNum][monthName] = 0;
-                                }
-                            }
-                        }
-
-                        // Merge types and names
-                        Object.assign(allTypes, yearTypes);
-                        Object.assign(allNames, yearNames);
-
-                    } catch (yearError) {
-                        clearInterval(progressInterval);
-                        throw yearError;
+                updateProgress(5, '📥 Loading Data', `Fetching ${periodCount} periods for all accounts...`);
+                
+                // Start artificial progress during the fetch
+                let artificialProgress = 5;
+                const progressInterval = setInterval(() => {
+                    if (artificialProgress < 85) {
+                        artificialProgress += 3;
+                        updateProgress(artificialProgress, '📥 Loading Data', 
+                            `Querying NetSuite for ${periodCount} specific periods...`);
                     }
+                }, 3000);
+
+                try {
+                    // Use the new optimized periods_refresh endpoint!
+                    const response = await fetch(`${SERVER_URL}/batch/periods_refresh`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            periods: selectedPeriods,
+                            subsidiary: '',
+                            department: '',
+                            location: '',
+                            class: ''
+                        })
+                    });
+
+                    clearInterval(progressInterval);
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to load data: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    console.log(`Pre-load: Loaded ${Object.keys(data.balances || {}).length} accounts for ${selectedPeriods.length} periods`);
+                    console.log(`Pre-load: Query time: ${data.query_time?.toFixed(2)}s`);
+
+                    allBalances = data.balances || {};
+                    allTypes = data.account_types || {};
+                    allNames = data.account_names || {};
+
+                    // Fill in $0 for requested periods that have no data
+                    for (const acctNum in allBalances) {
+                        for (const period of selectedPeriods) {
+                            if (allBalances[acctNum][period] === undefined) {
+                                allBalances[acctNum][period] = 0;
+                            }
+                        }
+                    }
+
+                } catch (fetchError) {
+                    clearInterval(progressInterval);
+                    throw fetchError;
                 }
 
                 updateProgress(92, '💾 Caching Data', 'Storing data for instant formula resolution...');
@@ -2646,11 +2653,12 @@
                     
                     // Success message
                     const accountCount = Object.keys(allBalances).length;
-                    const periodCount = yearsArray.length * 12;
+                    const loadedPeriodCount = selectedPeriods.length;
                     
                     progress.style.display = 'block';
                     progress.innerHTML = `✅ <strong>Pre-load complete!</strong><br><br>
-                        Cached <strong>${accountCount} accounts</strong> × <strong>${periodCount} periods</strong> (${yearsArray.join(', ')}).<br><br>
+                        Cached <strong>${accountCount} accounts</strong> × <strong>${loadedPeriodCount} periods</strong><br>
+                        <span style="font-size: 11px; color: #666;">${selectedPeriods.slice(0, 4).join(', ')}${selectedPeriods.length > 4 ? ` + ${selectedPeriods.length - 4} more` : ''}</span><br><br>
                         <div style="background: rgba(125, 255, 179, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid #7dffb3;">
                             💡 Now when you enter formulas or drag to fill, they'll resolve <strong>instantly</strong> from cache!
                         </div>`;
