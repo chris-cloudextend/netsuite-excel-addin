@@ -9,9 +9,9 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://publishing-increased-hrs-why.trycloudflare.com
+// CURRENT TUNNEL URL: https://voip-packets-telecharger-smithsonian.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 3, 2025 - 1:58 PM
+// Last Updated: Dec 4, 2025
 // ════════════════════════════════════════════════════════════════════
 
 export default {
