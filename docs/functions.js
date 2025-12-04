@@ -556,6 +556,27 @@ window.setAccountTypeCache = function(accountTypes) {
     return true;
 };
 
+// Function to populate the account NAME (title) cache from taskpane
+// This prevents 35+ parallel requests and NetSuite 429 errors!
+window.setAccountNameCache = function(accountNames) {
+    console.log('========================================');
+    console.log('📦 SETTING ACCOUNT NAME CACHE IN FUNCTIONS.JS');
+    console.log(`   Account names: ${Object.keys(accountNames).length}`);
+    console.log('========================================');
+    
+    // Clear existing title cache to prevent stale data
+    cache.title.clear();
+    
+    // Populate title cache with fresh data
+    for (const acctNum in accountNames) {
+        const cacheKey = getCacheKey('title', { account: acctNum });
+        cache.title.set(cacheKey, accountNames[acctNum]);
+    }
+    
+    console.log(`   Title cache now has ${cache.title.size} entries`);
+    return true;
+};
+
 // Check localStorage for cached data - THIS WORKS!
 // Structure: { "4220": { "Apr 2024": 123.45, ... }, ... }
 function checkLocalStorageCache(account, period) {
@@ -795,11 +816,28 @@ async function GLATITLE(accountNumber, invocation) {
     
     const cacheKey = getCacheKey('title', { account });
     
-    // Check cache FIRST
+    // Check in-memory cache FIRST
     if (cache.title.has(cacheKey)) {
         cacheStats.hits++;
         console.log(`⚡ CACHE HIT [title]: ${account}`);
         return cache.title.get(cacheKey);
+    }
+    
+    // Check localStorage name cache as fallback (prevents 35+ parallel requests!)
+    try {
+        const nameCache = localStorage.getItem('netsuite_name_cache');
+        if (nameCache) {
+            const names = JSON.parse(nameCache);
+            if (names[account]) {
+                // Populate in-memory cache too
+                cache.title.set(cacheKey, names[account]);
+                cacheStats.hits++;
+                console.log(`⚡ LOCALSTORAGE HIT [title]: ${account} → ${names[account]}`);
+                return names[account];
+            }
+        }
+    } catch (e) {
+        console.warn('localStorage name cache read error:', e.message);
     }
     
     cacheStats.misses++;

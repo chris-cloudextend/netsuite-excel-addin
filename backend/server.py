@@ -1386,11 +1386,34 @@ def batch_full_year_refresh():
         print(f"💾 Total cached: {cached_count} values (P&L + BS)")
         print(f"📊 Total accounts: {len(balances)} (P&L + BS)")
         print(f"⏱️  Total time: {total_elapsed:.2f} seconds")
+        
+        # Fetch account names in ONE query to avoid 429 concurrency errors
+        # This prevents 35+ parallel requests when Guide Me writes formulas
+        account_names = {}
+        try:
+            account_numbers = list(balances.keys())
+            if account_numbers:
+                # Batch query for account names - IN clause with all account numbers
+                account_list = "', '".join([escape_sql(str(a)) for a in account_numbers])
+                names_query = f"""
+                    SELECT acctnumber AS number, accountsearchdisplaynamecopy AS name
+                    FROM Account
+                    WHERE acctnumber IN ('{account_list}')
+                """
+                names_result = query_netsuite(names_query)
+                if isinstance(names_result, list):
+                    for row in names_result:
+                        account_names[str(row.get('number', ''))] = row.get('name', '')
+                print(f"📛 Fetched {len(account_names)} account names in ONE query")
+        except Exception as names_error:
+            print(f"⚠️  Account names fetch error (non-fatal): {names_error}")
+        
         print(f"{'='*80}\n")
         
         return jsonify({
             'balances': balances,
             'account_types': account_types,  # { account_number: "Income" | "Expense" | etc. }
+            'account_names': account_names,  # { account_number: "Account Name" }
             'query_time': total_elapsed, 
             'cached_count': cached_count,
             'pl_time': elapsed,

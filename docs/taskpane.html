@@ -1225,7 +1225,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.29.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.30.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1240,7 +1240,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.29.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.30.0</div>
         </div>
 
         <div class="content">
@@ -1891,9 +1891,11 @@
                 const refreshData = await refreshResponse.json();
                 const allBalances = refreshData.balances || {};
                 const accountTypes = refreshData.account_types || {}; // { acctNum: "Income" | "Expense" | etc. }
+                const accountNames = refreshData.account_names || {}; // { acctNum: "Account Name" }
                 
                 console.log(`Guide Me: Loaded ${Object.keys(allBalances).length} accounts from full_year_refresh`);
                 console.log(`Guide Me: Account types received for ${Object.keys(accountTypes).length} accounts`);
+                console.log(`Guide Me: Account names received for ${Object.keys(accountNames).length} accounts`);
                 
                 // CRITICAL: Populate the frontend cache so formulas can use the data!
                 // This prevents #BUSY from appearing and makes formulas resolve instantly
@@ -1907,9 +1909,13 @@
                     localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
                     console.log('Guide Me: Saved balances to localStorage');
                     
-                    // Also save account types to localStorage for persistence
+                    // Save account types to localStorage for persistence
                     localStorage.setItem('netsuite_type_cache', JSON.stringify(accountTypes));
                     console.log('Guide Me: Saved account types to localStorage');
+                    
+                    // Save account names to localStorage (prevents 35+ parallel requests!)
+                    localStorage.setItem('netsuite_name_cache', JSON.stringify(accountNames));
+                    console.log('Guide Me: Saved account names to localStorage');
                     
                     // Populate in-memory caches via Shared Runtime (if available)
                     if (typeof window.setFullYearCache === 'function') {
@@ -1917,10 +1923,16 @@
                         console.log('Guide Me: Populated balance cache via Shared Runtime');
                     }
                     
-                    // CRITICAL: Also populate the TYPE cache so NS.GLACCTTYPE resolves correctly!
+                    // Populate TYPE cache so NS.GLACCTTYPE resolves correctly
                     if (typeof window.setAccountTypeCache === 'function') {
                         window.setAccountTypeCache(accountTypes);
                         console.log('Guide Me: Populated TYPE cache via Shared Runtime');
+                    }
+                    
+                    // Populate NAME cache so NS.GLATITLE resolves without 35+ API calls
+                    if (typeof window.setAccountNameCache === 'function') {
+                        window.setAccountNameCache(accountNames);
+                        console.log('Guide Me: Populated NAME cache via Shared Runtime');
                     }
                 } catch (cacheError) {
                     console.warn('Guide Me: Cache population warning:', cacheError.message);
