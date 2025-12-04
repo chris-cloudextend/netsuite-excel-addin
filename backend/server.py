@@ -138,6 +138,39 @@ def is_balance_sheet_account(accttype):
     return accttype not in pl_types
 
 
+def calculate_period_end_date(period_name):
+    """Calculate the end date of a period from its name (e.g., 'Jan 2025' -> '01/31/2025')
+    Used as a fallback when the period doesn't exist in NetSuite's AccountingPeriod table
+    """
+    import calendar
+    
+    month_map = {
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+    }
+    
+    try:
+        parts = period_name.strip().split()
+        if len(parts) != 2:
+            return None
+        
+        month_str = parts[0].lower()[:3]
+        year = int(parts[1])
+        month = month_map.get(month_str)
+        
+        if not month:
+            return None
+        
+        # Get last day of the month
+        last_day = calendar.monthrange(year, month)[1]
+        
+        # Return in MM/DD/YYYY format (same as NetSuite returns)
+        return f"{month:02d}/{last_day:02d}/{year}"
+    except Exception as e:
+        print(f"Error calculating period end date for '{period_name}': {e}", file=sys.stderr)
+        return None
+
+
 def get_period_dates_from_name(period_name):
     """Convert period name (e.g., 'Mar 2025') to start/end dates for proper date range queries
     Returns tuple: (startdate, enddate) or (None, None) if not found
@@ -162,7 +195,9 @@ def get_period_dates_from_name(period_name):
             dates = (result[0].get('startdate'), result[0].get('enddate'), result[0].get('id'))
             # Cache it
             lookup_cache['periods'][cache_key] = dates
+            print(f"DEBUG: Found period '{period_name}' -> {dates}", file=sys.stderr)
             return dates
+        print(f"DEBUG: Period '{period_name}' NOT found in NetSuite AccountingPeriod table", file=sys.stderr)
         return (None, None, None)
     except Exception as e:
         print(f"Error getting period dates for '{period_name}': {e}", file=sys.stderr)
@@ -759,21 +794,29 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
     where_clause += f" AND t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')"
     where_clause += " AND tal.accountingbook = 1"
     
-    amount_calc = f"""CASE
-                        WHEN subs_count > 1 THEN
-                            TO_NUMBER(
-                                BUILTIN.CONSOLIDATE(
-                                    tal.amount,
-                                    'LEDGER',
-                                    'DEFAULT',
-                                    'DEFAULT',
-                                    {target_sub},
-                                    {period_id},
-                                    'DEFAULT'
+    # If period_id is None (period doesn't exist in NetSuite), skip consolidation
+    # This happens for future periods that haven't been created yet
+    if period_id and target_sub:
+        amount_calc = f"""CASE
+                            WHEN subs_count > 1 THEN
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        {period_id},
+                                        'DEFAULT'
+                                    )
                                 )
-                            )
-                        ELSE tal.amount
-                    END""" if target_sub else "tal.amount"
+                            ELSE tal.amount
+                        END"""
+    else:
+        # No consolidation - use raw amount
+        # This is a fallback for periods not in NetSuite's AccountingPeriod table
+        print(f"WARNING: Using non-consolidated amounts for BS query (period_id={period_id})", file=sys.stderr)
+        amount_calc = "tal.amount"
     
     if needs_line_join:
         return f"""
@@ -1753,6 +1796,15 @@ def batch_balance():
             start, end, period_id = get_period_dates_from_name(period)
             if end and period_id:
                 period_info[period] = {'enddate': end, 'id': period_id}
+            else:
+                # FALLBACK: Period not in NetSuite's AccountingPeriod table
+                # Calculate the end date from the period name (e.g., "Jan 2025" -> 1/31/2025)
+                print(f"WARNING: Period '{period}' not found in NetSuite, calculating date...", file=sys.stderr)
+                calc_end = calculate_period_end_date(period)
+                if calc_end:
+                    # Use period_id=None - BS query will need to handle this
+                    period_info[period] = {'enddate': calc_end, 'id': None}
+                    print(f"   Calculated end date: {calc_end}", file=sys.stderr)
         
         # Determine target subsidiary for consolidation
         # If subsidiary filter is applied, consolidate to that subsidiary (for Consolidated view)
