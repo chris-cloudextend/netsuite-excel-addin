@@ -1220,7 +1220,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.25.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.26.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1235,7 +1235,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.25.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.26.0</div>
         </div>
 
         <div class="content">
@@ -1844,6 +1844,27 @@
                 const allBalances = refreshData.balances || {};
                 
                 console.log(`Guide Me: Loaded ${Object.keys(allBalances).length} accounts from full_year_refresh`);
+                
+                // CRITICAL: Populate the frontend cache so formulas can use the data!
+                // This prevents #BUSY from appearing and makes formulas resolve instantly
+                updateProgress(42, '💾 Caching Data', 'Storing data for instant formula resolution...');
+                
+                try {
+                    // Save to localStorage (shared with functions.js)
+                    const STORAGE_KEY = 'netsuite_balance_cache';
+                    const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(allBalances));
+                    localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
+                    console.log('Guide Me: Saved to localStorage for formula cache');
+                    
+                    // Also populate in-memory cache via Shared Runtime (if available)
+                    if (typeof window.setFullYearCache === 'function') {
+                        window.setFullYearCache(allBalances);
+                        console.log('Guide Me: Populated in-memory cache via Shared Runtime');
+                    }
+                } catch (cacheError) {
+                    console.warn('Guide Me: Cache population warning:', cacheError.message);
+                }
                 
                 // Step 2: Filter to accounts with actual data (at least one non-zero month)
                 updateProgress(45, '🔍 Step 2 of 4: Analyzing Data', 'Filtering accounts with zero balances...');
