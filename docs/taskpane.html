@@ -1225,7 +1225,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.32.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.33.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1240,7 +1240,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.32.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.33.0</div>
         </div>
 
         <div class="content">
@@ -1901,13 +1901,27 @@
                 // This prevents #BUSY from appearing and makes formulas resolve instantly
                 updateProgress(42, '💾 Caching Data', 'Storing data for instant formula resolution...');
                 
+                // IMPORTANT: Fill in $0 for ALL 12 months for each account
+                // This prevents #BUSY for months with no transactions (they should show $0 instantly)
+                const allMonthNames = monthNames.map(m => `${m} ${currentYear}`);
+                let filledCount = 0;
+                for (const acctNum in allBalances) {
+                    for (const monthName of allMonthNames) {
+                        if (allBalances[acctNum][monthName] === undefined) {
+                            allBalances[acctNum][monthName] = 0;
+                            filledCount++;
+                        }
+                    }
+                }
+                console.log(`Guide Me: Filled ${filledCount} missing month/account combinations with $0`);
+                
                 try {
                     // Save to localStorage (shared with functions.js)
                     const STORAGE_KEY = 'netsuite_balance_cache';
                     const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(allBalances));
                     localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
-                    console.log('Guide Me: Saved balances to localStorage');
+                    console.log('Guide Me: Saved balances to localStorage (including $0 for missing months)');
                     
                     // Save account types to localStorage for persistence
                     localStorage.setItem('netsuite_type_cache', JSON.stringify(accountTypes));
