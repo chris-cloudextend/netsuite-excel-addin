@@ -1293,6 +1293,38 @@ def batch_full_year_refresh():
             print(f"⚠️  Accounts with < 12 periods: {len(incomplete_accounts)}")
             for acct, count in list(incomplete_accounts.items())[:10]:
                 print(f"   Account {acct}: {count} periods, data: {list(balances[acct].keys())}")
+                
+            # DEEP DEBUG: Check if account 4270 is in the raw query results
+            # This helps identify if it's a query issue vs processing issue
+            print(f"\n🔍 DEBUG: Checking raw query for account 4270...")
+            debug_query = f"""
+                SELECT 
+                    a.acctnumber, 
+                    TO_CHAR(ap.startdate,'YYYY-MM') AS month,
+                    COUNT(*) as transaction_count
+                FROM TransactionAccountingLine tal
+                JOIN Transaction t ON t.id = tal.transaction
+                JOIN Account a ON a.id = tal.account
+                JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                WHERE t.posting = 'T'
+                    AND tal.posting = 'T'
+                    AND tal.accountingbook = 1
+                    AND EXTRACT(YEAR FROM ap.startdate) = {fiscal_year}
+                    AND a.acctnumber = '4270'
+                    AND ap.isyear = 'F' AND ap.isquarter = 'F'
+                GROUP BY a.acctnumber, ap.startdate
+                ORDER BY ap.startdate
+            """
+            try:
+                debug_result = query_netsuite(debug_query)
+                if isinstance(debug_result, list):
+                    print(f"   Raw data for 4270: {len(debug_result)} periods")
+                    for row in debug_result:
+                        print(f"      {row.get('month')}: {row.get('transaction_count')} transactions")
+                else:
+                    print(f"   Debug query error: {debug_result}")
+            except Exception as e:
+                print(f"   Debug query exception: {e}")
         
         # CRITICAL: Cache all results in backend for fast lookups
         # This allows individual formula requests to be instant after full refresh
