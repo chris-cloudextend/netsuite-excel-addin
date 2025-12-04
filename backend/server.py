@@ -1071,12 +1071,13 @@ def build_full_year_pl_query(fiscal_year, target_sub, filters):
     )
     SELECT
       a.acctnumber AS account_number,
+      a.accttype AS account_type,
       TO_CHAR(ap.startdate,'YYYY-MM') AS month,
       SUM(b.cons_amt) AS amount
     FROM base b
     JOIN AccountingPeriod ap ON ap.id = b.period_id
     JOIN Account a ON a.id = b.account_id
-    GROUP BY a.acctnumber, ap.startdate
+    GROUP BY a.acctnumber, a.accttype, ap.startdate
     ORDER BY a.acctnumber, ap.startdate
     """
     
@@ -1261,9 +1262,13 @@ def batch_full_year_refresh():
         print(f"✅ Received {len(items)} rows")
         
         # Transform results to nested dict: { account: { period: value } }
+        # Also track account types for frontend filtering
         balances = {}
+        account_types = {}  # { account_number: "Income" | "Expense" | etc. }
+        
         for row in items:
             account = row.get('account_number')
+            acct_type = row.get('account_type', '')
             month_str = row.get('month')  # 'YYYY-MM' format
             amount = float(row.get('amount', 0))
             
@@ -1272,9 +1277,10 @@ def batch_full_year_refresh():
             
             if account not in balances:
                 balances[account] = {}
+                account_types[account] = acct_type
             balances[account][period_name] = amount
         
-        print(f"📊 Returning {len(balances)} accounts")
+        print(f"📊 Returning {len(balances)} accounts (P&L)")
         
         # CRITICAL: Cache all results in backend for fast lookups
         # This allows individual formula requests to be instant after full refresh
@@ -1328,11 +1334,13 @@ def batch_full_year_refresh():
             
             for row in bs_items:
                 account = row.get('account_number')
+                acct_type = row.get('account_type', '')
                 if not account:
                     continue
                 
                 if account not in balances:
                     balances[account] = {}
+                    account_types[account] = acct_type  # Track BS account types too
                     bs_account_count += 1
                 
                 # Extract month columns (format: Jan_2024, Feb_2024, etc.)
@@ -1369,7 +1377,8 @@ def batch_full_year_refresh():
         print(f"{'='*80}\n")
         
         return jsonify({
-            'balances': balances, 
+            'balances': balances,
+            'account_types': account_types,  # { account_number: "Income" | "Expense" | etc. }
             'query_time': total_elapsed, 
             'cached_count': cached_count,
             'pl_time': elapsed,

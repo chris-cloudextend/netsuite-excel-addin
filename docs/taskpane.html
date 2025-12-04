@@ -1220,7 +1220,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.26.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.27.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1235,7 +1235,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.26.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.27.0</div>
         </div>
 
         <div class="content">
@@ -1755,9 +1755,9 @@
             overlay.id = 'guideMeOverlay';
             overlay.innerHTML = `
                 <div class="loading-spinner"></div>
-                <h2>Building Your Financial Report</h2>
+                <h2>Building Your Sample Report</h2>
                 <div class="loading-subtitle">
-                    ⏱️ First run takes 30-60 seconds to load and cache data
+                    ⏱️ First run takes up to 2 minutes to load and cache data
                 </div>
                 
                 <div class="progress-container">
@@ -1842,8 +1842,10 @@
                 
                 const refreshData = await refreshResponse.json();
                 const allBalances = refreshData.balances || {};
+                const accountTypes = refreshData.account_types || {}; // { acctNum: "Income" | "Expense" | etc. }
                 
                 console.log(`Guide Me: Loaded ${Object.keys(allBalances).length} accounts from full_year_refresh`);
+                console.log(`Guide Me: Account types received for ${Object.keys(accountTypes).length} accounts`);
                 
                 // CRITICAL: Populate the frontend cache so formulas can use the data!
                 // This prevents #BUSY from appearing and makes formulas resolve instantly
@@ -1867,32 +1869,64 @@
                 }
                 
                 // Step 2: Filter to accounts with actual data (at least one non-zero month)
-                updateProgress(45, '🔍 Step 2 of 4: Analyzing Data', 'Filtering accounts with zero balances...');
+                // PRIORITY: Income accounts first, then Expense accounts
+                updateProgress(45, '🔍 Step 2 of 4: Analyzing Data', 'Filtering accounts by type and data...');
                 
-                const accountsWithData = [];
+                const incomeAccounts = [];
+                const expenseAccounts = [];
+                const otherAccounts = [];
+                
                 for (const acctNum in allBalances) {
                     const monthData = allBalances[acctNum];
                     const hasData = Object.values(monthData).some(val => val !== 0 && val !== null && val !== undefined);
+                    
                     if (hasData) {
                         const monthValues = monthNames.map(m => monthData[`${m} ${currentYear}`] || 0);
-                        accountsWithData.push({
+                        const acctInfo = {
                             number: acctNum,
+                            type: accountTypes[acctNum] || 'Unknown',
                             monthValues: monthValues,
                             total: monthValues.reduce((a, b) => a + b, 0)
-                        });
+                        };
+                        
+                        // Categorize by account type
+                        const acctType = (accountTypes[acctNum] || '').toLowerCase();
+                        if (acctType === 'income' || acctType === 'othincome') {
+                            incomeAccounts.push(acctInfo);
+                        } else if (acctType === 'expense' || acctType === 'othexpense' || acctType === 'cogs' || acctType === 'cost of goods sold') {
+                            expenseAccounts.push(acctInfo);
+                        } else {
+                            otherAccounts.push(acctInfo);  // BS accounts, etc.
+                        }
                     }
                 }
                 
-                updateProgress(55, '🔍 Step 2 of 4: Analyzing Data', `Found ${accountsWithData.length} accounts with transactions`);
+                console.log(`Guide Me: Found ${incomeAccounts.length} Income, ${expenseAccounts.length} Expense, ${otherAccounts.length} Other accounts`);
+                updateProgress(50, '🔍 Step 2 of 4: Analyzing Data', `Found ${incomeAccounts.length} income accounts`);
                 
-                console.log(`Guide Me: Found ${accountsWithData.length} accounts with data`);
+                // Build final list: Income first (up to 35), then Expense to fill remaining
+                let allAccounts = [];
                 
-                if (accountsWithData.length === 0) {
-                    throw new Error('No accounts with transaction data found for ' + currentYear);
+                // Add Income accounts first (up to 35)
+                allAccounts = allAccounts.concat(incomeAccounts.slice(0, 35));
+                
+                // If we need more, add Expense accounts
+                const remaining = 35 - allAccounts.length;
+                if (remaining > 0) {
+                    allAccounts = allAccounts.concat(expenseAccounts.slice(0, remaining));
+                    console.log(`Guide Me: Added ${Math.min(remaining, expenseAccounts.length)} Expense accounts to fill to 35`);
                 }
                 
-                // Take first 35 accounts (25 with formulas, 10 more with just account numbers)
-                const allAccounts = accountsWithData.slice(0, 35);
+                updateProgress(55, '🔍 Step 2 of 4: Analyzing Data', `Selected ${allAccounts.length} accounts (Income + Expense)`);
+                
+                console.log(`Guide Me: Final selection: ${allAccounts.length} accounts`);
+                
+                if (allAccounts.length === 0) {
+                    throw new Error('No Income or Expense accounts with transaction data found for ' + currentYear);
+                }
+                
+                // Limit to 35 accounts (25 with formulas, 10 more with just account numbers)
+                allAccounts = allAccounts.slice(0, 35);
                 const formulaRows = 25; // Only first 25 get formulas
                 
                 // Step 3: Build the Excel template
