@@ -535,6 +535,27 @@ window.setFullYearCache = function(balances) {
     return true;
 };
 
+// Function to populate the account TYPE cache from taskpane
+// This ensures NS.GLACCTTYPE formulas resolve instantly from cache
+window.setAccountTypeCache = function(accountTypes) {
+    console.log('========================================');
+    console.log('📦 SETTING ACCOUNT TYPE CACHE IN FUNCTIONS.JS');
+    console.log(`   Account types: ${Object.keys(accountTypes).length}`);
+    console.log('========================================');
+    
+    // Clear existing type cache to prevent stale data
+    cache.type.clear();
+    
+    // Populate type cache with fresh data
+    for (const acctNum in accountTypes) {
+        const cacheKey = getCacheKey('type', { account: acctNum });
+        cache.type.set(cacheKey, accountTypes[acctNum]);
+    }
+    
+    console.log(`   Type cache now has ${cache.type.size} entries`);
+    return true;
+};
+
 // Check localStorage for cached data - THIS WORKS!
 // Structure: { "4220": { "Apr 2024": 123.45, ... }, ... }
 function checkLocalStorageCache(account, period) {
@@ -861,12 +882,29 @@ async function GLACCTTYPE(accountNumber, invocation) {
     
     const cacheKey = getCacheKey('type', { account });
     
-    // Check cache FIRST
+    // Check in-memory cache FIRST
     if (!cache.type) cache.type = new Map();
     if (cache.type.has(cacheKey)) {
         cacheStats.hits++;
         console.log(`⚡ CACHE HIT [type]: ${account}`);
         return cache.type.get(cacheKey);
+    }
+    
+    // Check localStorage type cache as fallback
+    try {
+        const typeCache = localStorage.getItem('netsuite_type_cache');
+        if (typeCache) {
+            const types = JSON.parse(typeCache);
+            if (types[account]) {
+                // Populate in-memory cache too
+                cache.type.set(cacheKey, types[account]);
+                cacheStats.hits++;
+                console.log(`⚡ LOCALSTORAGE HIT [type]: ${account} → ${types[account]}`);
+                return types[account];
+            }
+        }
+    } catch (e) {
+        console.warn('localStorage type cache read error:', e.message);
     }
     
     cacheStats.misses++;

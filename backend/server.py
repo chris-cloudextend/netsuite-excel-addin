@@ -1266,6 +1266,9 @@ def batch_full_year_refresh():
         balances = {}
         account_types = {}  # { account_number: "Income" | "Expense" | etc. }
         
+        # Debug: Track period counts per account
+        period_counts = {}
+        
         for row in items:
             account = row.get('account_number')
             acct_type = row.get('account_type', '')
@@ -1278,9 +1281,18 @@ def batch_full_year_refresh():
             if account not in balances:
                 balances[account] = {}
                 account_types[account] = acct_type
+                period_counts[account] = 0
             balances[account][period_name] = amount
+            period_counts[account] += 1
         
         print(f"📊 Returning {len(balances)} accounts (P&L)")
+        
+        # Debug: Show accounts with less than 12 periods
+        incomplete_accounts = {k: v for k, v in period_counts.items() if v < 12}
+        if incomplete_accounts:
+            print(f"⚠️  Accounts with < 12 periods: {len(incomplete_accounts)}")
+            for acct, count in list(incomplete_accounts.items())[:10]:
+                print(f"   Account {acct}: {count} periods, data: {list(balances[acct].keys())}")
         
         # CRITICAL: Cache all results in backend for fast lookups
         # This allows individual formula requests to be instant after full refresh
