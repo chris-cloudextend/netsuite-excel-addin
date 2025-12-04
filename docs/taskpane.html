@@ -410,49 +410,107 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(9, 35, 92, 0.92);
+            background: rgba(9, 35, 92, 0.95);
             z-index: 2000;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
+            padding-top: 60px;
             color: white;
-            padding: 30px;
+            padding-left: 30px;
+            padding-right: 30px;
             text-align: center;
             animation: fadeIn 0.3s ease;
         }
 
         .guide-me-overlay h2 {
-            font-size: 24px;
-            margin-bottom: 20px;
+            font-size: 22px;
+            margin-bottom: 16px;
         }
 
         .guide-me-overlay .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(255,255,255,0.2);
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.2);
             border-top-color: var(--anenome);
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }
 
-        .guide-me-overlay .loading-message {
-            font-size: 16px;
-            line-height: 1.6;
+        .guide-me-overlay .loading-subtitle {
+            font-size: 13px;
+            opacity: 0.7;
+            margin-bottom: 24px;
+            max-width: 300px;
+        }
+
+        .guide-me-overlay .progress-container {
+            width: 100%;
             max-width: 320px;
-            opacity: 0.9;
+            margin-bottom: 20px;
+        }
+
+        .guide-me-overlay .progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .guide-me-overlay .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--anenome), #06d6a0);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+
+        .guide-me-overlay .progress-text {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 8px;
         }
 
         .guide-me-overlay .loading-step {
             font-size: 14px;
-            margin-top: 20px;
+            margin-top: 16px;
             color: var(--anenome);
             font-weight: 600;
+            min-height: 40px;
+        }
+
+        .guide-me-overlay .loading-step-desc {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 6px;
+            max-width: 280px;
+        }
+
+        .guide-me-overlay .tips-section {
+            margin-top: auto;
+            margin-bottom: 40px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            width: 100%;
+            max-width: 320px;
+        }
+
+        .guide-me-overlay .tips-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.5;
+            margin-bottom: 10px;
         }
 
         .guide-me-overlay .loading-tip {
+            font-size: 12px;
+            color: var(--anenome);
             transition: opacity 0.3s ease;
+            min-height: 36px;
         }
 
         /* Settings Modal */
@@ -1161,7 +1219,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.23.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.24.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1176,7 +1234,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.23.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.24.0</div>
         </div>
 
         <div class="content">
@@ -1675,46 +1733,50 @@
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             
-            // Excel tips to show during loading
+            // Excel tips to show during loading (shorter for compact display)
             const excelTips = [
-                '💡 =SUMIF(range, criteria, sum_range) - Sum values that meet a condition',
-                '💡 =VLOOKUP(value, table, col, FALSE) - Look up values in a table',
-                '💡 =INDEX(array, MATCH(value, range, 0)) - More flexible than VLOOKUP',
-                '💡 =IFERROR(formula, "fallback") - Handle errors gracefully',
-                '💡 =SUMPRODUCT((A:A="X")*(B:B>100)) - Count with multiple conditions',
-                '💡 =EOMONTH(date, 0) - Get the last day of a month',
-                '💡 =TEXT(date, "mmmm yyyy") - Format dates as text',
-                '💡 =ROUND(number, 0) - Round to nearest whole number',
-                '💡 =ABS(number) - Get absolute value (remove negatives)',
-                '💡 =IF(AND(A1>0, B1>0), "Yes", "No") - Multiple conditions',
-                '💡 Ctrl+Shift+L - Toggle filters on your data',
-                '💡 Alt+= - Auto-sum selected cells',
-                '💡 Ctrl+D - Fill down from cell above',
-                '💡 F4 - Toggle absolute references ($A$1)',
-                '💡 Ctrl+` - Show all formulas in cells'
+                '=SUMIF(range, criteria, sum_range)',
+                '=VLOOKUP(value, table, col, FALSE)',
+                '=INDEX(array, MATCH(value, range, 0))',
+                '=IFERROR(formula, "fallback")',
+                '=SUMPRODUCT((A:A="X")*(B:B>100))',
+                '=EOMONTH(date, 0)',
+                '=TEXT(date, "mmmm yyyy")',
+                'Ctrl+D → Fill down',
+                'F4 → Toggle $A$1',
+                'Alt+= → Auto-sum'
             ];
             let tipIndex = 0;
             
-            // Create and show loading overlay
+            // Create and show loading overlay with progress bar
             const overlay = document.createElement('div');
             overlay.className = 'guide-me-overlay';
             overlay.id = 'guideMeOverlay';
             overlay.innerHTML = `
                 <div class="loading-spinner"></div>
                 <h2>Building Your Financial Report</h2>
-                <div class="loading-message">
-                    We're connecting to NetSuite to find accounts with actual transaction data. 
-                    This ensures your report only includes meaningful accounts—not empty placeholders.
-                    <br><br>
-                    <em style="opacity: 0.8;">⏱️ The first run typically takes 30-60 seconds as we load and cache all your data. 
-                    Future operations will be much faster!</em>
+                <div class="loading-subtitle">
+                    ⏱️ First run takes 30-60 seconds to load and cache data
                 </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="guideMeProgressBar"></div>
+                    </div>
+                    <div class="progress-text" id="guideMeProgressText">0% complete</div>
+                </div>
+                
                 <div class="loading-step" id="guideMeStep">Connecting to NetSuite...</div>
-                <div class="loading-tip" id="guideMeTip" style="margin-top: 20px; font-size: 13px; color: var(--anenome); max-width: 350px; text-align: center;">${excelTips[0]}</div>
+                <div class="loading-step-desc" id="guideMeStepDesc">Establishing secure connection</div>
+                
+                <div class="tips-section">
+                    <div class="tips-label">Excel Pro Tips</div>
+                    <div class="loading-tip" id="guideMeTip">${excelTips[0]}</div>
+                </div>
             `;
             document.body.appendChild(overlay);
             
-            // Rotate tips every 3 seconds
+            // Rotate tips every 2.5 seconds
             const tipInterval = setInterval(() => {
                 tipIndex = (tipIndex + 1) % excelTips.length;
                 const tipEl = document.getElementById('guideMeTip');
@@ -1723,20 +1785,26 @@
                     setTimeout(() => {
                         tipEl.textContent = excelTips[tipIndex];
                         tipEl.style.opacity = '1';
-                    }, 300);
+                    }, 200);
                 }
-            }, 3000);
+            }, 2500);
             
-            const updateStep = (text) => {
+            const updateProgress = (percent, step, desc) => {
+                const bar = document.getElementById('guideMeProgressBar');
+                const text = document.getElementById('guideMeProgressText');
                 const stepEl = document.getElementById('guideMeStep');
-                if (stepEl) stepEl.textContent = text;
+                const descEl = document.getElementById('guideMeStepDesc');
+                if (bar) bar.style.width = percent + '%';
+                if (text) text.textContent = percent + '% complete';
+                if (stepEl) stepEl.textContent = step;
+                if (descEl) descEl.textContent = desc;
             };
             
             btn.disabled = true;
             
             try {
                 // Step 1: Fetch ALL account data via full_year_refresh (preloads cache!)
-                updateStep('📥 Loading all account balances for ' + currentYear + '...');
+                updateProgress(5, '📥 Step 1 of 4: Loading Data', 'Running SuiteQL query against NetSuite...');
                 
                 const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                     method: 'POST',
@@ -1750,6 +1818,8 @@
                     })
                 });
                 
+                updateProgress(30, '📥 Step 1 of 4: Loading Data', 'Receiving data from NetSuite...');
+                
                 if (!refreshResponse.ok) {
                     throw new Error(`Failed to load data: ${refreshResponse.status}`);
                 }
@@ -1760,7 +1830,7 @@
                 console.log(`Guide Me: Loaded ${Object.keys(allBalances).length} accounts from full_year_refresh`);
                 
                 // Step 2: Filter to accounts with actual data (at least one non-zero month)
-                updateStep('🔍 Finding accounts with transaction data...');
+                updateProgress(45, '🔍 Step 2 of 4: Analyzing Data', 'Filtering accounts with zero balances...');
                 
                 const accountsWithData = [];
                 for (const acctNum in allBalances) {
@@ -1776,6 +1846,8 @@
                     }
                 }
                 
+                updateProgress(55, '🔍 Step 2 of 4: Analyzing Data', `Found ${accountsWithData.length} accounts with transactions`);
+                
                 console.log(`Guide Me: Found ${accountsWithData.length} accounts with data`);
                 
                 if (accountsWithData.length === 0) {
@@ -1787,7 +1859,7 @@
                 const formulaRows = 25; // Only first 25 get formulas
                 
                 // Step 3: Build the Excel template
-                updateStep('📊 Building your report with formulas...');
+                updateProgress(60, '📊 Step 3 of 4: Building Template', 'Creating headers and formatting...');
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -1831,6 +1903,8 @@
                     
                     await context.sync();
                     
+                    updateProgress(70, '📝 Step 4 of 4: Adding Formulas', `Writing ${allAccounts.length} accounts...`);
+                    
                     // Write ALL 35 rows of account numbers, but only first 25 get formulas
                     for (let i = 0; i < allAccounts.length; i++) {
                         const acct = allAccounts[i];
@@ -1867,21 +1941,42 @@
                             const rowRange = sheet.getRange(`A${rowNum}:P${rowNum}`);
                             rowRange.format.fill.color = "#F5F7FA";
                         }
+                        
+                        // Update progress every 5 rows
+                        if (i % 5 === 0) {
+                            updateProgress(70 + Math.floor((i / allAccounts.length) * 20), 
+                                '📝 Step 4 of 4: Adding Formulas', 
+                                `Processing row ${i + 1} of ${allAccounts.length}...`);
+                        }
                     }
                     
                     await context.sync();
+                    
+                    updateProgress(92, '🎨 Finishing Up', 'Applying formatting...');
                     
                     // Format number columns as CURRENCY with no decimals
                     const numRange = sheet.getRange(`D2:P${allAccounts.length + 1}`);
                     numRange.numberFormat = '"$"#,##0';
                     
-                    // Auto-fit ALL columns
+                    // Add LEFT BORDER to YTD Total column (P) to separate it visually
+                    const totalColumn = sheet.getRange(`P1:P${allAccounts.length + 1}`);
+                    totalColumn.format.borders.getItem('EdgeLeft').style = 'Continuous';
+                    totalColumn.format.borders.getItem('EdgeLeft').weight = 'Medium';
+                    totalColumn.format.borders.getItem('EdgeLeft').color = '#09235C';
+                    
+                    await context.sync();
+                    
+                    updateProgress(96, '🎨 Finishing Up', 'Auto-fitting columns...');
+                    
+                    // Auto-fit ALL columns AFTER all data is written
                     sheet.getRange("A:P").format.autofitColumns();
                     
                     // Freeze header row
                     sheet.freezePanes.freezeRows(1);
                     
                     await context.sync();
+                    
+                    updateProgress(100, '✅ Complete!', 'Your report is ready!');
                 });
                 
                 // Stop tip rotation
