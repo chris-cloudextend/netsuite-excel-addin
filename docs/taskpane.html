@@ -1220,7 +1220,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.27.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.28.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1235,7 +1235,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.27.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.28.0</div>
         </div>
 
         <div class="content">
@@ -1734,18 +1734,61 @@
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             
-            // Excel tips to show during loading (shorter for compact display)
+            // CRITICAL: Clear all caches to prevent stale account type data
+            // This ensures NS.GLACCTTYPE formulas fetch fresh data from NetSuite
+            try {
+                if (typeof window.clearAllCaches === 'function') {
+                    window.clearAllCaches();
+                    console.log('Guide Me: Cleared all frontend caches');
+                }
+                // Also clear localStorage cache
+                localStorage.removeItem('netsuite_balance_cache');
+                localStorage.removeItem('netsuite_balance_cache_timestamp');
+                console.log('Guide Me: Cleared localStorage cache');
+            } catch (e) {
+                console.warn('Guide Me: Cache clear warning:', e.message);
+            }
+            
+            // Excel tips to show during loading - finance-focused formulas and shortcuts
             const excelTips = [
-                '=SUMIF(range, criteria, sum_range)',
-                '=VLOOKUP(value, table, col, FALSE)',
-                '=INDEX(array, MATCH(value, range, 0))',
-                '=IFERROR(formula, "fallback")',
-                '=SUMPRODUCT((A:A="X")*(B:B>100))',
-                '=EOMONTH(date, 0)',
-                '=TEXT(date, "mmmm yyyy")',
-                'Ctrl+D → Fill down',
-                'F4 → Toggle $A$1',
-                'Alt+= → Auto-sum'
+                // Financial formulas
+                '=SUMIF(range, criteria, sum_range) → Sum by condition',
+                '=SUMIFS(sum_range, range1, criteria1, range2, criteria2)',
+                '=VLOOKUP(value, table, col, FALSE) → Exact match lookup',
+                '=INDEX(array, MATCH(value, range, 0)) → Flexible lookup',
+                '=IFERROR(formula, 0) → Handle #DIV/0! errors',
+                '=SUMPRODUCT((A:A="Revenue")*(B:B)) → Sum with multiple criteria',
+                '=EOMONTH(date, 0) → Last day of month',
+                '=EOMONTH(date, -1)+1 → First day of month',
+                '=TEXT(date, "mmmm yyyy") → Format dates',
+                '=ROUND(value, -3) → Round to nearest thousand',
+                '=ABS(value) → Absolute value for variances',
+                '=IF(actual>budget, "Over", "Under") → Budget variance',
+                '=YEAR(date) & "-" & TEXT(MONTH(date),"00")',
+                '=(current-prior)/ABS(prior) → % change formula',
+                '=AVERAGEIF(range, ">0") → Average positive values',
+                '=COUNTIF(range, "<0") → Count negative variances',
+                '=MAX(range)-MIN(range) → Range/spread analysis',
+                '=RANK(value, range, 0) → Rank accounts by size',
+                // Keyboard shortcuts
+                'Ctrl+D → Fill down from cell above',
+                'Ctrl+R → Fill right from cell left',
+                'Ctrl+Shift+L → Toggle filters',
+                'Ctrl+` → Show/hide formulas',
+                'F4 → Toggle absolute refs ($A$1)',
+                'Alt+= → Auto-sum selected range',
+                'Ctrl+; → Insert today\'s date',
+                'Ctrl+Shift+# → Date format',
+                'Ctrl+Shift+$ → Currency format',
+                'Ctrl+Shift+% → Percentage format',
+                'F2 → Edit cell directly',
+                'Ctrl+[ → Jump to precedent cell',
+                // Pro tips
+                'Name ranges for clearer formulas',
+                'Use Tables (Ctrl+T) for dynamic ranges',
+                'Conditional formatting for variances',
+                'Data Validation for dropdown lists',
+                'Pivot Tables for quick analysis'
             ];
             let tipIndex = 0;
             
@@ -2038,9 +2081,6 @@
                     await context.sync();
                     
                     updateProgress(96, '🎨 Finishing Up', 'Auto-fitting columns...');
-                    
-                    // Auto-fit ALL columns AFTER all data is written
-                    sheet.getRange("A:P").format.autofitColumns();
                     
                     // Freeze header row
                     sheet.freezePanes.freezeRows(1);
