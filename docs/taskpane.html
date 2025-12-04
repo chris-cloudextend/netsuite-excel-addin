@@ -403,6 +403,162 @@
             display: none;
         }
 
+        /* Pre-load Sheet Data Card */
+        .preload-card {
+            background: linear-gradient(135deg, #1a5a3e 0%, #2d8a5f 100%);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 16px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .preload-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .preload-card h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .preload-card p {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .preload-card .instruction-box {
+            background: rgba(255,255,255,0.15);
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .preload-card .instruction-box strong {
+            color: #7dffb3;
+        }
+
+        .preload-btn {
+            background: #7dffb3;
+            color: #1a5a3e;
+            border: none;
+            padding: 14px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .preload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(125, 255, 179, 0.4);
+        }
+
+        .preload-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .preload-dismiss {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .preload-dismiss:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .preload-hidden {
+            display: none;
+        }
+
+        /* Pre-load Loading Overlay */
+        .preload-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #1a5a3e 0%, #2d8a5f 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+            text-align: center;
+            padding: 30px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .preload-overlay .history-section {
+            margin-top: 30px;
+            padding: 20px 24px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            max-width: 340px;
+            text-align: center;
+            min-height: 100px;
+        }
+
+        .preload-overlay .history-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.6;
+            margin-bottom: 8px;
+        }
+
+        .preload-overlay .history-year {
+            font-size: 24px;
+            font-weight: 700;
+            color: #7dffb3;
+            margin-bottom: 6px;
+        }
+
+        .preload-overlay .history-fact {
+            font-size: 14px;
+            color: #c8ffdb;
+            transition: opacity 0.3s ease;
+            line-height: 1.5;
+        }
+
         /* Guide Me Loading Overlay */
         .guide-me-overlay {
             position: fixed;
@@ -1225,7 +1381,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.38.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.39.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1240,7 +1396,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.38.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.39.0</div>
         </div>
 
         <div class="content">
@@ -1255,6 +1411,23 @@
                     <span id="guideMeBtnText">Build My Starter Report</span>
                 </button>
                 <div class="guide-me-progress" id="guideMeProgress" style="display: none;"></div>
+            </div>
+
+            <!-- PRE-LOAD SHEET DATA -->
+            <div class="preload-card" id="preloadCard">
+                <button class="preload-dismiss" onclick="dismissPreload()" title="Dismiss">×</button>
+                <h3>⚡ Pre-load Sheet Data</h3>
+                <p>Speed up your workflow! Pre-cache all data for your date range so formulas resolve instantly.</p>
+                <div class="instruction-box">
+                    <strong>How to use:</strong><br>
+                    1. Select the cells containing your date headers (e.g., D1:P1)<br>
+                    2. Click the button below<br>
+                    3. We'll detect the years and pre-load all account data
+                </div>
+                <button class="preload-btn" id="preloadBtn" onclick="runPreloadSheet()">
+                    <span id="preloadBtnText">📊 Pre-load Selected Dates</span>
+                </button>
+                <div class="guide-me-progress" id="preloadProgress" style="display: none;"></div>
             </div>
 
             <!-- GETTING STARTED HELP SECTION -->
@@ -2166,6 +2339,331 @@
                 clearInterval(tipInterval);
                 if (document.getElementById('guideMeOverlay')) {
                     document.getElementById('guideMeOverlay').remove();
+                }
+                progress.style.display = 'block';
+                progress.textContent = `❌ Error: ${error.message}`;
+                btnText.textContent = 'Try Again';
+                btn.disabled = false;
+                btn.style.background = '';
+            }
+        }
+
+        // ================================================================
+        // PRE-LOAD SHEET DATA - Cache data for selected date range
+        // ================================================================
+
+        function dismissPreload() {
+            document.getElementById('preloadCard').classList.add('preload-hidden');
+            localStorage.setItem('preloadDismissed', 'true');
+        }
+
+        function showPreload() {
+            if (localStorage.getItem('preloadDismissed') !== 'true') {
+                document.getElementById('preloadCard').classList.remove('preload-hidden');
+            }
+        }
+
+        async function runPreloadSheet() {
+            const btn = document.getElementById('preloadBtn');
+            const btnText = document.getElementById('preloadBtnText');
+            const progress = document.getElementById('preloadProgress');
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+            // Excel History Facts - shown during loading
+            const excelHistory = [
+                { year: '1985', fact: 'Excel 1.0 was released for Mac — before Windows even existed! Microsoft saw the Mac as the future of computing.' },
+                { year: '1987', fact: 'Excel came to Windows, two years after Mac. There was no Windows Excel 1.0 — it started at version 2.0!' },
+                { year: '1988', fact: 'Excel 2.0 introduced the toolbar, revolutionizing how users interacted with spreadsheet commands.' },
+                { year: '1990', fact: 'Excel 3.0 added 3D charts, drawing tools, and the ability to link worksheets — a game-changer for finance teams.' },
+                { year: '1992', fact: 'Excel 4.0 introduced XLM macros, the predecessor to VBA. Some companies still use them today!' },
+                { year: '1993', fact: 'Excel 5.0 brought VBA (Visual Basic for Applications), transforming Excel from a spreadsheet into a programming platform.' },
+                { year: '1995', fact: 'Excel 95 was the first 32-bit version, bundled with Office 95 for Windows 95 — the birth of modern Office.' },
+                { year: '1997', fact: 'Excel 97 could handle 65,536 rows — 4x more than before. Finance teams rejoiced!' },
+                { year: '1998-2001', fact: 'Excel for Mac was discontinued for 3 years! Mac users had to use Virtual PC to run Windows Excel.' },
+                { year: '2003', fact: 'Excel 2003 introduced XML data import and improved list functionality — early steps toward Power Query.' },
+                { year: '2007', fact: 'Excel 2007 expanded to 1,048,576 rows (1 million+) and introduced the ribbon interface that we still use today.' },
+                { year: '2010', fact: 'Excel Web App launched — the first time you could edit spreadsheets in a browser. Collaboration was born.' },
+                { year: '2013', fact: 'Excel 2013 added Flash Fill — automatic pattern recognition that feels like magic. Try it!' },
+                { year: '2016', fact: 'Power Query was integrated directly into Excel, making data transformation accessible to everyone.' },
+                { year: '2019', fact: 'XLOOKUP finally arrived! After 35+ years, VLOOKUP got a worthy successor with backwards lookup capability.' },
+                { year: '2020', fact: 'Dynamic arrays were introduced — formulas that automatically spill results into adjacent cells. Revolutionary!' },
+                { year: '2023', fact: 'Excel added Python support! You can now write Python code directly in cells alongside your formulas.' },
+                { year: 'Fun Fact', fact: 'The name "Excel" was originally trademarked by another company. Microsoft had to license it!' },
+                { year: 'Fun Fact', fact: 'The $ symbol for absolute references ($A$1) has been used since Lotus 1-2-3 in 1983.' },
+                { year: 'Fun Fact', fact: 'Excel can calculate faster than you think — it processes about 1 billion cells per second on modern hardware.' }
+            ];
+            let historyIndex = 0;
+
+            btn.disabled = true;
+            btnText.textContent = 'Reading selection...';
+
+            try {
+                // Step 1: Read selected range from Excel
+                let selectedDates = [];
+                let selectedYears = new Set();
+
+                await Excel.run(async (context) => {
+                    const range = context.workbook.getSelectedRange();
+                    range.load(['values', 'valueTypes']);
+                    await context.sync();
+
+                    const values = range.values;
+                    console.log('Pre-load: Selected range values:', values);
+
+                    // Parse dates from the selection
+                    for (const row of values) {
+                        for (const cell of row) {
+                            let dateValue = null;
+
+                            // Handle different date formats
+                            if (typeof cell === 'number' && cell > 0) {
+                                // Excel serial date number
+                                const excelEpoch = new Date(1899, 11, 30);
+                                dateValue = new Date(excelEpoch.getTime() + cell * 86400000);
+                            } else if (typeof cell === 'string') {
+                                // Try to parse string as date
+                                const parsed = new Date(cell);
+                                if (!isNaN(parsed.getTime())) {
+                                    dateValue = parsed;
+                                }
+                                // Also try "Mon YYYY" format
+                                const monthYearMatch = cell.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})$/i);
+                                if (monthYearMatch) {
+                                    const monthIndex = monthNames.findIndex(m => m.toLowerCase() === monthYearMatch[1].toLowerCase());
+                                    if (monthIndex !== -1) {
+                                        dateValue = new Date(parseInt(monthYearMatch[2]), monthIndex, 1);
+                                    }
+                                }
+                            } else if (cell instanceof Date) {
+                                dateValue = cell;
+                            }
+
+                            if (dateValue && !isNaN(dateValue.getTime())) {
+                                const year = dateValue.getFullYear();
+                                if (year >= 2000 && year <= 2100) { // Reasonable year range
+                                    selectedDates.push(dateValue);
+                                    selectedYears.add(year);
+                                }
+                            }
+                        }
+                    }
+                });
+
+                if (selectedYears.size === 0) {
+                    throw new Error('No valid dates found in selection. Please select cells containing dates (e.g., 1/1/2025 or "Jan 2025").');
+                }
+
+                const yearsArray = Array.from(selectedYears).sort();
+                console.log('Pre-load: Detected years:', yearsArray);
+
+                // Create and show loading overlay
+                const overlay = document.createElement('div');
+                overlay.className = 'preload-overlay';
+                overlay.id = 'preloadOverlay';
+                overlay.innerHTML = `
+                    <div class="loading-spinner"></div>
+                    <h2>Pre-loading Your Data</h2>
+                    <div class="loading-subtitle" style="max-width: 320px; margin-bottom: 24px;">
+                        ⏱️ This takes ${yearsArray.length > 1 ? '2-4 minutes' : '1-2 minutes'} but will make all your formulas resolve instantly!
+                    </div>
+                    
+                    <div class="progress-container" style="max-width: 320px; margin-bottom: 20px;">
+                        <div class="progress-bar-bg" style="background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden;">
+                            <div class="progress-bar-fill" id="preloadProgressBar" style="height: 8px; background: linear-gradient(90deg, #7dffb3, #4ade80); width: 0%;"></div>
+                        </div>
+                        <div class="progress-text" id="preloadProgressText" style="font-size: 12px; opacity: 0.7; margin-top: 8px;">0% complete</div>
+                    </div>
+                    
+                    <div class="loading-step" id="preloadStep" style="color: #7dffb3; font-weight: 600;">Preparing...</div>
+                    <div class="loading-step-desc" id="preloadStepDesc" style="font-size: 12px; opacity: 0.7; margin-top: 6px; max-width: 300px;">
+                        Loading ${yearsArray.join(' and ')} data for all accounts
+                    </div>
+                    
+                    <div style="background: rgba(255,255,255,0.1); border-radius: 10px; padding: 14px; margin-top: 24px; max-width: 320px; text-align: left;">
+                        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.6; margin-bottom: 4px;">💡 Why the wait?</div>
+                        <div style="font-size: 12px; line-height: 1.5; opacity: 0.85;">
+                            Balance Sheet accounts are calculated from the <strong>beginning of time</strong> — every transaction ever recorded affects the balance. This one-time load saves minutes later!
+                        </div>
+                    </div>
+                    
+                    <div class="history-section">
+                        <div class="history-label">📚 Excel History</div>
+                        <div class="history-year" id="preloadHistoryYear">${excelHistory[0].year}</div>
+                        <div class="history-fact" id="preloadHistoryFact">${excelHistory[0].fact}</div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+
+                // Rotate history facts every 4 seconds
+                const historyInterval = setInterval(() => {
+                    historyIndex = (historyIndex + 1) % excelHistory.length;
+                    const yearEl = document.getElementById('preloadHistoryYear');
+                    const factEl = document.getElementById('preloadHistoryFact');
+                    if (yearEl && factEl) {
+                        factEl.style.opacity = '0';
+                        setTimeout(() => {
+                            yearEl.textContent = excelHistory[historyIndex].year;
+                            factEl.textContent = excelHistory[historyIndex].fact;
+                            factEl.style.opacity = '1';
+                        }, 200);
+                    }
+                }, 4000);
+
+                const updateProgress = (percent, step, desc) => {
+                    const bar = document.getElementById('preloadProgressBar');
+                    const text = document.getElementById('preloadProgressText');
+                    const stepEl = document.getElementById('preloadStep');
+                    const descEl = document.getElementById('preloadStepDesc');
+                    if (bar) bar.style.width = percent + '%';
+                    if (text) text.textContent = percent + '% complete';
+                    if (stepEl) stepEl.textContent = step;
+                    if (descEl) descEl.textContent = desc;
+                };
+
+                // Step 2: Load data for each year
+                let allBalances = {};
+                let allTypes = {};
+                let allNames = {};
+                
+                for (let i = 0; i < yearsArray.length; i++) {
+                    const year = yearsArray[i];
+                    const basePercent = Math.floor((i / yearsArray.length) * 90);
+                    
+                    updateProgress(basePercent + 5, `📥 Loading ${year} Data`, `Fetching P&L and Balance Sheet accounts for ${year}...`);
+                    
+                    // Start artificial progress for this year
+                    let artificialProgress = basePercent + 5;
+                    const maxProgress = basePercent + Math.floor(90 / yearsArray.length);
+                    const progressInterval = setInterval(() => {
+                        if (artificialProgress < maxProgress - 5) {
+                            artificialProgress += 2;
+                            updateProgress(artificialProgress, `📥 Loading ${year} Data`, 
+                                `Querying NetSuite for all ${year} account balances...`);
+                        }
+                    }, 3000);
+
+                    try {
+                        const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                year: year,
+                                subsidiary: '',
+                                department: '',
+                                location: '',
+                                class: ''
+                            })
+                        });
+
+                        clearInterval(progressInterval);
+
+                        if (!response.ok) {
+                            throw new Error(`Failed to load ${year} data: ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        console.log(`Pre-load: Loaded ${Object.keys(data.balances || {}).length} accounts for ${year}`);
+
+                        // Merge data into combined objects
+                        const yearBalances = data.balances || {};
+                        const yearTypes = data.account_types || {};
+                        const yearNames = data.account_names || {};
+
+                        // Fill in $0 for all 12 months for each account in this year
+                        const allMonthNames = monthNames.map(m => `${m} ${year}`);
+                        for (const acctNum in yearBalances) {
+                            if (!allBalances[acctNum]) {
+                                allBalances[acctNum] = {};
+                            }
+                            for (const monthName of allMonthNames) {
+                                if (yearBalances[acctNum][monthName] !== undefined) {
+                                    allBalances[acctNum][monthName] = yearBalances[acctNum][monthName];
+                                } else {
+                                    allBalances[acctNum][monthName] = 0;
+                                }
+                            }
+                        }
+
+                        // Merge types and names
+                        Object.assign(allTypes, yearTypes);
+                        Object.assign(allNames, yearNames);
+
+                    } catch (yearError) {
+                        clearInterval(progressInterval);
+                        throw yearError;
+                    }
+                }
+
+                updateProgress(92, '💾 Caching Data', 'Storing data for instant formula resolution...');
+
+                // Save to localStorage
+                try {
+                    const existingBalances = JSON.parse(localStorage.getItem('netsuite_balance_cache') || '{}');
+                    const mergedBalances = { ...existingBalances };
+                    
+                    // Merge new balances with existing (overwrite same periods)
+                    for (const acctNum in allBalances) {
+                        if (!mergedBalances[acctNum]) {
+                            mergedBalances[acctNum] = {};
+                        }
+                        Object.assign(mergedBalances[acctNum], allBalances[acctNum]);
+                    }
+
+                    localStorage.setItem('netsuite_balance_cache', JSON.stringify(mergedBalances));
+                    localStorage.setItem('netsuite_balance_cache_timestamp', Date.now().toString());
+                    
+                    // Merge and save types
+                    const existingTypes = JSON.parse(localStorage.getItem('netsuite_type_cache') || '{}');
+                    localStorage.setItem('netsuite_type_cache', JSON.stringify({ ...existingTypes, ...allTypes }));
+                    
+                    // Merge and save names
+                    const existingNames = JSON.parse(localStorage.getItem('netsuite_name_cache') || '{}');
+                    localStorage.setItem('netsuite_name_cache', JSON.stringify({ ...existingNames, ...allNames }));
+
+                    console.log('Pre-load: Saved all data to localStorage');
+
+                    // Populate in-memory caches
+                    if (typeof window.setFullYearCache === 'function') {
+                        window.setFullYearCache(mergedBalances);
+                    }
+                    if (typeof window.setAccountTypeCache === 'function') {
+                        window.setAccountTypeCache({ ...existingTypes, ...allTypes });
+                    }
+                    if (typeof window.setAccountNameCache === 'function') {
+                        window.setAccountNameCache({ ...existingNames, ...allNames });
+                    }
+                } catch (cacheError) {
+                    console.warn('Pre-load: Cache save warning:', cacheError);
+                }
+
+                updateProgress(100, '✅ Complete!', 'All data cached and ready!');
+
+                // Clean up
+                clearInterval(historyInterval);
+                setTimeout(() => {
+                    overlay.remove();
+                    
+                    // Success message
+                    const accountCount = Object.keys(allBalances).length;
+                    const periodCount = yearsArray.length * 12;
+                    
+                    progress.style.display = 'block';
+                    progress.innerHTML = `✅ <strong>Pre-load complete!</strong><br><br>
+                        Cached <strong>${accountCount} accounts</strong> × <strong>${periodCount} periods</strong> (${yearsArray.join(', ')}).<br><br>
+                        <div style="background: rgba(125, 255, 179, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid #7dffb3;">
+                            💡 Now when you enter formulas or drag to fill, they'll resolve <strong>instantly</strong> from cache!
+                        </div>`;
+                    progress.style.lineHeight = '1.6';
+                    
+                    btnText.textContent = '✓ Data Pre-loaded!';
+                    btn.style.background = '#4CAF50';
+                }, 500);
+
+            } catch (error) {
+                console.error('Pre-load error:', error);
+                if (document.getElementById('preloadOverlay')) {
+                    document.getElementById('preloadOverlay').remove();
                 }
                 progress.style.display = 'block';
                 progress.textContent = `❌ Error: ${error.message}`;
