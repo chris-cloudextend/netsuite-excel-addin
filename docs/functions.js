@@ -1307,78 +1307,31 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
     try {
         // ================================================================
         // SPECIAL COMMAND: __CLEARCACHE__ - Clear caches from taskpane
-        // Usage: =NS.GLABAL("__CLEARCACHE__", "[{account:..., period:...}]", "")
-        // Returns: Number of items cleared (must be number, not string!)
+        // Usage: =NS.GLABAL("__CLEARCACHE__", "ALL", "") to clear everything
+        // Returns: Number of items cleared
         // ================================================================
         const rawAccount = String(account || '').trim();
         if (rawAccount === '__CLEARCACHE__') {
-            console.log('🔧 GLABAL __CLEARCACHE__ command received');
-            console.log('   Raw fromPeriod:', fromPeriod);
-            const itemsJson = String(fromPeriod || '').trim();
-            console.log('   Parsed itemsJson:', itemsJson.substring(0, 100));
+            console.log('🔧 __CLEARCACHE__ command - clearing ALL caches');
             
-            try {
-                if (!itemsJson || itemsJson === 'ALL') {
-                    // Clear ALL caches
-                    const beforeSize = cache.balance.size;
-                    cache.balance.clear();
-                    cache.title.clear();
-                    cache.budget.clear();
-                    cache.type.clear();
-                    cache.parent.clear();
-                    if (typeof fullYearCache !== 'undefined') {
-                        Object.keys(fullYearCache).forEach(k => delete fullYearCache[k]);
-                    }
-                    console.log(`🗑️ Cleared ALL in-memory caches (was ${beforeSize} balance entries)`);
-                    return beforeSize; // Return number, not string!
-                } else {
-                    // Clear specific items
-                    const items = JSON.parse(itemsJson);
-                    console.log(`   Parsed ${items.length} items to clear`);
-                    let cleared = 0;
-                    
-                    for (const item of items) {
-                        const acct = String(item.account);
-                        const period = item.period;
-                        console.log(`   Processing: ${acct}/${period}`);
-                        
-                        // Use getCacheKey for exact format match
-                        const exactKey = getCacheKey('balance', {
-                            account: acct,
-                            fromPeriod: period,
-                            toPeriod: period,
-                            subsidiary: '',
-                            department: '',
-                            location: '',
-                            classId: ''
-                        });
-                        
-                        console.log(`   Looking for key (first 80 chars): ${exactKey.substring(0, 80)}`);
-                        console.log(`   cache.balance has key: ${cache.balance.has(exactKey)}`);
-                        
-                        if (cache.balance.has(exactKey)) {
-                            cache.balance.delete(exactKey);
-                            cleared++;
-                            console.log(`   ✓ Cleared cache.balance: ${acct}/${period}`);
-                        }
-                        
-                        // Clear from fullYearCache
-                        if (typeof fullYearCache !== 'undefined' && fullYearCache[acct]) {
-                            if (fullYearCache[acct][period] !== undefined) {
-                                delete fullYearCache[acct][period];
-                                cleared++;
-                                console.log(`   ✓ Cleared fullYearCache: ${acct}/${period}`);
-                            }
-                        }
-                    }
-                    
-                    console.log(`🗑️ Cleared ${cleared} items from in-memory cache`);
-                    return cleared; // Return number, not string!
+            // Simple approach: just clear everything
+            // This is fast and reliable - no JSON parsing needed
+            const beforeSize = cache.balance.size;
+            cache.balance.clear();
+            cache.title.clear();
+            cache.budget.clear();
+            cache.type.clear();
+            cache.parent.clear();
+            
+            // Clear fullYearCache if it exists
+            if (typeof fullYearCache !== 'undefined') {
+                for (const k in fullYearCache) {
+                    delete fullYearCache[k];
                 }
-            } catch (e) {
-                console.error('__CLEARCACHE__ error:', e.message, e.stack);
-                return -1; // Return -1 to indicate error (still a number)
             }
+            
+            console.log(`🗑️ Cleared ALL in-memory caches (was ${beforeSize} balance entries)`);
+            return beforeSize;
         }
         
         // Normalize business parameters
