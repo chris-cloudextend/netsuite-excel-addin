@@ -971,19 +971,11 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
     return full_query
 
 
-def build_full_year_bs_query(fiscal_year, target_sub, filters):
+def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
     """
-    OPTIMIZED: Build full-year BALANCE SHEET query returning ACTIVITY per month.
-    
-    Instead of expensive 12 CROSS JOINs for cumulative balances, this query:
-    1. Returns monthly ACTIVITY (like P&L query pattern)
-    2. Backend/Excel computes cumulative from activity
-    
-    This reduces query time from 60-90 seconds to ~15-25 seconds.
-    
-    Expected performance: ~15-25 seconds (same as P&L)
+    Get OPENING BALANCE for all Balance Sheet accounts as of Jan 1 of fiscal year.
+    This is the sum of all activity from inception through Dec 31 of prior year.
     """
-    # Build optional filter clauses
     filter_clauses = []
     if filters.get('subsidiary'):
         filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
@@ -996,18 +988,16 @@ def build_full_year_bs_query(fiscal_year, target_sub, filters):
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
-    # Query returns ACTIVITY per month (like P&L) - NOT cumulative
-    # Backend will compute cumulative from activity when needed
+    # Opening balance = all activity BEFORE the fiscal year starts
     query = f"""
     WITH sub_cte AS (
       SELECT COUNT(*) AS subs_count
       FROM Subsidiary
       WHERE isinactive = 'F'
-    ),
-    base AS (
-      SELECT
-        tal.account AS account_id,
-        t.postingperiod AS period_id,
+    )
+    SELECT
+      a.acctnumber AS account_number,
+      SUM(
         CASE
           WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
             TO_NUMBER(
@@ -1022,31 +1012,87 @@ def build_full_year_bs_query(fiscal_year, target_sub, filters):
               )
             )
           ELSE tal.amount
-        END AS cons_amt
-      FROM TransactionAccountingLine tal
-      JOIN Transaction t ON t.id = tal.transaction
-      JOIN Account a ON a.id = tal.account
-      JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-      CROSS JOIN sub_cte
-      WHERE t.posting = 'T'
-        AND tal.posting = 'T'
-        AND tal.accountingbook = 1
-        AND ap.isyear = 'F'
-        AND ap.isquarter = 'F'
-        AND EXTRACT(YEAR FROM ap.startdate) = {fiscal_year}
-        AND COALESCE(a.eliminate, 'F') = 'F'
-        AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
-        {filter_sql}
+        END
+      ) AS opening_balance
+    FROM TransactionAccountingLine tal
+    JOIN Transaction t ON t.id = tal.transaction
+    JOIN Account a ON a.id = tal.account
+    JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+    CROSS JOIN sub_cte
+    WHERE t.posting = 'T'
+      AND tal.posting = 'T'
+      AND tal.accountingbook = 1
+      AND ap.isyear = 'F'
+      AND ap.isquarter = 'F'
+      AND ap.enddate < TO_DATE('{fiscal_year}-01-01', 'YYYY-MM-DD')
+      AND COALESCE(a.eliminate, 'F') = 'F'
+      AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
+      {filter_sql}
+    GROUP BY a.acctnumber
+    ORDER BY a.acctnumber
+    """
+    
+    return query
+
+
+def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
+    """
+    Get MONTHLY ACTIVITY for Balance Sheet accounts within the fiscal year.
+    This is combined with opening balance to compute cumulative.
+    """
+    filter_clauses = []
+    if filters.get('subsidiary'):
+        filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+    if filters.get('department'):
+        filter_clauses.append(f"tal.department = {filters['department']}")
+    if filters.get('location'):
+        filter_clauses.append(f"tal.location = {filters['location']}")
+    if filters.get('class'):
+        filter_clauses.append(f"tal.class = {filters['class']}")
+    
+    filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    
+    query = f"""
+    WITH sub_cte AS (
+      SELECT COUNT(*) AS subs_count
+      FROM Subsidiary
+      WHERE isinactive = 'F'
     )
     SELECT
       a.acctnumber AS account_number,
-      a.accttype AS account_type,
       TO_CHAR(ap.startdate,'YYYY-MM') AS month,
-      SUM(b.cons_amt) AS amount
-    FROM base b
-    JOIN AccountingPeriod ap ON ap.id = b.period_id
-    JOIN Account a ON a.id = b.account_id
-    GROUP BY a.acctnumber, a.accttype, ap.startdate
+      SUM(
+        CASE
+          WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
+            TO_NUMBER(
+              BUILTIN.CONSOLIDATE(
+                tal.amount,
+                'LEDGER',
+                'DEFAULT',
+                'DEFAULT',
+                {target_sub},
+                t.postingperiod,
+                'DEFAULT'
+              )
+            )
+          ELSE tal.amount
+        END
+      ) AS amount
+    FROM TransactionAccountingLine tal
+    JOIN Transaction t ON t.id = tal.transaction
+    JOIN Account a ON a.id = tal.account
+    JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+    CROSS JOIN sub_cte
+    WHERE t.posting = 'T'
+      AND tal.posting = 'T'
+      AND tal.accountingbook = 1
+      AND ap.isyear = 'F'
+      AND ap.isquarter = 'F'
+      AND EXTRACT(YEAR FROM ap.startdate) = {fiscal_year}
+      AND COALESCE(a.eliminate, 'F') = 'F'
+      AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
+      {filter_sql}
+    GROUP BY a.acctnumber, ap.startdate
     ORDER BY a.acctnumber, ap.startdate
     """
     
@@ -2101,35 +2147,45 @@ def batch_full_year_refresh_bs():
         print(f"   Filters: {filters}", flush=True)
         print(f"{'='*80}\n", flush=True)
         
-        bs_query = build_full_year_bs_query(fiscal_year, target_sub, filters)
-        print(f"   BS Query (first 500 chars):\n{bs_query[:500]}...", flush=True)
+        # TWO-QUERY APPROACH for correct Balance Sheet cumulative balances:
+        # Query 1: Get opening balance (all activity before fiscal year)
+        # Query 2: Get monthly activity within fiscal year
+        # Then: opening + running sum = correct cumulative
         
         start_time = datetime.now()
-        # BS query with WIDE format returns 1 row per account, unlikely to exceed 1000
-        # Use 4-minute timeout since this is a complex query with 12 CONSOLIDATE calls
-        items = run_paginated_suiteql(bs_query, page_size=1000, max_pages=5, timeout=240)
+        
+        # STEP 1: Get opening balances (sum of all activity before Jan 1 of fiscal year)
+        print(f"   📥 Step 1: Fetching opening balances...", flush=True)
+        opening_query = build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters)
+        opening_items = run_paginated_suiteql(opening_query, page_size=1000, max_pages=10, timeout=240)
+        
+        opening_balances = {}  # { account: opening_balance }
+        for row in opening_items:
+            account = row.get('account_number')
+            balance = float(row.get('opening_balance') or 0)
+            if account:
+                opening_balances[account] = balance
+        
+        print(f"   ✅ Got opening balances for {len(opening_balances)} accounts", flush=True)
+        
+        # STEP 2: Get monthly activity within fiscal year
+        print(f"   📥 Step 2: Fetching monthly activity for {fiscal_year}...", flush=True)
+        activity_query = build_full_year_bs_activity_query(fiscal_year, target_sub, filters)
+        activity_items = run_paginated_suiteql(activity_query, page_size=1000, max_pages=10, timeout=240)
+        
         elapsed = (datetime.now() - start_time).total_seconds()
+        print(f"⏱️  Total query time: {elapsed:.2f} seconds", flush=True)
+        print(f"✅ Received {len(activity_items)} activity rows")
         
-        print(f"⏱️  Query time: {elapsed:.2f} seconds", flush=True)
-        print(f"✅ Received {len(items)} rows")
-        
-        # Process BS results - NARROW format with columns: account_number, month (YYYY-MM), amount
-        # Each row is one account for one month - we need to aggregate and compute cumulative
-        balances = {}
+        # Process activity into { account: { "Jan 2024": amount, ... } }
         month_names = {
             '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
             '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
             '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
         }
         
-        global balance_cache, balance_cache_timestamp
-        filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
-        cached_count = 0
-        
-        # First pass: collect activity per account per month
-        activity = {}  # { account: { "Jan 2024": amount, ... } }
-        
-        for row in items:
+        activity = {}
+        for row in activity_items:
             account = row.get('account_number')
             month_str = row.get('month')  # Format: "2024-01"
             amount = float(row.get('amount') or 0)
@@ -2137,7 +2193,6 @@ def batch_full_year_refresh_bs():
             if not account or not month_str:
                 continue
             
-            # Parse "2024-01" -> "Jan 2024"
             if '-' in month_str:
                 parts = month_str.split('-')
                 if len(parts) == 2:
@@ -2150,40 +2205,46 @@ def batch_full_year_refresh_bs():
                             activity[account] = {}
                         activity[account][period_name] = amount
         
-        # Second pass: compute cumulative balances
-        # For each account, sum all activity from inception through each month
+        # STEP 3: Compute cumulative balances = opening + running sum of activity
+        global balance_cache, balance_cache_timestamp
+        filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
+        cached_count = 0
+        balances = {}
+        
         month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
         
-        for account, periods in activity.items():
-            if account not in balances:
-                balances[account] = {}
+        # Get all accounts that have either opening balance or activity
+        all_accounts = set(opening_balances.keys()) | set(activity.keys())
+        
+        for account in all_accounts:
+            balances[account] = {}
             
-            # Determine which year(s) have data
-            years = set()
-            for period_name in periods.keys():
-                parts = period_name.split(' ')
-                if len(parts) == 2:
-                    years.add(int(parts[1]))
+            # Start with opening balance from prior years
+            cumulative = opening_balances.get(account, 0)
             
-            # For each year, compute cumulative balance through each month
-            cumulative = 0
-            for year in sorted(years):
-                for month in month_order:
-                    period_name = f"{month} {year}"
-                    if period_name in periods:
-                        cumulative += periods[period_name]
-                        balances[account][period_name] = cumulative
-                        
-                        # Cache this result
-                        cache_key = f"{account}:{period_name}:{filters_hash}"
-                        balance_cache[cache_key] = cumulative
-                        cached_count += 1
+            # Add activity month by month
+            for month in month_order:
+                period_name = f"{month} {fiscal_year}"
+                
+                if account in activity and period_name in activity[account]:
+                    cumulative += activity[account][period_name]
+                
+                # Store cumulative balance for this period (even if no activity - balance carries forward)
+                balances[account][period_name] = cumulative
+                
+                # Cache this result
+                cache_key = f"{account}:{period_name}:{filters_hash}"
+                balance_cache[cache_key] = cumulative
+                cached_count += 1
         
         balance_cache_timestamp = datetime.now()
         
         print(f"📊 Returning {len(balances)} BS accounts")
         print(f"💾 Cached {cached_count} BS values")
+        print(f"   Sample balances:")
+        for acct in list(balances.keys())[:3]:
+            print(f"      {acct}: {list(balances[acct].items())[:3]}")
         print(f"{'='*80}\n")
         
         return jsonify({'balances': balances, 'query_time': elapsed, 'cached_count': cached_count})
