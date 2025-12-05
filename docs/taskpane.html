@@ -1639,7 +1639,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.64.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.65.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1654,7 +1654,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.64.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.65.0</div>
         </div>
 
         <div class="content">
@@ -1842,7 +1842,7 @@
                             <button class="action-btn primary" onclick="refreshCurrentSheet()">
                                 <span class="action-icon">⚡</span>
                                 <span class="action-text">Refresh All</span>
-                                <span class="help-icon small" data-tip="Clears cache and forces all formulas on this sheet to re-evaluate. Each formula will fetch fresh data from NetSuite.">?</span>
+                                <span class="help-icon small" data-tip="Auto-detects years from your sheet and fetches fresh data from NetSuite. P&L accounts load quickly (~30s/year). Balance Sheet accounts load separately (2-3 min) if detected.">?</span>
                             </button>
                             
                             <button class="action-btn secondary" onclick="refreshSelected()">
@@ -1914,7 +1914,7 @@
             <!-- ACCOUNT SEARCH SECTION -->
             <details class="collapsible-section">
                 <summary class="collapsible-header">
-                    <h3><span class="icon">📥</span> Add Accounts</h3>
+                    <h3><span class="icon">📥</span> Bulk Add Accounts</h3>
                     <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </summary>
                 <div class="collapsible-content">
@@ -1938,7 +1938,7 @@
                     </div>
                     
                     <button class="btn-primary" style="margin-top: 12px; background: linear-gradient(135deg, var(--anenome) 0%, #06d6a0 100%); color: var(--deep-dive);" onclick="searchAccounts()">
-                        <span>➕</span> Add Accounts
+                        <span>➕</span> Bulk Add Accounts
                     </button>
                     
                     <div class="refresh-status" id="searchStatus"></div>
@@ -3763,193 +3763,298 @@ export default {
             
             try {
                 btn.disabled = true;
-                btn.textContent = 'Refreshing...';
+                btn.textContent = 'Analyzing...';
                 
-                // Show loading overlay
-                showLoading('Full Year Refresh', 'Initializing...', 0);
-                
-                // Detect year from sheet
-                const year = 2024; // TODO: Auto-detect from formulas
-                
-                // STEP 1: Enter full refresh mode (blocks premature evaluations)
-                if (typeof window.enterFullRefreshMode === 'function') {
-                    window.enterFullRefreshMode(year);
-                    console.log('🚀 Full refresh mode activated');
-                }
-                
-                updateLoading('Fetching ALL accounts from NetSuite...', 10, `Year: ${year}`);
+                showLoading('Refresh All', 'Scanning formulas on sheet...', 5);
                 
                 const start = Date.now();
-                const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        year: year,
-                        subsidiary: '',
-                        department: '',
-                        location: '',
-                        class: ''
-                    })
-                });
+                let formulasFound = [];
+                let detectedYears = new Set();
+                let detectedAccounts = new Set();
+                let cellsToUpdate = [];
                 
-                if (!response.ok) {
-                    throw new Error(`Backend error: ${response.status}`);
-                }
-                
-                updateLoading('Processing NetSuite response...', 60);
-                
-                const data = await response.json();
-                const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-                
-                const accountCount = Object.keys(data.balances || {}).length;
-                const cachedCount = data.cached_count || 0;
-                
-                console.log(`✅ Received ${accountCount} accounts`);
-                console.log(`   Query time: ${data.query_time}s`);
-                console.log(`   Cached on backend: ${cachedCount} values`);
-                console.log(`   Total time: ${elapsed}s`);
-                
-                updateLoading('Saving to local cache...', 70, `${accountCount} accounts received`);
-                
-                // Save to localStorage - THIS WORKS! Proven by user's localStorage data
-                try {
-                    const STORAGE_KEY = 'netsuite_balance_cache';
-                    const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
-                    
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(data.balances || {}));
-                    localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
-                    console.log(`✅ Saved ${accountCount} accounts to localStorage`);
-                } catch (storageError) {
-                    console.error('❌ localStorage save error:', storageError);
-                }
-                
-                // Also try Shared Runtime methods as backup
-                if (typeof window.setFullYearCache === 'function') {
-                    try {
-                        window.setFullYearCache(data.balances || {});
-                        console.log('✅ Also set via Shared Runtime');
-                    } catch (e) {
-                        // Shared Runtime may not be active, that's OK
-                    }
-                }
-                
-                // STEP 4: Mark cache as READY - allows formulas to evaluate
-                if (typeof window.markCacheReady === 'function') {
-                    window.markCacheReady();
-                }
-                
-                // STEP 5: Resolve any pending requests that queued during download
-                if (typeof window.resolvePendingRequests === 'function') {
-                    const { resolved, failed } = window.resolvePendingRequests();
-                    console.log(`📦 Resolved ${resolved} pending requests, ${failed} not in cache`);
-                }
-                
-                updateLoading('Cache ready!', 85, `${accountCount} accounts cached`);
-                
-                updateLoading('Re-applying formulas...', 88, 'Forcing fresh evaluation');
-                
-                // CRITICAL: Re-apply all NS.GLABAL formulas to force fresh evaluation
-                // Must batch in small chunks to avoid Excel API limits!
-                
-                let formulasRefreshed = 0;
-                const BATCH_SIZE = 100; // Process 100 formulas at a time to avoid API limits
-                
+                // ============================================
+                // STEP 1: Scan sheet to detect years & accounts
+                // ============================================
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     const usedRange = sheet.getUsedRange();
-                    usedRange.load("formulas, rowCount, columnCount, address");
+                    usedRange.load("formulas, values, rowCount, columnCount, address");
                     await context.sync();
                     
                     const formulas = usedRange.formulas;
+                    const values = usedRange.values;
                     const rowCount = usedRange.rowCount;
                     const colCount = usedRange.columnCount;
                     
-                    console.log(`Scanning ${rowCount} rows × ${colCount} cols for NS.GLABAL formulas...`);
-                    console.log(`Used range: ${usedRange.address}`);
+                    console.log(`📊 Scanning ${rowCount} × ${colCount} cells...`);
                     
-                    // First, collect ALL cells that need updating
-                    const cellsToUpdate = [];
-                    
+                    // Find all NS.GLABAL formulas
                     for (let row = 0; row < rowCount; row++) {
                         for (let col = 0; col < colCount; col++) {
                             const formula = formulas[row][col];
                             if (formula && typeof formula === 'string' && 
-                                formula.toUpperCase().includes('NS.GLA')) {
+                                formula.toUpperCase().includes('NS.GLABAL')) {
                                 cellsToUpdate.push({ row, col, formula });
+                                
+                                // Try to extract account from formula
+                                const accountMatch = formula.match(/NS\.GLABAL\s*\(\s*["']?(\d+)["']?/i);
+                                if (accountMatch) {
+                                    detectedAccounts.add(accountMatch[1]);
+                                }
                             }
                         }
                     }
                     
-                    console.log(`Found ${cellsToUpdate.length} NS.GLA* formulas to refresh`);
+                    // Also scan for date values to detect years
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const yearRegex = /\b(20\d{2})\b/;
                     
-                    // Process in batches to avoid Excel API limits
+                    for (let row = 0; row < Math.min(rowCount, 20); row++) {
+                        for (let col = 0; col < Math.min(colCount, 50); col++) {
+                            const val = String(values[row][col] || '');
+                            const yearMatch = val.match(yearRegex);
+                            if (yearMatch && monthNames.some(m => val.includes(m))) {
+                                detectedYears.add(parseInt(yearMatch[1]));
+                            }
+                        }
+                    }
+                });
+                
+                console.log(`📊 Found ${cellsToUpdate.length} NS.GLABAL formulas`);
+                console.log(`📊 Detected accounts: ${detectedAccounts.size}`);
+                console.log(`📊 Detected years: ${[...detectedYears].join(', ')}`);
+                
+                if (cellsToUpdate.length === 0) {
+                    hideLoading();
+                    statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #92400e;">No NS.GLABAL formulas found</strong></div>`;
+                    setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                    return;
+                }
+                
+                // Default to current year if none detected
+                if (detectedYears.size === 0) {
+                    detectedYears.add(new Date().getFullYear());
+                }
+                
+                const yearsArray = [...detectedYears].sort();
+                
+                // ============================================
+                // STEP 2: Get account types to classify P&L vs BS
+                // ============================================
+                updateLoading('Classifying accounts...', 10, `${detectedAccounts.size} accounts found`);
+                
+                let plAccounts = [];
+                let bsAccounts = [];
+                
+                if (detectedAccounts.size > 0) {
+                    try {
+                        const typeResponse = await fetch(`${SERVER_URL}/batch/account_types`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ accounts: [...detectedAccounts] })
+                        });
+                        
+                        if (typeResponse.ok) {
+                            const typeData = await typeResponse.json();
+                            const bsTypes = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 
+                                           'AcctPay', 'CreditCard', 'OthCurrLiab', 'LongTermLiab', 
+                                           'Equity', 'RetainedEarnings'];
+                            
+                            for (const [acct, type] of Object.entries(typeData.types || {})) {
+                                if (bsTypes.includes(type)) {
+                                    bsAccounts.push(acct);
+                                } else {
+                                    plAccounts.push(acct);
+                                }
+                            }
+                            console.log(`📊 P&L accounts: ${plAccounts.length}, BS accounts: ${bsAccounts.length}`);
+                        }
+                    } catch (e) {
+                        console.warn('Could not classify accounts, treating all as P&L:', e);
+                        plAccounts = [...detectedAccounts];
+                    }
+                }
+                
+                // Clear cache before fetching
+                localStorage.removeItem('netsuite_balance_cache');
+                localStorage.removeItem('netsuite_balance_cache_timestamp');
+                if (typeof window.clearAllCaches === 'function') {
+                    window.clearAllCaches();
+                }
+                console.log('🗑️ Cache cleared');
+                
+                let totalAccountsLoaded = 0;
+                let allBalances = {};
+                
+                // ============================================
+                // STEP 3: Fetch P&L accounts (fast ~30s/year)
+                // ============================================
+                if (plAccounts.length > 0 || detectedAccounts.size === 0) {
+                    updateLoading('Fetching P&L accounts...', 15, `Years: ${yearsArray.join(', ')}`);
+                    
+                    for (let i = 0; i < yearsArray.length; i++) {
+                        const year = yearsArray[i];
+                        const progress = 15 + (i / yearsArray.length) * 35;
+                        updateLoading(`Fetching P&L data for ${year}...`, progress, 
+                            `Year ${i + 1} of ${yearsArray.length}`);
+                        
+                        try {
+                            const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    year: year,
+                                    skip_bs: true, // P&L only
+                                    subsidiary: '',
+                                    department: '',
+                                    location: '',
+                                    class: ''
+                                })
+                            });
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                Object.assign(allBalances, data.balances || {});
+                                totalAccountsLoaded += Object.keys(data.balances || {}).length;
+                                console.log(`✅ Year ${year}: ${Object.keys(data.balances || {}).length} P&L accounts`);
+                            }
+                        } catch (e) {
+                            console.error(`Error fetching year ${year}:`, e);
+                        }
+                    }
+                }
+                
+                // ============================================
+                // STEP 4: Fetch Balance Sheet accounts (slower)
+                // ============================================
+                if (bsAccounts.length > 0) {
+                    const bsWarning = `⚠️ ${bsAccounts.length} Balance Sheet accounts detected - this will take 2-3 minutes`;
+                    console.log(bsWarning);
+                    updateLoading('Fetching Balance Sheet accounts...', 50, bsWarning);
+                    
+                    for (let i = 0; i < yearsArray.length; i++) {
+                        const year = yearsArray[i];
+                        const progress = 50 + (i / yearsArray.length) * 35;
+                        updateLoading(`Fetching BS data for ${year}...`, progress, 
+                            `Balance Sheet accounts take longer - please wait`);
+                        
+                        try {
+                            const response = await fetch(`${SERVER_URL}/batch/full_year_refresh_bs`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    year: year,
+                                    subsidiary: '',
+                                    department: '',
+                                    location: '',
+                                    class: ''
+                                })
+                            });
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                // Merge BS balances into allBalances
+                                for (const [acct, periods] of Object.entries(data.balances || {})) {
+                                    if (!allBalances[acct]) allBalances[acct] = {};
+                                    Object.assign(allBalances[acct], periods);
+                                }
+                                totalAccountsLoaded += Object.keys(data.balances || {}).length;
+                                console.log(`✅ Year ${year}: ${Object.keys(data.balances || {}).length} BS accounts`);
+                            }
+                        } catch (e) {
+                            console.error(`Error fetching BS year ${year}:`, e);
+                        }
+                    }
+                }
+                
+                // ============================================
+                // STEP 5: Save to localStorage cache
+                // ============================================
+                updateLoading('Saving to cache...', 88, `${totalAccountsLoaded} accounts loaded`);
+                
+                try {
+                    localStorage.setItem('netsuite_balance_cache', JSON.stringify(allBalances));
+                    localStorage.setItem('netsuite_balance_cache_timestamp', Date.now().toString());
+                    console.log(`✅ Saved ${Object.keys(allBalances).length} accounts to localStorage`);
+                } catch (e) {
+                    console.error('localStorage save error:', e);
+                }
+                
+                if (typeof window.setFullYearCache === 'function') {
+                    try { window.setFullYearCache(allBalances); } catch (e) {}
+                }
+                
+                // ============================================
+                // STEP 6: Re-apply formulas to force evaluation
+                // ============================================
+                updateLoading('Re-evaluating formulas...', 90, `${cellsToUpdate.length} formulas`);
+                
+                let formulasRefreshed = 0;
+                const BATCH_SIZE = 100;
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load("address");
+                    await context.sync();
+                    
                     const totalBatches = Math.ceil(cellsToUpdate.length / BATCH_SIZE);
-                    console.log(`Processing in ${totalBatches} batches of ${BATCH_SIZE}`);
                     
                     for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
-                        const start = batchNum * BATCH_SIZE;
-                        const end = Math.min(start + BATCH_SIZE, cellsToUpdate.length);
-                        const batch = cellsToUpdate.slice(start, end);
+                        const batchStart = batchNum * BATCH_SIZE;
+                        const batchEnd = Math.min(batchStart + BATCH_SIZE, cellsToUpdate.length);
+                        const batch = cellsToUpdate.slice(batchStart, batchEnd);
                         
-                        const progress = 88 + Math.round((batchNum / totalBatches) * 10);
-                        updateLoading(`Refreshing batch ${batchNum + 1}/${totalBatches}...`, progress, 
-                            `${start} of ${cellsToUpdate.length} formulas`);
+                        const progress = 90 + Math.round((batchNum / totalBatches) * 8);
+                        updateLoading(`Refreshing formulas...`, progress, 
+                            `Batch ${batchNum + 1}/${totalBatches}`);
                         
-                        // Re-apply formulas in this batch
                         for (const { row, col, formula } of batch) {
                             const cell = usedRange.getCell(row, col);
                             cell.formulas = [[formula]];
                             formulasRefreshed++;
                         }
                         
-                        // Sync after each batch!
                         await context.sync();
-                        console.log(`✅ Batch ${batchNum + 1}/${totalBatches}: refreshed ${batch.length} formulas`);
                         
-                        // Brief pause between batches to let Excel process
                         if (batchNum < totalBatches - 1) {
-                            await new Promise(resolve => setTimeout(resolve, 100));
+                            await new Promise(resolve => setTimeout(resolve, 50));
                         }
                     }
                     
-                    console.log(`✅ Total: Re-applied ${formulasRefreshed} formulas`);
-                    
-                    // STEP 7: Final sheet-wide recalculation to resolve any stragglers
-                    updateLoading('Final recalculation...', 98, 'Resolving remaining cells');
-                    console.log('🔄 Final recalculation pass...');
+                    updateLoading('Final recalculation...', 98);
                     usedRange.calculate();
                     await context.sync();
-                    console.log('✅ Final recalculation complete');
                 });
                 
-                // Brief wait for final formulas to evaluate
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                // STEP 8: Exit full refresh mode
-                if (typeof window.exitFullRefreshMode === 'function') {
-                    window.exitFullRefreshMode();
-                    console.log('✅ Full refresh mode deactivated');
-                }
+                const elapsed = ((Date.now() - start) / 1000).toFixed(1);
                 
                 updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
-                
-                // Show success message
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 800));
                 hideLoading();
+                
+                // Build summary message
+                let summaryParts = [];
+                if (plAccounts.length > 0 || bsAccounts.length === 0) {
+                    summaryParts.push(`P&L: ${yearsArray.length} year(s)`);
+                }
+                if (bsAccounts.length > 0) {
+                    summaryParts.push(`Balance Sheet: ${bsAccounts.length} accounts`);
+                }
                 
                 statusEl.innerHTML = `
                     <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
-                        <strong style="color: #059669; font-size: 14px;">✓ Sheet Refreshed!</strong><br>
+                        <strong style="color: #059669; font-size: 14px;">✓ Refresh Complete!</strong><br>
                         <span style="font-size: 12px; color: #047857;">
-                            Fetched ${accountCount} accounts from NetSuite (${elapsed}s)<br>
-                            Refreshed ${formulasRefreshed} formulas from cache
+                            ${summaryParts.join(' • ')}<br>
+                            ${formulasRefreshed} formulas refreshed in ${elapsed}s
                         </span>
                     </div>
                 `;
                 
-                setTimeout(() => {
-                    statusEl.textContent = '';
-                }, 10000);
+                setTimeout(() => { statusEl.textContent = ''; }, 10000);
                 
             } catch (error) {
                 console.error('Error refreshing sheet:', error);
@@ -3962,12 +4067,10 @@ export default {
                     </div>
                 `;
                 
-                setTimeout(() => {
-                    statusEl.textContent = '';
-                }, 8000);
+                setTimeout(() => { statusEl.textContent = ''; }, 8000);
             } finally {
                 btn.disabled = false;
-                btn.textContent = '⚡ Refresh Current Sheet';
+                btn.innerHTML = '<span class="action-icon">⚡</span><span class="action-text">Refresh All</span>';
             }
         }
 
@@ -4657,7 +4760,7 @@ export default {
                 }, 8000);
             } finally {
                 btn.disabled = false;
-                btn.textContent = 'Add Accounts';
+                btn.textContent = 'Bulk Add Accounts';
             }
         }
 

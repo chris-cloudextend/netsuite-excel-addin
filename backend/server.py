@@ -2525,6 +2525,52 @@ def get_account_type(account_number):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/batch/account_types', methods=['POST'])
+def batch_get_account_types():
+    """
+    Get account types for multiple accounts at once.
+    Used by: Refresh All to classify P&L vs Balance Sheet accounts.
+    
+    POST body: { "accounts": ["10010", "40100", "60032", ...] }
+    Returns: { "types": { "10010": "Bank", "40100": "Income", "60032": "Expense", ... } }
+    """
+    try:
+        data = request.get_json() or {}
+        accounts = data.get('accounts', [])
+        
+        if not accounts:
+            return jsonify({'types': {}})
+        
+        # Build IN clause
+        accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+        
+        query = f"""
+            SELECT acctnumber, accttype
+            FROM Account
+            WHERE acctnumber IN ({accounts_in})
+        """
+        
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        
+        types = {}
+        if isinstance(result, list):
+            for row in result:
+                acct = row.get('acctnumber')
+                acct_type = row.get('accttype', '')
+                if acct:
+                    types[acct] = acct_type
+        
+        print(f"📊 Batch account types: {len(types)} accounts classified", file=sys.stderr)
+        return jsonify({'types': types})
+        
+    except Exception as e:
+        print(f"Error in batch_get_account_types: {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/account/<account_number>/parent')
 def get_account_parent(account_number):
     """
