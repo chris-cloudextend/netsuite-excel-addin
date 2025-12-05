@@ -732,14 +732,27 @@ async function runBuildModeBatch() {
     console.log(`   📊 Resolved: ${resolved} with values, ${zeros} zeros/errors`);
     console.log(`   ⏱️ TOTAL BUILD MODE TIME: ${totalTime}s`);
     
-    // Broadcast completion
+    // Calculate totals for user-friendly status message
+    const requestedCells = pending.length;  // What user actually asked for
+    const totalPreloaded = Object.keys(allBalances).reduce((sum, acct) => {
+        return sum + Object.keys(allBalances[acct]).length;
+    }, 0);
+    const preloadedAccounts = Object.keys(allBalances).length;
+    
+    // Broadcast completion with helpful info
     if (hasError) {
         broadcastStatus(`Completed with errors (${totalTime}s)`, 100, 'error');
     } else {
-        broadcastStatus(`✅ Loaded ${resolved} values in ${totalTime}s`, 100, 'success');
+        // User-friendly message showing requested vs preloaded
+        let msg = `✅ Updated ${requestedCells} cells`;
+        if (totalPreloaded > requestedCells) {
+            msg += ` | ${preloadedAccounts} accounts preloaded for faster access`;
+        }
+        msg += ` (${totalTime}s)`;
+        broadcastStatus(msg, 100, 'success');
     }
     // Clear status after delay
-    setTimeout(clearStatus, 5000);
+    setTimeout(clearStatus, 8000);  // Extended to 8s so user can read
 }
 
 // Resolve ALL pending balance requests from cache (called by taskpane after cache is ready)
