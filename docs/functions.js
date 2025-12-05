@@ -2200,6 +2200,74 @@ function expandPeriodRange(fromPeriod, toPeriod) {
 // (Old streaming functions removed - not needed for Phase 3 non-streaming async)
 
 // ============================================================================
+// CLEARCACHE - Internal function to clear caches from taskpane
+// Called via Excel.evaluate("=NS.CLEARCACHE(items)") from taskpane
+// ============================================================================
+/**
+ * Internal function - clears specified items from in-memory cache
+ * @customfunction CLEARCACHE
+ * @param {string} [itemsJson] JSON string of items to clear, or empty for all
+ * @returns {string} Status message
+ */
+function CLEARCACHE(itemsJson) {
+    console.log('🔧 CLEARCACHE called with:', itemsJson);
+    
+    try {
+        if (!itemsJson || itemsJson === '' || itemsJson === 'ALL') {
+            // Clear ALL caches
+            cache.balance.clear();
+            cache.title.clear();
+            cache.budget.clear();
+            cache.type.clear();
+            cache.parent.clear();
+            if (typeof fullYearCache !== 'undefined') {
+                Object.keys(fullYearCache).forEach(k => delete fullYearCache[k]);
+            }
+            console.log('🗑️ Cleared ALL in-memory caches');
+            return 'CLEARED_ALL';
+        } else {
+            // Clear specific items
+            const items = JSON.parse(itemsJson);
+            let cleared = 0;
+            
+            for (const item of items) {
+                const account = String(item.account);
+                const period = item.period;
+                
+                // Clear from cache.balance (check all possible key formats)
+                const possibleKeys = [
+                    JSON.stringify({ type: 'balance', account, fromPeriod: period, toPeriod: period, subsidiary: '', department: '', class: '', location: '' }),
+                    JSON.stringify({ type: 'balance', account, fromPeriod: period, toPeriod: period, subsidiary: '', department: '', class: '', location: '', includeChildren: false })
+                ];
+                
+                for (const key of possibleKeys) {
+                    if (cache.balance.has(key)) {
+                        cache.balance.delete(key);
+                        cleared++;
+                        console.log(`   ✓ Cleared cache.balance: ${account}/${period}`);
+                    }
+                }
+                
+                // Clear from fullYearCache
+                if (typeof fullYearCache !== 'undefined' && fullYearCache[account]) {
+                    if (fullYearCache[account][period] !== undefined) {
+                        delete fullYearCache[account][period];
+                        cleared++;
+                        console.log(`   ✓ Cleared fullYearCache: ${account}/${period}`);
+                    }
+                }
+            }
+            
+            console.log(`🗑️ Cleared ${cleared} items from in-memory cache`);
+            return `CLEARED_${cleared}`;
+        }
+    } catch (e) {
+        console.error('CLEARCACHE error:', e);
+        return 'ERROR';
+    }
+}
+
+// ============================================================================
 // REGISTER FUNCTIONS WITH EXCEL
 // ============================================================================
 // CRITICAL: The manifest ALREADY defines namespace 'NS'
@@ -2210,6 +2278,7 @@ if (typeof CustomFunctions !== 'undefined') {
     CustomFunctions.associate('GLAPARENT', GLAPARENT);
     CustomFunctions.associate('GLABAL', GLABAL);
     CustomFunctions.associate('GLABUD', GLABUD);
+    CustomFunctions.associate('CLEARCACHE', CLEARCACHE);
     console.log('✅ Custom functions registered with Excel');
 } else {
     console.error('❌ CustomFunctions not available!');

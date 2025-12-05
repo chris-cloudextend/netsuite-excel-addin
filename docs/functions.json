@@ -194,6 +194,30 @@
         "cancelable": false,
         "volatile": false
       }
+    },
+    {
+      "id": "CLEARCACHE",
+      "name": "CLEARCACHE",
+      "description": "Internal: Clear in-memory cache (used by Refresh Selected)",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "string",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "itemsJson",
+          "description": "JSON string of items to clear, or 'ALL' for full clear",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": false,
+        "volatile": true
+      }
     }
   ]
 }

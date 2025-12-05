@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.52.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.53.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.52.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.53.0</div>
         </div>
 
         <div class="content">
@@ -4087,21 +4087,46 @@ export default {
                         }));
                         console.log(`   📢 Set invalidation signal for ${invalidateItems.length} items`);
                         
-                        // Also try to clear in-memory caches if accessible
-                        if (typeof window.clearCacheForItems === 'function') {
-                            window.clearCacheForItems(itemsToClear);
-                        } else if (typeof window.clearAllCaches === 'function') {
-                            window.clearAllCaches();
-                            console.log('   🗑️ Cleared all in-memory caches');
-                        }
                     } catch (e) {
                         console.warn('Cache clear error:', e);
                     }
                     
                     console.log(`✅ Cleared ${clearedCount} localStorage entries for refresh`)
                     
-                    // Wait a moment for cache to clear
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    // CRITICAL: Call NS.CLEARCACHE() in the custom functions runtime
+                    // This runs in the same context as GLABAL and clears in-memory cache
+                    updateLoading('Clearing in-memory cache...', 60);
+                    try {
+                        const itemsJson = JSON.stringify(itemsToClear);
+                        console.log(`📡 Calling NS.CLEARCACHE with ${itemsToClear.length} items...`);
+                        
+                        // Use a temporary cell to evaluate the CLEARCACHE function
+                        const tempSheet = context.workbook.worksheets.getActiveWorksheet();
+                        const tempRange = tempSheet.getRange('XFD1'); // Far corner, unlikely to be used
+                        const originalValue = tempRange.values;
+                        tempRange.load('values');
+                        await context.sync();
+                        
+                        // Set the CLEARCACHE formula
+                        tempRange.formulas = [[`=NS.CLEARCACHE("${itemsJson.replace(/"/g, '""')}")`]];
+                        await context.sync();
+                        
+                        // Wait for it to execute
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        // Read the result
+                        tempRange.load('values');
+                        await context.sync();
+                        console.log('   🔧 NS.CLEARCACHE result:', tempRange.values[0][0]);
+                        
+                        // Clear the temp cell
+                        tempRange.clear();
+                        await context.sync();
+                        
+                    } catch (clearError) {
+                        console.warn('   ⚠️ NS.CLEARCACHE call failed:', clearError.message);
+                        // Continue anyway - localStorage was cleared
+                    }
                     
                     updateLoading(`Recalculating ${formulaCount} formulas...`, 70);
                     
