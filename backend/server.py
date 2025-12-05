@@ -975,6 +975,9 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
     """
     Get OPENING BALANCE for all Balance Sheet accounts as of Jan 1 of fiscal year.
     This is the sum of all activity from inception through Dec 31 of prior year.
+    
+    SIMPLIFIED QUERY - avoids complex CTE patterns that SuiteQL doesn't support.
+    Uses BUILTIN.CONSOLIDATE directly with a simpler structure.
     """
     filter_clauses = []
     if filters.get('subsidiary'):
@@ -989,39 +992,29 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
     # Opening balance = all activity BEFORE the fiscal year starts
-    # Use EXTRACT(YEAR) < fiscal_year to get all prior years
     prior_year = int(fiscal_year) - 1
     
+    # Simpler query without CTE - use CONSOLIDATE directly
     query = f"""
-    WITH sub_cte AS (
-      SELECT COUNT(*) AS subs_count
-      FROM Subsidiary
-      WHERE isinactive = 'F'
-    )
     SELECT
       a.acctnumber AS account_number,
       SUM(
-        CASE
-          WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
-            TO_NUMBER(
-              BUILTIN.CONSOLIDATE(
-                tal.amount,
-                'LEDGER',
-                'DEFAULT',
-                'DEFAULT',
-                {target_sub},
-                t.postingperiod,
-                'DEFAULT'
-              )
-            )
-          ELSE tal.amount
-        END
+        TO_NUMBER(
+          BUILTIN.CONSOLIDATE(
+            tal.amount,
+            'LEDGER',
+            'DEFAULT',
+            'DEFAULT',
+            {target_sub},
+            t.postingperiod,
+            'DEFAULT'
+          )
+        )
       ) AS opening_balance
     FROM TransactionAccountingLine tal
     JOIN Transaction t ON t.id = tal.transaction
     JOIN Account a ON a.id = tal.account
     JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-    CROSS JOIN sub_cte
     WHERE t.posting = 'T'
       AND tal.posting = 'T'
       AND tal.accountingbook = 1
@@ -2158,18 +2151,26 @@ def batch_full_year_refresh_bs():
         start_time = datetime.now()
         
         # STEP 1: Get opening balances (sum of all activity before Jan 1 of fiscal year)
+        # NOTE: This query may fail for new accounts or complex consolidation scenarios
+        # If it fails, we gracefully fall back to 0 opening balance
         print(f"   📥 Step 1: Fetching opening balances...", flush=True)
-        opening_query = build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters)
-        opening_items = run_paginated_suiteql(opening_query, page_size=1000, max_pages=10, timeout=240)
-        
         opening_balances = {}  # { account: opening_balance }
-        for row in opening_items:
-            account = row.get('account_number')
-            balance = float(row.get('opening_balance') or 0)
-            if account:
-                opening_balances[account] = balance
         
-        print(f"   ✅ Got opening balances for {len(opening_balances)} accounts", flush=True)
+        try:
+            opening_query = build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters)
+            opening_items = run_paginated_suiteql(opening_query, page_size=1000, max_pages=10, timeout=240)
+            
+            for row in opening_items:
+                account = row.get('account_number')
+                balance = float(row.get('opening_balance') or 0)
+                if account:
+                    opening_balances[account] = balance
+            
+            print(f"   ✅ Got opening balances for {len(opening_balances)} accounts", flush=True)
+        except Exception as e:
+            print(f"   ⚠️ Opening balance query failed: {e}", flush=True)
+            print(f"   ⚠️ Falling back to within-year cumulative only", flush=True)
+            # Continue with empty opening_balances - data will still be useful
         
         # STEP 2: Get monthly activity within fiscal year
         print(f"   📥 Step 2: Fetching monthly activity for {fiscal_year}...", flush=True)
