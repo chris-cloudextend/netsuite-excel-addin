@@ -257,6 +257,48 @@ async function getAccountType(account) {
     return null;
 }
 
+// Helper: Batch get account types (much faster than individual calls)
+async function batchGetAccountTypes(accounts) {
+    const result = {};
+    const uncached = [];
+    
+    // First check cache
+    for (const acct of accounts) {
+        const cacheKey = getCacheKey('type', { account: acct });
+        if (cache.type.has(cacheKey)) {
+            result[acct] = cache.type.get(cacheKey);
+        } else {
+            uncached.push(acct);
+        }
+    }
+    
+    // Fetch uncached in batch
+    if (uncached.length > 0) {
+        try {
+            const response = await fetch(`${SERVER_URL}/batch/account_types`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account_numbers: uncached })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                const types = data.account_types || {};
+                for (const acct of uncached) {
+                    const type = types[acct] || null;
+                    result[acct] = type;
+                    // Cache for future use
+                    const cacheKey = getCacheKey('type', { account: acct });
+                    cache.type.set(cacheKey, type);
+                }
+            }
+        } catch (e) {
+            console.warn(`   ⚠️ Batch account types failed:`, e.message);
+        }
+    }
+    
+    return result;
+}
+
 async function runBuildModeBatch() {
     const batchStartTime = Date.now();
     const pending = buildModePending.slice();
@@ -322,16 +364,31 @@ async function runBuildModeBatch() {
         console.log(`   ⚡ FAST PATH: Using full_year_refresh for ${yearsArray.length} year(s): ${yearsArray.join(', ')} (${periodsArray.length} periods, ${accountsArray.length} accounts)`);
         
         try {
+            // STEP 1: Detect account types to decide P&L vs BS handling
+            console.log(`   🔍 Detecting account types for ${accountsArray.length} accounts...`);
+            const accountTypes = await batchGetAccountTypes(accountsArray);
+            
+            const plAccounts = [];
+            const bsAccounts = [];
+            for (const acct of accountsArray) {
+                if (isBalanceSheetType(accountTypes[acct])) {
+                    bsAccounts.push(acct);
+                } else {
+                    plAccounts.push(acct);
+                }
+            }
+            
+            console.log(`   📊 Account split: ${plAccounts.length} P&L, ${bsAccounts.length} Balance Sheet`);
+            
             // Fetch data for ALL years (may be multiple for cross-year queries)
             let combinedBalances = {};
             
+            // STEP 2a: Fetch P&L accounts with skip_bs=true (fast)
+            if (plAccounts.length > 0 || bsAccounts.length === 0) {
             for (const year of yearsArray) {
                 const yearStartTime = Date.now();
-                console.log(`   📡 Fetching year ${year}...`);
+                    console.log(`   📡 Fetching P&L year ${year}...`);
                 
-                // OPTIMIZATION: Use skip_bs=true for fast P&L loading
-                // Balance Sheet accounts are rare in most financial reports
-                // Users with BS accounts can use "Refresh Selected" or taskpane "Refresh All"
                 const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -340,8 +397,8 @@ async function runBuildModeBatch() {
                         subsidiary: filters.subsidiary,
                         department: filters.department,
                         location: filters.location,
-                        class: filters.classId,
-                        skip_bs: true  // Skip Balance Sheet for fast loading (~30s faster)
+                            class: filters.classId,
+                            skip_bs: true  // Skip Balance Sheet for fast P&L loading
                     })
                 });
                 
@@ -349,7 +406,7 @@ async function runBuildModeBatch() {
                     const data = await response.json();
                     const yearBalances = data.balances || {};
                     const yearTime = ((Date.now() - yearStartTime) / 1000).toFixed(1);
-                    console.log(`   ✅ Year ${year}: ${Object.keys(yearBalances).length} accounts in ${yearTime}s`);
+                        console.log(`   ✅ P&L Year ${year}: ${Object.keys(yearBalances).length} accounts in ${yearTime}s`);
                     
                     // Merge into combined balances
                     for (const acct in yearBalances) {
@@ -359,8 +416,51 @@ async function runBuildModeBatch() {
                         }
                     }
                 } else {
-                    console.error(`   ❌ Year ${year} error: ${response.status}`);
+                        console.error(`   ❌ P&L Year ${year} error: ${response.status}`);
                     hasError = true;
+                    }
+                }
+            }
+            
+            // STEP 2b: Fetch Balance Sheet accounts separately (cumulative balances)
+            if (bsAccounts.length > 0) {
+                console.log(`   📊 Fetching ${bsAccounts.length} Balance Sheet accounts (cumulative balances)...`);
+                
+                for (const year of yearsArray) {
+                    const yearStartTime = Date.now();
+                    console.log(`   📡 Fetching BS year ${year} (this may take 1-2 minutes)...`);
+                    
+                    const response = await fetch(`${SERVER_URL}/batch/full_year_refresh_bs`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            year: parseInt(year),
+                            subsidiary: filters.subsidiary,
+                            department: filters.department,
+                            location: filters.location,
+                            class: filters.classId
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        const yearBalances = data.balances || {};
+                        const yearTime = ((Date.now() - yearStartTime) / 1000).toFixed(1);
+                        console.log(`   ✅ BS Year ${year}: ${Object.keys(yearBalances).length} accounts in ${yearTime}s`);
+                        
+                        // Merge ONLY the BS accounts we need into combined balances
+                        for (const acct of bsAccounts) {
+                            if (yearBalances[acct]) {
+                                if (!combinedBalances[acct]) combinedBalances[acct] = {};
+                                for (const period in yearBalances[acct]) {
+                                    combinedBalances[acct][period] = yearBalances[acct][period];
+                                }
+                            }
+                        }
+                    } else {
+                        console.error(`   ❌ BS Year ${year} error: ${response.status}`);
+                        hasError = true;
+                    }
                 }
             }
             
@@ -402,17 +502,16 @@ async function runBuildModeBatch() {
                 }
                 
                 // Copy requested accounts/periods to allBalances (for resolving pending promises)
-                // IMPORTANT: Also cache $0 for periods NOT in response (no transactions = $0)
+                // DON'T cache $0 for BS accounts that weren't returned - they need cumulative calculation!
                 for (const acct of accountsArray) {
                     allBalances[acct] = {};
                     for (const period of periodsArray) {
                         if (balances[acct] && balances[acct][period] !== undefined) {
                             allBalances[acct][period] = balances[acct][period];
-                        } else {
-                            // Period not in response = $0 balance (cache this to avoid future misses!)
+                        } else if (!bsAccounts.includes(acct)) {
+                            // Only cache $0 for P&L accounts not in response
                             allBalances[acct][period] = 0;
                             
-                            // Also add to in-memory cache so subsequent lookups are instant
                             const ck = getCacheKey('balance', {
                                 account: acct,
                                 fromPeriod: period,
@@ -423,11 +522,15 @@ async function runBuildModeBatch() {
                                 classId: filters.classId
                             });
                             cache.balance.set(ck, 0);
+                        } else {
+                            // BS account not in response - this shouldn't happen if BS fetch worked
+                            console.warn(`   ⚠️ BS account ${acct} period ${period} not in response`);
+                            allBalances[acct][period] = 0;  // Default to 0 to avoid #BUSY forever
                         }
                     }
                 }
                 
-                console.log(`   ✅ Resolving ${Object.keys(allBalances).length} requested accounts (including $0 for missing)`);
+                console.log(`   ✅ Resolving ${Object.keys(allBalances).length} requested accounts`);
             }
         } catch (error) {
             console.error(`   ❌ Full year refresh fetch error:`, error);
