@@ -278,11 +278,11 @@ async function batchGetAccountTypes(accounts) {
             const response = await fetch(`${SERVER_URL}/batch/account_types`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ account_numbers: uncached })
+                body: JSON.stringify({ accounts: uncached })  // Backend expects 'accounts'
             });
             if (response.ok) {
                 const data = await response.json();
-                const types = data.account_types || {};
+                const types = data.types || {};  // Backend returns 'types'
                 for (const acct of uncached) {
                     const type = types[acct] || null;
                     result[acct] = type;
