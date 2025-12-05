@@ -1338,7 +1338,7 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
                 cache.type.clear();
                 cache.parent.clear();
                 
-                if (typeof fullYearCache !== 'undefined') {
+                if (fullYearCache) {
                     for (const k in fullYearCache) {
                         delete fullYearCache[k];
                     }
@@ -2336,7 +2336,7 @@ function CLEARCACHE(itemsJson) {
             cache.budget.clear();
             cache.type.clear();
             cache.parent.clear();
-            if (typeof fullYearCache !== 'undefined') {
+            if (fullYearCache) {
                 Object.keys(fullYearCache).forEach(k => delete fullYearCache[k]);
             }
             console.log('🗑️ Cleared ALL in-memory caches');
@@ -2373,7 +2373,7 @@ function CLEARCACHE(itemsJson) {
                 }
                 
                 // Clear from fullYearCache
-                if (typeof fullYearCache !== 'undefined' && fullYearCache[account]) {
+                if (fullYearCache && fullYearCache[account]) {
                     if (fullYearCache[account][period] !== undefined) {
                         delete fullYearCache[account][period];
                         cleared++;
