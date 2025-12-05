@@ -1263,6 +1263,11 @@ def batch_full_year_refresh():
     department = data.get('department', '')
     location = data.get('location', '')
     
+    # PERFORMANCE: Skip Balance Sheet accounts for fast preloading
+    # BS accounts require cumulative calculation from beginning of time (slow)
+    # Set skip_bs=true for fast P&L-only preload
+    skip_bs = data.get('skip_bs', False)
+    
     # Convert names to IDs
     subsidiary = convert_name_to_id('subsidiary', subsidiary)
     class_id = convert_name_to_id('class', class_id)
@@ -1401,6 +1406,24 @@ def batch_full_year_refresh():
         
         print(f"💾 Cached {cached_count} values on backend for instant formula lookups")
         print(f"{'='*80}\n")
+        
+        # PERFORMANCE: Skip BS accounts if skip_bs=true (for fast preloading)
+        if skip_bs:
+            print(f"⏭️  Skipping Balance Sheet accounts (skip_bs=true for fast preload)")
+            print(f"   BS accounts will be loaded on-demand when formulas are entered")
+            print(f"   P&L accounts loaded: {len(balances)}")
+            print(f"{'='*80}\n")
+            
+            # Use global account_title_cache for account names
+            account_names_dict = {acct: account_title_cache.get(acct, '') for acct in balances.keys()}
+            
+            return jsonify({
+                'balances': balances,
+                'account_types': account_types,
+                'account_names': account_names_dict,
+                'pl_only': True,
+                'accounts_loaded': len(balances)
+            })
         
         # ALSO fetch Balance Sheet accounts for the same year
         # OPTIMIZED: Query returns ACTIVITY per month, backend computes cumulative
@@ -1678,7 +1701,8 @@ def batch_periods_refresh():
         'location': location,
         'class': class_id
     }
-    filters_hash = f"sub{subsidiary or 'all'}_dept{department or 'all'}_loc{location or 'all'}_cls{class_id or 'all'}"
+    # IMPORTANT: Use same format as batch_balance for cache key compatibility
+    filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
     
     # Build filter clauses
     filter_clauses = []
@@ -1895,46 +1919,77 @@ def batch_periods_refresh():
         prior_balances = {}
         
         if bs_activity:
-            print(f"\n📊 Step 3: BS prior balances (through {prior_end_date})")
+            print(f"\n📊 Step 3: BS prior balances (through end of period before {start_date})")
             
-            bs_account_list = "', '".join([escape_sql(str(a)) for a in bs_activity.keys()])
-            prior_query = f"""
-            WITH sub_cte AS (
-                SELECT COUNT(*) AS subs_count FROM Subsidiary WHERE isinactive = 'F'
-            )
-            SELECT 
-                a.acctnumber AS acctnumber,
-                SUM(
-                    CASE WHEN (SELECT subs_count FROM sub_cte) > 1 THEN 
-                        TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, t.postingperiod, 'DEFAULT'))
-                    ELSE tal.amount END
-                ) AS balance
-            FROM TransactionAccountingLine tal
-            JOIN Transaction t ON t.id = tal.transaction
-            JOIN Account a ON a.id = tal.account
-            JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-            CROSS JOIN sub_cte
-            WHERE t.posting = 'T' AND tal.posting = 'T' AND tal.accountingbook = 1
-            AND ap.isyear = 'F' AND ap.isquarter = 'F'
-            AND ap.enddate < TO_DATE('{start_date}', 'YYYY-MM-DD')
-            AND a.acctnumber IN ('{bs_account_list}')
-            AND COALESCE(a.eliminate, 'F') = 'F'
-            {filter_sql}
-            GROUP BY a.acctnumber
-            """
+            # Get list of BS accounts - batch if too many to avoid query size limits
+            bs_accounts = list(bs_activity.keys())
             
             prior_start = datetime.now()
-            prior_result = query_netsuite(prior_query, timeout=120)
+            
+            # Batch accounts in groups of 50 to avoid query size limits
+            batch_size = 50
+            for i in range(0, len(bs_accounts), batch_size):
+                batch = bs_accounts[i:i+batch_size]
+                bs_account_list = "', '".join([escape_sql(str(a)) for a in batch])
+                
+                # Use same CROSS JOIN pattern as working queries - no CTE with subquery
+                prior_query = f"""
+                SELECT 
+                    a.acctnumber AS acctnumber,
+                    SUM(
+                        CASE 
+                            WHEN subs_count > 1 THEN
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        t.postingperiod,
+                                        'DEFAULT'
+                                    )
+                                )
+                            ELSE tal.amount
+                        END
+                    ) AS balance
+                FROM TransactionAccountingLine tal
+                JOIN Transaction t ON t.id = tal.transaction
+                JOIN Account a ON a.id = tal.account
+                JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                CROSS JOIN (
+                    SELECT COUNT(*) AS subs_count
+                    FROM Subsidiary
+                    WHERE isinactive = 'F'
+                ) subs_cte
+                WHERE t.posting = 'T' 
+                    AND tal.posting = 'T' 
+                    AND tal.accountingbook = 1
+                    AND ap.isyear = 'F' 
+                    AND ap.isquarter = 'F'
+                    AND ap.enddate < TO_DATE('{start_date}', 'YYYY-MM-DD')
+                    AND a.acctnumber IN ('{bs_account_list}')
+                    AND COALESCE(a.eliminate, 'F') = 'F'
+                    {filter_sql}
+                GROUP BY a.acctnumber
+                """
+                
+                try:
+                    batch_result = query_netsuite(prior_query, timeout=120)
+                    
+                    if isinstance(batch_result, list):
+                        for row in batch_result:
+                            acc = str(row.get('acctnumber', ''))
+                            bal = float(row.get('balance', 0) or 0)
+                            if abs(bal) < 0.01:
+                                bal = 0
+                            prior_balances[acc] = bal
+                    elif isinstance(batch_result, dict) and 'error' in batch_result:
+                        print(f"⚠️  Prior balance query batch {i//batch_size + 1} error: {batch_result.get('error', 'unknown')}", file=sys.stderr)
+                except Exception as e:
+                    print(f"⚠️  Prior balance query batch {i//batch_size + 1} exception: {str(e)}", file=sys.stderr)
+            
             prior_elapsed = (datetime.now() - prior_start).total_seconds()
-            
-            if isinstance(prior_result, list):
-                for row in prior_result:
-                    acc = str(row.get('acctnumber', ''))
-                    bal = float(row.get('balance', 0) or 0)
-                    if abs(bal) < 0.01:
-                        bal = 0
-                    prior_balances[acc] = bal
-            
             print(f"⏱️  BS prior query: {prior_elapsed:.1f}s ({len(prior_balances)} accounts with prior balances)")
         
         # Compute cumulative for BS accounts, walking through periods in order
@@ -2222,6 +2277,13 @@ def batch_balance():
             print(f"⚠️  Backend cache expired ({cache_age:.1f}s old) - falling back to full query")
     
     try:
+        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"BATCH BALANCE REQUEST", file=sys.stderr)
+        print(f"  Accounts ({len(accounts)}): {accounts[:5]}{'...' if len(accounts) > 5 else ''}", file=sys.stderr)
+        print(f"  Periods ({len(periods)}): {periods}", file=sys.stderr)
+        print(f"  Subsidiary: {subsidiary}, Department: {department}, Location: {location}, Class: {class_id}", file=sys.stderr)
+        print(f"{'='*60}", file=sys.stderr)
+        
         # Build WHERE clause with optional filters
         where_clauses = [
             "t.posting = 'T'",

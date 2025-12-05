@@ -1413,23 +1413,6 @@
                 <div class="guide-me-progress" id="guideMeProgress" style="display: none;"></div>
             </div>
 
-            <!-- PREPARE WORKBOOK -->
-            <div class="preload-card" id="preloadCard">
-                <button class="preload-dismiss" onclick="dismissPreload()" title="Dismiss">×</button>
-                <h3>⚡ Prepare your workbook for fast analysis</h3>
-                <p>Select your date range and click below. We'll load all relevant GL data so your formulas respond instantly as you work.</p>
-                <div class="instruction-box">
-                    <strong>How to use:</strong><br>
-                    1. Select the cells containing your date headers (e.g., D1:P1)<br>
-                    2. Click the button below<br>
-                    3. We'll detect the periods and load all account data
-                </div>
-                <button class="preload-btn" id="preloadBtn" onclick="runPreloadSheet()">
-                    <span id="preloadBtnText">📊 Load Data for Selected Dates</span>
-                </button>
-                <div class="guide-me-progress" id="preloadProgress" style="display: none;"></div>
-            </div>
-
             <!-- GETTING STARTED HELP SECTION -->
             <details class="collapsible-section help-section" id="helpSection">
                 <summary class="collapsible-header">
@@ -1562,6 +1545,34 @@
                     <div class="refresh-status" id="refreshStatus"></div>
                 </div>
             </details>
+
+            <!-- PREPARE WORKBOOK - Load data for fast formula resolution -->
+            <div class="preload-card" id="preloadCard">
+                <button class="preload-dismiss" onclick="dismissPreload()" title="Dismiss">×</button>
+                <h3>⚡ Prepare your workbook for fast analysis</h3>
+                <p>Select your date range and click below. We'll load all relevant GL data so your formulas respond instantly as you work.</p>
+                <div class="instruction-box">
+                    <strong>How to use:</strong><br>
+                    1. Select the cells containing your date headers (e.g., D1:P1)<br>
+                    2. Click the button below<br>
+                    3. We'll detect the periods and load all account data
+                </div>
+                <button class="preload-btn" id="preloadBtn" onclick="runPreloadSheet()">
+                    <span id="preloadBtnText">📊 Load Data for Selected Dates</span>
+                </button>
+                
+                <!-- Balance Sheet Option -->
+                <label class="bs-option" style="display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--bottlenose); cursor: pointer;">
+                    <input type="checkbox" id="includeBSCheckbox" style="width: 16px; height: 16px; accent-color: var(--tidal-wave);">
+                    <span>Include Balance Sheet accounts</span>
+                    <span style="font-size: 11px; color: var(--chrome);">(+2-3 min)</span>
+                </label>
+                <div style="font-size: 11px; color: var(--chrome); margin-top: 4px; padding-left: 24px;">
+                    Cash, AR, AP, etc. — loads after P&L finishes
+                </div>
+                
+                <div class="guide-me-progress" id="preloadProgress" style="display: none;"></div>
+            </div>
 
             <!-- NETSUITE FILTERS SECTION -->
             <details class="collapsible-section">
@@ -1833,7 +1844,7 @@
         </div>
 
         <div class="footer">
-            <p>NetSuite Excel Add-in by <a href="https://www.cloudextend.io" target="_blank">CloudExtend</a></p>
+            <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine for NetSuite</p>
         </div>
     </div>
     
@@ -2397,6 +2408,17 @@
 
             btn.disabled = true;
             btnText.textContent = 'Reading selection...';
+            
+            // CRITICAL: Signal formulas to wait via localStorage
+            // This works across contexts (taskpane iframe ↔ custom functions)
+            console.log('Pre-load: Setting preload status via localStorage');
+            try {
+                localStorage.setItem('netsuite_preload_status', 'running');
+                localStorage.setItem('netsuite_preload_timestamp', Date.now().toString());
+                console.log('Pre-load: ✅ Preload status set - formulas will wait');
+            } catch (e) {
+                console.warn('Pre-load: ⚠️ Could not set preload status:', e);
+            }
 
             try {
                 // Step 1: Read selected range from Excel and build period strings
@@ -2550,43 +2572,62 @@
                 
                 updateProgress(5, '📥 Loading Data', `Fetching ${periodCount} periods for all accounts...`);
                 
-                // Start artificial progress during the fetch
-                let artificialProgress = 5;
-                const progressInterval = setInterval(() => {
-                    if (artificialProgress < 85) {
-                        artificialProgress += 3;
-                        updateProgress(artificialProgress, '📥 Loading Data', 
-                            `Querying NetSuite for ${periodCount} specific periods...`);
-                    }
-                }, 3000);
-
+                // Use full_year_refresh for each year (same as formulas - works within timeout!)
+                // This is more reliable than periods_refresh which can timeout on Cloudflare
+                const yearsList = Array.from(selectedYears).sort();
+                let yearProgress = 5;
+                const progressPerYear = Math.floor(75 / yearsList.length);
+                
                 try {
-                    // Use the new optimized periods_refresh endpoint!
-                    const response = await fetch(`${SERVER_URL}/batch/periods_refresh`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            periods: selectedPeriods,
-                            subsidiary: '',
-                            department: '',
-                            location: '',
-                            class: ''
-                        })
-                    });
-
-                    clearInterval(progressInterval);
-
-                    if (!response.ok) {
-                        throw new Error(`Failed to load data: ${response.status}`);
+                    for (let i = 0; i < yearsList.length; i++) {
+                        const year = yearsList[i];
+                        updateProgress(yearProgress, '📥 Loading Data', 
+                            `Loading year ${year} (${i + 1}/${yearsList.length})...`);
+                        
+                        console.log(`Pre-load: Fetching year ${year}...`);
+                        const startTime = Date.now();
+                        
+                        const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                year: parseInt(year),
+                                subsidiary: '',
+                                department: '',
+                                location: '',
+                                class: '',
+                                skip_bs: true  // FAST MODE: Skip BS accounts (load on-demand)
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`Failed to load year ${year}: ${response.status}`);
+                        }
+                        
+                        const data = await response.json();
+                        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                        const yearBalances = data.balances || {};
+                        const accountCount = Object.keys(yearBalances).length;
+                        
+                        console.log(`Pre-load: Year ${year} loaded - ${accountCount} accounts in ${elapsed}s`);
+                        
+                        // Merge into allBalances
+                        for (const acct in yearBalances) {
+                            if (!allBalances[acct]) allBalances[acct] = {};
+                            for (const period in yearBalances[acct]) {
+                                allBalances[acct][period] = yearBalances[acct][period];
+                            }
+                        }
+                        
+                        // Merge types if available
+                        if (data.account_types) {
+                            Object.assign(allTypes, data.account_types);
+                        }
+                        
+                        yearProgress += progressPerYear;
                     }
-
-                    const data = await response.json();
-                    console.log(`Pre-load: Loaded ${Object.keys(data.balances || {}).length} accounts for ${selectedPeriods.length} periods`);
-                    console.log(`Pre-load: Query time: ${data.query_time?.toFixed(2)}s`);
-
-                    allBalances = data.balances || {};
-                    allTypes = data.account_types || {};
-                    allNames = data.account_names || {};
+                    
+                    console.log(`Pre-load: Total loaded - ${Object.keys(allBalances).length} accounts`);
 
                     // Fill in $0 for requested periods that have no data
                     for (const acctNum in allBalances) {
@@ -2596,9 +2637,22 @@
                             }
                         }
                     }
+                    
+                    // Fetch account names if not already loaded
+                    updateProgress(85, '📥 Loading Names', 'Fetching account names...');
+                    try {
+                        const namesResponse = await fetch(`${SERVER_URL}/account/preload_titles`);
+                        if (namesResponse.ok) {
+                            const namesData = await namesResponse.json();
+                            allNames = namesData.titles || {};
+                            console.log(`Pre-load: Loaded ${Object.keys(allNames).length} account names`);
+                        }
+                    } catch (namesError) {
+                        console.warn('Pre-load: Could not fetch account names:', namesError.message);
+                    }
 
                 } catch (fetchError) {
-                    clearInterval(progressInterval);
+                    console.error('Pre-load fetch error:', fetchError);
                     throw fetchError;
                 }
 
@@ -2617,8 +2671,25 @@
                         Object.assign(mergedBalances[acctNum], allBalances[acctNum]);
                     }
 
-                    localStorage.setItem('netsuite_balance_cache', JSON.stringify(mergedBalances));
+                    const cacheJson = JSON.stringify(mergedBalances);
+                    console.log('Pre-load: Saving to localStorage...');
+                    console.log(`   Accounts: ${Object.keys(mergedBalances).length}`);
+                    console.log(`   Sample accounts: ${Object.keys(mergedBalances).slice(0, 5).join(', ')}`);
+                    console.log(`   Data size: ${cacheJson.length} chars`);
+                    
+                    localStorage.setItem('netsuite_balance_cache', cacheJson);
                     localStorage.setItem('netsuite_balance_cache_timestamp', Date.now().toString());
+                    
+                    // Verify it was saved
+                    const verifyTimestamp = localStorage.getItem('netsuite_balance_cache_timestamp');
+                    const verifyData = localStorage.getItem('netsuite_balance_cache');
+                    console.log('Pre-load: Verification after save:');
+                    console.log(`   Timestamp saved: ${verifyTimestamp}`);
+                    console.log(`   Data saved: ${verifyData ? verifyData.length + ' chars' : 'NULL!'}`);
+                    
+                    if (mergedBalances['10010']) {
+                        console.log(`   Account 10010 periods: ${Object.keys(mergedBalances['10010']).join(', ')}`);
+                    }
                     
                     // Merge and save types
                     const existingTypes = JSON.parse(localStorage.getItem('netsuite_type_cache') || '{}');
@@ -2631,8 +2702,14 @@
                     console.log('Pre-load: Saved all data to localStorage');
 
                     // Populate in-memory caches
+                    console.log('Pre-load: Populating caches...');
+                    console.log('   typeof window.setFullYearCache:', typeof window.setFullYearCache);
+                    
                     if (typeof window.setFullYearCache === 'function') {
+                        console.log('Pre-load: ✅ Calling setFullYearCache with', Object.keys(mergedBalances).length, 'accounts');
                         window.setFullYearCache(mergedBalances);
+                    } else {
+                        console.log('Pre-load: ⚠️ window.setFullYearCache NOT AVAILABLE');
                     }
                     if (typeof window.setAccountTypeCache === 'function') {
                         window.setAccountTypeCache({ ...existingTypes, ...allTypes });
@@ -2640,44 +2717,187 @@
                     if (typeof window.setAccountNameCache === 'function') {
                         window.setAccountNameCache({ ...existingNames, ...allNames });
                     }
+                    
+                    // CRITICAL: Signal formulas that preload is complete via localStorage
+                    console.log('Pre-load: ✅ Setting preload status to complete');
+                    localStorage.setItem('netsuite_preload_status', 'complete');
                 } catch (cacheError) {
                     console.warn('Pre-load: Cache save warning:', cacheError);
+                    // Still finish preload even if cache save fails
+                    localStorage.setItem('netsuite_preload_status', 'complete');
                 }
 
-                updateProgress(100, '✅ Complete!', 'All data cached and ready!');
+                updateProgress(100, '✅ P&L Complete!', 'Income/Expense accounts ready!');
 
-                // Clean up
+                // Clean up overlay
                 clearInterval(historyInterval);
-                setTimeout(() => {
-                    overlay.remove();
-                    
-                    // Success message
-                    const accountCount = Object.keys(allBalances).length;
-                    const loadedPeriodCount = selectedPeriods.length;
-                    
-                    progress.style.display = 'block';
-                    progress.innerHTML = `✅ <strong>You're all set!</strong><br><br>
-                        Loaded <strong>${accountCount} accounts</strong> × <strong>${loadedPeriodCount} periods</strong><br>
-                        <span style="font-size: 11px; color: #666;">${selectedPeriods.slice(0, 4).join(', ')}${selectedPeriods.length > 4 ? ` + ${selectedPeriods.length - 4} more` : ''}</span><br><br>
-                        <div style="background: rgba(125, 255, 179, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid #7dffb3;">
-                            💡 Your formulas will calculate <strong>instantly</strong> as you edit or expand your sheet.
+                setTimeout(() => overlay.remove(), 500);
+                
+                // Check if user wants Balance Sheet accounts too
+                const includeBS = document.getElementById('includeBSCheckbox')?.checked || false;
+                const accountCount = Object.keys(allBalances).length;
+                
+                // Show P&L success message
+                progress.style.display = 'block';
+                
+                if (includeBS) {
+                    // Show P&L done, BS loading message
+                    progress.innerHTML = `✅ <strong>P&L accounts ready!</strong> (${accountCount} accounts)<br><br>
+                        <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--anenome);">
+                            ⏳ <strong>Loading Balance Sheet...</strong><br>
+                            <span style="font-size: 11px;">Cash, AR, AP, etc. — this takes 2-3 minutes</span><br>
+                            <span id="bsLoadingStatus" style="font-size: 11px; color: var(--chrome);">Starting...</span>
+                        </div>
+                        <div style="font-size: 11px; color: #888; margin-top: 8px;">
+                            💡 Start entering P&L formulas now — they'll resolve instantly!
                         </div>`;
                     progress.style.lineHeight = '1.6';
+                    btnText.textContent = '⏳ Loading BS...';
+                    btn.style.background = 'var(--tidal-wave)';
                     
+                    // Start BS loading in background
+                    loadBalanceSheetInBackground(uniqueYears, progress, btn, btnText);
+                } else {
+                    // P&L only - show final success message
+                    progress.innerHTML = `✅ <strong>You're all set!</strong><br><br>
+                        <strong>${accountCount}</strong> Income/Expense accounts loaded<br>
+                        <span style="font-size: 11px; color: #666;">${selectedPeriods.slice(0, 4).join(', ')}${selectedPeriods.length > 4 ? ` + ${selectedPeriods.length - 4} more` : ''}</span><br><br>
+                        <div style="background: rgba(125, 255, 179, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid #7dffb3;">
+                            ⚡ <strong>P&L accounts</strong> = instant results
+                        </div>
+                        <div style="font-size: 11px; color: #888; margin-top: 8px;">
+                            💡 Need Balance Sheet? Check the box above and reload.
+                        </div>`;
+                    progress.style.lineHeight = '1.6';
                     btnText.textContent = '✓ Ready!';
                     btn.style.background = '#4CAF50';
-                }, 500);
+                    btn.disabled = false;
+                }
 
             } catch (error) {
                 console.error('Pre-load error:', error);
+                // Release any waiting formulas on error via localStorage
+                localStorage.setItem('netsuite_preload_status', 'error');
+                
                 if (document.getElementById('preloadOverlay')) {
                     document.getElementById('preloadOverlay').remove();
                 }
+                
+                // Provide user-friendly error messages
+                let errorMessage = error.message;
+                let helpTip = '';
+                
+                if (error.message.includes('524') || error.message.includes('timeout')) {
+                    errorMessage = 'Request timed out';
+                    helpTip = `<div style="font-size: 11px; margin-top: 8px; color: #666;">
+                        <strong>Why this happens:</strong> NetSuite queries for Balance Sheet accounts can take several minutes. 
+                        <strong>Try this:</strong> Your formulas will still work - they'll load data on-demand when you enter them.
+                    </div>`;
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMessage = 'Could not reach server';
+                    helpTip = `<div style="font-size: 11px; margin-top: 8px; color: #666;">
+                        Check that the server is running and the tunnel URL is correct in your settings.
+                    </div>`;
+                } else if (error.message.includes('No valid dates')) {
+                    helpTip = `<div style="font-size: 11px; margin-top: 8px; color: #666;">
+                        Select cells containing dates like "Jan 2025" or "1/1/2025" before clicking this button.
+                    </div>`;
+                }
+                
                 progress.style.display = 'block';
-                progress.textContent = `❌ Error: ${error.message}`;
+                progress.innerHTML = `<div style="color: #ff6b6b;">❌ ${errorMessage}</div>${helpTip}`;
                 btnText.textContent = 'Try Again';
                 btn.disabled = false;
                 btn.style.background = '';
+            }
+        }
+
+        // Background Balance Sheet loading - runs after P&L is complete
+        async function loadBalanceSheetInBackground(years, progressEl, btn, btnText) {
+            console.log('🏦 Starting background Balance Sheet loading for years:', years);
+            const statusEl = document.getElementById('bsLoadingStatus');
+            
+            try {
+                let totalBSAccounts = 0;
+                
+                for (let i = 0; i < years.length; i++) {
+                    const year = years[i];
+                    if (statusEl) {
+                        statusEl.textContent = `Loading ${year}... (${i + 1}/${years.length} years)`;
+                    }
+                    
+                    console.log(`🏦 Fetching BS data for ${year}...`);
+                    const startTime = Date.now();
+                    
+                    const response = await fetch(`${SERVER_URL}/batch/full_year_refresh_bs`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            year: parseInt(year),
+                            subsidiary: '',
+                            department: '',
+                            location: '',
+                            class: ''
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`BS load failed: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                    console.log(`✅ BS ${year}: ${Object.keys(data.balances || {}).length} accounts in ${elapsed}s`);
+                    
+                    // Merge BS data into localStorage cache
+                    const existingBalances = JSON.parse(localStorage.getItem('netsuite_balance_cache') || '{}');
+                    for (const [account, periods] of Object.entries(data.balances || {})) {
+                        if (!existingBalances[account]) {
+                            existingBalances[account] = {};
+                        }
+                        Object.assign(existingBalances[account], periods);
+                        totalBSAccounts++;
+                    }
+                    localStorage.setItem('netsuite_balance_cache', JSON.stringify(existingBalances));
+                    localStorage.setItem('netsuite_balance_timestamp', Date.now().toString());
+                    
+                    // Update fullYearCache if available
+                    if (typeof window.setFullYearCache === 'function') {
+                        window.setFullYearCache(existingBalances);
+                    }
+                }
+                
+                // Success!
+                console.log(`✅ Background BS loading complete: ${totalBSAccounts} accounts`);
+                
+                progressEl.innerHTML = `✅ <strong>All accounts ready!</strong><br><br>
+                    <div style="background: rgba(125, 255, 179, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid #7dffb3;">
+                        ⚡ <strong>P&L accounts</strong> = instant<br>
+                        ✅ <strong>Balance Sheet</strong> = instant (${totalBSAccounts} accounts)
+                    </div>
+                    <div style="font-size: 11px; color: #888; margin-top: 8px;">
+                        All formulas will resolve instantly!
+                    </div>`;
+                
+                btnText.textContent = '✓ All Ready!';
+                btn.style.background = '#4CAF50';
+                btn.disabled = false;
+                
+            } catch (error) {
+                console.error('🏦 Background BS loading error:', error);
+                
+                progressEl.innerHTML = `✅ <strong>P&L accounts ready!</strong><br><br>
+                    <div style="background: rgba(255, 107, 107, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid #ff6b6b;">
+                        ⚠️ <strong>Balance Sheet loading failed</strong><br>
+                        <span style="font-size: 11px;">${error.message}</span>
+                    </div>
+                    <div style="font-size: 11px; color: #888; margin-top: 8px;">
+                        P&L formulas work instantly. BS formulas will load on-demand (~45s each).
+                    </div>`;
+                
+                btnText.textContent = '✓ P&L Ready';
+                btn.style.background = '#4CAF50';
+                btn.disabled = false;
             }
         }
 

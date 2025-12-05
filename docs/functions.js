@@ -577,6 +577,75 @@ const STORAGE_TTL = 300000; // 5 minutes in milliseconds
 let fullYearCache = null;
 let fullYearCacheTimestamp = null;
 
+// Preload coordination - prevents formulas from making redundant queries while Prep Data is running
+// Uses localStorage for cross-context communication (works between taskpane iframe and custom functions)
+const PRELOAD_STATUS_KEY = 'netsuite_preload_status';
+const PRELOAD_TIMESTAMP_KEY = 'netsuite_preload_timestamp';
+
+function isPreloadInProgress() {
+    try {
+        const status = localStorage.getItem(PRELOAD_STATUS_KEY);
+        const timestamp = localStorage.getItem(PRELOAD_TIMESTAMP_KEY);
+        
+        // Only 'running' means preload is in progress
+        // 'complete', 'error', or anything else means done
+        if (status === 'running' && timestamp) {
+            // Check if preload started within last 3 minutes (avoid stale flags)
+            const elapsed = Date.now() - parseInt(timestamp);
+            if (elapsed < 180000) { // 3 minutes max wait
+                return true;
+            }
+            // Stale preload flag - clear it
+            console.log('⚠️ Stale preload flag detected - clearing');
+            localStorage.removeItem(PRELOAD_STATUS_KEY);
+        }
+        return false;
+    } catch (e) {
+        return false;
+    }
+}
+
+// Wait for preload to complete (polls localStorage)
+async function waitForPreload(maxWaitMs = 120000) {
+    const startTime = Date.now();
+    const pollInterval = 500; // Check every 500ms
+    
+    while (isPreloadInProgress()) {
+        if (Date.now() - startTime > maxWaitMs) {
+            console.log('⏰ Preload wait timeout - proceeding with formula');
+            return false; // Timeout - proceed anyway
+        }
+        await new Promise(r => setTimeout(r, pollInterval));
+    }
+    return true; // Preload completed
+}
+
+// These are called by taskpane via localStorage (cross-context compatible)
+window.startPreload = function() {
+    console.log('========================================');
+    console.log('🔄 PRELOAD STARTED - formulas will wait for cache');
+    console.log('========================================');
+    try {
+        localStorage.setItem(PRELOAD_STATUS_KEY, 'running');
+        localStorage.setItem(PRELOAD_TIMESTAMP_KEY, Date.now().toString());
+    } catch (e) {
+        console.warn('Could not set preload status:', e);
+    }
+    return true;
+};
+
+window.finishPreload = function() {
+    console.log('========================================');
+    console.log('✅ PRELOAD FINISHED - formulas can proceed');
+    console.log('========================================');
+    try {
+        localStorage.setItem(PRELOAD_STATUS_KEY, 'complete');
+    } catch (e) {
+        console.warn('Could not set preload status:', e);
+    }
+    return true;
+};
+
 // Function to populate the cache from taskpane (via Shared Runtime if available)
 window.setFullYearCache = function(balances) {
     console.log('========================================');
@@ -634,25 +703,44 @@ window.setAccountNameCache = function(accountNames) {
 // Structure: { "4220": { "Apr 2024": 123.45, ... }, ... }
 function checkLocalStorageCache(account, period, toPeriod = null) {
     try {
+        // DIAGNOSTIC: Log every localStorage check to debug cache issues
+        console.log(`🔍 localStorage CHECK for ${account}/${period || toPeriod}`);
+        
         const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
-        if (!timestamp) return null;
+        if (!timestamp) {
+            console.log(`   ⚠️ No timestamp in localStorage (key: ${STORAGE_TIMESTAMP_KEY})`);
+            return null;
+        }
         
         const cacheAge = Date.now() - parseInt(timestamp);
-        if (cacheAge > STORAGE_TTL) return null; // Cache expired
+        const cacheAgeSeconds = Math.round(cacheAge / 1000);
+        console.log(`   📅 Cache age: ${cacheAgeSeconds}s (TTL: ${STORAGE_TTL/1000}s)`);
+        
+        if (cacheAge > STORAGE_TTL) {
+            console.log(`   ⏰ Cache EXPIRED (${cacheAgeSeconds}s > ${STORAGE_TTL/1000}s)`);
+            return null;
+        }
         
         const cached = localStorage.getItem(STORAGE_KEY);
-        if (!cached) return null;
+        if (!cached) {
+            console.log(`   ⚠️ No cached data in localStorage (key: ${STORAGE_KEY})`);
+            return null;
+        }
         
         const balances = JSON.parse(cached);
+        const accountCount = Object.keys(balances).length;
+        console.log(`   📊 Found ${accountCount} accounts in cache`);
         
         // For cumulative queries (empty fromPeriod), use toPeriod for lookup
         const lookupPeriod = (period && period !== '') ? period : toPeriod;
         
         // Debug: Log what we're looking for vs what's available
-        console.log(`🔍 Cache lookup: account=${account}, period="${lookupPeriod}" (from="${period}", to="${toPeriod}")`);
+        console.log(`   🔍 Looking for: account=${account}, period="${lookupPeriod}"`);
         if (balances[account]) {
             const availablePeriods = Object.keys(balances[account]);
-            console.log(`   Available periods for ${account}: ${availablePeriods.slice(0, 6).join(', ')}${availablePeriods.length > 6 ? '...' : ''}`);
+            console.log(`   Available periods for ${account}: ${availablePeriods.join(', ')}`);
+        } else {
+            console.log(`   ⚠️ Account ${account} NOT found in cache. Sample accounts: ${Object.keys(balances).slice(0, 5).join(', ')}`);
         }
         
         // ONLY return if we have an explicit value for this account+period
@@ -662,7 +750,7 @@ function checkLocalStorageCache(account, period, toPeriod = null) {
             return balances[account][lookupPeriod];
         }
         
-        console.log(`   ❌ MISS: period "${lookupPeriod}" not found`);
+        console.log(`   ❌ MISS: period "${lookupPeriod}" not found for account ${account}`);
         // Period not found - return null to trigger batch processing
         // (Could be missing due to 1000 row limit, not because it's truly $0)
         return null;
@@ -675,20 +763,37 @@ function checkLocalStorageCache(account, period, toPeriod = null) {
 
 // Check in-memory cache (backup for Shared Runtime)
 function checkFullYearCache(account, period) {
+    console.log(`🔍 fullYearCache CHECK for ${account}/${period}`);
+    
     if (!fullYearCache || !fullYearCacheTimestamp) {
+        console.log(`   ⚠️ fullYearCache not set (cache=${!!fullYearCache}, timestamp=${!!fullYearCacheTimestamp})`);
         return null;
     }
     
+    const cacheAge = Date.now() - fullYearCacheTimestamp;
+    console.log(`   📅 fullYearCache age: ${Math.round(cacheAge/1000)}s`);
+    
     // Cache expires after 5 minutes
-    if (Date.now() - fullYearCacheTimestamp > 300000) {
+    if (cacheAge > 300000) {
+        console.log(`   ⏰ fullYearCache EXPIRED`);
         fullYearCache = null;
         fullYearCacheTimestamp = null;
         return null;
     }
     
+    const accountCount = Object.keys(fullYearCache).length;
+    console.log(`   📊 fullYearCache has ${accountCount} accounts`);
+    
     // ONLY return if we have an explicit value for this account+period
     if (fullYearCache[account] && fullYearCache[account][period] !== undefined) {
+        console.log(`   ✅ fullYearCache HIT: ${fullYearCache[account][period]}`);
         return fullYearCache[account][period];
+    }
+    
+    if (!fullYearCache[account]) {
+        console.log(`   ⚠️ Account ${account} NOT in fullYearCache. Sample: ${Object.keys(fullYearCache).slice(0,5).join(', ')}`);
+    } else {
+        console.log(`   ⚠️ Period ${period} NOT in fullYearCache[${account}]. Available: ${Object.keys(fullYearCache[account]).join(', ')}`);
     }
     
     // Not found - return null to trigger batch processing
@@ -724,9 +829,18 @@ window.populateFrontendCache = function(balances, filters = {}) {
     let resolvedCount = 0;
     
     // First, populate the in-memory cache
+    // CRITICAL: Use getCacheKey to ensure format matches formula lookups!
     for (const [account, periods] of Object.entries(balances)) {
         for (const [period, amount] of Object.entries(periods)) {
-            const cacheKey = `balance:${account}:${period}:${period}:${subsidiary}:${department}:${location}:${classId}`;
+            const cacheKey = getCacheKey('balance', {
+                account: account,
+                fromPeriod: period,
+                toPeriod: period,
+                subsidiary: subsidiary,
+                department: department,
+                location: location,
+                classId: classId
+            });
             cache.balance.set(cacheKey, amount);
             cacheCount++;
         }
@@ -1139,6 +1253,44 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
         const cacheKey = getCacheKey('balance', params);
+        
+        // ================================================================
+        // PRELOAD COORDINATION: If Prep Data is running, wait for it
+        // Uses localStorage for cross-context communication
+        // ================================================================
+        if (isPreloadInProgress()) {
+            console.log(`⏳ Preload in progress - waiting for cache (${account}/${fromPeriod || toPeriod})`);
+            await waitForPreload();
+            console.log(`✅ Preload complete - checking cache`);
+            
+            // After preload completes, check caches - should be populated now!
+            // Check in-memory cache
+            if (cache.balance.has(cacheKey)) {
+                console.log(`✅ Post-preload cache hit (memory): ${account}`);
+                cacheStats.hits++;
+                return cache.balance.get(cacheKey);
+            }
+            
+            // Check localStorage cache
+            const localStorageValue = checkLocalStorageCache(account, fromPeriod, toPeriod);
+            if (localStorageValue !== null) {
+                console.log(`✅ Post-preload cache hit (localStorage): ${account}`);
+                cacheStats.hits++;
+                cache.balance.set(cacheKey, localStorageValue);
+                return localStorageValue;
+            }
+            
+            // Check fullYearCache
+            const fyValue = checkFullYearCache(account, fromPeriod || toPeriod);
+            if (fyValue !== null) {
+                console.log(`✅ Post-preload cache hit (fullYearCache): ${account}`);
+                cacheStats.hits++;
+                cache.balance.set(cacheKey, fyValue);
+                return fyValue;
+            }
+            
+            console.log(`⚠️ Post-preload cache miss - will query NetSuite: ${account}`);
+        }
         
         // ================================================================
         // BUILD MODE DETECTION: Detect rapid formula creation (drag/paste)
