@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.46.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.47.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.46.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.47.0</div>
         </div>
 
         <div class="content">
@@ -1652,6 +1652,17 @@
                     <div class="help-tip">
                         <h4>💡 Quick Start</h4>
                         <p>Type formulas directly in any Excel cell. Start with <code>=NS.GLABAL("4220", "Jan 2024", "Jan 2024")</code> to get account 4220's January balance!</p>
+                    </div>
+                    
+                    <div class="help-tip" style="background: linear-gradient(135deg, rgba(26, 90, 62, 0.1) 0%, rgba(45, 138, 95, 0.1) 100%); border-color: #2d8a5f;">
+                        <h4>⚡ Pro Tip: Load Data First</h4>
+                        <p>For the fastest experience, use <strong>Data Management → Load Data</strong> before building your report:</p>
+                        <ol style="margin: 8px 0 0 16px; font-size: 12px; line-height: 1.6;">
+                            <li>Select cells containing your date headers (e.g., Jan 2025, Feb 2025)</li>
+                            <li>Click <strong>Load Data for Selected Dates</strong></li>
+                            <li>All GL data is pre-cached — formulas resolve instantly!</li>
+                        </ol>
+                        <p style="margin-top: 8px; font-size: 11px; color: var(--bottlenose);">Check "Include Balance Sheet Accounts" if you need Cash, AR, AP, etc.</p>
                     </div>
                     
                     <h4 style="color: var(--deep-dive); margin: 16px 0 10px; font-size: 14px;">Available Formulas</h4>
@@ -1775,7 +1786,7 @@
                             
                             <label class="checkbox-row">
                                 <input type="checkbox" id="includeBSCheckbox">
-                                <span class="checkbox-label">Include Balance Sheet</span>
+                                <span class="checkbox-label">Include Balance Sheet Accounts</span>
                                 <span class="help-icon small" data-tip="BS accounts (Cash, AR, AP) need cumulative calculations. Adds 2-3 min but enables instant BS formulas.">?</span>
                             </label>
                         </div>
