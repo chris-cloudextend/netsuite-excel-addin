@@ -2113,46 +2113,72 @@ def batch_full_year_refresh_bs():
         print(f"⏱️  Query time: {elapsed:.2f} seconds", flush=True)
         print(f"✅ Received {len(items)} rows")
         
-        # Process BS results - WIDE format with columns like Jan_2024, Feb_2024, etc.
+        # Process BS results - NARROW format with columns: account_number, month (YYYY-MM), amount
+        # Each row is one account for one month - we need to aggregate and compute cumulative
         balances = {}
-        month_map = {
-            'jan': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'apr': 'Apr',
-            'may': 'May', 'jun': 'Jun', 'jul': 'Jul', 'aug': 'Aug',
-            'sep': 'Sep', 'oct': 'Oct', 'nov': 'Nov', 'dec': 'Dec'
+        month_names = {
+            '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
+            '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+            '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
         }
         
         global balance_cache, balance_cache_timestamp
         filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
         cached_count = 0
         
+        # First pass: collect activity per account per month
+        activity = {}  # { account: { "Jan 2024": amount, ... } }
+        
         for row in items:
             account = row.get('account_number')
-            if not account:
+            month_str = row.get('month')  # Format: "2024-01"
+            amount = float(row.get('amount') or 0)
+            
+            if not account or not month_str:
                 continue
-                
+            
+            # Parse "2024-01" -> "Jan 2024"
+            if '-' in month_str:
+                parts = month_str.split('-')
+                if len(parts) == 2:
+                    year = parts[0]
+                    month_num = parts[1]
+                    if month_num in month_names:
+                        period_name = f"{month_names[month_num]} {year}"
+                        
+                        if account not in activity:
+                            activity[account] = {}
+                        activity[account][period_name] = amount
+        
+        # Second pass: compute cumulative balances
+        # For each account, sum all activity from inception through each month
+        month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
+        for account, periods in activity.items():
             if account not in balances:
                 balances[account] = {}
             
-            # Extract month columns (format: Jan_2024, Feb_2024, etc.)
-            for key, value in row.items():
-                if key in ('account_number', 'account_type'):
-                    continue
-                
-                # Parse column name like "Jan_2024" -> "Jan 2024"
-                if '_' in str(key):
-                    parts = key.split('_')
-                    if len(parts) == 2:
-                        month_abbrev = parts[0].lower()
-                        year = parts[1]
-                        if month_abbrev in month_map:
-                            period_name = f"{month_map[month_abbrev]} {year}"
-                            amount = float(value or 0)
-                            balances[account][period_name] = amount
-                            
-                            # Cache this result
-                            cache_key = f"{account}:{period_name}:{filters_hash}"
-                            balance_cache[cache_key] = amount
-                            cached_count += 1
+            # Determine which year(s) have data
+            years = set()
+            for period_name in periods.keys():
+                parts = period_name.split(' ')
+                if len(parts) == 2:
+                    years.add(int(parts[1]))
+            
+            # For each year, compute cumulative balance through each month
+            cumulative = 0
+            for year in sorted(years):
+                for month in month_order:
+                    period_name = f"{month} {year}"
+                    if period_name in periods:
+                        cumulative += periods[period_name]
+                        balances[account][period_name] = cumulative
+                        
+                        # Cache this result
+                        cache_key = f"{account}:{period_name}:{filters_hash}"
+                        balance_cache[cache_key] = cumulative
+                        cached_count += 1
         
         balance_cache_timestamp = datetime.now()
         
