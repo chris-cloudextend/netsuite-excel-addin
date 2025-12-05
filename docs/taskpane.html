@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.51.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.52.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.51.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.52.0</div>
         </div>
 
         <div class="content">
@@ -4052,7 +4052,7 @@ export default {
                     updateLoading(`Clearing cache for ${itemsToClear.length} items...`, 50);
                     
                     // SELECTIVE cache clear - clear from localStorage directly
-                    // (can't access functions.js context, so we do it here)
+                    // Also set invalidation signal for functions.js to check
                     let clearedCount = 0;
                     try {
                         const STORAGE_KEY = 'netsuite_balance_cache';
@@ -4076,6 +4076,16 @@ export default {
                                 console.log(`   💾 Updated localStorage (removed ${clearedCount} entries)`);
                             }
                         }
+                        
+                        // Set cache invalidation signal - functions.js will check this
+                        // and clear its in-memory caches when it sees items to invalidate
+                        const invalidateKey = 'netsuite_cache_invalidate';
+                        const invalidateItems = itemsToClear.map(i => `${i.account}:${i.period}`);
+                        localStorage.setItem(invalidateKey, JSON.stringify({
+                            items: invalidateItems,
+                            timestamp: Date.now()
+                        }));
+                        console.log(`   📢 Set invalidation signal for ${invalidateItems.length} items`);
                         
                         // Also try to clear in-memory caches if accessible
                         if (typeof window.clearCacheForItems === 'function') {

@@ -1399,6 +1399,42 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         }, BUILD_MODE_SETTLE_MS);
         
         // ================================================================
+        // CHECK FOR CACHE INVALIDATION SIGNAL (from Refresh Selected)
+        // ================================================================
+        const lookupPeriod = fromPeriod || toPeriod;
+        const invalidateKey = 'netsuite_cache_invalidate';
+        try {
+            const invalidateData = localStorage.getItem(invalidateKey);
+            if (invalidateData) {
+                const { items, timestamp } = JSON.parse(invalidateData);
+                // Only honor signals from last 30 seconds
+                if (Date.now() - timestamp < 30000) {
+                    const itemKey = `${account}:${lookupPeriod}`;
+                    if (items && items.includes(itemKey)) {
+                        console.log(`🔄 INVALIDATED: ${itemKey} - clearing from in-memory cache`);
+                        // Clear this specific item from in-memory caches
+                        cache.balance.delete(cacheKey);
+                        if (fullYearCache && fullYearCache[account]) {
+                            delete fullYearCache[account][lookupPeriod];
+                        }
+                        // Remove this item from the invalidation list
+                        const newItems = items.filter(i => i !== itemKey);
+                        if (newItems.length > 0) {
+                            localStorage.setItem(invalidateKey, JSON.stringify({ items: newItems, timestamp }));
+                        } else {
+                            localStorage.removeItem(invalidateKey);
+                        }
+                    }
+                } else {
+                    // Stale invalidation signal - remove it
+                    localStorage.removeItem(invalidateKey);
+                }
+            }
+        } catch (e) {
+            // Ignore invalidation check errors
+        }
+        
+        // ================================================================
         // CACHE CHECKS (same priority order as before)
         // ================================================================
         
