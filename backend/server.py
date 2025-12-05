@@ -1035,6 +1035,8 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
     """
     Get MONTHLY ACTIVITY for Balance Sheet accounts within the fiscal year.
     This is combined with opening balance to compute cumulative.
+    
+    SIMPLIFIED - no CTE pattern, direct CONSOLIDATE aggregation.
     """
     filter_clauses = []
     if filters.get('subsidiary'):
@@ -1048,37 +1050,28 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
+    # Simplified query without CTE
     query = f"""
-    WITH sub_cte AS (
-      SELECT COUNT(*) AS subs_count
-      FROM Subsidiary
-      WHERE isinactive = 'F'
-    )
     SELECT
       a.acctnumber AS account_number,
       TO_CHAR(ap.startdate,'YYYY-MM') AS month,
       SUM(
-        CASE
-          WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
-            TO_NUMBER(
-              BUILTIN.CONSOLIDATE(
-                tal.amount,
-                'LEDGER',
-                'DEFAULT',
-                'DEFAULT',
-                {target_sub},
-                t.postingperiod,
-                'DEFAULT'
-              )
-            )
-          ELSE tal.amount
-        END
+        TO_NUMBER(
+          BUILTIN.CONSOLIDATE(
+            tal.amount,
+            'LEDGER',
+            'DEFAULT',
+            'DEFAULT',
+            {target_sub},
+            t.postingperiod,
+            'DEFAULT'
+          )
+        )
       ) AS amount
     FROM TransactionAccountingLine tal
     JOIN Transaction t ON t.id = tal.transaction
     JOIN Account a ON a.id = tal.account
     JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-    CROSS JOIN sub_cte
     WHERE t.posting = 'T'
       AND tal.posting = 'T'
       AND tal.accountingbook = 1

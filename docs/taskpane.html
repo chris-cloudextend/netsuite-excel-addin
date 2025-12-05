@@ -1639,7 +1639,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.73.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.74.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1654,7 +1654,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.73.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.74.0</div>
         </div>
 
         <div class="content">
@@ -2133,41 +2133,55 @@
             </details>
         </div>
 
-        <!-- Status Bar for Progress Messages -->
-        <div id="statusBar" class="status-bar" style="display: none;">
-            <div class="status-content">
-                <span class="status-icon" id="statusIcon">⏳</span>
-                <span class="status-text" id="statusText">Processing...</span>
-            </div>
-            <div class="status-progress" id="statusProgress" style="width: 0%;"></div>
-        </div>
-
         <div class="footer">
             <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine for NetSuite</p>
         </div>
     </div>
     
+    <!-- Centered Status Overlay -->
+    <div id="statusBar" class="status-overlay" style="display: none;">
+        <div class="status-card">
+            <div class="status-content">
+                <span class="status-icon" id="statusIcon">⏳</span>
+                <span class="status-text" id="statusText">Processing...</span>
+            </div>
+            <div class="status-progress-bar">
+                <div class="status-progress" id="statusProgress" style="width: 0%;"></div>
+            </div>
+        </div>
+    </div>
+    
     <style>
-        .status-bar {
+        .status-overlay {
             position: fixed;
-            bottom: 40px;
+            top: 0;
             left: 0;
             right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .status-card {
             background: linear-gradient(135deg, #1a365d 0%, #0f2744 100%);
             color: white;
-            padding: 10px 16px;
-            font-size: 12px;
-            z-index: 999;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
-            border-top: 2px solid var(--anenome, #0AE2C1);
+            padding: 20px 28px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            border: 2px solid var(--anenome, #0AE2C1);
+            min-width: 280px;
+            max-width: 90%;
         }
         .status-content {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
+            margin-bottom: 12px;
         }
         .status-icon {
-            font-size: 14px;
+            font-size: 24px;
             animation: pulse 1.5s ease-in-out infinite;
         }
         @keyframes pulse {
@@ -2177,25 +2191,30 @@
         .status-text {
             flex: 1;
             font-weight: 500;
+            font-size: 14px;
+        }
+        .status-progress-bar {
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            overflow: hidden;
         }
         .status-progress {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            height: 3px;
+            height: 100%;
             background: var(--anenome, #0AE2C1);
             transition: width 0.3s ease;
+            border-radius: 3px;
         }
-        .status-bar.success {
-            border-top-color: #10b981;
+        .status-overlay.success .status-card {
+            border-color: #10b981;
         }
-        .status-bar.success .status-progress {
+        .status-overlay.success .status-progress {
             background: #10b981;
         }
-        .status-bar.error {
-            border-top-color: #ef4444;
+        .status-overlay.error .status-card {
+            border-color: #ef4444;
         }
-        .status-bar.error .status-progress {
+        .status-overlay.error .status-progress {
             background: #ef4444;
         }
     </style>
@@ -2213,8 +2232,8 @@
             const iconEl = document.getElementById('statusIcon');
             const progressEl = document.getElementById('statusProgress');
             
-            bar.className = 'status-bar' + (type ? ' ' + type : '');
-            bar.style.display = 'block';
+            bar.className = 'status-overlay' + (type ? ' ' + type : '');
+            bar.style.display = 'flex';
             textEl.textContent = message;
             iconEl.textContent = icon;
             progressEl.style.width = progress + '%';
