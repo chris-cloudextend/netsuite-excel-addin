@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.47.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.48.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.47.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.48.0</div>
         </div>
 
         <div class="content">
@@ -3939,46 +3939,87 @@ export default {
             
             try {
                 btn.disabled = true;
-                btn.textContent = 'Refreshing...';
                 
-                showLoading('Refresh Selected', 'Clearing frontend cache...', 10);
-                
-                // CRITICAL: Clear cache FIRST before recalculating
-                if (typeof window.clearAllCaches === 'function') {
-                    window.clearAllCaches();
-                    console.log('✅ Cache cleared before refresh (selected)');
-                } else {
-                    console.log('⚠️  window.clearAllCaches not found');
-                }
-                
-                // Wait a moment for cache to clear
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                updateLoading('Recalculating selected formulas...', 30);
+                showLoading('Refresh Selected', 'Analyzing selected formulas...', 10);
                 
                 await Excel.run(async (context) => {
                     const range = context.workbook.getSelectedRange();
-                    range.load('address, formulasR1C1');
+                    range.load('address, formulas, rowCount, columnCount');
                     await context.sync();
                     
-                    updateLoading(`Recalculating ${range.address}...`, 50);
+                    updateLoading(`Parsing ${range.address}...`, 20);
                     
-                    // Trigger recalc by clearing and resetting formulas
-                    const formulas = range.formulasR1C1;
-                    range.formulasR1C1 = formulas;
+                    // Extract account/period from NS.GLABAL formulas
+                    const itemsToClear = [];
+                    const formulas = range.formulas;
+                    const nsFormulaRegex = /NS\.GLABAL\s*\(\s*"?([^",]+)"?\s*,\s*"?([^",]+)"?\s*,\s*"?([^",)]+)"?/gi;
                     
+                    let formulaCount = 0;
+                    for (let r = 0; r < range.rowCount; r++) {
+                        for (let c = 0; c < range.columnCount; c++) {
+                            const formula = formulas[r][c];
+                            if (formula && typeof formula === 'string') {
+                                // Reset regex lastIndex for each formula
+                                nsFormulaRegex.lastIndex = 0;
+                                const match = nsFormulaRegex.exec(formula);
+                                if (match) {
+                                    formulaCount++;
+                                    const account = match[1].replace(/"/g, '').trim();
+                                    const fromPeriod = match[2].replace(/"/g, '').trim();
+                                    const toPeriod = match[3].replace(/"/g, '').trim();
+                                    
+                                    // For single period, use fromPeriod; otherwise add both
+                                    itemsToClear.push({ account, period: fromPeriod });
+                                    if (toPeriod && toPeriod !== fromPeriod) {
+                                        itemsToClear.push({ account, period: toPeriod });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    console.log(`📋 Found ${formulaCount} NS.GLABAL formulas in selection`);
+                    console.log(`   Items to clear: ${itemsToClear.length}`);
+                    
+                    if (itemsToClear.length === 0) {
+                        hideLoading();
+                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">⚠️ No NS.GLABAL formulas found in selection</strong></div>`;
+                        setTimeout(() => statusEl.textContent = '', 5000);
+                        return;
+                    }
+                    
+                    updateLoading(`Clearing cache for ${itemsToClear.length} items...`, 40);
+                    
+                    // SELECTIVE cache clear - only clear the specific account/periods
+                    if (typeof window.clearCacheForItems === 'function') {
+                        const cleared = window.clearCacheForItems(itemsToClear);
+                        console.log(`✅ Selectively cleared ${cleared} cache entries`);
+                    } else {
+                        console.log('⚠️ window.clearCacheForItems not found, falling back to full clear');
+                        if (typeof window.clearAllCaches === 'function') {
+                            window.clearAllCaches();
+                        }
+                    }
+                    
+                    // Wait a moment for cache to clear
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    updateLoading(`Recalculating ${formulaCount} formulas...`, 60);
+                    
+                    // Trigger recalc by re-setting formulas
+                    range.formulas = formulas;
                     await context.sync();
                     
-                    updateLoading('Fetching data from NetSuite...', 70);
+                    updateLoading('Fetching from NetSuite...', 80);
                     
-                    // Add a delay to let batching complete
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // Wait for batching to complete
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                     
                     updateLoading('Complete!', 100);
                     await new Promise(resolve => setTimeout(resolve, 500));
                     hideLoading();
                     
-                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Selected cells refreshed!</strong></div>`;
+                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Refreshed ${formulaCount} formulas!</strong></div>`;
                     
                     setTimeout(() => {
                         statusEl.textContent = '';
@@ -3996,7 +4037,6 @@ export default {
                 }, 8000);
             } finally {
                 btn.disabled = false;
-                btn.textContent = 'Refresh Selected Cells';
             }
         }
 

@@ -51,6 +51,48 @@ window.clearAllCaches = function() {
     return true;
 };
 
+/**
+ * Selectively clear cache for specific account/period combinations
+ * Use this for "Refresh Selected" to avoid clearing ALL cached data
+ * @param {Array<{account: string, period: string}>} items - Array of {account, period} to clear
+ * @returns {number} Number of cache entries cleared
+ */
+window.clearCacheForItems = function(items) {
+    console.log(`🎯 SELECTIVE CACHE CLEAR: ${items.length} items`);
+    let cleared = 0;
+    
+    for (const item of items) {
+        // Generate cache key for this account/period (matches getCacheKey format)
+        const cacheKey = JSON.stringify({
+            type: 'balance',
+            account: String(item.account),
+            fromPeriod: item.period,
+            toPeriod: item.period,
+            subsidiary: item.subsidiary || '',
+            department: item.department || '',
+            location: item.location || '',
+            class: item.classId || ''
+        });
+        
+        if (cache.balance.has(cacheKey)) {
+            cache.balance.delete(cacheKey);
+            cleared++;
+            console.log(`   ✓ Cleared: ${item.account}/${item.period}`);
+        }
+        
+        // Also clear from fullYearCache if it exists
+        if (fullYearCache && fullYearCache[item.account]) {
+            if (fullYearCache[item.account][item.period] !== undefined) {
+                delete fullYearCache[item.account][item.period];
+                console.log(`   ✓ Cleared fullYearCache: ${item.account}/${item.period}`);
+            }
+        }
+    }
+    
+    console.log(`   📊 Cleared ${cleared} of ${items.length} requested cache entries`);
+    return cleared;
+};
+
 // ============================================================================
 // FULL REFRESH MODE - Optimized for bulk sheet refresh
 // ============================================================================
