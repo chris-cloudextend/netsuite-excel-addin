@@ -245,6 +245,12 @@
             font-family: 'SF Mono', Monaco, monospace;
             font-size: 9px;
         }
+        
+        .excel-cell.formula.drag-indicator {
+            background: rgba(10, 226, 193, 0.25);
+            border: 1px dashed var(--seafoam);
+            position: relative;
+        }
 
         .excel-cell.value {
             background: rgba(0, 121, 255, 0.1);
@@ -1030,35 +1036,58 @@
             font-size: 9px;
         }
         
-        /* Tooltip shown on hover via data-tip attribute (avoids native title tooltip) */
-        .help-icon[data-tip]:hover::after {
-            content: attr(data-tip);
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--deep-dive);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 400;
-            white-space: normal;
-            width: 220px;
-            line-height: 1.4;
-            z-index: 1000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        /* Modern tooltip - shows BELOW icon, constrained to taskpane */
+        .help-icon[data-tip] {
+            position: relative;
         }
         
+        .help-icon[data-tip]:hover::after {
+            content: attr(data-tip);
+            position: fixed;
+            top: auto;
+            left: 16px;
+            right: 16px;
+            width: auto;
+            max-width: calc(100vw - 32px);
+            background: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
+            color: white;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 400;
+            white-space: normal;
+            line-height: 1.5;
+            z-index: 10000;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15);
+            animation: tooltipFadeIn 0.2s ease-out;
+            pointer-events: none;
+        }
+        
+        /* Position tooltip near the bottom of viewport for visibility */
+        .help-icon[data-tip]:hover::after {
+            bottom: 80px;
+        }
+        
+        /* Arrow pointing up from tooltip */
         .help-icon[data-tip]:hover::before {
-            content: '';
-            position: absolute;
-            bottom: calc(100% + 2px);
-            left: 50%;
-            transform: translateX(-50%);
-            border: 6px solid transparent;
-            border-top-color: var(--deep-dive);
-            z-index: 1001;
+            display: none; /* Hide arrow since we're using fixed positioning */
+        }
+        
+        @keyframes tooltipFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Tooltip label styling */
+        .tooltip-trigger {
+            cursor: help;
+            border-bottom: 1px dotted currentColor;
         }
         
         /* Load Data Button */
@@ -1610,7 +1639,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.62.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.63.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1654,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.62.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.63.0</div>
         </div>
 
         <div class="content">
@@ -1694,32 +1723,41 @@
                     
                     <div class="dynamic-demo">
                         <h5>Example: Dynamic Income Statement</h5>
-                        <div class="excel-grid">
+                        <div class="excel-grid" style="grid-template-columns: 40px repeat(2, 1fr);">
                             <div class="excel-cell header"></div>
                             <div class="excel-cell header">A</div>
                             <div class="excel-cell header">B</div>
-                            <div class="excel-cell header">C</div>
                             
                             <div class="excel-cell row-header">1</div>
                             <div class="excel-cell value">Account</div>
-                            <div class="excel-cell value">Jan 2024</div>
-                            <div class="excel-cell value">Feb 2024</div>
+                            <div class="excel-cell value">Jan 2025</div>
                             
                             <div class="excel-cell row-header">2</div>
                             <div class="excel-cell">4220</div>
                             <div class="excel-cell formula">=NS.GLABAL($A2, B$1, B$1)</div>
-                            <div class="excel-cell formula">=NS.GLABAL($A2, C$1, C$1)</div>
+                            
+                            <div class="excel-cell row-header">3</div>
+                            <div class="excel-cell">5000</div>
+                            <div class="excel-cell formula drag-indicator">=NS.GLABAL($A3, B$1, B$1)</div>
+                            
+                            <div class="excel-cell row-header">4</div>
+                            <div class="excel-cell">6100</div>
+                            <div class="excel-cell formula drag-indicator">=NS.GLABAL($A4, B$1, B$1)</div>
                         </div>
-                        <p style="font-size: 11px; color: var(--bottlenose); margin-top: 8px;">
-                            <strong>Key:</strong> Use <code>$A2</code> (lock column) and <code>B$1</code> (lock row) to drag formulas horizontally & vertically!
+                        <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 10px; background: rgba(26, 90, 62, 0.1); border-radius: 6px;">
+                            <span style="font-size: 16px;">↓</span>
+                            <span style="font-size: 11px; color: var(--deep-dive);"><strong>Drag down</strong> to copy formula for all accounts</span>
+                        </div>
+                        <p style="font-size: 11px; color: var(--bottlenose); margin-top: 10px;">
+                            <strong>The secret:</strong> <code>$A2</code> locks the column (A stays fixed), <code>B$1</code> locks the row (1 stays fixed). This lets you drag <strong>both directions</strong> — down for accounts, right for months!
                         </p>
                     </div>
                     
                     <div class="help-tip" style="margin-top: 16px;">
                         <h4>⚡ Pro Tip: Fast Data Entry</h4>
                         <p>1. Enter one formula in cell B2<br>
-                        2. Drag horizontally across months (B2:M2)<br>
-                        3. Then drag down for all accounts<br>
+                        2. Drag <strong>down</strong> for all accounts (B2:B50)<br>
+                        3. Then drag <strong>right</strong> for all months<br>
                         <strong>The add-in automatically batches requests!</strong></p>
                     </div>
                     

@@ -2339,41 +2339,87 @@ def batch_balance():
         base_where = " AND ".join(where_clauses)
         
         # ============================================================================
-        # STRATEGY: Run SEPARATE queries for P&L vs Balance Sheet accounts
-        # Then merge the results - this is cleaner and more maintainable
+        # OPTIMIZATION: First detect account types, then ONLY query the relevant type
+        # This avoids running 3 BS queries for a P&L account (or vice versa)
         # ============================================================================
         
         all_balances = {}
         
-        # QUERY 1: P&L Accounts (Income Statement)
-        # Use current period-specific logic (ap.periodname IN periods)
-        pl_query = build_pl_query(accounts, periods, base_where, target_sub, needs_line_join)
+        # Step 1: Get account types for all requested accounts (single quick query)
+        accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+        type_query = f"SELECT acctnumber, accttype FROM Account WHERE acctnumber IN ({accounts_in})"
+        type_result = query_netsuite(type_query, timeout=30)
         
-        print(f"DEBUG - P&L Query:\n{pl_query[:500]}...", file=sys.stderr)
-        pl_result = query_netsuite(pl_query)
+        # Classify accounts into P&L vs BS
+        pl_accounts = []
+        bs_accounts = []
+        account_types = {}  # For debugging
         
-        if isinstance(pl_result, list):
-            print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
-            for row in pl_result:
-                account_num = row['acctnumber']
-                period_name = row['periodname']
-                balance = float(row['balance']) if row['balance'] else 0
+        if isinstance(type_result, list):
+            for row in type_result:
+                acct_num = row.get('acctnumber')
+                acct_type = row.get('accttype', '')
+                account_types[acct_num] = acct_type
                 
-                if account_num not in all_balances:
-                    all_balances[account_num] = {}
-                all_balances[account_num][period_name] = balance
+                if is_balance_sheet_account(acct_type):
+                    bs_accounts.append(acct_num)
+                else:
+                    pl_accounts.append(acct_num)
+        else:
+            # Fallback: assume all accounts are P&L if type query fails
+            print(f"WARNING - Account type query failed, assuming all P&L", file=sys.stderr)
+            pl_accounts = accounts
         
-        # QUERY 2: Balance Sheet Accounts (Assets/Liabilities/Equity)
-        # Use cumulative logic (t.trandate <= period.enddate)
-        # Query each period SEPARATELY (UNION ALL causes 400 errors with complex queries)
-        if period_info:
-            print(f"DEBUG - Querying {len(period_info)} periods for Balance Sheet accounts...", file=sys.stderr)
+        print(f"DEBUG - Account type classification:", file=sys.stderr)
+        print(f"   P&L accounts ({len(pl_accounts)}): {pl_accounts}", file=sys.stderr)
+        print(f"   BS accounts ({len(bs_accounts)}): {bs_accounts}", file=sys.stderr)
+        print(f"   Types: {account_types}", file=sys.stderr)
+        
+        # Step 2: ONLY run P&L query if there are P&L accounts
+        if pl_accounts:
+            # Build WHERE clause specifically for P&L accounts
+            pl_accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in pl_accounts])
+            pl_where_clauses = where_clauses.copy()
+            # Replace the accounts IN clause with just P&L accounts
+            pl_where_clauses = [c for c in pl_where_clauses if 'a.acctnumber IN' not in c]
+            pl_where_clauses.append(f"a.acctnumber IN ({pl_accounts_in})")
+            pl_base_where = " AND ".join(pl_where_clauses)
+            
+            pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join)
+            
+            print(f"DEBUG - P&L Query (for {len(pl_accounts)} accounts):\n{pl_query[:500]}...", file=sys.stderr)
+            pl_result = query_netsuite(pl_query)
+            
+            if isinstance(pl_result, list):
+                print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
+                for row in pl_result:
+                    account_num = row['acctnumber']
+                    period_name = row['periodname']
+                    balance = float(row['balance']) if row['balance'] else 0
+                    
+                    if account_num not in all_balances:
+                        all_balances[account_num] = {}
+                    all_balances[account_num][period_name] = balance
+        else:
+            print(f"DEBUG - Skipping P&L query (no P&L accounts requested)", file=sys.stderr)
+        
+        # Step 3: ONLY run BS queries if there are BS accounts
+        if bs_accounts and period_info:
+            print(f"DEBUG - Querying {len(period_info)} periods for {len(bs_accounts)} Balance Sheet accounts...", file=sys.stderr)
+            
+            # Build WHERE clause specifically for BS accounts
+            bs_accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in bs_accounts])
+            bs_where_clauses = where_clauses.copy()
+            # Replace the accounts IN clause with just BS accounts
+            bs_where_clauses = [c for c in bs_where_clauses if 'a.acctnumber IN' not in c]
+            bs_where_clauses.append(f"a.acctnumber IN ({bs_accounts_in})")
+            bs_base_where = " AND ".join(bs_where_clauses)
             
             for period, info in period_info.items():
                 try:
-                    # Build query for THIS period only
+                    # Build query for THIS period only, with BS accounts only
                     period_query = build_bs_query_single_period(
-                        accounts, period, info, base_where, target_sub, needs_line_join
+                        bs_accounts, period, info, bs_base_where, target_sub, needs_line_join
                     )
                     
                     print(f"DEBUG - BS Query for {period}:\n{period_query[:300]}...", file=sys.stderr)
@@ -2397,6 +2443,8 @@ def batch_balance():
                         print(f"ERROR - BS query unexpected result type for {period}: {type(bs_result)}", file=sys.stderr)
                 except Exception as e:
                     print(f"ERROR - BS query exception for {period}: {str(e)}", file=sys.stderr)
+        else:
+            print(f"DEBUG - Skipping BS queries (no BS accounts requested)", file=sys.stderr)
         
         print(f"DEBUG - Final merged balances: {list(all_balances.keys())}", file=sys.stderr)
         
