@@ -1304,6 +1304,11 @@ async function GLAPARENT(accountNumber, invocation) {
  * @requiresAddress
  */
 async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+    // ================================================================
+    // DEBUG: Log every GLABAL call to understand what's happening
+    // ================================================================
+    console.log(`📥 GLABAL called: account="${account}", fromPeriod="${fromPeriod}"`);
+    
     try {
         // ================================================================
         // SPECIAL COMMAND: __CLEARCACHE__ - Clear caches from taskpane
@@ -1312,7 +1317,10 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         // Returns: Number of items cleared
         // ================================================================
         const rawAccount = String(account || '').trim();
+        console.log(`   rawAccount="${rawAccount}", is __CLEARCACHE__: ${rawAccount === '__CLEARCACHE__'}`);
+        
         if (rawAccount === '__CLEARCACHE__') {
+            console.log('🔧 __CLEARCACHE__ MATCHED! Starting cache clear...');
             const itemsStr = String(fromPeriod || '').trim();
             console.log('🔧 __CLEARCACHE__ command received:', itemsStr || 'ALL');
             
