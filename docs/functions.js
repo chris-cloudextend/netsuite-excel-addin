@@ -54,12 +54,41 @@ window.clearAllCaches = function() {
 /**
  * Selectively clear cache for specific account/period combinations
  * Use this for "Refresh Selected" to avoid clearing ALL cached data
+ * Clears from: 1) in-memory cache, 2) fullYearCache, 3) localStorage
  * @param {Array<{account: string, period: string}>} items - Array of {account, period} to clear
  * @returns {number} Number of cache entries cleared
  */
 window.clearCacheForItems = function(items) {
     console.log(`🎯 SELECTIVE CACHE CLEAR: ${items.length} items`);
     let cleared = 0;
+    
+    // Also clear from localStorage - this is critical!
+    let localStorageCleared = 0;
+    try {
+        const STORAGE_KEY = 'netsuite_balance_cache';
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            const balanceData = JSON.parse(stored);
+            let modified = false;
+            
+            for (const item of items) {
+                const acct = String(item.account);
+                if (balanceData[acct] && balanceData[acct][item.period] !== undefined) {
+                    delete balanceData[acct][item.period];
+                    localStorageCleared++;
+                    modified = true;
+                    console.log(`   ✓ Cleared localStorage: ${acct}/${item.period}`);
+                }
+            }
+            
+            if (modified) {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(balanceData));
+                console.log(`   💾 Updated localStorage (removed ${localStorageCleared} entries)`);
+            }
+        }
+    } catch (e) {
+        console.warn('   ⚠️ Error clearing localStorage:', e);
+    }
     
     for (const item of items) {
         // Generate cache key for this account/period (matches getCacheKey format)
@@ -77,7 +106,7 @@ window.clearCacheForItems = function(items) {
         if (cache.balance.has(cacheKey)) {
             cache.balance.delete(cacheKey);
             cleared++;
-            console.log(`   ✓ Cleared: ${item.account}/${item.period}`);
+            console.log(`   ✓ Cleared in-memory: ${item.account}/${item.period}`);
         }
         
         // Also clear from fullYearCache if it exists
@@ -89,8 +118,9 @@ window.clearCacheForItems = function(items) {
         }
     }
     
-    console.log(`   📊 Cleared ${cleared} of ${items.length} requested cache entries`);
-    return cleared;
+    const totalCleared = cleared + localStorageCleared;
+    console.log(`   📊 Cleared ${totalCleared} total cache entries (${cleared} in-memory, ${localStorageCleared} localStorage)`);
+    return totalCleared;
 };
 
 // ============================================================================
