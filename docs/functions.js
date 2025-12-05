@@ -311,9 +311,12 @@ async function runBuildModeBatch() {
     // For multiple years, make separate calls per year.
     // This fetches BOTH P&L AND Balance Sheet accounts in one call per year.
     // Once cached, ALL subsequent requests are instant.
+    // 
+    // IMPORTANT: Only use full_year_refresh for BULK operations (5+ accounts)
+    // For small refreshes (1-4 accounts), use regular batch queries - much faster!
     const manyPeriods = periodsArray.length >= 2;
-    const manyAccounts = accountsArray.length >= 2;
-    const useFullYearRefresh = yearsArray.length > 0 && (manyPeriods || manyAccounts);
+    const manyAccounts = accountsArray.length >= 5;  // Changed from 2 to 5
+    const useFullYearRefresh = yearsArray.length > 0 && manyAccounts;
     
     if (useFullYearRefresh) {
         console.log(`   ⚡ FAST PATH: Using full_year_refresh for ${yearsArray.length} year(s): ${yearsArray.join(', ')} (${periodsArray.length} periods, ${accountsArray.length} accounts)`);
@@ -1403,8 +1406,8 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
                         console.log(`   ✓ Cleared cache.balance: ${item.account}/${item.period}`);
                     }
                     
-                    // Clear from fullYearCache
-                    if (typeof fullYearCache !== 'undefined' && fullYearCache[item.account]) {
+                    // Clear from fullYearCache (check for null AND undefined)
+                    if (fullYearCache && fullYearCache[item.account]) {
                         if (fullYearCache[item.account][item.period] !== undefined) {
                             delete fullYearCache[item.account][item.period];
                             cleared++;
