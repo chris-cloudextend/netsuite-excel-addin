@@ -989,6 +989,9 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
     # Opening balance = all activity BEFORE the fiscal year starts
+    # Use EXTRACT(YEAR) < fiscal_year to get all prior years
+    prior_year = int(fiscal_year) - 1
+    
     query = f"""
     WITH sub_cte AS (
       SELECT COUNT(*) AS subs_count
@@ -1024,7 +1027,7 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
       AND tal.accountingbook = 1
       AND ap.isyear = 'F'
       AND ap.isquarter = 'F'
-      AND ap.enddate < TO_DATE('{fiscal_year}-01-01', 'YYYY-MM-DD')
+      AND EXTRACT(YEAR FROM ap.enddate) <= {prior_year}
       AND COALESCE(a.eliminate, 'F') = 'F'
       AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
       {filter_sql}

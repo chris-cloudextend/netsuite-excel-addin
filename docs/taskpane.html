@@ -1639,7 +1639,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.71.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.72.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1654,7 +1654,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.71.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.72.0</div>
         </div>
 
         <div class="content">
@@ -2133,14 +2133,133 @@
             </details>
         </div>
 
+        <!-- Status Bar for Progress Messages -->
+        <div id="statusBar" class="status-bar" style="display: none;">
+            <div class="status-content">
+                <span class="status-icon" id="statusIcon">⏳</span>
+                <span class="status-text" id="statusText">Processing...</span>
+            </div>
+            <div class="status-progress" id="statusProgress" style="width: 0%;"></div>
+        </div>
+
         <div class="footer">
             <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine for NetSuite</p>
         </div>
     </div>
     
+    <style>
+        .status-bar {
+            position: fixed;
+            bottom: 40px;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #1a365d 0%, #0f2744 100%);
+            color: white;
+            padding: 10px 16px;
+            font-size: 12px;
+            z-index: 999;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+            border-top: 2px solid var(--anenome, #0AE2C1);
+        }
+        .status-content {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-icon {
+            font-size: 14px;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .status-text {
+            flex: 1;
+            font-weight: 500;
+        }
+        .status-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: var(--anenome, #0AE2C1);
+            transition: width 0.3s ease;
+        }
+        .status-bar.success {
+            border-top-color: #10b981;
+        }
+        .status-bar.success .status-progress {
+            background: #10b981;
+        }
+        .status-bar.error {
+            border-top-color: #ef4444;
+        }
+        .status-bar.error .status-progress {
+            background: #ef4444;
+        }
+    </style>
+    
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <script>
         const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
+
+        // ========================================================================
+        // STATUS BAR - Persistent Progress Messages
+        // ========================================================================
+        function showStatus(message, icon = '⏳', progress = 0, type = '') {
+            const bar = document.getElementById('statusBar');
+            const textEl = document.getElementById('statusText');
+            const iconEl = document.getElementById('statusIcon');
+            const progressEl = document.getElementById('statusProgress');
+            
+            bar.className = 'status-bar' + (type ? ' ' + type : '');
+            bar.style.display = 'block';
+            textEl.textContent = message;
+            iconEl.textContent = icon;
+            progressEl.style.width = progress + '%';
+        }
+        
+        function hideStatus(delay = 0) {
+            setTimeout(() => {
+                document.getElementById('statusBar').style.display = 'none';
+            }, delay);
+        }
+        
+        function showStatusSuccess(message) {
+            showStatus(message, '✅', 100, 'success');
+            hideStatus(3000);
+        }
+        
+        function showStatusError(message) {
+            showStatus(message, '❌', 100, 'error');
+            hideStatus(5000);
+        }
+        
+        // Poll for status updates from custom functions (via localStorage)
+        let lastStatusTimestamp = 0;
+        setInterval(() => {
+            try {
+                const statusJson = localStorage.getItem('netsuite_status');
+                if (statusJson) {
+                    const status = JSON.parse(statusJson);
+                    // Only show if timestamp is newer than last shown
+                    if (status.timestamp > lastStatusTimestamp) {
+                        lastStatusTimestamp = status.timestamp;
+                        const icon = status.type === 'success' ? '✅' : 
+                                     status.type === 'error' ? '❌' : '⏳';
+                        showStatus(status.message, icon, status.progress, status.type);
+                        
+                        // Auto-hide success/error after delay
+                        if (status.type === 'success' || status.type === 'error') {
+                            hideStatus(3000);
+                        }
+                    }
+                }
+            } catch (e) {
+                // Ignore parsing errors
+            }
+        }, 500);  // Check every 500ms
 
         // ========================================================================
         // LOADING OVERLAY - Modern Progress Indicator

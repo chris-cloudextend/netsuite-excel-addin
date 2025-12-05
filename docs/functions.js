@@ -13,6 +13,28 @@ const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
 
 // ============================================================================
+// STATUS BROADCAST - Communicate progress to taskpane via localStorage
+// ============================================================================
+function broadcastStatus(message, progress = 0, type = 'info') {
+    try {
+        localStorage.setItem('netsuite_status', JSON.stringify({
+            message,
+            progress,
+            type,
+            timestamp: Date.now()
+        }));
+    } catch (e) {
+        // localStorage not available - ignore
+    }
+}
+
+function clearStatus() {
+    try {
+        localStorage.removeItem('netsuite_status');
+    } catch (e) {}
+}
+
+// ============================================================================
 // CACHE - Never expires, persists entire Excel session
 // ============================================================================
 const cache = {
@@ -307,6 +329,7 @@ async function runBuildModeBatch() {
     if (pending.length === 0) return;
     
     console.log(`🔨 BUILD MODE BATCH: ${pending.length} formulas (started at ${new Date().toLocaleTimeString()})`);
+    broadcastStatus(`Processing ${pending.length} formulas...`, 5, 'info');
     
     // Collect unique accounts and periods
     const accounts = new Set();
@@ -366,6 +389,7 @@ async function runBuildModeBatch() {
         try {
             // STEP 1: Detect account types to decide P&L vs BS handling
             console.log(`   🔍 Detecting account types for ${accountsArray.length} accounts...`);
+            broadcastStatus(`Detecting account types for ${accountsArray.length} accounts...`, 10, 'info');
             const accountTypes = await batchGetAccountTypes(accountsArray);
             
             const plAccounts = [];
@@ -379,6 +403,7 @@ async function runBuildModeBatch() {
             }
             
             console.log(`   📊 Account split: ${plAccounts.length} P&L, ${bsAccounts.length} Balance Sheet`);
+            broadcastStatus(`${plAccounts.length} P&L accounts, ${bsAccounts.length} Balance Sheet`, 15, 'info');
             
             // Fetch data for ALL years (may be multiple for cross-year queries)
             let combinedBalances = {};
@@ -388,6 +413,7 @@ async function runBuildModeBatch() {
             for (const year of yearsArray) {
                 const yearStartTime = Date.now();
                     console.log(`   📡 Fetching P&L year ${year}...`);
+                    broadcastStatus(`Fetching P&L data for ${year}...`, 25, 'info');
                 
                 const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                     method: 'POST',
@@ -429,6 +455,7 @@ async function runBuildModeBatch() {
                 for (const year of yearsArray) {
                     const yearStartTime = Date.now();
                     console.log(`   📡 Fetching BS year ${year} (this may take 1-2 minutes)...`);
+                    broadcastStatus(`Fetching Balance Sheet for ${year} (1-2 min)...`, 50, 'info');
                     
                     const response = await fetch(`${SERVER_URL}/batch/full_year_refresh_bs`, {
                         method: 'POST',
@@ -704,6 +731,15 @@ async function runBuildModeBatch() {
     const totalTime = ((Date.now() - batchStartTime) / 1000).toFixed(1);
     console.log(`   📊 Resolved: ${resolved} with values, ${zeros} zeros/errors`);
     console.log(`   ⏱️ TOTAL BUILD MODE TIME: ${totalTime}s`);
+    
+    // Broadcast completion
+    if (hasError) {
+        broadcastStatus(`Completed with errors (${totalTime}s)`, 100, 'error');
+    } else {
+        broadcastStatus(`✅ Loaded ${resolved} values in ${totalTime}s`, 100, 'success');
+    }
+    // Clear status after delay
+    setTimeout(clearStatus, 5000);
 }
 
 // Resolve ALL pending balance requests from cache (called by taskpane after cache is ready)
