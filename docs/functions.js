@@ -1305,6 +1305,73 @@ async function GLAPARENT(accountNumber, invocation) {
  */
 async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     try {
+        // ================================================================
+        // SPECIAL COMMAND: __CLEARCACHE__ - Clear caches from taskpane
+        // Usage: =NS.GLABAL("__CLEARCACHE__", "[{account:..., period:...}]", "")
+        // ================================================================
+        const rawAccount = String(account || '').trim();
+        if (rawAccount === '__CLEARCACHE__') {
+            console.log('🔧 GLABAL __CLEARCACHE__ command received');
+            const itemsJson = String(fromPeriod || '').trim();
+            
+            try {
+                if (!itemsJson || itemsJson === 'ALL') {
+                    // Clear ALL caches
+                    cache.balance.clear();
+                    cache.title.clear();
+                    cache.budget.clear();
+                    cache.type.clear();
+                    cache.parent.clear();
+                    if (typeof fullYearCache !== 'undefined') {
+                        Object.keys(fullYearCache).forEach(k => delete fullYearCache[k]);
+                    }
+                    console.log('🗑️ Cleared ALL in-memory caches');
+                    return 'CLEARED_ALL';
+                } else {
+                    // Clear specific items
+                    const items = JSON.parse(itemsJson);
+                    let cleared = 0;
+                    
+                    for (const item of items) {
+                        const acct = String(item.account);
+                        const period = item.period;
+                        
+                        // Use getCacheKey for exact format match
+                        const exactKey = getCacheKey('balance', {
+                            account: acct,
+                            fromPeriod: period,
+                            toPeriod: period,
+                            subsidiary: '',
+                            department: '',
+                            location: '',
+                            classId: ''
+                        });
+                        
+                        if (cache.balance.has(exactKey)) {
+                            cache.balance.delete(exactKey);
+                            cleared++;
+                            console.log(`   ✓ Cleared cache.balance: ${acct}/${period}`);
+                        }
+                        
+                        // Clear from fullYearCache
+                        if (typeof fullYearCache !== 'undefined' && fullYearCache[acct]) {
+                            if (fullYearCache[acct][period] !== undefined) {
+                                delete fullYearCache[acct][period];
+                                cleared++;
+                                console.log(`   ✓ Cleared fullYearCache: ${acct}/${period}`);
+                            }
+                        }
+                    }
+                    
+                    console.log(`🗑️ Cleared ${cleared} items from in-memory cache`);
+                    return `CLEARED_${cleared}`;
+                }
+            } catch (e) {
+                console.error('__CLEARCACHE__ error:', e);
+                return 'ERROR';
+            }
+        }
+        
         // Normalize business parameters
         account = normalizeAccountNumber(account);
         

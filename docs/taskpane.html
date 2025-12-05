@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.55.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.56.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.55.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.56.0</div>
         </div>
 
         <div class="content">
@@ -4093,38 +4093,39 @@ export default {
                     
                     console.log(`✅ Cleared ${clearedCount} localStorage entries for refresh`)
                     
-                    // CRITICAL: Call NS.CLEARCACHE() in the custom functions runtime
+                    // CRITICAL: Call NS.GLABAL("__CLEARCACHE__", ...) in the custom functions runtime
                     // This runs in the same context as GLABAL and clears in-memory cache
+                    // Using existing GLABAL function with special command avoids needing new function registration
                     updateLoading('Clearing in-memory cache...', 60);
                     try {
                         const itemsJson = JSON.stringify(itemsToClear);
-                        console.log(`📡 Calling NS.CLEARCACHE with ${itemsToClear.length} items...`);
+                        console.log(`📡 Calling __CLEARCACHE__ with ${itemsToClear.length} items...`);
                         
-                        // Use a temporary cell to evaluate the CLEARCACHE function
+                        // Use a temporary cell to evaluate the GLABAL function with __CLEARCACHE__ command
                         const tempSheet = context.workbook.worksheets.getActiveWorksheet();
                         const tempRange = tempSheet.getRange('XFD1'); // Far corner, unlikely to be used
                         
-                        // Set the CLEARCACHE formula - escape quotes for Excel
+                        // Set the GLABAL formula with __CLEARCACHE__ command - escape quotes for Excel
                         const escapedJson = itemsJson.replace(/"/g, '""');
-                        tempRange.formulas = [[`=NS.CLEARCACHE("${escapedJson}")`]];
+                        tempRange.formulas = [[`=NS.GLABAL("__CLEARCACHE__","${escapedJson}","")`]];
                         await context.sync();
                         
                         // Wait for custom function to execute
-                        await new Promise(resolve => setTimeout(resolve, 800));
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                         
                         // Load and read the result
                         tempRange.load('values');
                         await context.sync();
                         
                         const result = tempRange.values[0][0];
-                        console.log('   🔧 NS.CLEARCACHE result:', result);
+                        console.log('   🔧 __CLEARCACHE__ result:', result);
                         
                         // Clear the temp cell
                         tempRange.clear();
                         await context.sync();
                         
                     } catch (clearError) {
-                        console.warn('   ⚠️ NS.CLEARCACHE call failed:', clearError.message);
+                        console.warn('   ⚠️ __CLEARCACHE__ call failed:', clearError.message);
                         // Continue anyway - localStorage was cleared
                     }
                     
