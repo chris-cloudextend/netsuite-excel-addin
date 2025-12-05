@@ -1308,15 +1308,19 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         // ================================================================
         // SPECIAL COMMAND: __CLEARCACHE__ - Clear caches from taskpane
         // Usage: =NS.GLABAL("__CLEARCACHE__", "[{account:..., period:...}]", "")
+        // Returns: Number of items cleared (must be number, not string!)
         // ================================================================
         const rawAccount = String(account || '').trim();
         if (rawAccount === '__CLEARCACHE__') {
             console.log('🔧 GLABAL __CLEARCACHE__ command received');
+            console.log('   Raw fromPeriod:', fromPeriod);
             const itemsJson = String(fromPeriod || '').trim();
+            console.log('   Parsed itemsJson:', itemsJson.substring(0, 100));
             
             try {
                 if (!itemsJson || itemsJson === 'ALL') {
                     // Clear ALL caches
+                    const beforeSize = cache.balance.size;
                     cache.balance.clear();
                     cache.title.clear();
                     cache.budget.clear();
@@ -1325,16 +1329,18 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
                     if (typeof fullYearCache !== 'undefined') {
                         Object.keys(fullYearCache).forEach(k => delete fullYearCache[k]);
                     }
-                    console.log('🗑️ Cleared ALL in-memory caches');
-                    return 'CLEARED_ALL';
+                    console.log(`🗑️ Cleared ALL in-memory caches (was ${beforeSize} balance entries)`);
+                    return beforeSize; // Return number, not string!
                 } else {
                     // Clear specific items
                     const items = JSON.parse(itemsJson);
+                    console.log(`   Parsed ${items.length} items to clear`);
                     let cleared = 0;
                     
                     for (const item of items) {
                         const acct = String(item.account);
                         const period = item.period;
+                        console.log(`   Processing: ${acct}/${period}`);
                         
                         // Use getCacheKey for exact format match
                         const exactKey = getCacheKey('balance', {
@@ -1346,6 +1352,9 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
                             location: '',
                             classId: ''
                         });
+                        
+                        console.log(`   Looking for key (first 80 chars): ${exactKey.substring(0, 80)}`);
+                        console.log(`   cache.balance has key: ${cache.balance.has(exactKey)}`);
                         
                         if (cache.balance.has(exactKey)) {
                             cache.balance.delete(exactKey);
@@ -1364,11 +1373,11 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
                     }
                     
                     console.log(`🗑️ Cleared ${cleared} items from in-memory cache`);
-                    return `CLEARED_${cleared}`;
+                    return cleared; // Return number, not string!
                 }
             } catch (e) {
-                console.error('__CLEARCACHE__ error:', e);
-                return 'ERROR';
+                console.error('__CLEARCACHE__ error:', e.message, e.stack);
+                return -1; // Return -1 to indicate error (still a number)
             }
         }
         
