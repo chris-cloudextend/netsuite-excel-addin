@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.50.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.51.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.50.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.51.0</div>
         </div>
 
         <div class="content">
@@ -4010,11 +4010,22 @@ export default {
                                 const account = String(accountCell.values[0][0]).trim();
                                 let period = periodCell.values[0][0];
                                 
-                                // Convert date to "Mon YYYY" format if needed
-                                if (period instanceof Date || !isNaN(Date.parse(period))) {
-                                    const d = new Date(period);
-                                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                // Convert date to "Mon YYYY" format
+                                // Excel stores dates as serial numbers (days since Jan 1, 1900)
+                                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                
+                                if (typeof period === 'number' && period > 1000) {
+                                    // Excel serial number - convert to JS date
+                                    // Excel epoch is Jan 1, 1900, JS epoch is Jan 1, 1970
+                                    // Excel serial 1 = Jan 1, 1900
+                                    const excelEpoch = new Date(1900, 0, 1);
+                                    const d = new Date(excelEpoch.getTime() + (period - 2) * 24 * 60 * 60 * 1000);
                                     period = `${months[d.getMonth()]} ${d.getFullYear()}`;
+                                } else if (period instanceof Date) {
+                                    period = `${months[period.getMonth()]} ${period.getFullYear()}`;
+                                } else if (typeof period === 'string') {
+                                    // Already a string like "Jan 2025" - use as-is
+                                    period = period.trim();
                                 } else {
                                     period = String(period).trim();
                                 }
@@ -4040,16 +4051,44 @@ export default {
                     
                     updateLoading(`Clearing cache for ${itemsToClear.length} items...`, 50);
                     
-                    // SELECTIVE cache clear - only clear the specific account/periods
-                    if (typeof window.clearCacheForItems === 'function') {
-                        const cleared = window.clearCacheForItems(itemsToClear);
-                        console.log(`✅ Selectively cleared ${cleared} cache entries`);
-                    } else {
-                        console.log('⚠️ window.clearCacheForItems not found, falling back to full clear');
-                        if (typeof window.clearAllCaches === 'function') {
-                            window.clearAllCaches();
+                    // SELECTIVE cache clear - clear from localStorage directly
+                    // (can't access functions.js context, so we do it here)
+                    let clearedCount = 0;
+                    try {
+                        const STORAGE_KEY = 'netsuite_balance_cache';
+                        const stored = localStorage.getItem(STORAGE_KEY);
+                        if (stored) {
+                            const balanceData = JSON.parse(stored);
+                            let modified = false;
+                            
+                            for (const item of itemsToClear) {
+                                const acct = String(item.account);
+                                if (balanceData[acct] && balanceData[acct][item.period] !== undefined) {
+                                    delete balanceData[acct][item.period];
+                                    clearedCount++;
+                                    modified = true;
+                                    console.log(`   ✓ Cleared localStorage: ${acct}/${item.period}`);
+                                }
+                            }
+                            
+                            if (modified) {
+                                localStorage.setItem(STORAGE_KEY, JSON.stringify(balanceData));
+                                console.log(`   💾 Updated localStorage (removed ${clearedCount} entries)`);
+                            }
                         }
+                        
+                        // Also try to clear in-memory caches if accessible
+                        if (typeof window.clearCacheForItems === 'function') {
+                            window.clearCacheForItems(itemsToClear);
+                        } else if (typeof window.clearAllCaches === 'function') {
+                            window.clearAllCaches();
+                            console.log('   🗑️ Cleared all in-memory caches');
+                        }
+                    } catch (e) {
+                        console.warn('Cache clear error:', e);
                     }
+                    
+                    console.log(`✅ Cleared ${clearedCount} localStorage entries for refresh`)
                     
                     // Wait a moment for cache to clear
                     await new Promise(resolve => setTimeout(resolve, 100));
