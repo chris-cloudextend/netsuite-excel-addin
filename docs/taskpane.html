@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.58.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.59.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.58.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.59.0</div>
         </div>
 
         <div class="content">
@@ -4093,19 +4093,22 @@ export default {
                     
                     console.log(`✅ Cleared ${clearedCount} localStorage entries for refresh`)
                     
-                    // CRITICAL: Call NS.GLABAL("__CLEARCACHE__", "ALL", "") in the custom functions runtime
-                    // This runs in the same context as GLABAL and clears in-memory cache
-                    // Simple approach: clear ALL in-memory caches (no complex JSON)
+                    // CRITICAL: Call NS.GLABAL("__CLEARCACHE__", "items", "") in the custom functions runtime
+                    // This clears cache in the SAME context as GLABAL (different from taskpane!)
+                    // Pass specific items as "60032:May 2025,60032:Jun 2025" format (simple, no JSON escaping)
                     updateLoading('Clearing in-memory cache...', 60);
                     try {
-                        console.log(`📡 Calling __CLEARCACHE__ (clear all in-memory caches)...`);
+                        // Build simple comma-separated list: "60032:May 2025,60032:Jun 2025"
+                        const itemsList = itemsToClear.map(i => `${i.account}:${i.period}`).join(',');
+                        console.log(`📡 Calling __CLEARCACHE__ for ${itemsToClear.length} items...`);
+                        console.log(`   Items: ${itemsList}`);
                         
                         // Use a temporary cell to evaluate the GLABAL function with __CLEARCACHE__ command
                         const tempSheet = context.workbook.worksheets.getActiveWorksheet();
                         const tempRange = tempSheet.getRange('XFD1'); // Far corner, unlikely to be used
                         
-                        // Simple command - just clear everything
-                        tempRange.formulas = [[`=NS.GLABAL("__CLEARCACHE__","ALL","")`]];
+                        // Pass specific items - this clears ONLY these items from functions' cache
+                        tempRange.formulas = [[`=NS.GLABAL("__CLEARCACHE__","${itemsList}","")`]];
                         await context.sync();
                         
                         // Wait for custom function to execute
@@ -4116,7 +4119,7 @@ export default {
                         await context.sync();
                         
                         const result = tempRange.values[0][0];
-                        console.log('   🔧 __CLEARCACHE__ result:', result);
+                        console.log('   🔧 __CLEARCACHE__ result:', result, '(items cleared)');
                         
                         // Clear the temp cell
                         tempRange.clear();
@@ -4124,7 +4127,7 @@ export default {
                         
                     } catch (clearError) {
                         console.warn('   ⚠️ __CLEARCACHE__ call failed:', clearError.message);
-                        // Continue anyway - localStorage was cleared
+                        // Continue anyway - localStorage was cleared from taskpane context
                     }
                     
                     updateLoading(`Recalculating ${formulaCount} formulas...`, 70);

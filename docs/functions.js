@@ -1307,31 +1307,108 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
     try {
         // ================================================================
         // SPECIAL COMMAND: __CLEARCACHE__ - Clear caches from taskpane
-        // Usage: =NS.GLABAL("__CLEARCACHE__", "ALL", "") to clear everything
+        // Usage: =NS.GLABAL("__CLEARCACHE__", "60032:May 2025,60032:Jun 2025", "")
+        // The second parameter contains comma-separated account:period pairs to clear
         // Returns: Number of items cleared
         // ================================================================
         const rawAccount = String(account || '').trim();
         if (rawAccount === '__CLEARCACHE__') {
-            console.log('🔧 __CLEARCACHE__ command - clearing ALL caches');
+            const itemsStr = String(fromPeriod || '').trim();
+            console.log('🔧 __CLEARCACHE__ command received:', itemsStr || 'ALL');
             
-            // Simple approach: just clear everything
-            // This is fast and reliable - no JSON parsing needed
-            const beforeSize = cache.balance.size;
-            cache.balance.clear();
-            cache.title.clear();
-            cache.budget.clear();
-            cache.type.clear();
-            cache.parent.clear();
+            let cleared = 0;
             
-            // Clear fullYearCache if it exists
-            if (typeof fullYearCache !== 'undefined') {
-                for (const k in fullYearCache) {
-                    delete fullYearCache[k];
+            if (!itemsStr || itemsStr === 'ALL') {
+                // Clear EVERYTHING - all caches including localStorage
+                cleared = cache.balance.size;
+                cache.balance.clear();
+                cache.title.clear();
+                cache.budget.clear();
+                cache.type.clear();
+                cache.parent.clear();
+                
+                if (typeof fullYearCache !== 'undefined') {
+                    for (const k in fullYearCache) {
+                        delete fullYearCache[k];
+                    }
                 }
+                
+                // CRITICAL: Also clear localStorage from this context!
+                try {
+                    localStorage.removeItem('netsuite_balance_cache');
+                    localStorage.removeItem('netsuite_balance_cache_timestamp');
+                    console.log('   ✓ Cleared localStorage (functions context)');
+                } catch (e) {
+                    console.warn('   ⚠️ localStorage clear failed:', e.message);
+                }
+                
+                console.log(`🗑️ Cleared ALL caches (${cleared} balance entries)`);
+            } else {
+                // Clear SPECIFIC items only - parse "60032:May 2025,60032:Jun 2025" format
+                const items = itemsStr.split(',').map(s => {
+                    const [account, period] = s.trim().split(':');
+                    return { account, period };
+                });
+                
+                console.log(`   Clearing ${items.length} specific items...`);
+                
+                // Clear from localStorage (functions context)
+                try {
+                    const stored = localStorage.getItem('netsuite_balance_cache');
+                    if (stored) {
+                        const balanceData = JSON.parse(stored);
+                        let modified = false;
+                        
+                        for (const item of items) {
+                            if (balanceData[item.account] && balanceData[item.account][item.period] !== undefined) {
+                                delete balanceData[item.account][item.period];
+                                cleared++;
+                                modified = true;
+                                console.log(`   ✓ Cleared localStorage: ${item.account}/${item.period}`);
+                            }
+                        }
+                        
+                        if (modified) {
+                            localStorage.setItem('netsuite_balance_cache', JSON.stringify(balanceData));
+                        }
+                    }
+                } catch (e) {
+                    console.warn('   ⚠️ localStorage parse error:', e.message);
+                }
+                
+                // Clear from in-memory caches
+                for (const item of items) {
+                    // Clear from cache.balance
+                    const cacheKey = getCacheKey('balance', {
+                        account: item.account,
+                        fromPeriod: item.period,
+                        toPeriod: item.period,
+                        subsidiary: '',
+                        department: '',
+                        location: '',
+                        classId: ''
+                    });
+                    
+                    if (cache.balance.has(cacheKey)) {
+                        cache.balance.delete(cacheKey);
+                        cleared++;
+                        console.log(`   ✓ Cleared cache.balance: ${item.account}/${item.period}`);
+                    }
+                    
+                    // Clear from fullYearCache
+                    if (typeof fullYearCache !== 'undefined' && fullYearCache[item.account]) {
+                        if (fullYearCache[item.account][item.period] !== undefined) {
+                            delete fullYearCache[item.account][item.period];
+                            cleared++;
+                            console.log(`   ✓ Cleared fullYearCache: ${item.account}/${item.period}`);
+                        }
+                    }
+                }
+                
+                console.log(`🗑️ Cleared ${cleared} items from caches`);
             }
             
-            console.log(`🗑️ Cleared ALL in-memory caches (was ${beforeSize} balance entries)`);
-            return beforeSize;
+            return cleared;
         }
         
         // Normalize business parameters
