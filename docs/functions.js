@@ -329,6 +329,9 @@ async function runBuildModeBatch() {
                 const yearStartTime = Date.now();
                 console.log(`   📡 Fetching year ${year}...`);
                 
+                // OPTIMIZATION: Use skip_bs=true for fast P&L loading
+                // Balance Sheet accounts are rare in most financial reports
+                // Users with BS accounts can use "Refresh Selected" or taskpane "Refresh All"
                 const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -337,7 +340,8 @@ async function runBuildModeBatch() {
                         subsidiary: filters.subsidiary,
                         department: filters.department,
                         location: filters.location,
-                        class: filters.classId
+                        class: filters.classId,
+                        skip_bs: true  // Skip Balance Sheet for fast loading (~30s faster)
                     })
                 });
                 
