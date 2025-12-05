@@ -91,16 +91,15 @@ window.clearCacheForItems = function(items) {
     }
     
     for (const item of items) {
-        // Generate cache key for this account/period (matches getCacheKey format)
-        const cacheKey = JSON.stringify({
-            type: 'balance',
+        // Use getCacheKey to ensure exact same format as GLABAL
+        const cacheKey = getCacheKey('balance', {
             account: String(item.account),
             fromPeriod: item.period,
             toPeriod: item.period,
             subsidiary: item.subsidiary || '',
             department: item.department || '',
             location: item.location || '',
-            class: item.classId || ''
+            classId: item.classId || ''
         });
         
         if (cache.balance.has(cacheKey)) {
@@ -2234,18 +2233,26 @@ function CLEARCACHE(itemsJson) {
                 const account = String(item.account);
                 const period = item.period;
                 
-                // Clear from cache.balance (check all possible key formats)
-                const possibleKeys = [
-                    JSON.stringify({ type: 'balance', account, fromPeriod: period, toPeriod: period, subsidiary: '', department: '', class: '', location: '' }),
-                    JSON.stringify({ type: 'balance', account, fromPeriod: period, toPeriod: period, subsidiary: '', department: '', class: '', location: '', includeChildren: false })
-                ];
+                // Use getCacheKey to ensure exact same format as GLABAL
+                // Key order MUST match: type, account, fromPeriod, toPeriod, subsidiary, department, location, class
+                const exactKey = getCacheKey('balance', {
+                    account: account,
+                    fromPeriod: period,
+                    toPeriod: period,
+                    subsidiary: '',
+                    department: '',
+                    location: '',
+                    classId: ''
+                });
                 
-                for (const key of possibleKeys) {
-                    if (cache.balance.has(key)) {
-                        cache.balance.delete(key);
-                        cleared++;
-                        console.log(`   ✓ Cleared cache.balance: ${account}/${period}`);
-                    }
+                console.log(`   🔍 Looking for key: ${exactKey.substring(0, 80)}...`);
+                
+                if (cache.balance.has(exactKey)) {
+                    cache.balance.delete(exactKey);
+                    cleared++;
+                    console.log(`   ✓ Cleared cache.balance: ${account}/${period}`);
+                } else {
+                    console.log(`   ⚠️ Key not found in cache.balance`);
                 }
                 
                 // Clear from fullYearCache
