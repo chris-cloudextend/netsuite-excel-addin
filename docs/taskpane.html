@@ -959,6 +959,234 @@
             line-height: 1.4;
         }
 
+        /* ============================================
+           DATA MANAGEMENT REDESIGN
+           ============================================ */
+        .data-mgmt-section .collapsible-header {
+            background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
+        }
+        
+        .data-mgmt-section .collapsible-header h3 {
+            color: white;
+        }
+        
+        .data-mgmt-section .chevron {
+            fill: white;
+        }
+        
+        .data-mgmt-content {
+            padding: 0 !important;
+            background: #f8f9fc;
+        }
+        
+        .data-section {
+            padding: 16px;
+            border-bottom: 1px solid var(--barnacle);
+        }
+        
+        .data-section:last-child {
+            border-bottom: none;
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .section-header h4 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--deep-dive);
+            margin: 0;
+        }
+        
+        /* Help Icon with Tooltip */
+        .help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            background: var(--chrome);
+            color: var(--deep-dive);
+            border-radius: 50%;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: help;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .help-icon:hover {
+            background: var(--tidal-wave);
+            color: white;
+        }
+        
+        .help-icon.small {
+            width: 14px;
+            height: 14px;
+            font-size: 9px;
+        }
+        
+        .help-icon[title]:hover::after {
+            content: attr(title);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--deep-dive);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 400;
+            white-space: normal;
+            width: 220px;
+            line-height: 1.4;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        .help-icon[title]:hover::before {
+            content: '';
+            position: absolute;
+            bottom: calc(100% + 2px);
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: var(--deep-dive);
+            z-index: 1001;
+        }
+        
+        /* Load Data Button */
+        .btn-load-data {
+            width: 100%;
+            background: linear-gradient(135deg, #1a5a3e 0%, #2d8a5f 100%);
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btn-load-data:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(26, 90, 62, 0.4);
+        }
+        
+        .btn-load-data:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Checkbox Row */
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            cursor: pointer;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid var(--barnacle);
+        }
+        
+        .checkbox-row:hover {
+            border-color: var(--tidal-wave);
+        }
+        
+        .checkbox-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--tidal-wave);
+            cursor: pointer;
+        }
+        
+        .checkbox-label {
+            font-size: 13px;
+            color: var(--deep-dive);
+            flex: 1;
+        }
+        
+        /* Action Grid */
+        .action-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 12px 8px;
+            border: 1px solid var(--barnacle);
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .action-btn:hover {
+            border-color: var(--tidal-wave);
+            box-shadow: 0 2px 8px rgba(0, 121, 255, 0.15);
+        }
+        
+        .action-btn .action-icon {
+            font-size: 20px;
+        }
+        
+        .action-btn .action-text {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--deep-dive);
+        }
+        
+        .action-btn .help-icon {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+        }
+        
+        .action-btn.primary {
+            background: linear-gradient(135deg, rgba(0, 79, 182, 0.08) 0%, rgba(0, 121, 255, 0.08) 100%);
+            border-color: var(--tidal-wave);
+        }
+        
+        .action-btn.primary:hover {
+            background: linear-gradient(135deg, rgba(0, 79, 182, 0.15) 0%, rgba(0, 121, 255, 0.15) 100%);
+        }
+        
+        .action-btn.danger {
+            grid-column: span 2;
+        }
+        
+        .action-btn.danger:hover {
+            border-color: #dc2626;
+            background: rgba(220, 38, 38, 0.05);
+        }
+        
+        .preload-status {
+            margin-top: 12px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
         /* Filter Groups */
         .filter-group {
             display: grid;
@@ -1381,7 +1609,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.44.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.45.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1396,7 +1624,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.44.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.45.0</div>
         </div>
 
         <div class="content">
@@ -1524,55 +1752,67 @@
                 </div>
             </details>
 
-            <!-- DATA MANAGEMENT SECTION -->
-            <details class="collapsible-section">
+            <!-- DATA MANAGEMENT SECTION - Redesigned with integrated preload -->
+            <details class="collapsible-section data-mgmt-section" id="dataMgmtSection" open>
                 <summary class="collapsible-header">
-                    <h3><span class="icon">🔄</span> Data Management</h3>
+                    <h3><span class="icon">📊</span> Data Management</h3>
                     <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </summary>
-                <div class="collapsible-content">
-                    <button class="btn-primary" onclick="refreshCurrentSheet()">
-                        <span>⚡</span> Refresh Current Sheet
-                    </button>
-                    <p class="btn-hint">Fetches ALL accounts for the year in one optimized query. Best for full reports!</p>
+                <div class="collapsible-content data-mgmt-content">
                     
-                    <button class="btn-secondary" onclick="refreshSelected()">Refresh Selected Cells</button>
-                    <p class="btn-hint">Quick refresh for specific cells or small ranges.</p>
+                    <!-- PRELOAD SECTION - Primary action -->
+                    <div class="data-section preload-section" id="preloadCard">
+                        <div class="section-header">
+                            <h4>⚡ Load Data for Fast Analysis</h4>
+                            <span class="help-icon" title="Select cells with your date headers (e.g., Jan 2025, Feb 2025) then click Load. All account data for those periods will be cached for instant formula results.">?</span>
+                        </div>
+                        
+                        <div class="preload-controls">
+                            <button class="btn-load-data" id="preloadBtn" onclick="runPreloadSheet()">
+                                <span id="preloadBtnText">📥 Load Data for Selected Dates</span>
+                            </button>
+                            
+                            <label class="checkbox-row">
+                                <input type="checkbox" id="includeBSCheckbox">
+                                <span class="checkbox-label">Include Balance Sheet</span>
+                                <span class="help-icon small" title="Balance Sheet accounts (Cash, AR, AP, etc.) require cumulative calculations from company inception. This adds 2-3 minutes but enables instant BS formulas.">?</span>
+                            </label>
+                        </div>
+                        
+                        <div class="preload-status" id="preloadProgress" style="display: none;"></div>
+                    </div>
                     
-                    <button class="btn-danger" onclick="clearCache()">Clear Cache</button>
-                    <p class="btn-hint">Clears all cached values. Use if you see stale data.</p>
+                    <!-- REFRESH ACTIONS -->
+                    <div class="data-section refresh-section">
+                        <div class="section-header">
+                            <h4>🔄 Refresh Options</h4>
+                        </div>
+                        
+                        <div class="action-grid">
+                            <button class="action-btn primary" onclick="refreshCurrentSheet()">
+                                <span class="action-icon">⚡</span>
+                                <span class="action-text">Refresh Sheet</span>
+                                <span class="help-icon small" title="Re-fetches all account data for the current year. Use after making changes in NetSuite.">?</span>
+                            </button>
+                            
+                            <button class="action-btn secondary" onclick="refreshSelected()">
+                                <span class="action-icon">🎯</span>
+                                <span class="action-text">Refresh Selected</span>
+                                <span class="help-icon small" title="Re-calculates only the selected cells. Quick way to update specific formulas.">?</span>
+                            </button>
+                            
+                            <button class="action-btn danger" onclick="clearCache()">
+                                <span class="action-icon">🗑️</span>
+                                <span class="action-text">Clear Cache</span>
+                                <span class="help-icon small" title="Clears all cached data. Use if you see stale values or after major NetSuite changes.">?</span>
+                            </button>
+                        </div>
+                        
+                        <div class="refresh-status" id="refreshStatus"></div>
+                    </div>
                     
-                    <div class="refresh-status" id="refreshStatus"></div>
                 </div>
             </details>
-
-            <!-- PREPARE WORKBOOK - Load data for fast formula resolution -->
-            <div class="preload-card" id="preloadCard">
-                <button class="preload-dismiss" onclick="dismissPreload()" title="Dismiss">×</button>
-                <h3>⚡ Prepare your workbook for fast analysis</h3>
-                <p>Select your date range and click below. We'll load all relevant GL data so your formulas respond instantly as you work.</p>
-                <div class="instruction-box">
-                    <strong>How to use:</strong><br>
-                    1. Select the cells containing your date headers (e.g., D1:P1)<br>
-                    2. Click the button below<br>
-                    3. We'll detect the periods and load all account data
-                </div>
-                <button class="preload-btn" id="preloadBtn" onclick="runPreloadSheet()">
-                    <span id="preloadBtnText">📊 Load Data for Selected Dates</span>
-                </button>
-                
-                <!-- Balance Sheet Option -->
-                <label class="bs-option" style="display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--bottlenose); cursor: pointer;">
-                    <input type="checkbox" id="includeBSCheckbox" style="width: 16px; height: 16px; accent-color: var(--tidal-wave);">
-                    <span>Include Balance Sheet accounts</span>
-                    <span style="font-size: 11px; color: var(--chrome);">(+2-3 min)</span>
-                </label>
-                <div style="font-size: 11px; color: var(--chrome); margin-top: 4px; padding-left: 24px;">
-                    Cash, AR, AP, etc. — loads after P&L finishes
-                </div>
-                
-                <div class="guide-me-progress" id="preloadProgress" style="display: none;"></div>
-            </div>
 
             <!-- NETSUITE FILTERS SECTION -->
             <details class="collapsible-section">
