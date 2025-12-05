@@ -181,7 +181,7 @@ let buildModeTimer = null;
 let formulaCreationCount = 0;
 let formulaCountResetTimer = null;
 
-const BUILD_MODE_THRESHOLD = 3;     // Enter build mode after 3+ rapid formulas
+const BUILD_MODE_THRESHOLD = 2;     // Enter build mode after 2+ rapid formulas (trigger earlier)
 const BUILD_MODE_SETTLE_MS = 500;   // Wait 500ms after last formula before batch
 const BUILD_MODE_WINDOW_MS = 800;   // Time window to count formulas (wider!)
 
@@ -961,7 +961,7 @@ const pendingRequests = {
 };
 
 let batchTimer = null;  // Timer reference for batching
-const BATCH_DELAY = 150;           // Wait 150ms to collect multiple requests
+const BATCH_DELAY = 500;           // Wait 500ms to collect multiple requests (matches build mode settle)
 const CHUNK_SIZE = 50;             // Max 50 accounts per batch (balances NetSuite limits)
 const MAX_PERIODS_PER_BATCH = 3;   // Max 3 periods per batch (prevents backend timeout for high-volume accounts)
 const CHUNK_DELAY = 300;           // Wait 300ms between chunks (prevent rate limiting)
@@ -1906,6 +1906,26 @@ async function processBatchQueue() {
     console.log('========================================');
     console.log(`🔄 processBatchQueue() CALLED at ${new Date().toLocaleTimeString()}`);
     console.log('========================================');
+    
+    // CHECK: If build mode was entered, defer to it instead
+    // This handles the race condition where timer fires just as build mode starts
+    if (buildMode) {
+        console.log('⏸️ Build mode is active - deferring to build mode batch');
+        // Move any pending requests to build mode queue
+        for (const [cacheKey, request] of pendingRequests.balance.entries()) {
+            buildModePending.push({
+                cacheKey,
+                params: request.params,
+                resolve: request.resolve,
+                reject: request.reject
+            });
+        }
+        if (pendingRequests.balance.size > 0) {
+            console.log(`   📦 Moved ${pendingRequests.balance.size} requests to build mode`);
+            pendingRequests.balance.clear();
+        }
+        return; // Let build mode handle everything
+    }
     
     if (pendingRequests.balance.size === 0) {
         console.log('❌ No balance requests in queue - exiting');
