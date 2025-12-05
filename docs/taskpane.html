@@ -1030,8 +1030,9 @@
             font-size: 9px;
         }
         
-        .help-icon[title]:hover::after {
-            content: attr(title);
+        /* Tooltip shown on hover via data-tip attribute (avoids native title tooltip) */
+        .help-icon[data-tip]:hover::after {
+            content: attr(data-tip);
             position: absolute;
             bottom: calc(100% + 8px);
             left: 50%;
@@ -1049,7 +1050,7 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
         
-        .help-icon[title]:hover::before {
+        .help-icon[data-tip]:hover::before {
             content: '';
             position: absolute;
             bottom: calc(100% + 2px);
@@ -1609,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.45.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.46.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1624,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.45.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.46.0</div>
         </div>
 
         <div class="content">
@@ -1764,7 +1765,7 @@
                     <div class="data-section preload-section" id="preloadCard">
                         <div class="section-header">
                             <h4>⚡ Load Data for Fast Analysis</h4>
-                            <span class="help-icon" title="Select cells with your date headers (e.g., Jan 2025, Feb 2025) then click Load. All account data for those periods will be cached for instant formula results.">?</span>
+                            <span class="help-icon" data-tip="Select date headers (Jan 2025, Feb 2025, etc.) then click Load. All GL data for those periods will be cached for instant results.">?</span>
                         </div>
                         
                         <div class="preload-controls">
@@ -1775,7 +1776,7 @@
                             <label class="checkbox-row">
                                 <input type="checkbox" id="includeBSCheckbox">
                                 <span class="checkbox-label">Include Balance Sheet</span>
-                                <span class="help-icon small" title="Balance Sheet accounts (Cash, AR, AP, etc.) require cumulative calculations from company inception. This adds 2-3 minutes but enables instant BS formulas.">?</span>
+                                <span class="help-icon small" data-tip="BS accounts (Cash, AR, AP) need cumulative calculations. Adds 2-3 min but enables instant BS formulas.">?</span>
                             </label>
                         </div>
                         
@@ -1791,20 +1792,20 @@
                         <div class="action-grid">
                             <button class="action-btn primary" onclick="refreshCurrentSheet()">
                                 <span class="action-icon">⚡</span>
-                                <span class="action-text">Refresh Sheet</span>
-                                <span class="help-icon small" title="Re-fetches all account data for the current year. Use after making changes in NetSuite.">?</span>
+                                <span class="action-text">Refresh All</span>
+                                <span class="help-icon small" data-tip="Re-fetches ALL account data from NetSuite for the entire year. Use after posting entries.">?</span>
                             </button>
                             
                             <button class="action-btn secondary" onclick="refreshSelected()">
                                 <span class="action-icon">🎯</span>
                                 <span class="action-text">Refresh Selected</span>
-                                <span class="help-icon small" title="Re-calculates only the selected cells. Quick way to update specific formulas.">?</span>
+                                <span class="help-icon small" data-tip="Re-calculates only the cells you've selected. Faster than Refresh All for quick updates.">?</span>
                             </button>
                             
                             <button class="action-btn danger" onclick="clearCache()">
                                 <span class="action-icon">🗑️</span>
                                 <span class="action-text">Clear Cache</span>
-                                <span class="help-icon small" title="Clears all cached data. Use if you see stale values or after major NetSuite changes.">?</span>
+                                <span class="help-icon small" data-tip="Erases all cached data. Forces formulas to re-query NetSuite on next calculation.">?</span>
                             </button>
                         </div>
                         
