@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.49.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.50.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.49.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.50.0</div>
         </div>
 
         <div class="content">
@@ -3940,55 +3940,105 @@ export default {
             try {
                 btn.disabled = true;
                 
-                showLoading('Refresh Selected', 'Analyzing selected formulas...', 10);
+                showLoading('Refresh Selected', 'Analyzing selected cells...', 10);
                 
                 await Excel.run(async (context) => {
                     const range = context.workbook.getSelectedRange();
-                    range.load('address, formulas, rowCount, columnCount');
+                    // Load both formulas AND values - values give us the resolved cell references
+                    range.load('address, formulas, values, rowCount, columnCount');
                     await context.sync();
                     
                     updateLoading(`Parsing ${range.address}...`, 20);
                     
-                    // Extract account/period from NS.GLABAL formulas
+                    // Strategy: We need to get the RESOLVED values (account numbers and periods)
+                    // The formulas use cell references, so we need to evaluate them
+                    // We'll use a different approach: look at each cell that has an NS.GLABAL formula
+                    // and extract the account/period by evaluating the referenced cells
+                    
                     const itemsToClear = [];
                     const formulas = range.formulas;
-                    const nsFormulaRegex = /NS\.GLABAL\s*\(\s*"?([^",]+)"?\s*,\s*"?([^",]+)"?\s*,\s*"?([^",)]+)"?/gi;
+                    const values = range.values;
                     
+                    // Check if any cell contains NS.GLABAL formula
                     let formulaCount = 0;
+                    const cellsWithFormulas = [];
+                    
                     for (let r = 0; r < range.rowCount; r++) {
                         for (let c = 0; c < range.columnCount; c++) {
                             const formula = formulas[r][c];
-                            if (formula && typeof formula === 'string') {
-                                // Reset regex lastIndex for each formula
-                                nsFormulaRegex.lastIndex = 0;
-                                const match = nsFormulaRegex.exec(formula);
-                                if (match) {
-                                    formulaCount++;
-                                    const account = match[1].replace(/"/g, '').trim();
-                                    const fromPeriod = match[2].replace(/"/g, '').trim();
-                                    const toPeriod = match[3].replace(/"/g, '').trim();
-                                    
-                                    // For single period, use fromPeriod; otherwise add both
-                                    itemsToClear.push({ account, period: fromPeriod });
-                                    if (toPeriod && toPeriod !== fromPeriod) {
-                                        itemsToClear.push({ account, period: toPeriod });
-                                    }
-                                }
+                            if (formula && typeof formula === 'string' && formula.toUpperCase().includes('NS.GLABAL')) {
+                                formulaCount++;
+                                cellsWithFormulas.push({ row: r, col: c, formula });
                             }
                         }
                     }
                     
                     console.log(`📋 Found ${formulaCount} NS.GLABAL formulas in selection`);
-                    console.log(`   Items to clear: ${itemsToClear.length}`);
                     
-                    if (itemsToClear.length === 0) {
+                    if (formulaCount === 0) {
                         hideLoading();
                         statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">⚠️ No NS.GLABAL formulas found in selection</strong></div>`;
                         setTimeout(() => statusEl.textContent = '', 5000);
                         return;
                     }
                     
-                    updateLoading(`Clearing cache for ${itemsToClear.length} items...`, 40);
+                    updateLoading(`Resolving cell references for ${formulaCount} formulas...`, 30);
+                    
+                    // For each formula, we need to resolve the cell references
+                    // Parse the formula to extract cell references, then get their values
+                    for (const cell of cellsWithFormulas) {
+                        const formula = cell.formula;
+                        
+                        // Extract all cell references from the formula
+                        // Pattern matches: $A$1, A1, $A1, A$1, etc.
+                        const cellRefPattern = /\$?[A-Z]+\$?\d+/gi;
+                        const refs = formula.match(cellRefPattern);
+                        
+                        if (refs && refs.length >= 2) {
+                            // First ref is account, second is fromPeriod (third is toPeriod, usually same)
+                            try {
+                                const accountRef = refs[0];
+                                const periodRef = refs[1];
+                                
+                                // Get the values of these cells
+                                const accountCell = context.workbook.worksheets.getActiveWorksheet().getRange(accountRef);
+                                const periodCell = context.workbook.worksheets.getActiveWorksheet().getRange(periodRef);
+                                accountCell.load('values');
+                                periodCell.load('values');
+                                await context.sync();
+                                
+                                const account = String(accountCell.values[0][0]).trim();
+                                let period = periodCell.values[0][0];
+                                
+                                // Convert date to "Mon YYYY" format if needed
+                                if (period instanceof Date || !isNaN(Date.parse(period))) {
+                                    const d = new Date(period);
+                                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                    period = `${months[d.getMonth()]} ${d.getFullYear()}`;
+                                } else {
+                                    period = String(period).trim();
+                                }
+                                
+                                if (account && period) {
+                                    itemsToClear.push({ account, period });
+                                    console.log(`   📌 Resolved: ${account} / ${period}`);
+                                }
+                            } catch (e) {
+                                console.warn(`   ⚠️ Could not resolve refs for formula: ${formula}`, e);
+                            }
+                        }
+                    }
+                    
+                    console.log(`   Items to clear: ${itemsToClear.length}`);
+                    
+                    if (itemsToClear.length === 0) {
+                        hideLoading();
+                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">⚠️ Could not resolve cell references</strong></div>`;
+                        setTimeout(() => statusEl.textContent = '', 5000);
+                        return;
+                    }
+                    
+                    updateLoading(`Clearing cache for ${itemsToClear.length} items...`, 50);
                     
                     // SELECTIVE cache clear - only clear the specific account/periods
                     if (typeof window.clearCacheForItems === 'function') {
@@ -4004,22 +4054,22 @@ export default {
                     // Wait a moment for cache to clear
                     await new Promise(resolve => setTimeout(resolve, 100));
                     
-                    updateLoading(`Recalculating ${formulaCount} formulas...`, 60);
+                    updateLoading(`Recalculating ${formulaCount} formulas...`, 70);
                     
                     // Trigger recalc by re-setting formulas
                     range.formulas = formulas;
                     await context.sync();
                     
-                    updateLoading('Fetching from NetSuite...', 80);
+                    updateLoading('Fetching from NetSuite...', 85);
                     
                     // Wait for batching to complete
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                     
                     updateLoading('Complete!', 100);
                     await new Promise(resolve => setTimeout(resolve, 500));
                     hideLoading();
                     
-                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Refreshed ${formulaCount} formulas!</strong></div>`;
+                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Refreshed ${formulaCount} formulas from NetSuite!</strong></div>`;
                     
                     setTimeout(() => {
                         statusEl.textContent = '';
