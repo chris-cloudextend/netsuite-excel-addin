@@ -2202,6 +2202,14 @@ def batch_full_year_refresh_bs():
                             activity[account] = {}
                         activity[account][period_name] = amount
         
+        # Debug: Show activity for sample accounts
+        sample_accounts = ['10010', '10012', '10502', '10802']
+        for acct in sample_accounts:
+            if acct in activity:
+                print(f"      DEBUG: {acct} activity = {activity[acct]}", flush=True)
+            else:
+                print(f"      DEBUG: {acct} NO activity in {fiscal_year}", flush=True)
+        
         # STEP 3: Compute cumulative balances = opening + running sum of activity
         global balance_cache, balance_cache_timestamp
         filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"

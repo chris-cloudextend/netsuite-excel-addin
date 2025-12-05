@@ -743,16 +743,19 @@ async function runBuildModeBatch() {
     if (hasError) {
         broadcastStatus(`Completed with errors (${totalTime}s)`, 100, 'error');
     } else {
-        // User-friendly message showing requested vs preloaded
+        // User-friendly message: your cells + bonus preloaded for future
+        // Example: "Updated 24 cells. 180 accounts × 12 months preloaded - adding more rows will be instant!"
         let msg = `✅ Updated ${requestedCells} cells`;
-        if (totalPreloaded > requestedCells) {
-            msg += ` | ${preloadedAccounts} accounts preloaded for faster access`;
+        if (preloadedAccounts > 0 && totalPreloaded > requestedCells) {
+            const avgPeriodsPerAccount = Math.round(totalPreloaded / preloadedAccounts);
+            msg += ` • ${preloadedAccounts} accounts × ${avgPeriodsPerAccount} months preloaded`;
+            msg += ` — adding more rows will be instant!`;
         }
         msg += ` (${totalTime}s)`;
         broadcastStatus(msg, 100, 'success');
     }
     // Clear status after delay
-    setTimeout(clearStatus, 8000);  // Extended to 8s so user can read
+    setTimeout(clearStatus, 10000);  // Extended to 10s so user can read the helpful info
 }
 
 // Resolve ALL pending balance requests from cache (called by taskpane after cache is ready)
