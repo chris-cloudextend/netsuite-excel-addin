@@ -1610,7 +1610,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.53.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.54.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.53.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.54.0</div>
         </div>
 
         <div class="content">
@@ -4103,21 +4103,21 @@ export default {
                         // Use a temporary cell to evaluate the CLEARCACHE function
                         const tempSheet = context.workbook.worksheets.getActiveWorksheet();
                         const tempRange = tempSheet.getRange('XFD1'); // Far corner, unlikely to be used
-                        const originalValue = tempRange.values;
+                        
+                        // Set the CLEARCACHE formula - escape quotes for Excel
+                        const escapedJson = itemsJson.replace(/"/g, '""');
+                        tempRange.formulas = [[`=NS.CLEARCACHE("${escapedJson}")`]];
+                        await context.sync();
+                        
+                        // Wait for custom function to execute
+                        await new Promise(resolve => setTimeout(resolve, 800));
+                        
+                        // Load and read the result
                         tempRange.load('values');
                         await context.sync();
                         
-                        // Set the CLEARCACHE formula
-                        tempRange.formulas = [[`=NS.CLEARCACHE("${itemsJson.replace(/"/g, '""')}")`]];
-                        await context.sync();
-                        
-                        // Wait for it to execute
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        
-                        // Read the result
-                        tempRange.load('values');
-                        await context.sync();
-                        console.log('   🔧 NS.CLEARCACHE result:', tempRange.values[0][0]);
+                        const result = tempRange.values[0][0];
+                        console.log('   🔧 NS.CLEARCACHE result:', result);
                         
                         // Clear the temp cell
                         tempRange.clear();
