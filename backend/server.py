@@ -1091,8 +1091,10 @@ def build_bs_multi_period_query(periods, target_sub, filters):
     inner_joins = []
     select_columns = []
     
-    # Find the latest period for the WHERE clause
+    # Find the CHRONOLOGICALLY latest period for the WHERE clause
+    # CRITICAL: Must compare dates, not just use the last item in the list!
     latest_period_alias = None
+    latest_period_date = None  # (year, month) tuple for comparison
     
     for period in periods:
         parts = period.split(' ')
@@ -1109,7 +1111,12 @@ def build_bs_multi_period_query(periods, target_sub, filters):
         # Create alias like p_2024_12
         alias = f"p_{year}_{month_num}"
         period_aliases.append(alias)
-        latest_period_alias = alias  # Track for WHERE clause
+        
+        # Track the CHRONOLOGICALLY latest period
+        period_date = (int(year), int(month_num))
+        if latest_period_date is None or period_date > latest_period_date:
+            latest_period_alias = alias
+            latest_period_date = period_date
         
         # Build INNER JOIN
         # INNER JOIN accountingperiod p_2024_12 ON TO_CHAR(p_2024_12.startdate, 'YYYY-MM') = '2024-12' AND p_2024_12.isquarter = 'F' AND p_2024_12.isyear = 'F'
