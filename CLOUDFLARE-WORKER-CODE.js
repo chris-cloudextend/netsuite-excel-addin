@@ -9,15 +9,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://timely-greensboro-advisors-strictly.trycloudflare.com
+// CURRENT TUNNEL URL: https://humanities-initiatives-plymouth-experiments.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 6, 2025 - 7:45 AM
+// Last Updated: Dec 6, 2025 - 1:54 PM
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://timely-greensboro-advisors-strictly.trycloudflare.com';
+    const TUNNEL_URL = 'https://humanities-initiatives-plymouth-experiments.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
