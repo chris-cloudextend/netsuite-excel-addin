@@ -2027,10 +2027,10 @@ def batch_periods_refresh():
                 bs_account_list = "', '".join([escape_sql(str(a)) for a in batch])
                 
                 # Use same CROSS JOIN pattern as working queries - no CTE with subquery
-            prior_query = f"""
-            SELECT 
-                a.acctnumber AS acctnumber,
-                SUM(
+                prior_query = f"""
+                SELECT 
+                    a.acctnumber AS acctnumber,
+                    SUM(
                         CASE 
                             WHEN subs_count > 1 THEN
                                 TO_NUMBER(
@@ -2046,11 +2046,11 @@ def batch_periods_refresh():
                                 )
                             ELSE tal.amount
                         END
-                ) AS balance
-            FROM TransactionAccountingLine tal
-            JOIN Transaction t ON t.id = tal.transaction
-            JOIN Account a ON a.id = tal.account
-            JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                    ) AS balance
+                FROM TransactionAccountingLine tal
+                JOIN Transaction t ON t.id = tal.transaction
+                JOIN Account a ON a.id = tal.account
+                JOIN AccountingPeriod ap ON ap.id = t.postingperiod
                 CROSS JOIN (
                     SELECT COUNT(*) AS subs_count
                     FROM Subsidiary
@@ -2061,23 +2061,23 @@ def batch_periods_refresh():
                     AND tal.accountingbook = 1
                     AND ap.isyear = 'F' 
                     AND ap.isquarter = 'F'
-            AND ap.enddate < TO_DATE('{start_date}', 'YYYY-MM-DD')
-            AND a.acctnumber IN ('{bs_account_list}')
-            AND COALESCE(a.eliminate, 'F') = 'F'
-            {filter_sql}
-            GROUP BY a.acctnumber
-            """
-            
+                    AND ap.enddate < TO_DATE('{start_date}', 'YYYY-MM-DD')
+                    AND a.acctnumber IN ('{bs_account_list}')
+                    AND COALESCE(a.eliminate, 'F') = 'F'
+                    {filter_sql}
+                GROUP BY a.acctnumber
+                """
+                
                 try:
                     batch_result = query_netsuite(prior_query, timeout=120)
-            
+                    
                     if isinstance(batch_result, list):
                         for row in batch_result:
-                    acc = str(row.get('acctnumber', ''))
-                    bal = float(row.get('balance', 0) or 0)
-                    if abs(bal) < 0.01:
-                        bal = 0
-                    prior_balances[acc] = bal
+                            acc = str(row.get('acctnumber', ''))
+                            bal = float(row.get('balance', 0) or 0)
+                            if abs(bal) < 0.01:
+                                bal = 0
+                            prior_balances[acc] = bal
                     elif isinstance(batch_result, dict) and 'error' in batch_result:
                         print(f"⚠️  Prior balance query batch {i//batch_size + 1} error: {batch_result.get('error', 'unknown')}", file=sys.stderr)
                 except Exception as e:
@@ -2252,13 +2252,13 @@ def batch_full_year_refresh_bs():
             
             if isinstance(local_items, list):
                 for row in local_items:
-            account = row.get('account_number')
+                    account = row.get('account_number')
                     sub_id = str(row.get('subsidiary_id', ''))
                     local_balance = float(row.get('local_balance') or 0)
                     
-            if not account:
-                continue
-                
+                    if not account:
+                        continue
+                    
                     # Get exchange rate for this subsidiary
                     rate = rates.get(sub_id, rates.get('default', 1.0))
                     converted = local_balance * rate
@@ -2269,15 +2269,15 @@ def batch_full_year_refresh_bs():
             
             # Store results for this period
             for account, total in account_totals.items():
-            if account not in balances:
-                balances[account] = {}
+                if account not in balances:
+                    balances[account] = {}
                 balances[account][period_name] = total
                 
                 # Cache
-                            cache_key = f"{account}:{period_name}:{filters_hash}"
+                cache_key = f"{account}:{period_name}:{filters_hash}"
                 balance_cache[cache_key] = total
-                            cached_count += 1
-        
+                cached_count += 1
+            
             print(f"      ✅ {period_name}: {len(account_totals)} accounts", flush=True)
         
         elapsed = (datetime.now() - start_time).total_seconds()
