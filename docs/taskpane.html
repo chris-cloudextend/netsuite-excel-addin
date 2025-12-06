@@ -1639,7 +1639,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.78.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.79.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1654,7 +1654,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.78.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.79.0</div>
         </div>
 
         <div class="content">
@@ -3858,23 +3858,58 @@ export default {
                 btn.disabled = true;
                 btn.textContent = 'Clearing...';
                 
-                showLoading('Clear Cache', 'Clearing all cached data...', 50);
+                showLoading('Clear Cache', 'Clearing all cached data...', 20);
                 
-                // Call the global clearAllCaches function from functions.js
-                if (typeof window.clearAllCaches === 'function') {
-                    window.clearAllCaches();
-                    console.log('✅ Cache cleared via window.clearAllCaches');
-                } else {
-                    // Fallback: Try to access it from custom functions runtime
-                    console.log('⚠️  window.clearAllCaches not found, cache may not be cleared');
+                // STEP 1: Clear localStorage (shared across all contexts)
+                console.log('🗑️ CLEAR CACHE: Clearing localStorage...');
+                try {
+                    localStorage.removeItem('netsuite_balance_cache');
+                    localStorage.removeItem('netsuite_balance_cache_timestamp');
+                    localStorage.removeItem('netsuite_preload_status');
+                    localStorage.removeItem('netsuite_cache_invalidate');
+                    localStorage.removeItem('netsuite_status');
+                    console.log('   ✅ localStorage cleared');
+                } catch (e) {
+                    console.warn('   ⚠️ localStorage clear failed:', e.message);
                 }
+                
+                updateLoading('Clearing in-memory caches...', 50);
+                
+                // STEP 2: Clear in-memory caches in custom functions runtime via __CLEARCACHE__ command
+                // Use "ALL" as the items string to signal full cache clear
+                console.log('🗑️ CLEAR CACHE: Sending __CLEARCACHE__ ALL command to custom functions...');
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    // Find an empty cell to use temporarily
+                    const tempRange = sheet.getRange('ZZ9999');
+                    
+                    // Call GLABAL with __CLEARCACHE__ and "ALL" to clear everything
+                    tempRange.formulas = [[`=NS.GLABAL("__CLEARCACHE__","ALL","")`]];
+                    await context.sync();
+                    
+                    // Wait for the function to execute
+                    await new Promise(r => setTimeout(r, 1000));
+                    
+                    tempRange.load('values');
+                    await context.sync();
+                    
+                    const result = tempRange.values[0][0];
+                    console.log('   🔧 __CLEARCACHE__ ALL result:', result);
+                    
+                    // Clean up temp cell
+                    tempRange.clear();
+                    await context.sync();
+                });
+                
+                console.log('✅ All caches cleared successfully!');
                 
                 updateLoading('Cache cleared!', 100);
                 await new Promise(resolve => setTimeout(resolve, 500));
                 hideLoading();
                 
                 // Show success message
-                statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Cache cleared!</strong><br><span style="font-size: 11px;">Formulas will fetch fresh data</span></div>`;
+                statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Cache cleared!</strong><br><span style="font-size: 11px;">Formulas will fetch fresh data from NetSuite</span></div>`;
                 
                 setTimeout(() => {
                     statusEl.textContent = '';
