@@ -1,8 +1,8 @@
 {
   "functions": [
     {
-      "id": "GLATITLE",
-      "name": "GLATITLE",
+      "id": "NAME",
+      "name": "NAME",
       "description": "Get account name from account number",
       "helpUrl": "https://www.example.com/help",
       "result": {
@@ -24,8 +24,8 @@
       }
     },
     {
-      "id": "GLACCTTYPE",
-      "name": "GLACCTTYPE",
+      "id": "TYPE",
+      "name": "TYPE",
       "description": "Get account type (Income, Expense, Bank, etc.)",
       "helpUrl": "https://www.example.com/help",
       "result": {
@@ -47,8 +47,8 @@
       }
     },
     {
-      "id": "GLAPARENT",
-      "name": "GLAPARENT",
+      "id": "PARENT",
+      "name": "PARENT",
       "description": "Get parent account number",
       "helpUrl": "https://www.example.com/help",
       "result": {
@@ -70,8 +70,8 @@
       }
     },
     {
-      "id": "GLABAL",
-      "name": "GLABAL",
+      "id": "BALANCE",
+      "name": "BALANCE",
       "description": "Get GL account balance with filters (non-volatile - only recalculates when explicitly refreshed)",
       "helpUrl": "https://www.example.com/help",
       "result": {
@@ -133,8 +133,8 @@
       }
     },
     {
-      "id": "GLABUD",
-      "name": "GLABUD",
+      "id": "BUDGET",
+      "name": "BUDGET",
       "description": "Get budget amount with filters",
       "helpUrl": "https://www.example.com/help",
       "result": {

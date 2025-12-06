@@ -113,7 +113,7 @@ window.clearCacheForItems = function(items) {
     }
     
     for (const item of items) {
-        // Use getCacheKey to ensure exact same format as GLABAL
+        // Use getCacheKey to ensure exact same format as BALANCE
         const cacheKey = getCacheKey('balance', {
             account: String(item.account),
             fromPeriod: item.period,
@@ -1022,7 +1022,7 @@ window.setFullYearCache = function(balances) {
 };
 
 // Function to populate the account TYPE cache from taskpane
-// This ensures NS.GLACCTTYPE formulas resolve instantly from cache
+// This ensures XAVI.TYPE formulas resolve instantly from cache
 window.setAccountTypeCache = function(accountTypes) {
     console.log('========================================');
     console.log('📦 SETTING ACCOUNT TYPE CACHE IN FUNCTIONS.JS');
@@ -1337,17 +1337,17 @@ function getCacheKey(type, params) {
 }
 
 // ============================================================================
-// GLATITLE - Get Account Name
+// NAME - Get Account Name
 // ============================================================================
 /**
- * @customfunction GLATITLE
+ * @customfunction NAME
  * @param {any} accountNumber The account number
  * @param {CustomFunctions.Invocation} invocation Invocation object
  * @returns {Promise<string>} Account name
  * @requiresAddress
  * @cancelable
  */
-async function GLATITLE(accountNumber, invocation) {
+async function NAME(accountNumber, invocation) {
     const account = normalizeAccountNumber(accountNumber);
     if (!account) return '#N/A';
     
@@ -1447,17 +1447,17 @@ async function GLATITLE(accountNumber, invocation) {
 }
 
 // ============================================================================
-// GLACCTTYPE - Get Account Type
+// TYPE - Get Account Type
 // ============================================================================
 /**
- * @customfunction GLACCTTYPE
+ * @customfunction TYPE
  * @param {any} accountNumber The account number
  * @param {CustomFunctions.Invocation} invocation Invocation object
  * @returns {Promise<string>} Account type (e.g., "Income", "Expense")
  * @requiresAddress
  * @cancelable
  */
-async function GLACCTTYPE(accountNumber, invocation) {
+async function TYPE(accountNumber, invocation) {
     const account = normalizeAccountNumber(accountNumber);
     if (!account) return '#N/A';
     
@@ -1532,17 +1532,17 @@ async function GLACCTTYPE(accountNumber, invocation) {
 }
 
 // ============================================================================
-// GLAPARENT - Get Parent Account
+// PARENT - Get Parent Account
 // ============================================================================
 /**
- * @customfunction GLAPARENT
+ * @customfunction PARENT
  * @param {any} accountNumber The account number
  * @param {CustomFunctions.Invocation} invocation Invocation object
  * @returns {Promise<string>} Parent account number
  * @requiresAddress
  * @cancelable
  */
-async function GLAPARENT(accountNumber, invocation) {
+async function PARENT(accountNumber, invocation) {
     const account = normalizeAccountNumber(accountNumber);
     if (!account) return '#N/A';
     
@@ -1600,10 +1600,10 @@ async function GLAPARENT(accountNumber, invocation) {
 }
 
 // ============================================================================
-// GLABAL - Get GL Account Balance (NON-STREAMING WITH BATCHING - Phase 3)
+// BALANCE - Get GL Account Balance (NON-STREAMING WITH BATCHING)
 // ============================================================================
 /**
- * @customfunction GLABAL
+ * @customfunction BALANCE
  * @param {any} account Account number
  * @param {any} fromPeriod Starting period (e.g., "Jan 2025" or 1/1/2025)
  * @param {any} toPeriod Ending period (e.g., "Mar 2025" or 3/1/2025)
@@ -1614,16 +1614,16 @@ async function GLAPARENT(accountNumber, invocation) {
  * @returns {Promise<number>} Account balance
  * @requiresAddress
  */
-async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     // ================================================================
-    // DEBUG: Log every GLABAL call to understand what's happening
+    // DEBUG: Log every BALANCE call to understand what's happening
     // ================================================================
-    console.log(`📥 GLABAL called: account="${account}", fromPeriod="${fromPeriod}"`);
+    console.log(`📥 BALANCE called: account="${account}", fromPeriod="${fromPeriod}"`);
     
     try {
         // ================================================================
         // SPECIAL COMMAND: __CLEARCACHE__ - Clear caches from taskpane
-        // Usage: =NS.GLABAL("__CLEARCACHE__", "60032:May 2025,60032:Jun 2025", "")
+        // Usage: =XAVI.BALANCE("__CLEARCACHE__", "60032:May 2025,60032:Jun 2025", "")
         // The second parameter contains comma-separated account:period pairs to clear
         // Returns: Number of items cleared
         // ================================================================
@@ -1957,16 +1957,16 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         });
         
     } catch (error) {
-        console.error('GLABAL error:', error);
+        console.error('BALANCE error:', error);
         return 0;
     }
 }
 
 // ============================================================================
-// GLABUD - Get Budget Amount (NON-STREAMING WITH BATCHING - Phase 3)
+// BUDGET - Get Budget Amount (NON-STREAMING WITH BATCHING)
 // ============================================================================
 /**
- * @customfunction GLABUD
+ * @customfunction BUDGET
  * @param {any} account Account number
  * @param {any} fromPeriod Starting period (e.g., "Jan 2025" or 1/1/2025)
  * @param {any} toPeriod Ending period (e.g., "Mar 2025" or 3/1/2025)
@@ -1977,7 +1977,7 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
  * @returns {Promise<number>} Budget amount
  * @requiresAddress
  */
-async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     try {
         // Normalize inputs
         account = normalizeAccountNumber(account);
@@ -2042,7 +2042,7 @@ async function GLABUD(account, fromPeriod, toPeriod, subsidiary, department, loc
         }
         
     } catch (error) {
-        console.error('GLABUD error:', error);
+        console.error('BUDGET error:', error);
         return 0;
     }
 }
@@ -2690,7 +2690,7 @@ function CLEARCACHE(itemsJson) {
                 const account = String(item.account);
                 const period = item.period;
                 
-                // Use getCacheKey to ensure exact same format as GLABAL
+                // Use getCacheKey to ensure exact same format as BALANCE
                 // Key order MUST match: type, account, fromPeriod, toPeriod, subsidiary, department, location, class
                 const exactKey = getCacheKey('balance', {
                     account: account,
@@ -2735,13 +2735,13 @@ function CLEARCACHE(itemsJson) {
 // REGISTER FUNCTIONS WITH EXCEL
 // ============================================================================
 // CRITICAL: The manifest ALREADY defines namespace 'NS'
-// We just register individual functions - Excel adds the NS. prefix automatically!
+// We just register individual functions - Excel adds the XAVI. prefix automatically!
 if (typeof CustomFunctions !== 'undefined') {
-    CustomFunctions.associate('GLATITLE', GLATITLE);
-    CustomFunctions.associate('GLACCTTYPE', GLACCTTYPE);
-    CustomFunctions.associate('GLAPARENT', GLAPARENT);
-    CustomFunctions.associate('GLABAL', GLABAL);
-    CustomFunctions.associate('GLABUD', GLABUD);
+    CustomFunctions.associate('NAME', NAME);
+    CustomFunctions.associate('TYPE', TYPE);
+    CustomFunctions.associate('PARENT', PARENT);
+    CustomFunctions.associate('BALANCE', BALANCE);
+    CustomFunctions.associate('BUDGET', BUDGET);
     CustomFunctions.associate('CLEARCACHE', CLEARCACHE);
     console.log('✅ Custom functions registered with Excel');
 } else {

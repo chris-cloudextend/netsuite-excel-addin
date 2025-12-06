@@ -1639,7 +1639,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.90.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.5.0.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1654,7 +1654,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.90.0</div>
+            <div class="version-badge" id="versionBadge">v1.5.0.0</div>
         </div>
 
         <div class="content">
@@ -1680,7 +1680,7 @@
                 <div class="collapsible-content">
                     <div class="help-tip">
                         <h4>💡 Quick Start</h4>
-                        <p>Type formulas directly in any Excel cell. Start with <code>=NS.GLABAL("4220", "Jan 2024", "Jan 2024")</code> to get account 4220's January balance!</p>
+                        <p>Type formulas directly in any Excel cell. Start with <code>=XAVI.BALANCE("4220", "Jan 2024", "Jan 2024")</code> to get account 4220's January balance!</p>
                     </div>
                     
                     <div class="help-tip" style="background: linear-gradient(135deg, rgba(26, 90, 62, 0.1) 0%, rgba(45, 138, 95, 0.1) 100%); border-color: #2d8a5f;">
@@ -1697,22 +1697,22 @@
                     <h4 style="color: var(--deep-dive); margin: 16px 0 10px; font-size: 14px;">Available Formulas</h4>
                     
                     <div class="formula-example-box">
-                        <code>=NS.GLABAL(account, startPeriod, endPeriod, [subsidiary], [dept], [location], [class])</code>
+                        <code>=XAVI.BALANCE(account, startPeriod, endPeriod, [subsidiary], [dept], [location], [class])</code>
                         <span class="result">Returns: Account balance for the period</span>
                     </div>
                     
                     <div class="formula-example-box">
-                        <code>=NS.GLATITLE(account)</code>
+                        <code>=XAVI.NAME(account)</code>
                         <span class="result">Returns: Account name (e.g., "Revenue - Products")</span>
                     </div>
                     
                     <div class="formula-example-box">
-                        <code>=NS.GLACCTTYPE(account)</code>
+                        <code>=XAVI.TYPE(account)</code>
                         <span class="result">Returns: Account type (e.g., "Income", "Expense")</span>
                     </div>
                     
                     <div class="formula-example-box">
-                        <code>=NS.GLAPARENT(account)</code>
+                        <code>=XAVI.PARENT(account)</code>
                         <span class="result">Returns: Parent account number</span>
                     </div>
                     
@@ -1734,15 +1734,15 @@
                             
                             <div class="excel-cell row-header">2</div>
                             <div class="excel-cell">4220</div>
-                            <div class="excel-cell formula">=NS.GLABAL($A2, B$1, B$1)</div>
+                            <div class="excel-cell formula">=XAVI.BALANCE($A2, B$1, B$1)</div>
                             
                             <div class="excel-cell row-header">3</div>
                             <div class="excel-cell">5000</div>
-                            <div class="excel-cell formula drag-indicator">=NS.GLABAL($A3, B$1, B$1)</div>
+                            <div class="excel-cell formula drag-indicator">=XAVI.BALANCE($A3, B$1, B$1)</div>
                             
                             <div class="excel-cell row-header">4</div>
                             <div class="excel-cell">6100</div>
-                            <div class="excel-cell formula drag-indicator">=NS.GLABAL($A4, B$1, B$1)</div>
+                            <div class="excel-cell formula drag-indicator">=XAVI.BALANCE($A4, B$1, B$1)</div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 10px; background: rgba(26, 90, 62, 0.1); border-radius: 6px;">
                             <span style="font-size: 16px;">↓</span>
@@ -1767,12 +1767,12 @@
                     </p>
                     
                     <div class="formula-example-box">
-                        <code>=NS.GLABAL("4220", "Jan 2024", "Jan 2024", "Celigo Inc.")</code>
+                        <code>=XAVI.BALANCE("4220", "Jan 2024", "Jan 2024", "Celigo Inc.")</code>
                         <span class="result">Filter by subsidiary name</span>
                     </div>
                     
                     <div class="formula-example-box">
-                        <code>=NS.GLABAL("4220", "Jan 2024", "Jan 2024", "", "Sales")</code>
+                        <code>=XAVI.BALANCE("4220", "Jan 2024", "Jan 2024", "", "Sales")</code>
                         <span class="result">Filter by department (leave subsidiary blank with "")</span>
                     </div>
                     
@@ -1793,7 +1793,7 @@
                             
                             <div class="excel-cell row-header">4</div>
                             <div class="excel-cell">4220</div>
-                            <div class="excel-cell formula" style="font-size: 8px;">=NS.GLABAL(A4, "Jan 2024", "Jan 2024", $B$1, $B$2)</div>
+                            <div class="excel-cell formula" style="font-size: 8px;">=XAVI.BALANCE(A4, "Jan 2024", "Jan 2024", $B$1, $B$2)</div>
                         </div>
                         <p style="font-size: 11px; color: var(--bottlenose); margin-top: 8px;">
                             Reference filter values from cells using <code>$B$1</code> (fully locked) to change all formulas at once!
@@ -1953,7 +1953,7 @@
                 </summary>
                 <div class="collapsible-content">
                     <p style="color: var(--bottlenose); font-size: 12px; margin-bottom: 12px; line-height: 1.5;">
-                        Select any cell with an NS.GLABAL formula to see the underlying NetSuite transactions with links to original records.
+                        Select any cell with an XAVI.BALANCE formula to see the underlying NetSuite transactions with links to original records.
                     </p>
                     <button class="btn-secondary" style="background: var(--tidal-wave);" onclick="drillDownTransactions()">
                         View Transactions
@@ -1970,14 +1970,14 @@
                 </summary>
                 <div class="collapsible-content">
     
-            <!-- NS.GLATITLE -->
+            <!-- XAVI.NAME -->
             <div class="formula-card">
-                <div class="formula-name">NS.GLATITLE</div>
+                <div class="formula-name">XAVI.NAME</div>
                 <div class="formula-description">
                     Get the account name for any NetSuite account number or ID.
                 </div>
                 <div class="formula-syntax">
-                    =NS.GLATITLE(accountNumber)
+                    =XAVI.NAME(accountNumber)
                 </div>
                 <div class="parameters">
                     <div class="param-title">Parameters</div>
@@ -1987,20 +1987,20 @@
                 </div>
                 <div class="example">
                     <div class="example-title">Examples</div>
-                    <div class="example-code">=NS.GLATITLE(A4)</div>
-                    <div class="example-code">=NS.GLATITLE("4220")</div>
-                    <div class="example-code">=NS.GLATITLE("15000-1")</div>
+                    <div class="example-code">=XAVI.NAME(A4)</div>
+                    <div class="example-code">=XAVI.NAME("4220")</div>
+                    <div class="example-code">=XAVI.NAME("15000-1")</div>
                 </div>
             </div>
 
-            <!-- NS.GLACCTTYPE -->
+            <!-- XAVI.TYPE -->
             <div class="formula-card">
-                <div class="formula-name">NS.GLACCTTYPE</div>
+                <div class="formula-name">XAVI.TYPE</div>
                 <div class="formula-description">
                     Get the account type for any account (Income, Expense, Bank, AcctRec, Equity, etc.).
                 </div>
                 <div class="formula-syntax">
-                    =NS.GLACCTTYPE(accountNumber)
+                    =XAVI.TYPE(accountNumber)
                 </div>
                 <div class="parameters">
                     <div class="param-title">Parameters</div>
@@ -2010,21 +2010,21 @@
                 </div>
                 <div class="example">
                     <div class="example-title">Examples</div>
-                    <div class="example-code">=NS.GLACCTTYPE("4220")</div>
+                    <div class="example-code">=XAVI.TYPE("4220")</div>
                     <div class="example-result">Returns: "Income"</div>
-                    <div class="example-code">=NS.GLACCTTYPE("10010")</div>
+                    <div class="example-code">=XAVI.TYPE("10010")</div>
                     <div class="example-result">Returns: "Bank"</div>
                 </div>
             </div>
 
-            <!-- NS.GLAPARENT -->
+            <!-- XAVI.PARENT -->
             <div class="formula-card">
-                <div class="formula-name">NS.GLAPARENT</div>
+                <div class="formula-name">XAVI.PARENT</div>
                 <div class="formula-description">
                     Get the parent account number for any sub-account (returns empty string if no parent).
                 </div>
                 <div class="formula-syntax">
-                    =NS.GLAPARENT(accountNumber)
+                    =XAVI.PARENT(accountNumber)
                 </div>
                 <div class="parameters">
                     <div class="param-title">Parameters</div>
@@ -2034,21 +2034,21 @@
                 </div>
                 <div class="example">
                     <div class="example-title">Examples</div>
-                    <div class="example-code">=NS.GLAPARENT("4220")</div>
+                    <div class="example-code">=XAVI.PARENT("4220")</div>
                     <div class="example-result">Returns: "4210"</div>
-                    <div class="example-code">=NS.GLAPARENT("4000")</div>
+                    <div class="example-code">=XAVI.PARENT("4000")</div>
                     <div class="example-result">Returns: "" (top-level account)</div>
                 </div>
             </div>
 
-            <!-- NS.GLABAL -->
+            <!-- XAVI.BALANCE -->
             <div class="formula-card">
-                <div class="formula-name">NS.GLABAL</div>
+                <div class="formula-name">XAVI.BALANCE</div>
                 <div class="formula-description">
                     Get the GL account balance for a specific period or range, with optional filtering by subsidiary, department, location, and class.
                 </div>
                 <div class="formula-syntax">
-                    =NS.GLABAL(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])
+                    =XAVI.BALANCE(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])
                 </div>
                 <div class="parameters">
                     <div class="param-title">Required Parameters</div>
@@ -2077,20 +2077,20 @@
                 </div>
                 <div class="example">
                     <div class="example-title">Examples</div>
-                    <div class="example-code">=NS.GLABAL("4010", "Jan 2025", "Dec 2025")</div>
-                    <div class="example-code">=NS.GLABAL(A4, B1, C1)</div>
-                    <div class="example-code">=NS.GLABAL("4010", "Jan 2025", "Jan 2025", "", "13", "", "")</div>
+                    <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Dec 2025")</div>
+                    <div class="example-code">=XAVI.BALANCE(A4, B1, C1)</div>
+                    <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025", "", "13", "", "")</div>
         </div>
     </div>
     
-            <!-- NS.GLABUD -->
+            <!-- XAVI.BUDGET -->
             <div class="formula-card">
-                <div class="formula-name">NS.GLABUD</div>
+                <div class="formula-name">XAVI.BUDGET</div>
                 <div class="formula-description">
                     Get the budget amount for an account and period, with optional filtering by subsidiary, department, location, and class.
                 </div>
                 <div class="formula-syntax">
-                    =NS.GLABUD(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])
+                    =XAVI.BUDGET(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])
                 </div>
                 <div class="parameters">
                     <div class="param-title">Required Parameters</div>
@@ -2119,15 +2119,15 @@
                 </div>
                 <div class="example">
                     <div class="example-title">Examples</div>
-                    <div class="example-code">=NS.GLABUD("5000", "Jan 2025", "Dec 2025")</div>
-                    <div class="example-code">=NS.GLABUD(A4, B1, C1)</div>
+                    <div class="example-code">=XAVI.BUDGET("5000", "Jan 2025", "Dec 2025")</div>
+                    <div class="example-code">=XAVI.BUDGET(A4, B1, C1)</div>
                 </div>
             </div>
     
                     <div class="help-tip" style="margin-top: 16px;">
                         <h4>💡 Pro Tip: Date Formatting</h4>
                         <p>Use TEXT() to format date cells:<br>
-                        <code style="background: var(--deep-dive); color: var(--anenome); padding: 2px 6px; border-radius: 4px; font-size: 11px;">=NS.GLABAL("4010", TEXT(C3,"mmm yyyy"), TEXT(D3,"mmm yyyy"))</code></p>
+                        <code style="background: var(--deep-dive); color: var(--anenome); padding: 2px 6px; border-radius: 4px; font-size: 11px;">=XAVI.BALANCE("4010", TEXT(C3,"mmm yyyy"), TEXT(D3,"mmm yyyy"))</code></p>
                     </div>
                 </div>
             </details>
@@ -2352,7 +2352,7 @@
                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             
             // CRITICAL: Clear all caches to prevent stale account type data
-            // This ensures NS.GLACCTTYPE formulas fetch fresh data from NetSuite
+            // This ensures XAVI.TYPE formulas fetch fresh data from NetSuite
             try {
                 if (typeof window.clearAllCaches === 'function') {
                     window.clearAllCaches();
@@ -2549,13 +2549,13 @@
                         console.log('Guide Me: Populated balance cache via Shared Runtime');
                     }
                     
-                    // Populate TYPE cache so NS.GLACCTTYPE resolves correctly
+                    // Populate TYPE cache so XAVI.TYPE resolves correctly
                     if (typeof window.setAccountTypeCache === 'function') {
                         window.setAccountTypeCache(accountTypes);
                         console.log('Guide Me: Populated TYPE cache via Shared Runtime');
                     }
                     
-                    // Populate NAME cache so NS.GLATITLE resolves without 35+ API calls
+                    // Populate NAME cache so XAVI.NAME resolves without 35+ API calls
                     if (typeof window.setAccountNameCache === 'function') {
                         window.setAccountNameCache(accountNames);
                         console.log('Guide Me: Populated NAME cache via Shared Runtime');
@@ -2685,17 +2685,17 @@
                         if (i < formulaRows) {
                             // Column A: Account TYPE formula
                             const typeCell = sheet.getRange(`A${rowNum}`);
-                            typeCell.formulas = [[`=NS.GLACCTTYPE(B${rowNum})`]];
+                            typeCell.formulas = [[`=XAVI.TYPE(B${rowNum})`]];
                             
                             // Column C: Account NAME formula
                             const nameCell = sheet.getRange(`C${rowNum}`);
-                            nameCell.formulas = [[`=NS.GLATITLE(B${rowNum})`]];
+                            nameCell.formulas = [[`=XAVI.NAME(B${rowNum})`]];
                             
                             // Columns D-O: BALANCE formulas
                             for (let m = 0; m < 12; m++) {
                                 const colLetter = String.fromCharCode(68 + m);
                                 const cell = sheet.getRange(`${colLetter}${rowNum}`);
-                                cell.formulas = [[`=NS.GLABAL($B${rowNum},TEXT(${colLetter}$1,"mmm yyyy"),TEXT(${colLetter}$1,"mmm yyyy"))`]];
+                                cell.formulas = [[`=XAVI.BALANCE($B${rowNum},TEXT(${colLetter}$1,"mmm yyyy"),TEXT(${colLetter}$1,"mmm yyyy"))`]];
                             }
                             
                             // Column P: YTD Total formula
@@ -2766,9 +2766,9 @@
                     3. Then select <strong>D26:P26</strong> (Jan through YTD Total)<br>
                     4. Drag down to row 36<br><br>
                     <strong>Formula Reference:</strong><br>
-                    • <code>=NS.GLACCTTYPE(B2)</code> → Account Type<br>
-                    • <code>=NS.GLATITLE(B2)</code> → Account Name<br>
-                    • <code>=NS.GLABAL($B2, ...)</code> → Monthly Balance`;
+                    • <code>=XAVI.TYPE(B2)</code> → Account Type<br>
+                    • <code>=XAVI.NAME(B2)</code> → Account Name<br>
+                    • <code>=XAVI.BALANCE($B2, ...)</code> → Monthly Balance`;
                 progress.style.lineHeight = '1.6';
                 btnText.textContent = '✓ Report Created!';
                 btn.style.background = '#4CAF50';
@@ -3884,8 +3884,8 @@ export default {
                     // Find an empty cell to use temporarily
                     const tempRange = sheet.getRange('ZZ9999');
                     
-                    // Call GLABAL with __CLEARCACHE__ and "ALL" to clear everything
-                    tempRange.formulas = [[`=NS.GLABAL("__CLEARCACHE__","ALL","")`]];
+                    // Call BALANCE with __CLEARCACHE__ and "ALL" to clear everything
+                    tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","ALL","")`]];
                     await context.sync();
                     
                     // Wait for the function to execute
@@ -3962,16 +3962,16 @@ export default {
                     
                     console.log(`📊 Scanning ${rowCount} × ${colCount} cells...`);
                     
-                    // Find all NS.GLABAL formulas
+                    // Find all XAVI.BALANCE formulas
                     for (let row = 0; row < rowCount; row++) {
                         for (let col = 0; col < colCount; col++) {
                             const formula = formulas[row][col];
                             if (formula && typeof formula === 'string' && 
-                                formula.toUpperCase().includes('NS.GLABAL')) {
+                                formula.toUpperCase().includes('XAVI.BALANCE')) {
                                 cellsToUpdate.push({ row, col, formula });
                                 
                                 // Try to extract account from formula
-                                const accountMatch = formula.match(/NS\.GLABAL\s*\(\s*["']?(\d+)["']?/i);
+                                const accountMatch = formula.match(/XAVI\.BALANCE\s*\(\s*["']?(\d+)["']?/i);
                                 if (accountMatch) {
                                     detectedAccounts.add(accountMatch[1]);
                                 }
@@ -3995,13 +3995,13 @@ export default {
                     }
                 });
                 
-                console.log(`📊 Found ${cellsToUpdate.length} NS.GLABAL formulas`);
+                console.log(`📊 Found ${cellsToUpdate.length} XAVI.BALANCE formulas`);
                 console.log(`📊 Detected accounts: ${detectedAccounts.size}`);
                 console.log(`📊 Detected years: ${[...detectedYears].join(', ')}`);
                 
                 if (cellsToUpdate.length === 0) {
                     hideLoading();
-                    statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #92400e;">No NS.GLABAL formulas found</strong></div>`;
+                    statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #92400e;">No XAVI.BALANCE formulas found</strong></div>`;
                     setTimeout(() => { statusEl.textContent = ''; }, 5000);
                     return;
                 }
@@ -4266,32 +4266,32 @@ export default {
                     
                     // Strategy: We need to get the RESOLVED values (account numbers and periods)
                     // The formulas use cell references, so we need to evaluate them
-                    // We'll use a different approach: look at each cell that has an NS.GLABAL formula
+                    // We'll use a different approach: look at each cell that has an XAVI.BALANCE formula
                     // and extract the account/period by evaluating the referenced cells
                     
                     const itemsToClear = [];
                     const formulas = range.formulas;
                     const values = range.values;
                     
-                    // Check if any cell contains NS.GLABAL formula
+                    // Check if any cell contains XAVI.BALANCE formula
                     let formulaCount = 0;
                     const cellsWithFormulas = [];
                     
                     for (let r = 0; r < range.rowCount; r++) {
                         for (let c = 0; c < range.columnCount; c++) {
                             const formula = formulas[r][c];
-                            if (formula && typeof formula === 'string' && formula.toUpperCase().includes('NS.GLABAL')) {
+                            if (formula && typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
                                 formulaCount++;
                                 cellsWithFormulas.push({ row: r, col: c, formula });
                             }
                         }
                     }
                     
-                    console.log(`📋 Found ${formulaCount} NS.GLABAL formulas in selection`);
+                    console.log(`📋 Found ${formulaCount} XAVI.BALANCE formulas in selection`);
                     
                     if (formulaCount === 0) {
                         hideLoading();
-                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">⚠️ No NS.GLABAL formulas found in selection</strong></div>`;
+                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">⚠️ No XAVI.BALANCE formulas found in selection</strong></div>`;
                         setTimeout(() => statusEl.textContent = '', 5000);
                         return;
                     }
@@ -4407,8 +4407,8 @@ export default {
                     
                     console.log(`✅ Cleared ${clearedCount} localStorage entries for refresh`)
                     
-                    // CRITICAL: Call NS.GLABAL("__CLEARCACHE__", "items", "") in the custom functions runtime
-                    // This clears cache in the SAME context as GLABAL (different from taskpane!)
+                    // CRITICAL: Call XAVI.BALANCE("__CLEARCACHE__", "items", "") in the custom functions runtime
+                    // This clears cache in the SAME context as BALANCE (different from taskpane!)
                     // Pass specific items as "60032:May 2025,60032:Jun 2025" format (simple, no JSON escaping)
                     updateLoading('Clearing in-memory cache...', 60);
                     try {
@@ -4417,12 +4417,12 @@ export default {
                         console.log(`📡 Calling __CLEARCACHE__ for ${itemsToClear.length} items...`);
                         console.log(`   Items: ${itemsList}`);
                         
-                        // Use a temporary cell to evaluate the GLABAL function with __CLEARCACHE__ command
+                        // Use a temporary cell to evaluate the BALANCE function with __CLEARCACHE__ command
                         const tempSheet = context.workbook.worksheets.getActiveWorksheet();
                         const tempRange = tempSheet.getRange('XFD1'); // Far corner, unlikely to be used
                         
                         // Pass specific items - this clears ONLY these items from functions' cache
-                        tempRange.formulas = [[`=NS.GLABAL("__CLEARCACHE__","${itemsList}","")`]];
+                        tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","${itemsList}","")`]];
                     await context.sync();
                     
                         // Wait for custom function to execute
@@ -4507,16 +4507,16 @@ export default {
                     console.log('Formula:', formula);
                     console.log('Value:', range.values[0][0]);
                     
-                    // Check if it's an NS.GLABAL formula
-                    if (!formula || !formula.toUpperCase().includes('NS.GLABAL')) {
-                        statusEl.textContent = '✗ Please select a cell with an NS.GLABAL formula';
+                    // Check if it's an XAVI.BALANCE formula
+                    if (!formula || !formula.toUpperCase().includes('XAVI.BALANCE')) {
+                        statusEl.textContent = '✗ Please select a cell with an XAVI.BALANCE formula';
                         statusEl.style.color = '#dc2626';
                         setTimeout(() => { statusEl.textContent = ''; }, 5000);
                         return;
                     }
                     
                     // Parse the formula to extract cell references
-                    // Formula format: =NS.GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, class)
+                    // Formula format: =XAVI.BALANCE(account, fromPeriod, toPeriod, subsidiary, department, location, class)
                     const cellRefs = parseFormulaCellRefs(formula);
                     console.log('Cell references from formula:', cellRefs);
                     
@@ -4611,7 +4611,7 @@ export default {
         function parseFormulaCellRefs(formula) {
             try {
                 // Extract content between parentheses
-                const match = formula.match(/NS\.GLABAL\s*\((.*)\)/i);
+                const match = formula.match(/XAVI\.BALANCE\s*\((.*)\)/i);
                 if (!match) return null;
                 
                 const paramsStr = match[1];

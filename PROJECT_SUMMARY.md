@@ -2,10 +2,10 @@
 
 ## Project Overview
 
-This is an Excel Add-in that provides custom functions to retrieve financial data from NetSuite via SuiteQL queries. Users can build financial reports in Excel using formulas like `=NS.GLABAL("4010", "Jan 2025", "Jan 2025")` to fetch account balances, and the add-in handles consolidation, caching, and performance optimization.
+This is an Excel Add-in that provides custom functions to retrieve financial data from NetSuite via SuiteQL queries. Users can build financial reports in Excel using formulas like `=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025")` to fetch account balances, and the add-in handles consolidation, caching, and performance optimization.
 
 ### Key Features
-- **Custom Excel Functions**: `NS.GLABAL` (balance), `NS.GLATITLE` (account name), `NS.GLACCTTYPE` (account type)
+- **Custom Excel Functions**: `XAVI.BALANCE` (balance), `XAVI.NAME` (account name), `XAVI.TYPE` (account type)
 - **Multi-currency Consolidation**: Uses NetSuite's `BUILTIN.CONSOLIDATE` function
 - **Smart Caching**: In-memory and localStorage caching with intelligent invalidation
 - **Build Mode Detection**: Detects rapid formula entry (drag-drop) and batches requests
@@ -224,11 +224,11 @@ EXPENSES (Debit balance - stored positive, NO sign flip):
 
 ### 1. Single Cell Resolution
 
-When a user enters a single formula like `=NS.GLABAL("4010", "Jan 2025", "Jan 2025")`:
+When a user enters a single formula like `=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025")`:
 
 ```javascript
-// In GLABAL function
-async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+// In BALANCE function
+async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
     // 1. Check in-memory cache
     const cacheKey = getCacheKey('balance', { account, fromPeriod, toPeriod, ... });
     if (cache.balance.has(cacheKey)) {
@@ -337,7 +337,7 @@ async function runBuildModeBatch() {
 
 ### 3. Refresh All (Taskpane)
 
-Scans the active sheet for all `NS.GLA*` formulas, detects accounts and periods, then fetches fresh data:
+Scans the active sheet for all `XAVI.*` formulas, detects accounts and periods, then fetches fresh data:
 
 ```javascript
 async function refreshCurrentSheet() {
@@ -394,7 +394,7 @@ async function refreshSelected() {
     const items = [];
     for (const cell of range) {
         const formula = cell.formula;
-        if (formula.includes('NS.GLABAL')) {
+        if (formula.includes('XAVI.BALANCE')) {
             const account = parseAccountFromFormula(formula);
             const period = parsePeriodFromFormula(formula);
             items.push({ account, period });
@@ -405,7 +405,7 @@ async function refreshSelected() {
     await Excel.run(async (context) => {
         const tempRange = context.workbook.worksheets.getActiveWorksheet().getRange("A1");
         const itemsList = items.map(i => `${i.account}:${i.period}`).join(',');
-        tempRange.formulas = [[`=NS.GLABAL("__CLEARCACHE__","${itemsList}","")`]];
+        tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","${itemsList}","")`]];
         await context.sync();
     });
     
@@ -858,19 +858,16 @@ class AccountTypes:
 
 ---
 
-#### Q12: GLABAL Typo
+#### Q12: Function Naming (Historical Note)
 
-**History**: Original function was `GLABAL` (GL Account BALance). Now canonical.
+**History**: Original function was `NS.GLABAL` (GL Account BALance).
 
-**Recommendation**: Add alias while maintaining backward compatibility:
-```javascript
-// In functions.json
-{
-    "id": "GL_BALANCE",
-    "name": "NS.GL_BALANCE", 
-    // ... same implementation as GLABAL
-}
-```
+**Resolution**: Renamed to `XAVI.BALANCE` in v1.5.0.0 with cleaner naming:
+- `XAVI.BALANCE` - Account balance
+- `XAVI.BUDGET` - Budget amount
+- `XAVI.NAME` - Account name
+- `XAVI.TYPE` - Account type
+- `XAVI.PARENT` - Parent account
 
 ---
 
@@ -923,7 +920,7 @@ The `1` in comments is example value, not hardcoded.
 | 🟡 Medium | Magic strings | ❌ Refactor needed |
 | 🟡 Medium | GET → POST | ❌ API change needed |
 | 🟡 Medium | Testing | ❌ Not implemented |
-| 🟢 Low | GLABAL alias | ❌ Optional |
+| 🟢 Low | Function naming | ✅ Renamed to XAVI.* |
 | 🟢 Low | Monitoring | ❌ Production concern |
 
 ---
