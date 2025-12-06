@@ -621,6 +621,313 @@ async function encryptAndStore(key, data) {
 
 ---
 
+## Detailed Technical Review - Q&A
+
+### Finance Questions
+
+#### Q1: Why both 'COGS' AND 'Cost of Goods Sold'?
+
+**Answer**: NetSuite historically used different values. Testing against live data shows:
+- Modern NetSuite accounts use `COGS`
+- Legacy imported accounts may have `Cost of Goods Sold`
+- Some NetSuite documentation references both
+
+**Verification Query**:
+```sql
+SELECT DISTINCT accttype FROM Account WHERE accttype LIKE '%COGS%' OR accttype LIKE '%Cost%'
+```
+
+**Resolution**: Both are included defensively. This is documented as a known NetSuite quirk.
+
+---
+
+#### Q2: NonPosting/Stat accounts - intentionally excluded?
+
+**Answer**: Yes, intentionally excluded.
+
+- `NonPosting` accounts cannot have transaction amounts (used for grouping/headers)
+- `Stat` accounts are statistical KPIs (unit counts, not currency amounts)
+
+Neither would return meaningful balance data from `transactionaccountingline`.
+
+**Documentation added** to account types reference:
+```
+OTHER ACCOUNT TYPES (Excluded from queries):
+  - NonPosting        Statistical/Non-posting (no transactions)
+  - Stat              Statistical accounts (non-financial KPIs)
+```
+
+---
+
+#### Q3: Zero Balance vs. No Data vs. Account Doesn't Exist
+
+**Current Behavior**:
+
+| Scenario | What Happens | User Sees |
+|----------|--------------|-----------|
+| Account exists, $0 balance | Query returns no row (NetSuite optimization) | `0` (cached explicitly) |
+| Account in query but filtered out | Not returned | `0` (potentially incorrect!) |
+| Account doesn't exist | Query returns nothing | `0` (should error) |
+| Network/API error | Catch block | Error message or `""` |
+
+**The Risk**: Silently returning $0 for non-existent accounts is indeed a material misstatement risk.
+
+**Recommended Fix**:
+```javascript
+// Instead of returning 0 for missing accounts:
+if (!accountExists(account)) {
+    return "#INVALID_ACCT";  // Excel error value
+}
+```
+
+**Implementation needed**: Pre-validate account numbers against a cached account list.
+
+---
+
+### Engineering Questions
+
+#### Q4: SQL Injection Risk
+
+**Current Mitigation**: All inputs go through `escape_sql()`:
+```python
+def escape_sql(text):
+    """Escape single quotes in SQL strings"""
+    if text is None:
+        return ""
+    return str(text).replace("'", "''")
+
+# Usage:
+accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+```
+
+**Example attack**: `1; DROP TABLE account--` becomes `'1; DROP TABLE account--'` (treated as literal string).
+
+**Why SuiteQL is safer**:
+- Read-only API (no DDL/DML)
+- NetSuite validates queries server-side
+- No direct database access
+
+**Recommendation**: Add input validation regex:
+```python
+def validate_account_number(acct):
+    """Only allow alphanumeric and hyphens"""
+    if not re.match(r'^[a-zA-Z0-9\-]+$', str(acct)):
+        raise ValueError(f"Invalid account number: {acct}")
+```
+
+---
+
+#### Q5: Error Handling Strategy
+
+**Current Implementation** (172 error handling blocks in server.py):
+
+| Error Type | Backend Response | Frontend Display |
+|------------|------------------|------------------|
+| NetSuite 429 (rate limit) | 429 + retry-after | "Rate limited, retrying..." |
+| NetSuite timeout | 504 Gateway Timeout | "Query timeout, try smaller selection" |
+| Auth failure | 401 Unauthorized | "Authentication error" |
+| Network error | 502 Bad Gateway | "Server unavailable" |
+| Invalid account | 200 + empty result | `0` (see Q3 issue above) |
+
+**Frontend retry logic**:
+```javascript
+const MAX_RETRIES = 3;
+for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+        const response = await fetch(...);
+        if (response.status === 429) {
+            await sleep(2000 * (attempt + 1));  // Exponential backoff
+            continue;
+        }
+        // ... handle other statuses
+    } catch (e) {
+        if (attempt === MAX_RETRIES) throw e;
+    }
+}
+```
+
+---
+
+#### Q6: 60-70 Second Query Time UX
+
+**Current mitigations**:
+1. Status bar shows "Fetching Balance Sheet accounts..." with spinner
+2. `localStorage` broadcasts progress updates
+3. Build mode batches requests (users see "busy" indicator in cells)
+
+**Recommendations not yet implemented**:
+- [ ] Progressive loading (show P&L results while BS fetches)
+- [ ] Stale-while-revalidate (show cached, refresh in background)
+- [ ] Query splitting (fetch 20 accounts at a time)
+
+**Why it's slow**: Balance Sheet queries use `BUILTIN.CONSOLIDATE` which revalues every transaction at period-end exchange rate. This is CPU-intensive in NetSuite.
+
+---
+
+#### Q7: Caching Race Conditions
+
+**Identified Issue**: Two identical requests could both miss cache and both query.
+
+**Current mitigation** (partial):
+```javascript
+// Build mode queues all requests, processes once
+if (buildModeActive) {
+    buildModePending.push(request);  // Deduplicated by key
+    return;  // Don't process individually
+}
+```
+
+**Recommended enhancement**:
+```javascript
+const inflightRequests = new Map();  // Track pending fetches
+
+async function fetchWithDedup(key, fetchFn) {
+    if (inflightRequests.has(key)) {
+        return inflightRequests.get(key);  // Return same promise
+    }
+    const promise = fetchFn();
+    inflightRequests.set(key, promise);
+    try {
+        return await promise;
+    } finally {
+        inflightRequests.delete(key);
+    }
+}
+```
+
+---
+
+#### Q8: Cache Invalidation
+
+| Action | Cache Behavior |
+|--------|----------------|
+| Formula evaluation | Check cache first (5-min TTL) |
+| "Refresh Selected" | Clears specific entries, then re-fetches |
+| "Refresh All" | Clears all entries, full re-fetch |
+| "Clear Cache" button | Clears all caches (in-memory + localStorage) |
+| User posts JE in NetSuite | Must manually refresh in Excel |
+
+**Real-time sync not implemented** - would require NetSuite webhooks or polling.
+
+---
+
+#### Q9: Backend Scalability
+
+**Current state**: In-memory dict caches
+```python
+balance_cache = {}  # Lost on restart, unbounded growth
+account_title_cache = {}
+```
+
+**Recommendations for production**:
+1. Redis for distributed caching
+2. Cache size limits (LRU eviction)
+3. Cache warming on startup
+
+---
+
+#### Q10: API Design - GET vs POST
+
+**Issue**: `GET /account/<number>/name` exposes account numbers in URL logs.
+
+**Current endpoints**:
+| Method | Endpoint | Risk |
+|--------|----------|------|
+| GET | `/account/<num>/name` | Account in URL |
+| GET | `/account/<num>/type` | Account in URL |
+| POST | `/batch/balance` | Secure (body) |
+
+**Recommendation**: Migrate to POST for all account lookups.
+
+---
+
+#### Q11: Magic Strings → Constants
+
+**Recommendation** (not yet implemented):
+```python
+# backend/constants.py
+class AccountTypes:
+    # Assets
+    BANK = 'Bank'
+    ACCT_REC = 'AcctRec'
+    # ... etc
+    
+    BALANCE_SHEET = {BANK, ACCT_REC, ...}
+    PL_TYPES = {'Income', 'OthIncome', 'COGS', 'Expense', 'OthExpense'}
+```
+
+---
+
+#### Q12: GLABAL Typo
+
+**History**: Original function was `GLABAL` (GL Account BALance). Now canonical.
+
+**Recommendation**: Add alias while maintaining backward compatibility:
+```javascript
+// In functions.json
+{
+    "id": "GL_BALANCE",
+    "name": "NS.GL_BALANCE", 
+    // ... same implementation as GLABAL
+}
+```
+
+---
+
+#### Q13: Hardcoded Subsidiary
+
+**Clarification**: Subsidiary IS passed dynamically:
+```python
+def build_bs_multi_period_query(..., target_sub, ...):
+    # target_sub comes from request, defaults to parent subsidiary
+    select_columns.append(f"""
+        BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', 
+            {target_sub},  -- Dynamic!
+            {alias}.id, 'DEFAULT')
+    """)
+```
+
+The `1` in comments is example value, not hardcoded.
+
+---
+
+#### Q14-16: Testing, Monitoring, Documentation
+
+**Current State**:
+| Area | Status | Notes |
+|------|--------|-------|
+| Unit tests | ❌ | Not implemented |
+| Integration tests | ❌ | Manual QA only |
+| API docs | ⚠️ | Inline comments only |
+| Logging | ⚠️ | Print statements, no structured logging |
+| Metrics | ❌ | No Prometheus/DataDog |
+| Alerting | ❌ | None |
+
+**Recommendations**:
+1. Add pytest for sign convention and query building
+2. Use Flask-RESTx for auto-generated Swagger docs
+3. Add `structlog` for JSON logging
+4. Implement health check endpoint
+
+---
+
+## Action Items Summary
+
+| Priority | Issue | Status |
+|----------|-------|--------|
+| 🔴 Critical | SQL injection | ✅ `escape_sql()` implemented |
+| 🔴 Critical | Zero vs error ambiguity | ⚠️ Needs account validation |
+| 🔴 Critical | 60-70s UX | ⚠️ Status bar added, progressive loading pending |
+| 🟠 High | Race conditions | ⚠️ Build mode helps, dedup recommended |
+| 🟠 High | Error messages | ✅ Implemented (could improve) |
+| 🟡 Medium | Magic strings | ❌ Refactor needed |
+| 🟡 Medium | GET → POST | ❌ API change needed |
+| 🟡 Medium | Testing | ❌ Not implemented |
+| 🟢 Low | GLABAL alias | ❌ Optional |
+| 🟢 Low | Monitoring | ❌ Production concern |
+
+---
+
 ## Version History (Recent)
 
 - **1.4.89.0**: Complete account types documentation
