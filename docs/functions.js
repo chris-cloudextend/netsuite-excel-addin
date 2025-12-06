@@ -253,9 +253,23 @@ function exitBuildModeAndProcess() {
 // Helper: Check if account type is Balance Sheet
 function isBalanceSheetType(acctType) {
     if (!acctType) return false;
-    const bsTypes = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 
-                     'DeferExpense', 'Unbilled', 'AcctPay', 'CreditCard', 'OthCurrLiab', 
-                     'LongTermLiab', 'DeferRevenue', 'Equity'];
+    // NetSuite Balance Sheet account types (exact names from SuiteQL)
+    const bsTypes = [
+        'Bank',           // Bank accounts
+        'AcctRec',        // Accounts Receivable
+        'OthCurrAsset',   // Other Current Asset
+        'FixedAsset',     // Fixed Asset
+        'OthAsset',       // Other Asset
+        'DeferExpense',   // Deferred Expense
+        'UnbilledRec',    // Unbilled Receivable
+        'AcctPay',        // Accounts Payable
+        'CredCard',       // Credit Card (NOT 'CreditCard' - NetSuite uses 'CredCard')
+        'OthCurrLiab',    // Other Current Liability
+        'LongTermLiab',   // Long Term Liability
+        'DeferRevenue',   // Deferred Revenue
+        'Equity',         // Equity
+        'RetainedEarnings' // Retained Earnings
+    ];
     return bsTypes.includes(acctType);
 }
 
