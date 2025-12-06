@@ -394,67 +394,145 @@ async function runBuildModeBatch() {
     const usePLFullYear = yearsArray.length > 0 && plAccounts.length >= 5;
     
     // STEP 2: Fetch Balance Sheet accounts FIRST using efficient multi-period query
-    // This ALWAYS fetches ALL BS accounts regardless of how many are requested,
-    // so subsequent BS rows are instant from cache
+    // But FIRST check if all requested BS data is already in cache!
     if (bsAccounts.length > 0 && periodsArray.length > 0) {
-        console.log(`   📊 Fetching ALL Balance Sheet accounts (${periodsArray.length} periods)...`);
-        console.log(`   ⚡ Using efficient multi-period query (fetches ALL BS accounts for caching)`);
-        broadcastStatus(`Fetching Balance Sheet data...`, 15, 'info');
+        // CHECK CACHE FIRST - avoid unnecessary NetSuite calls!
+        let allBSInCache = true;
+        let cachedBSValues = {};
         
-        const bsStartTime = Date.now();
-        try {
-            const response = await fetch(`${SERVER_URL}/batch/bs_periods`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    periods: periodsArray,
+        for (const acct of bsAccounts) {
+            cachedBSValues[acct] = {};
+            for (const period of periodsArray) {
+                const ck = getCacheKey('balance', {
+                    account: acct,
+                    fromPeriod: period,
+                    toPeriod: period,
                     subsidiary: filters.subsidiary,
                     department: filters.department,
                     location: filters.location,
-                    class: filters.classId
-                })
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                const bsBalances = data.balances || {};
-                const bsTime = ((Date.now() - bsStartTime) / 1000).toFixed(1);
-                const bsAccountCount = Object.keys(bsBalances).length;
-                console.log(`   ✅ BS: ${bsAccountCount} accounts in ${bsTime}s (ALL BS accounts cached!)`);
+                    classId: filters.classId
+                });
                 
-                // Cache ALL Balance Sheet accounts (not just requested ones!)
-                let bsCached = 0;
-                for (const acct in bsBalances) {
-                    if (!allBalances[acct]) allBalances[acct] = {};
-                    for (const period in bsBalances[acct]) {
-                        allBalances[acct][period] = bsBalances[acct][period];
-                        const ck = getCacheKey('balance', {
-                            account: acct,
-                            fromPeriod: period,
-                            toPeriod: period,
-                            subsidiary: filters.subsidiary,
-                            department: filters.department,
-                            location: filters.location,
-                            classId: filters.classId
-                        });
-                        cache.balance.set(ck, bsBalances[acct][period]);
-                        bsCached++;
-                    }
+                if (cache.balance.has(ck)) {
+                    cachedBSValues[acct][period] = cache.balance.get(ck);
+                } else {
+                    allBSInCache = false;
+                    break;
                 }
-                console.log(`   💾 Cached ${bsCached} BS values (${bsAccountCount} accounts × ${periodsArray.length} periods)`);
-            } else {
-                console.error(`   ❌ BS multi-period error: ${response.status}`);
+            }
+            if (!allBSInCache) break;
+        }
+        
+        if (allBSInCache) {
+            // ALL BS data is in cache - use it!
+            console.log(`   ✅ BS CACHE HIT: All ${bsAccounts.length} accounts × ${periodsArray.length} periods found in cache!`);
+            broadcastStatus(`Using cached Balance Sheet data`, 20, 'info');
+            
+            for (const acct of bsAccounts) {
+                if (!allBalances[acct]) allBalances[acct] = {};
+                for (const period of periodsArray) {
+                    allBalances[acct][period] = cachedBSValues[acct][period];
+                }
+            }
+        } else {
+            // Cache miss - fetch from NetSuite
+            console.log(`   📊 Fetching ALL Balance Sheet accounts (${periodsArray.length} periods)...`);
+            console.log(`   ⚡ Using efficient multi-period query (fetches ALL BS accounts for caching)`);
+            broadcastStatus(`Fetching Balance Sheet data...`, 15, 'info');
+            
+            const bsStartTime = Date.now();
+            try {
+                const response = await fetch(`${SERVER_URL}/batch/bs_periods`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        periods: periodsArray,
+                        subsidiary: filters.subsidiary,
+                        department: filters.department,
+                        location: filters.location,
+                        class: filters.classId
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const bsBalances = data.balances || {};
+                    const bsTime = ((Date.now() - bsStartTime) / 1000).toFixed(1);
+                    const bsAccountCount = Object.keys(bsBalances).length;
+                    console.log(`   ✅ BS: ${bsAccountCount} accounts in ${bsTime}s (ALL BS accounts cached!)`);
+                    
+                    // Cache ALL Balance Sheet accounts (not just requested ones!)
+                    let bsCached = 0;
+                    for (const acct in bsBalances) {
+                        if (!allBalances[acct]) allBalances[acct] = {};
+                        for (const period in bsBalances[acct]) {
+                            allBalances[acct][period] = bsBalances[acct][period];
+                            const ck = getCacheKey('balance', {
+                                account: acct,
+                                fromPeriod: period,
+                                toPeriod: period,
+                                subsidiary: filters.subsidiary,
+                                department: filters.department,
+                                location: filters.location,
+                                classId: filters.classId
+                            });
+                            cache.balance.set(ck, bsBalances[acct][period]);
+                            bsCached++;
+                        }
+                    }
+                    console.log(`   💾 Cached ${bsCached} BS values (${bsAccountCount} accounts × ${periodsArray.length} periods)`);
+                } else {
+                    console.error(`   ❌ BS multi-period error: ${response.status}`);
+                    hasError = true;
+                }
+            } catch (error) {
+                console.error(`   ❌ BS fetch error:`, error);
                 hasError = true;
             }
-        } catch (error) {
-            console.error(`   ❌ BS fetch error:`, error);
-            hasError = true;
         }
     }
     
     // STEP 3: Fetch P&L accounts
     if (plAccounts.length > 0 && yearsArray.length > 0) {
-        if (usePLFullYear) {
+        // CHECK CACHE FIRST for P&L accounts too
+        let allPLInCache = true;
+        let cachedPLValues = {};
+        
+        for (const acct of plAccounts) {
+            cachedPLValues[acct] = {};
+            for (const period of periodsArray) {
+                const ck = getCacheKey('balance', {
+                    account: acct,
+                    fromPeriod: period,
+                    toPeriod: period,
+                    subsidiary: filters.subsidiary,
+                    department: filters.department,
+                    location: filters.location,
+                    classId: filters.classId
+                });
+                
+                if (cache.balance.has(ck)) {
+                    cachedPLValues[acct][period] = cache.balance.get(ck);
+                } else {
+                    allPLInCache = false;
+                    break;
+                }
+            }
+            if (!allPLInCache) break;
+        }
+        
+        if (allPLInCache) {
+            // ALL P&L data is in cache - use it!
+            console.log(`   ✅ P&L CACHE HIT: All ${plAccounts.length} accounts × ${periodsArray.length} periods found in cache!`);
+            broadcastStatus(`Using cached P&L data`, 70, 'info');
+            
+            for (const acct of plAccounts) {
+                if (!allBalances[acct]) allBalances[acct] = {};
+                for (const period of periodsArray) {
+                    allBalances[acct][period] = cachedPLValues[acct][period];
+                }
+            }
+        } else if (usePLFullYear) {
             // FAST PATH: Use full_year_refresh for bulk P&L (5+ accounts)
             console.log(`   ⚡ P&L FAST PATH: full_year_refresh for ${yearsArray.length} year(s)`);
             broadcastStatus(`Fetching P&L data for ${yearsArray.join(', ')}...`, 60, 'info');
