@@ -245,7 +245,7 @@
             font-family: 'SF Mono', Monaco, monospace;
             font-size: 9px;
         }
-        
+
         .excel-cell.formula.drag-indicator {
             background: rgba(10, 226, 193, 0.25);
             border: 1px dashed var(--seafoam);
@@ -1639,7 +1639,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.4.75.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.4.76.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1654,7 +1654,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.4.75.0</div>
+            <div class="version-badge" id="versionBadge">v1.4.76.0</div>
         </div>
 
         <div class="content">
@@ -1820,7 +1820,7 @@
                         <div class="preload-controls">
                             <button class="btn-load-data" id="preloadBtn" onclick="runPreloadSheet()">
                                 <span id="preloadBtnText">📥 Load Data for Selected Dates</span>
-                            </button>
+                    </button>
                             
                             <label class="checkbox-row">
                                 <input type="checkbox" id="includeBSCheckbox">
@@ -1857,8 +1857,8 @@
                                 <span class="help-icon small" data-tip="Erases all cached data. Forces formulas to re-query NetSuite on next calculation.">?</span>
                             </button>
                         </div>
-                        
-                        <div class="refresh-status" id="refreshStatus"></div>
+                    
+                    <div class="refresh-status" id="refreshStatus"></div>
                     </div>
                     
                 </div>
@@ -3016,23 +3016,23 @@
                         const startTime = Date.now();
                         
                         const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
                                 year: parseInt(year),
-                                subsidiary: '',
-                                department: '',
-                                location: '',
+                            subsidiary: '',
+                            department: '',
+                            location: '',
                                 class: '',
                                 skip_bs: true  // FAST MODE: Skip BS accounts (load on-demand)
-                            })
-                        });
-                        
-                        if (!response.ok) {
+                        })
+                    });
+
+                    if (!response.ok) {
                             throw new Error(`Failed to load year ${year}: ${response.status}`);
-                        }
-                        
-                        const data = await response.json();
+                    }
+
+                    const data = await response.json();
                         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                         const yearBalances = data.balances || {};
                         const accountCount = Object.keys(yearBalances).length;
@@ -3160,13 +3160,13 @@
                 // Clean up overlay
                 clearInterval(historyInterval);
                 setTimeout(() => overlay.remove(), 500);
-                
+                    
                 // Check if user wants Balance Sheet accounts too
                 const includeBS = document.getElementById('includeBSCheckbox')?.checked || false;
-                const accountCount = Object.keys(allBalances).length;
-                
+                    const accountCount = Object.keys(allBalances).length;
+                    
                 // Show P&L success message
-                progress.style.display = 'block';
+                    progress.style.display = 'block';
                 
                 if (includeBS) {
                     // Show P&L done, BS loading message
@@ -4039,19 +4039,19 @@ export default {
                             `Year ${i + 1} of ${yearsArray.length}`);
                         
                         try {
-                            const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    year: year,
+                const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: year,
                                     skip_bs: true, // P&L only
-                                    subsidiary: '',
-                                    department: '',
-                                    location: '',
-                                    class: ''
-                                })
-                            });
-                            
+                        subsidiary: '',
+                        department: '',
+                        location: '',
+                        class: ''
+                    })
+                });
+                
                             if (response.ok) {
                                 const data = await response.json();
                                 Object.assign(allBalances, data.balances || {});
@@ -4101,7 +4101,7 @@ export default {
                                 totalAccountsLoaded += Object.keys(data.balances || {}).length;
                                 console.log(`✅ Year ${year}: ${Object.keys(data.balances || {}).length} BS accounts`);
                             }
-                        } catch (e) {
+                    } catch (e) {
                             console.error(`Error fetching BS year ${year}:`, e);
                         }
                     }
@@ -4305,7 +4305,7 @@ export default {
                                 } else if (typeof period === 'string') {
                                     // Already a string like "Jan 2025" - use as-is
                                     period = period.trim();
-                                } else {
+                } else {
                                     period = String(period).trim();
                                 }
                                 
@@ -4388,8 +4388,8 @@ export default {
                         
                         // Pass specific items - this clears ONLY these items from functions' cache
                         tempRange.formulas = [[`=NS.GLABAL("__CLEARCACHE__","${itemsList}","")`]];
-                        await context.sync();
-                        
+                    await context.sync();
+                    
                         // Wait for custom function to execute
                         await new Promise(resolve => setTimeout(resolve, 1500));
                         
@@ -4402,8 +4402,8 @@ export default {
                         
                         // Clear the temp cell
                         tempRange.clear();
-                        await context.sync();
-                        
+                    await context.sync();
+                    
                     } catch (clearError) {
                         console.warn('   ⚠️ __CLEARCACHE__ call failed:', clearError.message);
                         // Continue anyway - localStorage was cleared from taskpane context

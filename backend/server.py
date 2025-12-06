@@ -971,13 +971,14 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
     return full_query
 
 
-def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
+def build_bs_local_currency_balance_query(period_end_date, filters):
     """
-    Get OPENING BALANCE for all Balance Sheet accounts as of Jan 1 of fiscal year.
-    This is the sum of all activity from inception through Dec 31 of prior year.
+    Get LOCAL CURRENCY balance for all Balance Sheet accounts through a specific date.
     
-    SIMPLIFIED QUERY - avoids complex CTE patterns that SuiteQL doesn't support.
-    Uses BUILTIN.CONSOLIDATE directly with a simpler structure.
+    For consolidated reports, Balance Sheet accounts use:
+      LOCAL CURRENCY BALANCE × CURRENT PERIOD EXCHANGE RATE
+    
+    NOT the CONSOLIDATE function with historical transaction rates!
     """
     filter_clauses = []
     if filters.get('subsidiary'):
@@ -991,39 +992,101 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
-    # Opening balance = all activity BEFORE the fiscal year starts
-    prior_year = int(fiscal_year) - 1
-    
-    # Simpler query without CTE - use CONSOLIDATE directly
     query = f"""
     SELECT
       a.acctnumber AS account_number,
-      SUM(
-        TO_NUMBER(
-          BUILTIN.CONSOLIDATE(
-            tal.amount,
-            'LEDGER',
-            'DEFAULT',
-            'DEFAULT',
-            {target_sub},
-            t.postingperiod,
-            'DEFAULT'
-          )
-        )
-      ) AS opening_balance
+      s.id AS subsidiary_id,
+      s.currency AS subsidiary_currency,
+      SUM(tal.amount) AS local_balance
     FROM TransactionAccountingLine tal
     JOIN Transaction t ON t.id = tal.transaction
     JOIN Account a ON a.id = tal.account
     JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+    JOIN Subsidiary s ON s.id = t.subsidiary
     WHERE t.posting = 'T'
       AND tal.posting = 'T'
       AND tal.accountingbook = 1
       AND ap.isyear = 'F'
       AND ap.isquarter = 'F'
-      AND EXTRACT(YEAR FROM ap.enddate) <= {prior_year}
+      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
       AND COALESCE(a.eliminate, 'F') = 'F'
       AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
       {filter_sql}
+    GROUP BY a.acctnumber, s.id, s.currency
+    ORDER BY a.acctnumber, s.id
+    """
+    
+    return query
+
+
+def build_exchange_rates_query(period_name, target_sub):
+    """
+    Get exchange rates from ConsolidatedExchangeRate table for a specific period.
+    Returns rates from each subsidiary to the target (parent) subsidiary.
+    """
+    query = f"""
+    SELECT 
+      cer.fromsubsidiary,
+      s.currency AS from_currency,
+      cer.currentrate
+    FROM ConsolidatedExchangeRate cer
+    JOIN AccountingPeriod ap ON ap.id = cer.postingperiod
+    JOIN Subsidiary s ON s.id = cer.fromsubsidiary
+    WHERE ap.periodname = '{period_name}'
+      AND ap.isyear = 'F'
+      AND cer.tosubsidiary = {target_sub}
+      AND cer.accountingbook = 1
+    """
+    return query
+
+
+def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
+    """
+    LEGACY - kept for backward compatibility but not accurate for foreign currency.
+    Use the new local currency approach instead.
+    """
+    filter_clauses = []
+    if filters.get('subsidiary'):
+        filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+    if filters.get('department'):
+        filter_clauses.append(f"tal.department = {filters['department']}")
+    if filters.get('location'):
+        filter_clauses.append(f"tal.location = {filters['location']}")
+    if filters.get('class'):
+        filter_clauses.append(f"tal.class = {filters['class']}")
+    
+    filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    prior_year = int(fiscal_year) - 1
+    
+    query = f"""
+      SELECT
+      a.acctnumber AS account_number,
+      SUM(
+            TO_NUMBER(
+              BUILTIN.CONSOLIDATE(
+                tal.amount,
+                'LEDGER',
+                'DEFAULT',
+                'DEFAULT',
+                {target_sub},
+                t.postingperiod,
+                'DEFAULT'
+              )
+            )
+      ) AS opening_balance
+      FROM TransactionAccountingLine tal
+      JOIN Transaction t ON t.id = tal.transaction
+      JOIN Account a ON a.id = tal.account
+      JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+      WHERE t.posting = 'T'
+        AND tal.posting = 'T'
+        AND tal.accountingbook = 1
+        AND ap.isyear = 'F'
+        AND ap.isquarter = 'F'
+      AND EXTRACT(YEAR FROM ap.enddate) <= {prior_year}
+        AND COALESCE(a.eliminate, 'F') = 'F'
+        AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
+        {filter_sql}
     GROUP BY a.acctnumber
     ORDER BY a.acctnumber
     """
@@ -1033,10 +1096,7 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
 
 def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
     """
-    Get MONTHLY ACTIVITY for Balance Sheet accounts within the fiscal year.
-    This is combined with opening balance to compute cumulative.
-    
-    SIMPLIFIED - no CTE pattern, direct CONSOLIDATE aggregation.
+    LEGACY - kept for backward compatibility but not accurate for foreign currency.
     """
     filter_clauses = []
     if filters.get('subsidiary'):
@@ -1050,7 +1110,6 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
-    # Simplified query without CTE
     query = f"""
     SELECT
       a.acctnumber AS account_number,
@@ -1968,10 +2027,10 @@ def batch_periods_refresh():
                 bs_account_list = "', '".join([escape_sql(str(a)) for a in batch])
                 
                 # Use same CROSS JOIN pattern as working queries - no CTE with subquery
-                prior_query = f"""
-                SELECT 
-                    a.acctnumber AS acctnumber,
-                    SUM(
+            prior_query = f"""
+            SELECT 
+                a.acctnumber AS acctnumber,
+                SUM(
                         CASE 
                             WHEN subs_count > 1 THEN
                                 TO_NUMBER(
@@ -1987,11 +2046,11 @@ def batch_periods_refresh():
                                 )
                             ELSE tal.amount
                         END
-                    ) AS balance
-                FROM TransactionAccountingLine tal
-                JOIN Transaction t ON t.id = tal.transaction
-                JOIN Account a ON a.id = tal.account
-                JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                ) AS balance
+            FROM TransactionAccountingLine tal
+            JOIN Transaction t ON t.id = tal.transaction
+            JOIN Account a ON a.id = tal.account
+            JOIN AccountingPeriod ap ON ap.id = t.postingperiod
                 CROSS JOIN (
                     SELECT COUNT(*) AS subs_count
                     FROM Subsidiary
@@ -2002,23 +2061,23 @@ def batch_periods_refresh():
                     AND tal.accountingbook = 1
                     AND ap.isyear = 'F' 
                     AND ap.isquarter = 'F'
-                    AND ap.enddate < TO_DATE('{start_date}', 'YYYY-MM-DD')
-                    AND a.acctnumber IN ('{bs_account_list}')
-                    AND COALESCE(a.eliminate, 'F') = 'F'
-                    {filter_sql}
-                GROUP BY a.acctnumber
-                """
-                
+            AND ap.enddate < TO_DATE('{start_date}', 'YYYY-MM-DD')
+            AND a.acctnumber IN ('{bs_account_list}')
+            AND COALESCE(a.eliminate, 'F') = 'F'
+            {filter_sql}
+            GROUP BY a.acctnumber
+            """
+            
                 try:
                     batch_result = query_netsuite(prior_query, timeout=120)
-                    
+            
                     if isinstance(batch_result, list):
                         for row in batch_result:
-                            acc = str(row.get('acctnumber', ''))
-                            bal = float(row.get('balance', 0) or 0)
-                            if abs(bal) < 0.01:
-                                bal = 0
-                            prior_balances[acc] = bal
+                    acc = str(row.get('acctnumber', ''))
+                    bal = float(row.get('balance', 0) or 0)
+                    if abs(bal) < 0.01:
+                        bal = 0
+                    prior_balances[acc] = bal
                     elif isinstance(batch_result, dict) and 'error' in batch_result:
                         print(f"⚠️  Prior balance query batch {i//batch_size + 1} error: {batch_result.get('error', 'unknown')}", file=sys.stderr)
                 except Exception as e:
@@ -2136,120 +2195,97 @@ def batch_full_year_refresh_bs():
         print(f"   Filters: {filters}", flush=True)
         print(f"{'='*80}\n", flush=True)
         
-        # TWO-QUERY APPROACH for correct Balance Sheet cumulative balances:
-        # Query 1: Get opening balance (all activity before fiscal year)
-        # Query 2: Get monthly activity within fiscal year
-        # Then: opening + running sum = correct cumulative
+        # NEW APPROACH: For consolidated BS accounts, we need:
+        # 1. LOCAL CURRENCY balance through each period end
+        # 2. Exchange rate for that period
+        # 3. Converted balance = local × rate
+        #
+        # This matches NetSuite's GL Balance report behavior for foreign currency accounts!
         
         start_time = datetime.now()
-        
-        # STEP 1: Get opening balances (sum of all activity before Jan 1 of fiscal year)
-        # NOTE: This query may fail for new accounts or complex consolidation scenarios
-        # If it fails, we gracefully fall back to 0 opening balance
-        print(f"   📥 Step 1: Fetching opening balances...", flush=True)
-        opening_balances = {}  # { account: opening_balance }
-        
-        try:
-            opening_query = build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters)
-            opening_items = run_paginated_suiteql(opening_query, page_size=1000, max_pages=10, timeout=240)
-            
-            for row in opening_items:
-                account = row.get('account_number')
-                balance = float(row.get('opening_balance') or 0)
-                if account:
-                    opening_balances[account] = balance
-            
-            print(f"   ✅ Got opening balances for {len(opening_balances)} accounts", flush=True)
-        except Exception as e:
-            print(f"   ⚠️ Opening balance query failed: {e}", flush=True)
-            print(f"   ⚠️ Falling back to within-year cumulative only", flush=True)
-            # Continue with empty opening_balances - data will still be useful
-        
-        # STEP 2: Get monthly activity within fiscal year
-        print(f"   📥 Step 2: Fetching monthly activity for {fiscal_year}...", flush=True)
-        activity_query = build_full_year_bs_activity_query(fiscal_year, target_sub, filters)
-        activity_items = run_paginated_suiteql(activity_query, page_size=1000, max_pages=10, timeout=240)
-        
-        elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"⏱️  Total query time: {elapsed:.2f} seconds", flush=True)
-        print(f"✅ Received {len(activity_items)} activity rows")
-        
-        # Process activity into { account: { "Jan 2024": amount, ... } }
-        month_names = {
-            '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
-            '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
-            '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
-        }
-        
-        activity = {}
-        for row in activity_items:
-            account = row.get('account_number')
-            month_str = row.get('month')  # Format: "2024-01"
-            amount = float(row.get('amount') or 0)
-            
-            if not account or not month_str:
-                continue
-            
-            if '-' in month_str:
-                parts = month_str.split('-')
-                if len(parts) == 2:
-                    year = parts[0]
-                    month_num = parts[1]
-                    if month_num in month_names:
-                        period_name = f"{month_names[month_num]} {year}"
-                        
-                        if account not in activity:
-                            activity[account] = {}
-                        activity[account][period_name] = amount
-        
-        # Debug: Show activity for sample accounts
-        sample_accounts = ['10010', '10012', '10502', '10802']
-        for acct in sample_accounts:
-            if acct in activity:
-                print(f"      DEBUG: {acct} activity = {activity[acct]}", flush=True)
-            else:
-                print(f"      DEBUG: {acct} NO activity in {fiscal_year}", flush=True)
-        
-        # STEP 3: Compute cumulative balances = opening + running sum of activity
         global balance_cache, balance_cache_timestamp
         filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
+        
+        month_info = [
+            ('Jan', '01', 31), ('Feb', '02', 28), ('Mar', '03', 31),
+            ('Apr', '04', 30), ('May', '05', 31), ('Jun', '06', 30),
+            ('Jul', '07', 31), ('Aug', '08', 31), ('Sep', '09', 30),
+            ('Oct', '10', 31), ('Nov', '11', 30), ('Dec', '12', 31)
+        ]
+        
+        # Adjust Feb for leap year
+        if fiscal_year % 4 == 0 and (fiscal_year % 100 != 0 or fiscal_year % 400 == 0):
+            month_info[1] = ('Feb', '02', 29)
+        
+        balances = {}  # { account: { "Jan 2025": amount, ... } }
         cached_count = 0
-        balances = {}
         
-        month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        print(f"   📥 Fetching local currency balances and exchange rates...", flush=True)
         
-        # Get all accounts that have either opening balance or activity
-        all_accounts = set(opening_balances.keys()) | set(activity.keys())
-        
-        for account in all_accounts:
-            balances[account] = {}
+        for month_name, month_num, last_day in month_info:
+            period_name = f"{month_name} {fiscal_year}"
+            period_end_date = f"{fiscal_year}-{month_num}-{last_day}"
             
-            # Start with opening balance from prior years
-            cumulative = opening_balances.get(account, 0)
+            # Step 1: Get local currency balances by subsidiary through this period
+            local_query = build_bs_local_currency_balance_query(period_end_date, filters)
+            local_items = run_paginated_suiteql(local_query, page_size=1000, max_pages=10, timeout=120)
             
-            # Add activity month by month
-            for month in month_order:
-                period_name = f"{month} {fiscal_year}"
+            # Step 2: Get exchange rates for this period
+            rates_query = build_exchange_rates_query(period_name, target_sub)
+            rates_result = query_netsuite(rates_query, timeout=30)
+            
+            # Build rates lookup: { subsidiary_id: rate }
+            rates = {}
+            if isinstance(rates_result, list):
+                for row in rates_result:
+                    sub_id = str(row.get('fromsubsidiary', ''))
+                    rate = float(row.get('currentrate') or 1)
+                    rates[sub_id] = rate
+            
+            # If no rates found, use 1 (same currency as parent)
+            if not rates:
+                rates['default'] = 1.0
+            
+            # Step 3: Convert and aggregate
+            # Group by account, sum local_balance × rate across subsidiaries
+            account_totals = {}  # { account: total_converted }
+            
+            if isinstance(local_items, list):
+                for row in local_items:
+            account = row.get('account_number')
+                    sub_id = str(row.get('subsidiary_id', ''))
+                    local_balance = float(row.get('local_balance') or 0)
+                    
+            if not account:
+                continue
                 
-                if account in activity and period_name in activity[account]:
-                    cumulative += activity[account][period_name]
+                    # Get exchange rate for this subsidiary
+                    rate = rates.get(sub_id, rates.get('default', 1.0))
+                    converted = local_balance * rate
+                    
+                    if account not in account_totals:
+                        account_totals[account] = 0
+                    account_totals[account] += converted
+            
+            # Store results for this period
+            for account, total in account_totals.items():
+            if account not in balances:
+                balances[account] = {}
+                balances[account][period_name] = total
                 
-                # Store cumulative balance for this period (even if no activity - balance carries forward)
-                balances[account][period_name] = cumulative
-                
-                # Cache this result
-                cache_key = f"{account}:{period_name}:{filters_hash}"
-                balance_cache[cache_key] = cumulative
-                cached_count += 1
+                # Cache
+                            cache_key = f"{account}:{period_name}:{filters_hash}"
+                balance_cache[cache_key] = total
+                            cached_count += 1
         
+            print(f"      ✅ {period_name}: {len(account_totals)} accounts", flush=True)
+        
+        elapsed = (datetime.now() - start_time).total_seconds()
         balance_cache_timestamp = datetime.now()
         
+        print(f"⏱️  Total query time: {elapsed:.2f} seconds", flush=True)
         print(f"📊 Returning {len(balances)} BS accounts")
         print(f"💾 Cached {cached_count} BS values")
-        print(f"   Sample balances:")
-        for acct in list(balances.keys())[:3]:
-            print(f"      {acct}: {list(balances[acct].items())[:3]}")
         print(f"{'='*80}\n")
         
         return jsonify({'balances': balances, 'query_time': elapsed, 'cached_count': cached_count})
@@ -2480,18 +2516,18 @@ def batch_balance():
             pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join)
             
             print(f"DEBUG - P&L Query (for {len(pl_accounts)} accounts):\n{pl_query[:500]}...", file=sys.stderr)
-            pl_result = query_netsuite(pl_query)
-            
-            if isinstance(pl_result, list):
-                print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
-                for row in pl_result:
-                    account_num = row['acctnumber']
-                    period_name = row['periodname']
-                    balance = float(row['balance']) if row['balance'] else 0
-                    
-                    if account_num not in all_balances:
-                        all_balances[account_num] = {}
-                    all_balances[account_num][period_name] = balance
+        pl_result = query_netsuite(pl_query)
+        
+        if isinstance(pl_result, list):
+            print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
+            for row in pl_result:
+                account_num = row['acctnumber']
+                period_name = row['periodname']
+                balance = float(row['balance']) if row['balance'] else 0
+                
+                if account_num not in all_balances:
+                    all_balances[account_num] = {}
+                all_balances[account_num][period_name] = balance
         else:
             print(f"DEBUG - Skipping P&L query (no P&L accounts requested)", file=sys.stderr)
         
