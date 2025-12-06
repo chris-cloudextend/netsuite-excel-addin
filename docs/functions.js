@@ -702,14 +702,33 @@ async function runBuildModeBatch() {
         }
         
         // Ensure all requested BS accounts have values (even if 0)
+        // IMPORTANT: Also cache $0 values with the normalized key so future lookups find them!
+        let zeroCached = 0;
         for (const acct of bsAccounts) {
             if (!allBalances[acct]) allBalances[acct] = {};
             for (const period of periodsArray) {
                 if (allBalances[acct][period] === undefined) {
-                    console.warn(`   ⚠️ BS account ${acct} period ${period} not in response`);
+                    console.log(`   💰 BS account ${acct} period ${period} = $0 (not in response)`);
                     allBalances[acct][period] = 0;
+                    
+                    // Cache $0 with the normalized key (fromPeriod = period, toPeriod = period)
+                    // This ensures the next drag finds it in cache!
+                    const ck = getCacheKey('balance', {
+                        account: acct,
+                        fromPeriod: period,
+                        toPeriod: period,
+                        subsidiary: filters.subsidiary,
+                        department: filters.department,
+                        location: filters.location,
+                        classId: filters.classId
+                    });
+                    cache.balance.set(ck, 0);
+                    zeroCached++;
                 }
             }
+        }
+        if (zeroCached > 0) {
+            console.log(`   💾 Cached ${zeroCached} zero-balance BS values`);
         }
         
         console.log(`   📊 Total accounts with data: ${Object.keys(allBalances).join(', ') || 'none'}`);
