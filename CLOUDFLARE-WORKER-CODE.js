@@ -9,15 +9,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://hill-tells-blog-low.trycloudflare.com
+// CURRENT TUNNEL URL: https://pal-designer-remind-homes.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 4, 2025 - 6:54 PM
+// Last Updated: Dec 6, 2025 - 6:50 AM
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://hill-tells-blog-low.trycloudflare.com';
+    const TUNNEL_URL = 'https://pal-designer-remind-homes.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
