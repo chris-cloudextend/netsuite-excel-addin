@@ -14,6 +14,9 @@ from dateutil import parser as date_parser
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Import account type constants to avoid magic strings
+from constants import AccountType, PL_TYPES_SQL, SIGN_FLIP_TYPES_SQL, INCOME_TYPES_SQL
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Excel add-in
 
@@ -127,15 +130,8 @@ def is_balance_sheet_account(accttype):
     Returns:
         True if Balance Sheet account, False if P&L account
     """
-    # P&L account types (Income Statement)
-    pl_types = {
-        'Income', 'OthIncome', 'Other Income',
-        'COGS', 'Cost of Goods Sold',
-        'Expense', 'OthExpense', 'Other Expense'
-    }
-    
-    # If it's a P&L type, return False (not balance sheet)
-    return accttype not in pl_types
+    # Use the centralized AccountType class for consistency
+    return AccountType.is_balance_sheet(accttype)
 
 
 def calculate_period_end_date(period_name):
@@ -686,8 +682,8 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
     # Add account and period filters
     where_clause = f"{base_where} AND a.acctnumber IN ({accounts_in}) AND apf.periodname IN ({periods_in})"
     
-    # Only include P&L account types
-    where_clause += " AND a.accttype IN ('Income', 'OthIncome', 'COGS', 'Expense', 'OthExpense')"
+    # Only include P&L account types (using constants)
+    where_clause += f" AND a.accttype IN ({PL_TYPES_SQL})"
     
     amount_calc = f"""CASE
                         WHEN subs_count > 1 THEN
@@ -716,7 +712,7 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
                     tal.account,
                     t.postingperiod,
                     {amount_calc}
-                    * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                    * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -745,7 +741,7 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
                     tal.account,
                     t.postingperiod,
                     {amount_calc}
-                    * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                    * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN Account a ON a.id = tal.account
@@ -787,7 +783,8 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
     
     # Build WHERE clause
     where_clause = f"{base_where} AND a.acctnumber IN ({accounts_in})"
-    where_clause += " AND a.accttype NOT IN ('Income', 'OthIncome', 'COGS', 'Expense', 'OthExpense')"
+    # Exclude P&L types - Balance Sheet only (using constants)
+    where_clause += f" AND a.accttype NOT IN ({PL_TYPES_SQL})"
     # CUMULATIVE: All transactions through period end (no lower bound)
     where_clause += f" AND t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')"
     where_clause += " AND tal.accountingbook = 1"
@@ -896,7 +893,8 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
         
         # Build WHERE clause for this period
         period_where = f"{base_where} AND a.acctnumber IN ({accounts_in})"
-        period_where += " AND a.accttype NOT IN ('Income', 'OthIncome', 'COGS', 'Expense', 'OthExpense')"
+        # Exclude P&L types - Balance Sheet only (using constants)
+        period_where += f" AND a.accttype NOT IN ({PL_TYPES_SQL})"
         # CRITICAL: Balance Sheet is CUMULATIVE - ALL transactions through period end (like user's reference)
         # No lower bound to get true cumulative balance
         period_where += f" AND t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')"
@@ -1023,7 +1021,7 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters):
       t.posting = 'T'
       AND tal.posting = 'T'
       AND tal.accountingbook = 1
-      AND a.accttype NOT IN ('Income', 'COGS', 'Cost of Goods Sold', 'Expense', 'OthIncome', 'OthExpense', 'Other Income', 'Other Expense')
+      AND a.accttype NOT IN ({PL_TYPES_SQL})
       AND ap.startdate <= target_period.enddate
       AND ap.isyear = 'F'
       AND ap.isquarter = 'F'
@@ -1141,10 +1139,11 @@ def build_bs_multi_period_query(periods, target_sub, filters):
         #   → Natural credit balance → stored negative → FLIP TO POSITIVE
         #
         col_name = f"bal_{year}_{month_num}"
+        # Use SIGN_FLIP_TYPES_SQL constant for liability/equity sign flip
         select_columns.append(f"""
   SUM(CASE WHEN ap.startdate <= {alias}.enddate
     THEN TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {alias}.id, 'DEFAULT'))
-         * CASE WHEN a.accttype IN ('AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue', 'Equity', 'RetainedEarnings') 
+         * CASE WHEN a.accttype IN ({SIGN_FLIP_TYPES_SQL}) 
                 THEN -1 ELSE 1 END
     ELSE 0 END) AS {col_name}""")
     
@@ -1171,7 +1170,7 @@ WHERE
   t.posting = 'T'
   AND tal.posting = 'T'
   AND tal.accountingbook = 1
-  AND a.accttype NOT IN ('Income', 'COGS', 'Cost of Goods Sold', 'Expense', 'Other Income', 'Other Expense', 'OthIncome', 'OthExpense')
+  AND a.accttype NOT IN ({PL_TYPES_SQL})
   AND ap.startdate <= {latest_period_alias}.enddate
   AND ap.isyear = 'F'
   AND ap.isquarter = 'F'
@@ -1250,7 +1249,7 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
         AND ap.isyear = 'F'
         AND ap.isquarter = 'F'
       AND EXTRACT(YEAR FROM ap.enddate) <= {prior_year}
-        AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
+        AND a.accttype NOT IN ({PL_TYPES_SQL})
         {filter_sql}
     GROUP BY a.acctnumber
     ORDER BY a.acctnumber
@@ -1302,7 +1301,7 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
       AND ap.isyear = 'F'
       AND ap.isquarter = 'F'
       AND EXTRACT(YEAR FROM ap.startdate) = {fiscal_year}
-      AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
+      AND a.accttype NOT IN ({PL_TYPES_SQL})
       {filter_sql}
     GROUP BY a.acctnumber, ap.startdate
     ORDER BY a.acctnumber, ap.startdate
@@ -1381,7 +1380,7 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters):
             )
           ELSE tal.amount
         END
-        * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+        * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
       FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
         JOIN account a ON a.id = tal.account
@@ -1397,14 +1396,7 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters):
         AND apf.isyear = 'F' 
         AND apf.isquarter = 'F'
         AND TO_CHAR(apf.startdate,'YYYY') = '{fiscal_year}'
-        AND a.accttype IN (
-          'Income',
-          'COGS',
-          'Cost of Goods Sold',
-          'Expense',
-          'OthIncome',
-          'OthExpense'
-        )
+        AND a.accttype IN ({PL_TYPES_SQL})
         {filter_sql}
     ) x
     JOIN accountingperiod ap ON ap.id = x.postingperiod
@@ -2015,7 +2007,7 @@ def batch_periods_refresh():
                 )
               ELSE tal.amount
             END
-            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END
+            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
             AS cons_amt
           FROM TransactionAccountingLine tal
           JOIN Transaction t ON t.id = tal.transaction
@@ -2028,7 +2020,7 @@ def batch_periods_refresh():
             AND ap.isyear = 'F'
             AND ap.isquarter = 'F'
             AND ap.periodname IN ('{period_names_sql}')
-            AND a.accttype IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
+            AND a.accttype IN ({PL_TYPES_SQL})
             {filter_sql}
         )
         SELECT
@@ -2128,7 +2120,7 @@ def batch_periods_refresh():
             AND tal.accountingbook = 1
             AND ap.isyear = 'F'
             AND ap.isquarter = 'F'
-            AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
+            AND a.accttype NOT IN ({PL_TYPES_SQL})
             AND ap.startdate >= TO_DATE('{start_date}', 'YYYY-MM-DD')
             AND ap.enddate <= TO_DATE('{end_date}', 'YYYY-MM-DD')
             {filter_sql}
@@ -2900,13 +2892,40 @@ def get_department_id(department_name):
 
 
 @app.route('/account/<account_number>/type')
-def get_account_type(account_number):
+def get_account_type_deprecated(account_number):
     """
-    Get account type from account number
+    DEPRECATED: Use POST /account/type instead.
+    This GET endpoint exposes account numbers in URLs/logs.
+    Kept for backward compatibility.
+    """
+    return _get_account_type_impl(account_number)
+
+
+@app.route('/account/type', methods=['POST'])
+def get_account_type():
+    """
+    Get account type from account number (SECURE - POST method)
     Used by: NS.GLACCTTYPE(accountNumber)
     
+    Request body: { "account": "60100" }
     Returns: Account type (Income, Expense, Bank, etc.)
     """
+    try:
+        data = request.get_json() or {}
+        account_number = data.get('account', '')
+        
+        if not account_number:
+            return jsonify({'error': 'Missing account parameter'}), 400
+            
+        return _get_account_type_impl(account_number)
+        
+    except Exception as e:
+        print(f"Error in get_account_type (POST): {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
+def _get_account_type_impl(account_number):
+    """Internal implementation for getting account type"""
     try:
         query = f"""
             SELECT accttype AS account_type
@@ -2926,7 +2945,7 @@ def get_account_type(account_number):
         return account_type, 200, {'Content-Type': 'text/plain'}
         
     except Exception as e:
-        print(f"Error in get_account_type: {str(e)}", file=sys.stderr)
+        print(f"Error in _get_account_type_impl: {str(e)}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 
@@ -2977,13 +2996,40 @@ def batch_get_account_types():
 
 
 @app.route('/account/<account_number>/parent')
-def get_account_parent(account_number):
+def get_account_parent_deprecated(account_number):
     """
-    Get parent account number from account number
+    DEPRECATED: Use POST /account/parent instead.
+    This GET endpoint exposes account numbers in URLs/logs.
+    Kept for backward compatibility.
+    """
+    return _get_account_parent_impl(account_number)
+
+
+@app.route('/account/parent', methods=['POST'])
+def get_account_parent():
+    """
+    Get parent account number from account number (SECURE - POST method)
     Used by: NS.GLAPARENT(accountNumber)
     
+    Request body: { "account": "60100" }
     Returns: Parent account number (or empty string if no parent)
     """
+    try:
+        data = request.get_json() or {}
+        account_number = data.get('account', '')
+        
+        if not account_number:
+            return jsonify({'error': 'Missing account parameter'}), 400
+            
+        return _get_account_parent_impl(account_number)
+        
+    except Exception as e:
+        print(f"Error in get_account_parent (POST): {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
+def _get_account_parent_impl(account_number):
+    """Internal implementation for getting parent account"""
     try:
         query = f"""
             SELECT 
@@ -3006,7 +3052,7 @@ def get_account_parent(account_number):
         return parent_number or '', 200, {'Content-Type': 'text/plain'}
         
     except Exception as e:
-        print(f"Error in get_account_parent: {str(e)}", file=sys.stderr)
+        print(f"Error in _get_account_parent_impl: {str(e)}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 
@@ -3055,13 +3101,40 @@ def preload_account_titles():
 
 
 @app.route('/account/<account_number>/name')
-def get_account_name(account_number):
+def get_account_name_deprecated(account_number):
     """
-    Get account name from account number
+    DEPRECATED: Use POST /account/name instead.
+    This GET endpoint exposes account numbers in URLs/logs.
+    Kept for backward compatibility.
+    """
+    return _get_account_name_impl(account_number)
+
+
+@app.route('/account/name', methods=['POST'])
+def get_account_name():
+    """
+    Get account name from account number (SECURE - POST method)
     Used by: NS.GLATITLE(accountNumber)
     
+    Request body: { "account": "60100" }
     Returns: Account display name (string)
     """
+    try:
+        data = request.get_json() or {}
+        account_number = data.get('account', '')
+        
+        if not account_number:
+            return jsonify({'error': 'Missing account parameter'}), 400
+            
+        return _get_account_name_impl(account_number)
+        
+    except Exception as e:
+        print(f"Error in get_account_name (POST): {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
+def _get_account_name_impl(account_number):
+    """Internal implementation for getting account name"""
     global account_title_cache
     
     try:
@@ -3101,7 +3174,7 @@ def get_account_name(account_number):
         return account_name
             
     except Exception as e:
-        print(f"Error in get_account_name: {str(e)}", file=sys.stderr)
+        print(f"Error in _get_account_name_impl: {str(e)}", file=sys.stderr)
         return jsonify({'error': str(e)}), 500
 
 
@@ -3233,7 +3306,7 @@ def get_balance():
                                     )
                                 ELSE tal.amount
                             END
-                            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -3267,7 +3340,7 @@ def get_balance():
                                     )
                                 ELSE tal.amount
                             END
-                            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
@@ -3301,7 +3374,7 @@ def get_balance():
                                     )
                                 ELSE tal.amount
                             END
-                            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -3334,7 +3407,7 @@ def get_balance():
                                     )
                                 ELSE tal.amount
                             END
-                            * CASE WHEN a.accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account

@@ -356,7 +356,12 @@ async function getAccountType(account) {
     }
     
     try {
-        const response = await fetch(`${SERVER_URL}/account/${account}/type`);
+        // Use POST to avoid exposing account numbers in URLs/logs
+        const response = await fetch(`${SERVER_URL}/account/type`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account: String(account) })
+        });
         if (response.ok) {
             const type = await response.text();
             cache.type.set(cacheKey, type);
@@ -1393,7 +1398,13 @@ async function GLATITLE(accountNumber, invocation) {
         
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
-                const response = await fetch(`${SERVER_URL}/account/${account}/name`, { signal });
+                // Use POST to avoid exposing account numbers in URLs/logs
+                const response = await fetch(`${SERVER_URL}/account/name`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ account: String(account) }),
+                    signal
+                });
                 
                 if (response.ok) {
                     const title = await response.text();
@@ -1493,7 +1504,13 @@ async function GLACCTTYPE(accountNumber, invocation) {
             };
         }
         
-        const response = await fetch(`${SERVER_URL}/account/${account}/type`, { signal });
+        // Use POST to avoid exposing account numbers in URLs/logs
+        const response = await fetch(`${SERVER_URL}/account/type`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account: String(account) }),
+            signal
+        });
         if (!response.ok) {
             console.error(`Type API error: ${response.status}`);
             return '#N/A';
@@ -1555,7 +1572,13 @@ async function GLAPARENT(accountNumber, invocation) {
             };
         }
         
-        const response = await fetch(`${SERVER_URL}/account/${account}/parent`, { signal });
+        // Use POST to avoid exposing account numbers in URLs/logs
+        const response = await fetch(`${SERVER_URL}/account/parent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account: String(account) }),
+            signal
+        });
         if (!response.ok) {
             console.error(`Parent API error: ${response.status}`);
             return '#N/A';
