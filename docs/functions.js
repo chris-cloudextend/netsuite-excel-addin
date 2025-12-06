@@ -461,26 +461,34 @@ async function runBuildModeBatch() {
                     const bsAccountCount = Object.keys(bsBalances).length;
                     console.log(`   ✅ BS: ${bsAccountCount} accounts in ${bsTime}s (ALL BS accounts cached!)`);
                     
-                    // Cache ALL Balance Sheet accounts (not just requested ones!)
-                    let bsCached = 0;
-                    for (const acct in bsBalances) {
-                        if (!allBalances[acct]) allBalances[acct] = {};
-                        for (const period in bsBalances[acct]) {
-                            allBalances[acct][period] = bsBalances[acct][period];
-                            const ck = getCacheKey('balance', {
-                                account: acct,
-                                fromPeriod: period,
-                                toPeriod: period,
-                                subsidiary: filters.subsidiary,
-                                department: filters.department,
-                                location: filters.location,
-                                classId: filters.classId
-                            });
-                            cache.balance.set(ck, bsBalances[acct][period]);
-                            bsCached++;
+                // Cache ALL Balance Sheet accounts (not just requested ones!)
+                let bsCached = 0;
+                const sampleKeys = [];
+                for (const acct in bsBalances) {
+                    if (!allBalances[acct]) allBalances[acct] = {};
+                    for (const period in bsBalances[acct]) {
+                        allBalances[acct][period] = bsBalances[acct][period];
+                        const ck = getCacheKey('balance', {
+                            account: acct,
+                            fromPeriod: period,
+                            toPeriod: period,
+                            subsidiary: filters.subsidiary,
+                            department: filters.department,
+                            location: filters.location,
+                            classId: filters.classId
+                        });
+                        cache.balance.set(ck, bsBalances[acct][period]);
+                        bsCached++;
+                        // Capture first few keys for debugging
+                        if (sampleKeys.length < 3) {
+                            sampleKeys.push(ck.substring(0, 100));
                         }
                     }
-                    console.log(`   💾 Cached ${bsCached} BS values (${bsAccountCount} accounts × ${periodsArray.length} periods)`);
+                }
+                console.log(`   💾 Cached ${bsCached} BS values (${bsAccountCount} accounts × ${periodsArray.length} periods)`);
+                console.log(`   🔑 Sample cache keys:`);
+                sampleKeys.forEach(k => console.log(`      ${k}...`));
+                console.log(`   📋 Filters used: sub="${filters.subsidiary}", dept="${filters.department}", loc="${filters.location}", class="${filters.classId}"`);
                 } else {
                     console.error(`   ❌ BS multi-period error: ${response.status}`);
                     hasError = true;
@@ -1738,6 +1746,18 @@ async function GLABAL(account, fromPeriod, toPeriod, subsidiary, department, loc
         if (cache.balance.has(cacheKey)) {
             cacheStats.hits++;
             return cache.balance.get(cacheKey);
+        }
+        
+        // DEBUG: Log cache miss details to help diagnose caching issues
+        console.log(`📭 CACHE MISS: ${account}/${fromPeriod || toPeriod}`);
+        console.log(`   Key: ${cacheKey.substring(0, 100)}...`);
+        console.log(`   Cache size: ${cache.balance.size}`);
+        // Show a sample of what IS in cache for comparison
+        if (cache.balance.size > 0 && cache.balance.size <= 10) {
+            console.log(`   Sample cached keys:`);
+            for (const k of cache.balance.keys()) {
+                console.log(`     ${k.substring(0, 100)}...`);
+            }
         }
         
         // Check localStorage cache (THIS WORKS - proven by user data!)
