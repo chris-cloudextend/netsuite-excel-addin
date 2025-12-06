@@ -484,6 +484,143 @@ const cacheKey = JSON.stringify({
 
 ---
 
+## Security Architecture
+
+### Current State & Recommendations
+
+#### 1. Credential Storage ✅ Partially Addressed
+
+**Current Implementation:**
+```
+backend/netsuite_config.json (NOT in git - see .gitignore)
+{
+  "account_id": "589861",
+  "consumer_key": "...",
+  "consumer_secret": "...",
+  "token_id": "...",
+  "token_secret": "..."
+}
+```
+
+**Status:** 
+- ✅ File is in `.gitignore` (lines 28, 37)
+- ✅ Pattern `**/netsuite_config*.json` blocks all variants
+- ⚠️ Plain text file on disk (not encrypted)
+- ⚠️ No secret rotation mechanism
+
+**Recommendations for Production:**
+1. **Environment Variables**: Move to `os.environ.get('NETSUITE_CONSUMER_KEY')` etc.
+2. **AWS Secrets Manager / HashiCorp Vault**: For enterprise deployments
+3. **Encrypted config**: Use `python-dotenv` with encrypted `.env` files
+4. **Example:** Add `netsuite_config.example.json` with placeholder values
+
+#### 2. Transport Security ✅ HTTPS Throughout
+
+**Current Implementation:**
+```javascript
+// docs/functions.js line 12
+const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
+```
+
+**Full Chain:**
+```
+Excel Add-in (HTTPS) → Cloudflare Worker (HTTPS) → Cloudflare Tunnel (HTTPS) → Flask (localhost:5002)
+     ↑                        ↑                           ↑                          ↑
+   TLS 1.3              Edge TLS               Encrypted Tunnel              Local only
+```
+
+**Status:**
+- ✅ All external traffic over HTTPS
+- ✅ Cloudflare provides TLS termination
+- ✅ Tunnel encrypts local traffic
+- ✅ Flask only binds to localhost (not exposed)
+
+#### 3. Cloudflare Worker Role ✅ Secure Design
+
+**What it does:** CORS proxy only (no credential access)
+
+```javascript
+// CLOUDFLARE-WORKER-CODE.js
+export default {
+  async fetch(request) {
+    const TUNNEL_URL = 'https://xxx.trycloudflare.com';
+    // Simply forwards requests - no secrets stored here
+    const response = await fetch(TUNNEL_URL + url.pathname, { ... });
+    // Adds CORS headers and returns
+  }
+}
+```
+
+**Status:**
+- ✅ No credentials in worker code
+- ✅ Worker only sees encrypted traffic (can't decrypt TLS from tunnel)
+- ✅ All authentication happens in Flask backend (via OAuth1)
+
+**Why needed:** Excel add-ins require CORS headers. NetSuite doesn't provide them.
+
+#### 4. Client-Side Exposure ⚠️ Risk on Shared Machines
+
+**Current Implementation:**
+```javascript
+// localStorage caching in functions.js
+localStorage.setItem('netsuite_balance_cache', JSON.stringify(balanceData));
+localStorage.setItem('netsuite_account_titles', JSON.stringify(titles));
+```
+
+**What's Cached:**
+- Account balances (financial amounts)
+- Account names
+- Account types
+- Subsidiary/department/location/class IDs
+
+**Risks:**
+- 🔴 Data persists after logout/session end
+- 🔴 Other browser tabs/extensions could potentially read
+- 🔴 On shared machines, next user could see data
+
+**Mitigations Already in Place:**
+- ✅ 5-minute TTL (data expires quickly)
+- ✅ No PII (just account numbers and amounts)
+- ✅ No authentication tokens in localStorage
+
+**Recommendations:**
+1. **Use sessionStorage instead**: Cleared when browser tab closes
+2. **Encrypt cached data**: Use Web Crypto API with session key
+3. **Clear on deactivate**: `Office.addin.onVisibilityModeChanged` to clear cache
+4. **Add clear cache button**: Already implemented in taskpane ✅
+
+**Example Enhancement:**
+```javascript
+// Replace localStorage with sessionStorage for sensitive data
+const CACHE_STORAGE = sessionStorage; // Instead of localStorage
+
+// Or encrypt before storing
+async function encryptAndStore(key, data) {
+    const cryptoKey = await getSessionKey();
+    const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: window.crypto.getRandomValues(new Uint8Array(12)) },
+        cryptoKey, 
+        new TextEncoder().encode(JSON.stringify(data))
+    );
+    localStorage.setItem(key, btoa(String.fromCharCode(...new Uint8Array(encrypted))));
+}
+```
+
+### Security Checklist
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Credentials in git | ✅ | `.gitignore` blocks all config files |
+| HTTPS for all traffic | ✅ | Cloudflare provides TLS |
+| OAuth1 authentication | ✅ | HMAC-SHA256 signature |
+| CORS properly configured | ✅ | Worker adds headers, not wildcard on sensitive endpoints |
+| Client cache exposure | ⚠️ | Consider sessionStorage or encryption |
+| Secret rotation | ❌ | Manual process, consider automating |
+| Audit logging | ❌ | No request logging (add for compliance) |
+| Rate limiting | ⚠️ | NetSuite enforces limits, no client-side throttling |
+
+---
+
 ## Version History (Recent)
 
 - **1.4.89.0**: Complete account types documentation
