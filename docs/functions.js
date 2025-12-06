@@ -250,27 +250,102 @@ function exitBuildModeAndProcess() {
     }
 }
 
+// ============================================================================
+// NETSUITE ACCOUNT TYPES - Complete Reference
+// ============================================================================
+// 
+// BALANCE SHEET ACCOUNTS:
+// -----------------------
+// ASSETS (Natural Debit Balance - stored POSITIVE in NetSuite)
+//   SuiteQL Value     | Description              | Sign in Report
+//   ------------------|--------------------------|----------------
+//   Bank              | Bank/Cash accounts       | + (no flip)
+//   AcctRec           | Accounts Receivable      | + (no flip)
+//   OthCurrAsset      | Other Current Asset      | + (no flip)
+//   FixedAsset        | Fixed Asset              | + (no flip)
+//   OthAsset          | Other Asset              | + (no flip)
+//   DeferExpense      | Deferred Expense         | + (no flip)
+//   UnbilledRec       | Unbilled Receivable      | + (no flip)
+//
+// LIABILITIES (Natural Credit Balance - stored NEGATIVE in NetSuite)
+//   SuiteQL Value     | Description              | Sign in Report
+//   ------------------|--------------------------|----------------
+//   AcctPay           | Accounts Payable         | + (flip × -1)
+//   CredCard          | Credit Card              | + (flip × -1)
+//   OthCurrLiab       | Other Current Liability  | + (flip × -1)
+//   LongTermLiab      | Long Term Liability      | + (flip × -1)
+//   DeferRevenue      | Deferred Revenue         | + (flip × -1)
+//
+// EQUITY (Natural Credit Balance - stored NEGATIVE in NetSuite)
+//   SuiteQL Value     | Description              | Sign in Report
+//   ------------------|--------------------------|----------------
+//   Equity            | Equity accounts          | + (flip × -1)
+//   RetainedEarnings  | Retained Earnings        | + (flip × -1)
+//
+// PROFIT & LOSS ACCOUNTS:
+// -----------------------
+// INCOME (Natural Credit Balance - stored NEGATIVE in NetSuite)
+//   SuiteQL Value     | Description              | Sign in Report
+//   ------------------|--------------------------|----------------
+//   Income            | Revenue/Sales            | + (flip × -1)
+//   OthIncome         | Other Income             | + (flip × -1)
+//
+// EXPENSES (Natural Debit Balance - stored POSITIVE in NetSuite)
+//   SuiteQL Value     | Description              | Sign in Report
+//   ------------------|--------------------------|----------------
+//   COGS              | Cost of Goods Sold       | + (no flip)
+//   Expense           | Operating Expense        | + (no flip)
+//   OthExpense        | Other Expense            | + (no flip)
+//
+// OTHER ACCOUNT TYPES:
+// --------------------
+//   NonPosting        | Non-posting/Statistical  | N/A (no transactions)
+//   Stat              | Statistical accounts     | N/A (no transactions)
+//
+// ============================================================================
+
 // Helper: Check if account type is Balance Sheet
 function isBalanceSheetType(acctType) {
     if (!acctType) return false;
-    // NetSuite Balance Sheet account types (exact names from SuiteQL)
+    // All Balance Sheet account types (Assets, Liabilities, Equity)
     const bsTypes = [
-        'Bank',           // Bank accounts
+        // Assets (Debit balance)
+        'Bank',           // Bank/Cash accounts
         'AcctRec',        // Accounts Receivable
         'OthCurrAsset',   // Other Current Asset
         'FixedAsset',     // Fixed Asset
         'OthAsset',       // Other Asset
-        'DeferExpense',   // Deferred Expense
+        'DeferExpense',   // Deferred Expense (prepaid expenses)
         'UnbilledRec',    // Unbilled Receivable
+        // Liabilities (Credit balance)
         'AcctPay',        // Accounts Payable
-        'CredCard',       // Credit Card (NOT 'CreditCard' - NetSuite uses 'CredCard')
+        'CredCard',       // Credit Card (NOT 'CreditCard')
         'OthCurrLiab',    // Other Current Liability
         'LongTermLiab',   // Long Term Liability
-        'DeferRevenue',   // Deferred Revenue
-        'Equity',         // Equity
+        'DeferRevenue',   // Deferred Revenue (unearned revenue)
+        // Equity (Credit balance)
+        'Equity',         // Equity accounts
         'RetainedEarnings' // Retained Earnings
     ];
     return bsTypes.includes(acctType);
+}
+
+// Helper: Check if account type needs sign flip for Balance Sheet display
+// Liabilities and Equity are stored as negative credits but display as positive
+function needsSignFlip(acctType) {
+    if (!acctType) return false;
+    const flipTypes = [
+        // Liabilities (stored negative, display positive)
+        'AcctPay',        // Accounts Payable
+        'CredCard',       // Credit Card
+        'OthCurrLiab',    // Other Current Liability
+        'LongTermLiab',   // Long Term Liability
+        'DeferRevenue',   // Deferred Revenue
+        // Equity (stored negative, display positive)
+        'Equity',         // Equity
+        'RetainedEarnings' // Retained Earnings
+    ];
+    return flipTypes.includes(acctType);
 }
 
 // Helper: Get account type from cache or fetch it
