@@ -728,7 +728,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
                         WHERE isinactive = 'F'
                     ) subs_cte
                 WHERE {where_clause}
-                    AND COALESCE(a.eliminate, 'F') = 'F'
             ) x
             JOIN Account a ON a.id = x.account
             JOIN AccountingPeriod ap ON ap.id = x.postingperiod
@@ -757,7 +756,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
                         WHERE isinactive = 'F'
                     ) subs_cte
                 WHERE {where_clause}
-                    AND COALESCE(a.eliminate, 'F') = 'F'
             ) x
             JOIN Account a ON a.id = x.account
             JOIN AccountingPeriod ap ON ap.id = x.postingperiod
@@ -833,7 +831,6 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
                     WHERE isinactive = 'F'
                 ) subs_cte
             WHERE {where_clause}
-                AND COALESCE(a.eliminate, 'F') = 'F'
             GROUP BY a.acctnumber
         """
     else:
@@ -850,7 +847,6 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
                     WHERE isinactive = 'F'
                 ) subs_cte
             WHERE {where_clause}
-                AND COALESCE(a.eliminate, 'F') = 'F'
             GROUP BY a.acctnumber
         """
 
@@ -940,7 +936,6 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
                         WHERE isinactive = 'F'
                     ) subs_cte
                 WHERE {period_where}
-                    AND COALESCE(a.eliminate, 'F') = 'F'
                 GROUP BY a.acctnumber
             """
         else:
@@ -958,7 +953,6 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
                         WHERE isinactive = 'F'
                     ) subs_cte
                 WHERE {period_where}
-                    AND COALESCE(a.eliminate, 'F') = 'F'
                 GROUP BY a.acctnumber
             """
         
@@ -1033,7 +1027,6 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters):
       AND ap.startdate <= target_period.enddate
       AND ap.isyear = 'F'
       AND ap.isquarter = 'F'
-      AND COALESCE(a.eliminate, 'F') = 'F'
       {filter_sql}
     GROUP BY a.acctnumber
     HAVING SUM(
@@ -1163,7 +1156,6 @@ WHERE
   AND ap.startdate <= {latest_period_alias}.enddate
   AND ap.isyear = 'F'
   AND ap.isquarter = 'F'
-  AND COALESCE(a.eliminate, 'F') = 'F'
   {filter_sql}
 
 GROUP BY a.acctnumber, a.accttype
@@ -1239,7 +1231,6 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
         AND ap.isyear = 'F'
         AND ap.isquarter = 'F'
       AND EXTRACT(YEAR FROM ap.enddate) <= {prior_year}
-        AND COALESCE(a.eliminate, 'F') = 'F'
         AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
         {filter_sql}
     GROUP BY a.acctnumber
@@ -1292,7 +1283,6 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
       AND ap.isyear = 'F'
       AND ap.isquarter = 'F'
       AND EXTRACT(YEAR FROM ap.startdate) = {fiscal_year}
-      AND COALESCE(a.eliminate, 'F') = 'F'
       AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
       {filter_sql}
     GROUP BY a.acctnumber, ap.startdate
@@ -1364,7 +1354,6 @@ def build_full_year_pl_query(fiscal_year, target_sub, filters):
         AND ap.isyear = 'F'
         AND ap.isquarter = 'F'
         AND EXTRACT(YEAR FROM ap.startdate) = {fiscal_year}
-        AND COALESCE(a.eliminate, 'F') = 'F'
         AND a.accttype IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
         {filter_sql}
     )
@@ -2019,7 +2008,6 @@ def batch_periods_refresh():
             AND ap.isyear = 'F'
             AND ap.isquarter = 'F'
             AND ap.periodname IN ('{period_names_sql}')
-            AND COALESCE(a.eliminate, 'F') = 'F'
             AND a.accttype IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
             {filter_sql}
         )
@@ -2120,7 +2108,6 @@ def batch_periods_refresh():
             AND tal.accountingbook = 1
             AND ap.isyear = 'F'
             AND ap.isquarter = 'F'
-            AND COALESCE(a.eliminate, 'F') = 'F'
             AND a.accttype NOT IN ('Income','COGS','Cost of Goods Sold','Expense','OthIncome','OthExpense')
             AND ap.startdate >= TO_DATE('{start_date}', 'YYYY-MM-DD')
             AND ap.enddate <= TO_DATE('{end_date}', 'YYYY-MM-DD')
@@ -2218,7 +2205,6 @@ def batch_periods_refresh():
                     AND ap.isquarter = 'F'
                     AND ap.enddate < TO_DATE('{start_date}', 'YYYY-MM-DD')
                     AND a.acctnumber IN ('{bs_account_list}')
-                    AND COALESCE(a.eliminate, 'F') = 'F'
                     {filter_sql}
                 GROUP BY a.acctnumber
                 """
@@ -3239,7 +3225,6 @@ def get_balance():
                                 WHERE isinactive = 'F'
                             ) subs_cte
                         WHERE {where_clause}
-                            AND COALESCE(a.eliminate, 'F') = 'F'
                     ) x
                 """
             else:
@@ -3273,7 +3258,6 @@ def get_balance():
                                 WHERE isinactive = 'F'
                             ) subs_cte
                         WHERE {where_clause}
-                            AND COALESCE(a.eliminate, 'F') = 'F'
                     ) x
                 """
         else:
@@ -3308,7 +3292,6 @@ def get_balance():
                                 WHERE isinactive = 'F'
                             ) subs_cte
                         WHERE {where_clause}
-                            AND COALESCE(a.eliminate, 'F') = 'F'
                     ) x
                 """
             else:
@@ -3341,7 +3324,6 @@ def get_balance():
                                 WHERE isinactive = 'F'
                             ) subs_cte
                         WHERE {where_clause}
-                            AND COALESCE(a.eliminate, 'F') = 'F'
                     ) x
                 """
         
