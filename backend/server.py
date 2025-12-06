@@ -1055,6 +1055,127 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters):
     return query
 
 
+def build_bs_multi_period_query(periods, target_sub, filters):
+    """
+    EFFICIENT Balance Sheet query - gets ALL periods in ONE query!
+    
+    Instead of running 4 separate queries for 4 periods (~280 sec),
+    this runs 1 query with CASE statements (~36 sec).
+    
+    Args:
+        periods: List of period names, e.g., ['Dec 2024', 'Jan 2025', 'Feb 2025', 'Mar 2025']
+        target_sub: Target subsidiary ID for consolidation
+        filters: Dict with optional subsidiary, department, location, class filters
+    
+    Returns:
+        SQL query string that returns account_number and one column per period (bal_YYYY_MM)
+    """
+    if not periods:
+        return None
+    
+    # Build filter clauses
+    filter_clauses = []
+    if filters.get('subsidiary'):
+        filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+    if filters.get('department'):
+        filter_clauses.append(f"tal.department = {filters['department']}")
+    if filters.get('location'):
+        filter_clauses.append(f"tal.location = {filters['location']}")
+    if filters.get('class'):
+        filter_clauses.append(f"tal.class = {filters['class']}")
+    
+    filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    
+    # Parse periods and build components
+    # Period format: "Mon YYYY" e.g., "Jan 2025"
+    month_map = {
+        'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+        'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+        'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+    }
+    
+    period_aliases = []  # e.g., ['p_2024_12', 'p_2025_01', ...]
+    inner_joins = []
+    select_columns = []
+    
+    # Find the latest period for the WHERE clause
+    latest_period_alias = None
+    
+    for period in periods:
+        parts = period.split(' ')
+        if len(parts) != 2:
+            continue
+        
+        month_name = parts[0]
+        year = parts[1]
+        month_num = month_map.get(month_name)
+        
+        if not month_num:
+            continue
+        
+        # Create alias like p_2024_12
+        alias = f"p_{year}_{month_num}"
+        period_aliases.append(alias)
+        latest_period_alias = alias  # Track for WHERE clause
+        
+        # Build INNER JOIN
+        # INNER JOIN accountingperiod p_2024_12 ON TO_CHAR(p_2024_12.startdate, 'YYYY-MM') = '2024-12' AND p_2024_12.isquarter = 'F' AND p_2024_12.isyear = 'F'
+        inner_joins.append(f"""
+  INNER JOIN accountingperiod {alias} 
+    ON TO_CHAR({alias}.startdate, 'YYYY-MM') = '{year}-{month_num}' 
+    AND {alias}.isquarter = 'F' 
+    AND {alias}.isyear = 'F'""")
+        
+        # Build SELECT column with CASE WHEN
+        # SUM(CASE WHEN ap.startdate <= p_2024_12.enddate
+        #     THEN TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', 1, p_2024_12.id, 'DEFAULT'))
+        #     ELSE 0 END) AS bal_2024_12
+        col_name = f"bal_{year}_{month_num}"
+        select_columns.append(f"""
+  SUM(CASE WHEN ap.startdate <= {alias}.enddate
+    THEN TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {alias}.id, 'DEFAULT'))
+    ELSE 0 END) AS {col_name}""")
+    
+    if not period_aliases:
+        return None
+    
+    # Build full query
+    joins_sql = "".join(inner_joins)
+    columns_sql = ",".join(select_columns)
+    
+    query = f"""
+SELECT 
+  a.acctnumber AS account_number,
+  a.accttype AS account_type,
+  {columns_sql}
+
+FROM transactionaccountingline tal
+  INNER JOIN transaction t ON t.id = tal.transaction
+  INNER JOIN account a ON a.id = tal.account
+  INNER JOIN accountingperiod ap ON ap.id = t.postingperiod
+  {joins_sql}
+
+WHERE 
+  t.posting = 'T'
+  AND tal.posting = 'T'
+  AND tal.accountingbook = 1
+  AND a.accttype NOT IN ('Income', 'COGS', 'Cost of Goods Sold', 'Expense', 'Other Income', 'Other Expense', 'OthIncome', 'OthExpense')
+  AND ap.startdate <= {latest_period_alias}.enddate
+  AND ap.isyear = 'F'
+  AND ap.isquarter = 'F'
+  AND COALESCE(a.eliminate, 'F') = 'F'
+  {filter_sql}
+
+GROUP BY a.acctnumber, a.accttype
+HAVING (
+  {' OR '.join([f'{col.split(" AS ")[1].strip()} <> 0' for col in select_columns])}
+)
+ORDER BY a.acctnumber
+"""
+    
+    return query
+
+
 def build_exchange_rates_query_DEPRECATED(period_name, target_sub):
     """
     DEPRECATED - No longer needed with corrected CONSOLIDATE approach.
@@ -2297,6 +2418,145 @@ def batch_full_year_refresh_bs():
         
     except Exception as e:
         print(f"❌ Error in full_year_refresh_bs: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/batch/bs_periods', methods=['POST'])
+def batch_bs_periods():
+    """
+    EFFICIENT Balance Sheet endpoint - gets ALL requested periods in ONE query!
+    
+    Instead of running N separate queries for N periods (~70 sec each),
+    this runs 1 query with CASE statements (~36 sec total).
+    
+    POST JSON:
+    {
+        "periods": ["Dec 2024", "Jan 2025", "Feb 2025", "Mar 2025"],
+        "subsidiary": "",
+        "department": "",
+        "location": "",
+        "class": ""
+    }
+    
+    Returns:
+    {
+        "balances": {
+            "10010": {
+                "Dec 2024": 1189252.33,
+                "Jan 2025": 2064705.84,
+                "Feb 2025": 381646.48,
+                "Mar 2025": 1021294.93
+            },
+            ...
+        },
+        "query_time": 36.2
+    }
+    """
+    data = request.get_json() or {}
+    
+    periods = data.get('periods', [])
+    if not periods:
+        return jsonify({'error': 'periods list required'}), 400
+    
+    subsidiary = convert_name_to_id('subsidiary', data.get('subsidiary', ''))
+    class_id = convert_name_to_id('class', data.get('class', ''))
+    department = convert_name_to_id('department', data.get('department', ''))
+    location = convert_name_to_id('location', data.get('location', ''))
+    
+    target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
+    
+    filters = {}
+    if subsidiary: filters['subsidiary'] = subsidiary
+    if class_id: filters['class'] = class_id
+    if department: filters['department'] = department
+    if location: filters['location'] = location
+    
+    try:
+        print(f"\n{'='*80}", flush=True)
+        print(f"📊 EFFICIENT BS MULTI-PERIOD QUERY", flush=True)
+        print(f"   Periods ({len(periods)}): {', '.join(periods)}", flush=True)
+        print(f"   Target subsidiary: {target_sub}", flush=True)
+        print(f"   Filters: {filters}", flush=True)
+        print(f"   ONE query for ALL periods (much faster!)", flush=True)
+        print(f"{'='*80}\n", flush=True)
+        
+        start_time = datetime.now()
+        global balance_cache, balance_cache_timestamp
+        filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
+        
+        # Build the efficient multi-period query
+        query = build_bs_multi_period_query(periods, target_sub, filters)
+        
+        if not query:
+            return jsonify({'error': 'Could not build query for provided periods'}), 400
+        
+        print(f"   📥 Running multi-period query...", flush=True)
+        print(f"   Query (first 500 chars):\n{query[:500]}...", flush=True)
+        
+        # Run the query with pagination support
+        items = run_paginated_suiteql(query, page_size=1000, max_pages=20, timeout=180)
+        
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print(f"   ⏱️ Query completed in {elapsed:.1f} seconds", flush=True)
+        print(f"   ✅ Got {len(items)} accounts", flush=True)
+        
+        # Parse results
+        # Column names are like bal_2024_12, bal_2025_01, etc.
+        # Need to map back to "Dec 2024", "Jan 2025", etc.
+        month_names = {
+            '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
+            '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+            '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec'
+        }
+        
+        balances = {}
+        cached_count = 0
+        
+        for row in items:
+            account = row.get('account_number')
+            if not account:
+                continue
+            
+            if account not in balances:
+                balances[account] = {}
+            
+            # Process each period column
+            for key, value in row.items():
+                if key.startswith('bal_'):
+                    # Parse bal_2024_12 -> "Dec 2024"
+                    parts = key.split('_')
+                    if len(parts) == 3:
+                        year = parts[1]
+                        month_num = parts[2]
+                        month_name = month_names.get(month_num)
+                        if month_name:
+                            period_name = f"{month_name} {year}"
+                            balance = float(value) if value else 0
+                            balances[account][period_name] = balance
+                            
+                            # Cache
+                            cache_key = f"{account}:{period_name}:{filters_hash}"
+                            balance_cache[cache_key] = balance
+                            cached_count += 1
+        
+        balance_cache_timestamp = datetime.now()
+        
+        print(f"\n⏱️  Total time: {elapsed:.2f} seconds", flush=True)
+        print(f"📊 Returning {len(balances)} BS accounts × {len(periods)} periods")
+        print(f"💾 Cached {cached_count} BS values")
+        print(f"{'='*80}\n")
+        
+        return jsonify({
+            'balances': balances, 
+            'query_time': elapsed, 
+            'cached_count': cached_count,
+            'periods': periods
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in batch_bs_periods: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500

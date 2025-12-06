@@ -448,46 +448,45 @@ async function runBuildModeBatch() {
                 }
             }
             
-            // STEP 2b: Fetch Balance Sheet accounts separately (cumulative balances)
+            // STEP 2b: Fetch Balance Sheet accounts using EFFICIENT multi-period query
+            // Instead of running 12 queries per year (~15 min), runs 1 query for ALL periods (~30-60 sec)
             if (bsAccounts.length > 0) {
-                console.log(`   📊 Fetching ${bsAccounts.length} Balance Sheet accounts (cumulative balances)...`);
+                console.log(`   📊 Fetching ${bsAccounts.length} Balance Sheet accounts (${periodsArray.length} periods)...`);
+                console.log(`   ⚡ Using efficient multi-period query (ONE query for all periods!)`);
                 
-                for (const year of yearsArray) {
-                    const yearStartTime = Date.now();
-                    console.log(`   📡 Fetching BS year ${year} (this may take 1-2 minutes)...`);
-                    broadcastStatus(`Fetching Balance Sheet for ${year} (1-2 min)...`, 50, 'info');
+                const bsStartTime = Date.now();
+                broadcastStatus(`Fetching ${bsAccounts.length} BS accounts × ${periodsArray.length} periods...`, 50, 'info');
+                
+                const response = await fetch(`${SERVER_URL}/batch/bs_periods`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        periods: periodsArray,
+                        subsidiary: filters.subsidiary,
+                        department: filters.department,
+                        location: filters.location,
+                        class: filters.classId
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const bsBalances = data.balances || {};
+                    const bsTime = ((Date.now() - bsStartTime) / 1000).toFixed(1);
+                    console.log(`   ✅ BS: ${Object.keys(bsBalances).length} accounts in ${bsTime}s`);
                     
-                    const response = await fetch(`${SERVER_URL}/batch/full_year_refresh_bs`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            year: parseInt(year),
-                            subsidiary: filters.subsidiary,
-                            department: filters.department,
-                            location: filters.location,
-                            class: filters.classId
-                        })
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        const yearBalances = data.balances || {};
-                        const yearTime = ((Date.now() - yearStartTime) / 1000).toFixed(1);
-                        console.log(`   ✅ BS Year ${year}: ${Object.keys(yearBalances).length} accounts in ${yearTime}s`);
-                        
-                        // Merge ONLY the BS accounts we need into combined balances
-                        for (const acct of bsAccounts) {
-                            if (yearBalances[acct]) {
-                                if (!combinedBalances[acct]) combinedBalances[acct] = {};
-                                for (const period in yearBalances[acct]) {
-                                    combinedBalances[acct][period] = yearBalances[acct][period];
-                                }
+                    // Merge BS accounts into combined balances
+                    for (const acct of bsAccounts) {
+                        if (bsBalances[acct]) {
+                            if (!combinedBalances[acct]) combinedBalances[acct] = {};
+                            for (const period in bsBalances[acct]) {
+                                combinedBalances[acct][period] = bsBalances[acct][period];
                             }
                         }
-                    } else {
-                        console.error(`   ❌ BS Year ${year} error: ${response.status}`);
-                        hasError = true;
                     }
+                } else {
+                    console.error(`   ❌ BS multi-period error: ${response.status}`);
+                    hasError = true;
                 }
             }
             
