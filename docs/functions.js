@@ -35,6 +35,104 @@ function clearStatus() {
 }
 
 // ============================================================================
+// PERIOD EXPANSION - Intelligently expand period ranges for better caching
+// ============================================================================
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Parse "Mon YYYY" string into {month: 0-11, year: YYYY}
+ */
+function parsePeriod(periodStr) {
+    if (!periodStr || typeof periodStr !== 'string') return null;
+    const match = periodStr.match(/^([A-Za-z]{3})\s+(\d{4})$/);
+    if (!match) return null;
+    const monthIndex = MONTH_NAMES.findIndex(m => m.toLowerCase() === match[1].toLowerCase());
+    if (monthIndex === -1) return null;
+    return { month: monthIndex, year: parseInt(match[2]) };
+}
+
+/**
+ * Convert {month, year} back to "Mon YYYY" string
+ */
+function formatPeriod(month, year) {
+    return `${MONTH_NAMES[month]} ${year}`;
+}
+
+/**
+ * Expand a list of periods to include adjacent months for better cache coverage.
+ * This ensures that when dragging formulas, nearby periods are pre-fetched.
+ * 
+ * @param {string[]} periods - Array of "Mon YYYY" strings (e.g., ["Jan 2025", "Feb 2025"])
+ * @param {number} expandBefore - Number of months to add before the earliest period (default: 1)
+ * @param {number} expandAfter - Number of months to add after the latest period (default: 1)
+ * @returns {string[]} Expanded array of periods
+ */
+function expandPeriodRange(periods, expandBefore = 1, expandAfter = 1) {
+    if (!periods || periods.length === 0) return periods;
+    
+    // Parse all periods
+    const parsed = periods.map(parsePeriod).filter(p => p !== null);
+    if (parsed.length === 0) return periods;
+    
+    // Find min and max dates
+    let minMonth = parsed[0].month;
+    let minYear = parsed[0].year;
+    let maxMonth = parsed[0].month;
+    let maxYear = parsed[0].year;
+    
+    for (const p of parsed) {
+        const pTotal = p.year * 12 + p.month;
+        const minTotal = minYear * 12 + minMonth;
+        const maxTotal = maxYear * 12 + maxMonth;
+        
+        if (pTotal < minTotal) {
+            minMonth = p.month;
+            minYear = p.year;
+        }
+        if (pTotal > maxTotal) {
+            maxMonth = p.month;
+            maxYear = p.year;
+        }
+    }
+    
+    // Expand backward
+    for (let i = 0; i < expandBefore; i++) {
+        minMonth--;
+        if (minMonth < 0) {
+            minMonth = 11;
+            minYear--;
+        }
+    }
+    
+    // Expand forward
+    for (let i = 0; i < expandAfter; i++) {
+        maxMonth++;
+        if (maxMonth > 11) {
+            maxMonth = 0;
+            maxYear++;
+        }
+    }
+    
+    // Generate all periods in the expanded range
+    const expanded = [];
+    let currentMonth = minMonth;
+    let currentYear = minYear;
+    
+    while (currentYear < maxYear || (currentYear === maxYear && currentMonth <= maxMonth)) {
+        expanded.push(formatPeriod(currentMonth, currentYear));
+        currentMonth++;
+        if (currentMonth > 11) {
+            currentMonth = 0;
+            currentYear++;
+        }
+    }
+    
+    console.log(`   📅 Period expansion: [${periods.join(', ')}] → [${expanded.join(', ')}]`);
+    return expanded;
+}
+
+// ============================================================================
 // CACHE - Never expires, persists entire Excel session
 // ============================================================================
 const cache = {
@@ -535,13 +633,18 @@ async function runBuildModeBatch() {
         
         // STEP 4: Fetch Balance Sheet accounts for this filter group
         if (bsAccounts.length > 0 && periodsArray.length > 0) {
-            // CHECK CACHE FIRST
+            // SMART PERIOD EXPANSION: Include adjacent months for better cache coverage
+            // This ensures that when user drags Jan→Feb, we also fetch Dec for them
+            const expandedBSPeriods = expandPeriodRange(periodsArray, 1, 1);
+            console.log(`   📅 BS periods expanded: ${periodsArray.length} → ${expandedBSPeriods.length}`);
+            
+            // CHECK CACHE FIRST (using EXPANDED periods)
             let allBSInCache = true;
             let cachedBSValues = {};
             
             for (const acct of bsAccounts) {
                 cachedBSValues[acct] = {};
-                for (const period of periodsArray) {
+                for (const period of expandedBSPeriods) {
                     const ck = getCacheKey('balance', {
                         account: acct,
                         fromPeriod: period,
@@ -563,17 +666,17 @@ async function runBuildModeBatch() {
             }
             
             if (allBSInCache) {
-                console.log(`   ✅ BS CACHE HIT: All ${bsAccounts.length} accounts × ${periodsArray.length} periods found in cache!`);
+                console.log(`   ✅ BS CACHE HIT: All ${bsAccounts.length} accounts × ${expandedBSPeriods.length} periods found in cache!`);
                 broadcastStatus(`Using cached Balance Sheet data`, 20, 'info');
                 
                 for (const acct of bsAccounts) {
                     if (!allBalances[acct]) allBalances[acct] = {};
-                    for (const period of periodsArray) {
+                    for (const period of expandedBSPeriods) {
                         allBalances[acct][period] = cachedBSValues[acct][period];
                     }
                 }
             } else {
-                console.log(`   📊 Fetching Balance Sheet accounts (${periodsArray.length} periods)...`);
+                console.log(`   📊 Fetching Balance Sheet accounts (${expandedBSPeriods.length} periods, expanded from ${periodsArray.length})...`);
                 broadcastStatus(`Fetching Balance Sheet data...`, 15, 'info');
                 
                 const bsStartTime = Date.now();
@@ -582,7 +685,7 @@ async function runBuildModeBatch() {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            periods: periodsArray,
+                            periods: expandedBSPeriods,  // Use expanded periods!
                             subsidiary: filters.subsidiary,
                             department: filters.department,
                             location: filters.location,
@@ -725,7 +828,9 @@ async function runBuildModeBatch() {
                     hasError = true;
                 }
             } else {
-                console.log(`   📦 P&L: Using batch/balance for ${plAccounts.length} accounts`);
+                // SMART PERIOD EXPANSION: Same as BS, include adjacent months
+                const expandedPLPeriods = expandPeriodRange(periodsArray, 1, 1);
+                console.log(`   📦 P&L: Using batch/balance for ${plAccounts.length} accounts (${expandedPLPeriods.length} periods, expanded from ${periodsArray.length})`);
                 broadcastStatus(`Fetching P&L data...`, 60, 'info');
                 
                 try {
@@ -734,7 +839,7 @@ async function runBuildModeBatch() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             accounts: plAccounts,
-                            periods: periodsArray,
+                            periods: expandedPLPeriods,  // Use expanded periods!
                             subsidiary: filters.subsidiary,
                             department: filters.department,
                             location: filters.location,
@@ -765,10 +870,10 @@ async function runBuildModeBatch() {
                             }
                         }
                         
-                        // Cache $0 for P&L accounts not returned
+                        // Cache $0 for P&L accounts not returned (for expanded periods)
                         for (const acct of plAccounts) {
                             if (!allBalances[acct]) allBalances[acct] = {};
-                            for (const period of periodsArray) {
+                            for (const period of expandedPLPeriods) {
                                 if (allBalances[acct][period] === undefined) {
                                     allBalances[acct][period] = 0;
                                     const ck = getCacheKey('balance', {
