@@ -1167,9 +1167,6 @@ WHERE
   {filter_sql}
 
 GROUP BY a.acctnumber, a.accttype
-HAVING (
-  {' OR '.join([f'{col.split(" AS ")[1].strip()} <> 0' for col in select_columns])}
-)
 ORDER BY a.acctnumber
 """
     
@@ -2519,8 +2516,9 @@ def batch_bs_periods():
             if not account:
                 continue
             
-            if account not in balances:
-                balances[account] = {}
+            # Collect all balances for this account
+            account_balances = {}
+            has_non_zero = False
             
             # Process each period column
             for key, value in row.items():
@@ -2534,12 +2532,19 @@ def batch_bs_periods():
                         if month_name:
                             period_name = f"{month_name} {year}"
                             balance = float(value) if value else 0
-                            balances[account][period_name] = balance
-                            
-                            # Cache
-                            cache_key = f"{account}:{period_name}:{filters_hash}"
-                            balance_cache[cache_key] = balance
-                            cached_count += 1
+                            account_balances[period_name] = balance
+                            if abs(balance) >= 0.01:  # Non-zero check
+                                has_non_zero = True
+            
+            # Only include accounts with at least one non-zero balance
+            if has_non_zero:
+                balances[account] = account_balances
+                
+                # Cache all periods for this account
+                for period_name, balance in account_balances.items():
+                    cache_key = f"{account}:{period_name}:{filters_hash}"
+                    balance_cache[cache_key] = balance
+                    cached_count += 1
         
         balance_cache_timestamp = datetime.now()
         
