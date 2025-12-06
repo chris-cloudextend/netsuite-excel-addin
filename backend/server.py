@@ -1129,11 +1129,23 @@ def build_bs_multi_period_query(periods, target_sub, filters):
         # Build SELECT column with CASE WHEN
         # SUM(CASE WHEN ap.startdate <= p_2024_12.enddate
         #     THEN TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', 1, p_2024_12.id, 'DEFAULT'))
+        #          * sign_multiplier  -- Flip sign for liabilities/equity
         #     ELSE 0 END) AS bal_2024_12
+        #
+        # ACCOUNTING SIGN CONVENTION:
+        # - Assets (Bank, AcctRec, FixedAsset, OthAsset, OthCurrAsset, UnbilledRec, DeferExpense) 
+        #   → Natural debit balance → stored positive → NO FLIP
+        # - Liabilities (AcctPay, CredCard, OthCurrLiab, LongTermLiab, DeferRevenue)
+        #   → Natural credit balance → stored negative → FLIP TO POSITIVE
+        # - Equity (Equity, RetainedEarnings)
+        #   → Natural credit balance → stored negative → FLIP TO POSITIVE
+        #
         col_name = f"bal_{year}_{month_num}"
         select_columns.append(f"""
   SUM(CASE WHEN ap.startdate <= {alias}.enddate
     THEN TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {alias}.id, 'DEFAULT'))
+         * CASE WHEN a.accttype IN ('AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue', 'Equity', 'RetainedEarnings') 
+                THEN -1 ELSE 1 END
     ELSE 0 END) AS {col_name}""")
     
     if not period_aliases:
