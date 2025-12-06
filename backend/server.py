@@ -2521,18 +2521,19 @@ def batch_balance():
             pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join)
             
             print(f"DEBUG - P&L Query (for {len(pl_accounts)} accounts):\n{pl_query[:500]}...", file=sys.stderr)
-        pl_result = query_netsuite(pl_query)
-        
-        if isinstance(pl_result, list):
-            print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
-            for row in pl_result:
-                account_num = row['acctnumber']
-                period_name = row['periodname']
-                balance = float(row['balance']) if row['balance'] else 0
-                
-                if account_num not in all_balances:
-                    all_balances[account_num] = {}
-                all_balances[account_num][period_name] = balance
+            
+            pl_result = query_netsuite(pl_query)
+            
+            if isinstance(pl_result, list):
+                print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
+                for row in pl_result:
+                    account_num = row['acctnumber']
+                    period_name = row['periodname']
+                    balance = float(row['balance']) if row['balance'] else 0
+                    
+                    if account_num not in all_balances:
+                        all_balances[account_num] = {}
+                    all_balances[account_num][period_name] = balance
         else:
             print(f"DEBUG - Skipping P&L query (no P&L accounts requested)", file=sys.stderr)
         
