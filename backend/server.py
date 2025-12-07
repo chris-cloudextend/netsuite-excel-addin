@@ -4360,116 +4360,80 @@ def calculate_retained_earnings():
         target_period_id = fy_info['period_id']
         print(f"   Target period ID: {target_period_id} (for period-end exchange rates)")
         
-        # Build consolidation amount calculation with TARGET PERIOD ID for proper exchange rates
-        amount_calc = build_consolidate_amount(target_sub, str(target_period_id))
+        # Build simpler consolidation SQL without CROSS JOIN (faster execution)
+        if target_sub:
+            cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {target_period_id}, 'DEFAULT'))"""
+        else:
+            cons_amount = "tal.amount"
         
-        prior_pl_query = f"""
-            SELECT 
-                SUM(cons_amt) AS prior_years_pl
-            FROM (
-                SELECT
-                    {amount_calc} * -1 AS cons_amt
-                FROM transactionaccountingline tal
-                JOIN transaction t ON t.id = tal.transaction
-                JOIN account a ON a.id = tal.account
-                JOIN accountingperiod ap ON ap.id = t.postingperiod
-                {tl_join}
-                CROSS JOIN (
-                    SELECT COUNT(*) AS subs_count
-                    FROM Subsidiary
-                    WHERE isinactive = 'F'
-                ) subs_cte
-                WHERE t.posting = 'T'
-                  AND tal.posting = 'T'
-                  AND a.accttype IN ({PL_TYPES_SQL})
-                  AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
-                  AND tal.accountingbook = {accountingbook}
-                  {segment_where}
-            ) x
-        """
-        
-        prior_pl_result = query_netsuite(prior_pl_query, timeout=120)
-        prior_pl = 0.0
-        if isinstance(prior_pl_result, list) and len(prior_pl_result) > 0:
-            prior_pl = float(prior_pl_result[0].get('prior_years_pl') or 0)
-        
-        print(f"   Prior years P&L: {prior_pl:,.2f}")
-        
-        # Step 3: Get posted balances from RE-named accounts (e.g., account 39999 "Retained Earnings")
-        # CRITICAL: Query by specific account number for reliability (avoids timeouts from LIKE patterns)
+        # Get period_end_date for posted RE query
         period_end = fy_info['period_end']
         try:
             period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
         except:
             period_end_date = period_end
         
-        # Find RE accounts dynamically by type and name pattern (works across any NetSuite account)
-        # RE accounts can be: accttype='RetainedEarnings' OR name contains "retained earnings"
-        re_accounts_query = """
-            SELECT acctnumber FROM account 
-            WHERE accttype = 'RetainedEarnings' 
-               OR LOWER(fullname) LIKE '%retained earnings%'
+        # ═══════════════════════════════════════════════════════════════════════
+        # PARALLEL QUERY EXECUTION - Run queries concurrently to reduce time
+        # ═══════════════════════════════════════════════════════════════════════
+        print(f"   Running queries in PARALLEL...")
+        
+        # Define queries
+        prior_pl_query = f"""
+            SELECT SUM({cons_amount} * -1) AS value
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            {tl_join}
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ({PL_TYPES_SQL})
+              AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+              {segment_where}
         """
-        re_accounts_result = query_netsuite(re_accounts_query, timeout=15)
-        re_account_numbers = []
-        if isinstance(re_accounts_result, list):
-            re_account_numbers = [str(acc.get('acctnumber')) for acc in re_accounts_result if acc.get('acctnumber')]
-        print(f"   Found RE accounts (dynamic discovery): {re_account_numbers}")
         
+        # Posted RE query - query directly by account type/name pattern instead of 2-step
+        posted_re_query = f"""
+            SELECT SUM({cons_amount} * -1) AS value
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            {tl_join}
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+              {segment_where}
+        """
+        
+        # Execute both queries in parallel
+        prior_pl = 0.0
         posted_re = 0.0
-        if re_account_numbers:
-            # Query posted RE with consolidation - optimized query without CROSS JOIN
-            # This is faster and less likely to timeout
-            acct_list = "'" + "','".join(re_account_numbers) + "'"
-            
-            # Check if multi-subsidiary
-            if target_sub:
-                # CRITICAL: Use target_period_id for BUILTIN.CONSOLIDATE, NOT t.postingperiod
-                # This ensures all foreign currency amounts are translated at period-end rate
-                posted_re_query = f"""
-                    SELECT SUM(
-                        TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, {target_period_id}, 'DEFAULT'
-                            )
-                        ) * -1
-                    ) AS posted_re_adjustments
-                    FROM transactionaccountingline tal
-                    JOIN transaction t ON t.id = tal.transaction
-                    JOIN account a ON a.id = tal.account
-                    JOIN accountingperiod ap ON ap.id = t.postingperiod
-                    {tl_join}
-                    WHERE t.posting = 'T'
-                      AND tal.posting = 'T'
-                      AND a.acctnumber IN ({acct_list})
-                      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-                      AND tal.accountingbook = {accountingbook}
-                      {segment_where}
-                """
-            else:
-                # No consolidation needed
-                posted_re_query = f"""
-                    SELECT SUM(tal.amount * -1) AS posted_re_adjustments
-                    FROM transactionaccountingline tal
-                    JOIN transaction t ON t.id = tal.transaction
-                    JOIN account a ON a.id = tal.account
-                    JOIN accountingperiod ap ON ap.id = t.postingperiod
-                    {tl_join}
-                    WHERE t.posting = 'T'
-                      AND tal.posting = 'T'
-                      AND a.acctnumber IN ({acct_list})
-                      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-                      AND tal.accountingbook = {accountingbook}
-                      {segment_where}
-                """
-            
-            posted_re_result = query_netsuite(posted_re_query, timeout=120)
-            if isinstance(posted_re_result, list) and len(posted_re_result) > 0:
-                posted_re = float(posted_re_result[0].get('posted_re_adjustments') or 0)
         
-        print(f"   Posted RE adjustments: {posted_re:,.2f}")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(query_netsuite, prior_pl_query, 120): 'prior_pl',
+                executor.submit(query_netsuite, posted_re_query, 120): 'posted_re'
+            }
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    result = future.result()
+                    value = 0.0
+                    if isinstance(result, list) and len(result) > 0:
+                        value = float(result[0].get('value') or 0)
+                    if name == 'prior_pl':
+                        prior_pl = value
+                        print(f"      ✓ Prior years P&L: {prior_pl:,.2f}")
+                    else:
+                        posted_re = value
+                        print(f"      ✓ Posted RE adjustments: {posted_re:,.2f}")
+                except Exception as e:
+                    print(f"      ✗ {name} failed: {e}")
         
         # Final RE = prior years P&L + posted RE adjustments
         retained_earnings = prior_pl + posted_re
@@ -4576,33 +4540,27 @@ def calculate_net_income():
         target_period_id = fy_info['period_id']
         print(f"   Target period ID: {target_period_id} (for period-end exchange rates)")
         
-        # Build consolidation amount calculation with TARGET PERIOD ID for proper exchange rates
-        amount_calc = build_consolidate_amount(target_sub, str(target_period_id))
+        # Build simpler consolidation SQL without CROSS JOIN (faster execution)
+        if target_sub:
+            cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {target_period_id}, 'DEFAULT'))"""
+        else:
+            cons_amount = "tal.amount"
         
+        # Simplified Net Income query - no CROSS JOIN, directly uses BUILTIN.CONSOLIDATE
         net_income_query = f"""
-            SELECT 
-                SUM(cons_amt) AS net_income
-            FROM (
-                SELECT
-                    {amount_calc} * -1 AS cons_amt
-                FROM transactionaccountingline tal
-                JOIN transaction t ON t.id = tal.transaction
-                JOIN account a ON a.id = tal.account
-                JOIN accountingperiod ap ON ap.id = t.postingperiod
-                {tl_join}
-                CROSS JOIN (
-                    SELECT COUNT(*) AS subs_count
-                    FROM Subsidiary
-                    WHERE isinactive = 'F'
-                ) subs_cte
-                WHERE t.posting = 'T'
-                  AND tal.posting = 'T'
-                  AND a.accttype IN ({PL_TYPES_SQL})
-                  AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
-                  AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-                  AND tal.accountingbook = {accountingbook}
-                  {segment_where}
-            ) x
+            SELECT SUM({cons_amount} * -1) AS net_income
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            {tl_join}
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ({PL_TYPES_SQL})
+              AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+              {segment_where}
         """
         
         ni_result = query_netsuite(net_income_query, timeout=120)
