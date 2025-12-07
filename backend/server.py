@@ -4355,8 +4355,13 @@ def calculate_retained_earnings():
         # Use default subsidiary if none specified (for consolidation)
         target_sub = subsidiary if subsidiary else default_subsidiary_id
         
-        # Build consolidation amount calculation with ELIMINATE for intercompany
-        amount_calc = build_consolidate_amount(target_sub)
+        # CRITICAL: Get target period ID for BUILTIN.CONSOLIDATE
+        # ALL Balance Sheet amounts must be translated at the report period-end rate
+        target_period_id = fy_info['period_id']
+        print(f"   Target period ID: {target_period_id} (for period-end exchange rates)")
+        
+        # Build consolidation amount calculation with TARGET PERIOD ID for proper exchange rates
+        amount_calc = build_consolidate_amount(target_sub, str(target_period_id))
         
         prior_pl_query = f"""
             SELECT 
@@ -4419,13 +4424,15 @@ def calculate_retained_earnings():
             
             # Check if multi-subsidiary
             if target_sub:
+                # CRITICAL: Use target_period_id for BUILTIN.CONSOLIDATE, NOT t.postingperiod
+                # This ensures all foreign currency amounts are translated at period-end rate
                 posted_re_query = f"""
                     SELECT SUM(
                         TO_NUMBER(
                             BUILTIN.CONSOLIDATE(
                                 tal.amount,
                                 'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
+                                {target_sub}, {target_period_id}, 'DEFAULT'
                             )
                         ) * -1
                     ) AS posted_re_adjustments
@@ -4564,8 +4571,13 @@ def calculate_net_income():
         # Use default subsidiary if none specified (for consolidation)
         target_sub = subsidiary if subsidiary else default_subsidiary_id
         
-        # Build consolidation amount calculation with ELIMINATE for intercompany
-        amount_calc = build_consolidate_amount(target_sub)
+        # CRITICAL: Get target period ID for BUILTIN.CONSOLIDATE
+        # ALL amounts for Balance Sheet components must be translated at report period-end rate
+        target_period_id = fy_info['period_id']
+        print(f"   Target period ID: {target_period_id} (for period-end exchange rates)")
+        
+        # Build consolidation amount calculation with TARGET PERIOD ID for proper exchange rates
+        amount_calc = build_consolidate_amount(target_sub, str(target_period_id))
         
         net_income_query = f"""
             SELECT 
@@ -4669,23 +4681,31 @@ def calculate_cta():
         # Use default subsidiary if none specified
         target_sub = subsidiary if subsidiary else default_subsidiary_id
         
+        # Get the target period ID for BUILTIN.CONSOLIDATE
+        # CRITICAL: Must use target period ID, NOT t.postingperiod!
+        # This ensures all foreign currency transactions are translated at period-end rate
+        target_period_id = fy_info['period_id']
+        print(f"   Target period ID: {target_period_id} (for period-end exchange rates)")
+        
         # Define account type groups
         # Asset types: debit balance positive (no flip)
-        asset_types = "'Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense', 'UnbilledRec'"
+        asset_types = "'Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense'"
         # Liability types: credit balance (flip to positive for display)
         liability_types = "'AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue'"
         
-        # Build consolidation SQL
+        # Build consolidation SQL - Use TARGET PERIOD ID for proper exchange rate translation
+        # OLD (WRONG): t.postingperiod - translated at each transaction's posting period rate
+        # NEW (CORRECT): target_period_id - translated at report period-end rate
         if target_sub:
-            cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, t.postingperiod, 'DEFAULT'))"""
+            cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {target_period_id}, 'DEFAULT'))"""
         else:
             cons_amount = "tal.amount"
         
         # ═══════════════════════════════════════════════════════════════════════
-        # STEP 1: Query Total Assets (EXCLUDING intercompany elimination accounts)
-        # NetSuite's Balance Sheet eliminates these to near-zero, so we exclude them
+        # STEP 1: Query Total Assets
+        # BUILTIN.CONSOLIDATE with 'DEFAULT' elimination handles intercompany automatically
         # ═══════════════════════════════════════════════════════════════════════
-        print(f"   [1/5] Querying Total Assets (excluding IC elimination accounts)...")
+        print(f"   [1/5] Querying Total Assets...")
         assets_query = f"""
             SELECT SUM({cons_amount}) AS total_assets
             FROM transactionaccountingline tal
@@ -4695,7 +4715,6 @@ def calculate_cta():
             WHERE t.posting = 'T'
               AND tal.posting = 'T'
               AND a.accttype IN ({asset_types})
-              AND NVL(a.eliminate, 'F') != 'T'
               AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
               AND tal.accountingbook = {accountingbook}
         """
@@ -4706,9 +4725,10 @@ def calculate_cta():
         print(f"         Total Assets: {total_assets:,.2f}")
         
         # ═══════════════════════════════════════════════════════════════════════
-        # STEP 2: Query Total Liabilities (EXCLUDING IC elimination accounts, flip sign)
+        # STEP 2: Query Total Liabilities (flip sign for credit balance display)
+        # BUILTIN.CONSOLIDATE with 'DEFAULT' elimination handles intercompany automatically
         # ═══════════════════════════════════════════════════════════════════════
-        print(f"   [2/5] Querying Total Liabilities (excluding IC elimination accounts)...")
+        print(f"   [2/5] Querying Total Liabilities...")
         liabilities_query = f"""
             SELECT SUM({cons_amount} * -1) AS total_liabilities
             FROM transactionaccountingline tal
@@ -4718,7 +4738,6 @@ def calculate_cta():
             WHERE t.posting = 'T'
               AND tal.posting = 'T'
               AND a.accttype IN ({liability_types})
-              AND NVL(a.eliminate, 'F') != 'T'
               AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
               AND tal.accountingbook = {accountingbook}
         """
