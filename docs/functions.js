@@ -689,7 +689,8 @@ async function runBuildModeBatch() {
                             subsidiary: filters.subsidiary,
                             department: filters.department,
                             location: filters.location,
-                            class: filters.classId
+                            class: filters.classId,
+                            accountingbook: filters.accountingBook || ''  // Multi-Book Accounting support
                         })
                     });
                     
@@ -788,7 +789,8 @@ async function runBuildModeBatch() {
                                 department: filters.department,
                                 location: filters.location,
                                 class: filters.classId,
-                                skip_bs: true
+                                skip_bs: true,
+                                accountingbook: filters.accountingBook || ''  // Multi-Book Accounting support
                             })
                         });
                         
@@ -843,7 +845,8 @@ async function runBuildModeBatch() {
                             subsidiary: filters.subsidiary,
                             department: filters.department,
                             location: filters.location,
-                            class: filters.classId
+                            class: filters.classId,
+                            accountingbook: filters.accountingBook || ''  // Multi-Book Accounting support
                         })
                     });
                     
@@ -1716,10 +1719,11 @@ async function PARENT(accountNumber, invocation) {
  * @param {any} [department] Department filter (optional)
  * @param {any} [location] Location filter (optional)
  * @param {any} [classId] Class filter (optional)
+ * @param {any} [accountingBook] Accounting Book ID (optional, defaults to Primary Book). For Multi-Book Accounting.
  * @returns {Promise<number>} Account balance
  * @requiresAddress
  */
-async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook) {
     // ================================================================
     // DEBUG: Log every BALANCE call to understand what's happening
     // ================================================================
@@ -1852,7 +1856,10 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         location = String(location || '').trim();
         classId = String(classId || '').trim();
         
-        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
+        // Multi-Book Accounting support - default to empty (uses Primary Book on backend)
+        accountingBook = String(accountingBook || '').trim();
+        
+        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook };
         const cacheKey = getCacheKey('balance', params);
         
         // ================================================================
@@ -2079,10 +2086,11 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
  * @param {any} [department] Department filter (optional)
  * @param {any} [location] Location filter (optional)
  * @param {any} [classId] Class filter (optional)
+ * @param {any} [accountingBook] Accounting Book ID (optional, defaults to Primary Book). For Multi-Book Accounting.
  * @returns {Promise<number>} Budget amount
  * @requiresAddress
  */
-async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, location, classId) {
+async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook) {
     try {
         // Normalize inputs
         account = normalizeAccountNumber(account);
@@ -2101,7 +2109,10 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
         location = String(location || '').trim();
         classId = String(classId || '').trim();
         
-        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId };
+        // Multi-Book Accounting support - default to empty (uses Primary Book on backend)
+        accountingBook = String(accountingBook || '').trim();
+        
+        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook };
         const cacheKey = getCacheKey('budget', params);
         
         // Check cache FIRST - return immediately if found (NO @ SYMBOL!)
@@ -2123,6 +2134,7 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
             if (department) url.searchParams.append('department', department);
             if (location) url.searchParams.append('location', location);
             if (classId) url.searchParams.append('class', classId);
+            if (accountingBook) url.searchParams.append('accountingbook', accountingBook);
             
             const response = await fetch(url.toString());
             if (!response.ok) {
@@ -2192,6 +2204,7 @@ async function processFullRefresh() {
         filters.department = firstRequest.params.department || '';
         filters.location = firstRequest.params.location || '';
         filters.class = firstRequest.params.classId || '';
+        filters.accountingbook = firstRequest.params.accountingBook || '';  // Multi-Book Accounting support
     }
     
     console.log(`📊 Full Refresh Request:`);
@@ -2451,7 +2464,8 @@ async function processBatchQueue() {
                             subsidiary: filters.subsidiary || '',
                             department: filters.department || '',
                             location: filters.location || '',
-                            class: filters.class || ''
+                            class: filters.class || '',
+                            accountingbook: filters.accountingBook || ''  // Multi-Book Accounting support
                         })
                     });
                 

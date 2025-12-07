@@ -1639,7 +1639,7 @@
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
-                        <p>Add-in Version: <strong id="settingsVersion">1.5.2.0</strong></p>
+                        <p>Add-in Version: <strong id="settingsVersion">1.5.3.0</strong></p>
                         <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -1654,7 +1654,7 @@
             </button>
             <h1>Financial Reporting Engine</h1>
             <p>Real-time NetSuite data in your spreadsheets</p>
-            <div class="version-badge" id="versionBadge">v1.5.2.0</div>
+            <div class="version-badge" id="versionBadge">v1.5.3.0</div>
         </div>
 
         <div class="content">
@@ -1905,6 +1905,14 @@
                             <option value="">Loading...</option>
                         </select>
                         <button class="btn-filter" onclick="insertLookupValue('location')">Insert</button>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label class="filter-label">Accounting Book <span style="font-size:10px;color:#888;">(Multi-Book)</span></label>
+                        <select id="accountingBookSelect" class="filter-select">
+                            <option value="">Primary Book (Default)</option>
+                        </select>
+                        <button class="btn-filter" onclick="insertLookupValue('accountingBook')">Insert</button>
                     </div>
                     
                     <div class="refresh-status" id="lookupStatus"></div>
@@ -3626,6 +3634,17 @@ export default {
                     locSelect.appendChild(option);
                 });
                 
+                // Populate accounting book dropdown - Show NAMES, use IDs as values
+                // Multi-Book Accounting: Primary Book, Secondary Books (GAAP, IFRS, Tax, etc.)
+                const bookSelect = document.getElementById('accountingBookSelect');
+                bookSelect.innerHTML = '<option value="">Primary Book (Default)</option>';
+                (data.accountingBooks || []).forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.id;  // Use ID as value (backend expects numeric ID)
+                    option.textContent = item.name;  // Show name (includes "(Primary)" marker)
+                    bookSelect.appendChild(option);
+                });
+                
                 statusEl.textContent = '✓ Lookup lists loaded!';
                 statusEl.style.color = '#059669';
                 
@@ -3658,6 +3677,9 @@ export default {
                 } else if (type === 'location') {
                     selectId = 'locationSelect';
                     typeName = 'Location';
+                } else if (type === 'accountingBook') {
+                    selectId = 'accountingBookSelect';
+                    typeName = 'Accounting Book';
                 }
                 
                 const select = document.getElementById(selectId);

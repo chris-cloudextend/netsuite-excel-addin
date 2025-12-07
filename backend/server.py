@@ -55,6 +55,11 @@ account_title_cache = {}
 # This is used when no subsidiary is specified by the user
 default_subsidiary_id = None
 
+# Default accounting book ID - Primary Book
+# Multi-Book Accounting allows different books (GAAP, IFRS, Tax, etc.)
+# Primary book is ID 1 in NetSuite
+DEFAULT_ACCOUNTING_BOOK = 1
+
 # Load NetSuite configuration
 try:
     with open('netsuite_config.json', 'r') as f:
@@ -671,11 +676,17 @@ def search_accounts():
         return jsonify({'error': str(e)}), 500
 
 
-def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
+def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, accountingbook=None):
     """
     Build query for P&L accounts (Income Statement)
     P&L accounts show activity within the specific period only
+    
+    Args:
+        accountingbook: Accounting book ID (default: Primary Book / ID 1)
     """
+    if accountingbook is None:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
     periods_in = ','.join([f"'{escape_sql(p)}'" for p in periods])
     
@@ -684,6 +695,9 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
     
     # Only include P&L account types (using constants)
     where_clause += f" AND a.accttype IN ({PL_TYPES_SQL})"
+    
+    # Add accountingbook filter (Multi-Book Accounting support)
+    where_clause += f" AND tal.accountingbook = {accountingbook}"
     
     amount_calc = f"""CASE
                         WHEN subs_count > 1 THEN
@@ -760,14 +774,20 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join):
         """
 
 
-def build_bs_query_single_period(accounts, period_name, period_info, base_where, target_sub, needs_line_join):
+def build_bs_query_single_period(accounts, period_name, period_info, base_where, target_sub, needs_line_join, accountingbook=None):
     """
     Build query for Balance Sheet accounts for a SINGLE period
     Balance Sheet = CUMULATIVE balance from inception through period end
     
     Returns one row per account with the cumulative balance as of period end
+    
+    Args:
+        accountingbook: Accounting book ID (default: Primary Book / ID 1)
     """
     from datetime import datetime
+    
+    if accountingbook is None:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
     
@@ -787,7 +807,7 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
     where_clause += f" AND a.accttype NOT IN ({PL_TYPES_SQL})"
     # CUMULATIVE: All transactions through period end (no lower bound)
     where_clause += f" AND t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')"
-    where_clause += " AND tal.accountingbook = 1"
+    where_clause += f" AND tal.accountingbook = {accountingbook}"
     
     # If period_id is None (period doesn't exist in NetSuite), skip consolidation
     # This happens for future periods that haven't been created yet
@@ -848,7 +868,7 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
         """
 
 
-def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_join):
+def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_join, accountingbook=None):
     """
     Build query for Balance Sheet accounts (Assets/Liabilities/Equity)
     Balance Sheet accounts show CUMULATIVE balance from inception through period end
@@ -859,9 +879,15 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
     Performance optimization: 
     1. Query ONE period at a time (UNION ALL)
     2. Limit to fiscal year scope (not ALL history) to avoid timeouts
+    
+    Args:
+        accountingbook: Accounting book ID (default: Primary Book / ID 1)
     """
     from datetime import datetime
     from dateutil.relativedelta import relativedelta
+    
+    if accountingbook is None:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
     
@@ -898,8 +924,8 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
         # CRITICAL: Balance Sheet is CUMULATIVE - ALL transactions through period end (like user's reference)
         # No lower bound to get true cumulative balance
         period_where += f" AND t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')"
-        # Add accountingbook filter (like user's reference query)
-        period_where += " AND tal.accountingbook = 1"
+        # Add accountingbook filter (supports Multi-Book Accounting)
+        period_where += f" AND tal.accountingbook = {accountingbook}"
         
         amount_calc = f"""CASE
                             WHEN subs_count > 1 THEN
@@ -963,7 +989,7 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
     return full_query
 
 
-def build_bs_cumulative_balance_query(target_period_name, target_sub, filters):
+def build_bs_cumulative_balance_query(target_period_name, target_sub, filters, accountingbook=None):
     """
     CORRECTED Balance Sheet Query - uses FIXED target period for CONSOLIDATE.
     
@@ -975,7 +1001,13 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters):
       BUILTIN.CONSOLIDATE(..., target_period.id, ...)  ← Fixed period ID
     vs our old incorrect approach:
       BUILTIN.CONSOLIDATE(..., t.postingperiod, ...)   ← Variable period ID
+    
+    Args:
+        accountingbook: Accounting book ID (default: Primary Book / ID 1)
     """
+    if accountingbook is None:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     filter_clauses = []
     if filters.get('subsidiary'):
         filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
@@ -1020,7 +1052,7 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters):
     WHERE 
       t.posting = 'T'
       AND tal.posting = 'T'
-      AND tal.accountingbook = 1
+      AND tal.accountingbook = {accountingbook}
       AND a.accttype NOT IN ({PL_TYPES_SQL})
       AND ap.startdate <= target_period.enddate
       AND ap.isyear = 'F'
@@ -1046,7 +1078,7 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters):
     return query
 
 
-def build_bs_multi_period_query(periods, target_sub, filters):
+def build_bs_multi_period_query(periods, target_sub, filters, accountingbook=None):
     """
     EFFICIENT Balance Sheet query - gets ALL periods in ONE query!
     
@@ -1057,12 +1089,16 @@ def build_bs_multi_period_query(periods, target_sub, filters):
         periods: List of period names, e.g., ['Dec 2024', 'Jan 2025', 'Feb 2025', 'Mar 2025']
         target_sub: Target subsidiary ID for consolidation
         filters: Dict with optional subsidiary, department, location, class filters
+        accountingbook: Accounting book ID (default: Primary Book / ID 1)
     
     Returns:
         SQL query string that returns account_number and one column per period (bal_YYYY_MM)
     """
     if not periods:
         return None
+    
+    if accountingbook is None:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     # Build filter clauses
     filter_clauses = []
@@ -1169,7 +1205,7 @@ FROM transactionaccountingline tal
 WHERE 
   t.posting = 'T'
   AND tal.posting = 'T'
-  AND tal.accountingbook = 1
+  AND tal.accountingbook = {accountingbook}
   AND a.accttype NOT IN ({PL_TYPES_SQL})
   AND ap.startdate <= {latest_period_alias}.enddate
   AND ap.isyear = 'F'
@@ -1205,11 +1241,17 @@ def build_exchange_rates_query_DEPRECATED(period_name, target_sub):
     return query
 
 
-def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
+def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters, accountingbook=None):
     """
     LEGACY - kept for backward compatibility but not accurate for foreign currency.
     Use the new local currency approach instead.
+    
+    Args:
+        accountingbook: Accounting book ID (default: Primary Book / ID 1)
     """
+    if accountingbook is None:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     filter_clauses = []
     if filters.get('subsidiary'):
         filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
@@ -1245,7 +1287,7 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
       JOIN AccountingPeriod ap ON ap.id = t.postingperiod
       WHERE t.posting = 'T'
         AND tal.posting = 'T'
-        AND tal.accountingbook = 1
+        AND tal.accountingbook = {accountingbook}
         AND ap.isyear = 'F'
         AND ap.isquarter = 'F'
       AND EXTRACT(YEAR FROM ap.enddate) <= {prior_year}
@@ -1258,10 +1300,16 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters):
     return query
 
 
-def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
+def build_full_year_bs_activity_query(fiscal_year, target_sub, filters, accountingbook=None):
     """
     LEGACY - kept for backward compatibility but not accurate for foreign currency.
+    
+    Args:
+        accountingbook: Accounting book ID (default: Primary Book / ID 1)
     """
+    if accountingbook is None:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     filter_clauses = []
     if filters.get('subsidiary'):
         filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
@@ -1297,7 +1345,7 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
     JOIN AccountingPeriod ap ON ap.id = t.postingperiod
     WHERE t.posting = 'T'
       AND tal.posting = 'T'
-      AND tal.accountingbook = 1
+      AND tal.accountingbook = {accountingbook}
       AND ap.isyear = 'F'
       AND ap.isquarter = 'F'
       AND EXTRACT(YEAR FROM ap.startdate) = {fiscal_year}
@@ -1310,15 +1358,15 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters):
     return query
 
 
-def build_full_year_pl_query(fiscal_year, target_sub, filters):
+def build_full_year_pl_query(fiscal_year, target_sub, filters, accountingbook=None):
     """
     DEPRECATED - kept for compatibility.
     Use build_full_year_pl_query_pivoted instead for ~5x faster performance.
     """
-    return build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters)
+    return build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountingbook)
 
 
-def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters):
+def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountingbook=None):
     """
     OPTIMIZED full-year P&L query using PIVOTED columns for all 12 months.
     
@@ -1330,7 +1378,13 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters):
     
     Expected performance: ~6 seconds for ALL P&L accounts × 12 months
     (vs ~15-30 seconds with the old CTE/long-format approach)
+    
+    Args:
+        accountingbook: Accounting book ID (default: Primary Book / ID 1)
     """
+    if accountingbook is None:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     # Build optional filter clauses
     filter_clauses = []
     if filters.get('subsidiary'):
@@ -1392,7 +1446,7 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters):
         ) subs_cte
       WHERE t.posting = 'T'
         AND tal.posting = 'T'
-        AND tal.accountingbook = 1
+        AND tal.accountingbook = {accountingbook}
         AND apf.isyear = 'F' 
         AND apf.isquarter = 'F'
         AND TO_CHAR(apf.startdate,'YYYY') = '{fiscal_year}'
@@ -1542,6 +1596,16 @@ def batch_full_year_refresh():
     # Set skip_bs=true for fast P&L-only preload
     skip_bs = data.get('skip_bs', False)
     
+    # Multi-Book Accounting support - default to Primary Book (ID 1)
+    accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
+    if isinstance(accountingbook, str) and accountingbook.strip():
+        try:
+            accountingbook = int(accountingbook)
+        except ValueError:
+            accountingbook = DEFAULT_ACCOUNTING_BOOK
+    elif not accountingbook:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     # Convert names to IDs
     subsidiary = convert_name_to_id('subsidiary', subsidiary)
     class_id = convert_name_to_id('class', class_id)
@@ -1573,7 +1637,7 @@ def batch_full_year_refresh():
         print(f"{'='*80}\n", flush=True)
         
         # Build the OPTIMIZED PIVOTED query (one row per account, 12 month columns)
-        base_query = build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters)
+        base_query = build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountingbook)
         
         # Execute query - no pagination needed since one row per account!
         start_time = datetime.now()
@@ -1761,7 +1825,7 @@ def batch_full_year_refresh():
                         JOIN Account a ON a.id = tal.account
                         WHERE t.posting = 'T'
                             AND tal.posting = 'T'
-                            AND tal.accountingbook = 1
+                            AND tal.accountingbook = {accountingbook}
                             AND a.acctnumber IN ('{bs_account_list}')
                             AND t.trandate <= TO_DATE('{prior_year}-12-31', 'YYYY-MM-DD')
                         GROUP BY a.acctnumber
@@ -1886,12 +1950,23 @@ def batch_periods_refresh():
     data = request.get_json() or {}
     periods = data.get('periods', [])
     
+    # Multi-Book Accounting support - default to Primary Book (ID 1)
+    accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
+    if isinstance(accountingbook, str) and accountingbook.strip():
+        try:
+            accountingbook = int(accountingbook)
+        except ValueError:
+            accountingbook = DEFAULT_ACCOUNTING_BOOK
+    elif not accountingbook:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     if not periods:
         return jsonify({'error': 'No periods specified'}), 400
     
     print(f"\n{'='*80}")
     print(f"⚡ PERIODS REFRESH (OPTIMIZED): {len(periods)} specific periods ONLY")
     print(f"   Periods: {periods}")
+    print(f"   Accounting Book: {accountingbook}")
     print(f"{'='*80}")
     
     start_time = datetime.now()
@@ -2016,7 +2091,7 @@ def batch_periods_refresh():
           CROSS JOIN sub_cte
           WHERE t.posting = 'T'
             AND tal.posting = 'T'
-            AND tal.accountingbook = 1
+            AND tal.accountingbook = {accountingbook}
             AND ap.isyear = 'F'
             AND ap.isquarter = 'F'
             AND ap.periodname IN ('{period_names_sql}')
@@ -2117,7 +2192,7 @@ def batch_periods_refresh():
           CROSS JOIN sub_cte
           WHERE t.posting = 'T'
             AND tal.posting = 'T'
-            AND tal.accountingbook = 1
+            AND tal.accountingbook = {accountingbook}
             AND ap.isyear = 'F'
             AND ap.isquarter = 'F'
             AND a.accttype NOT IN ({PL_TYPES_SQL})
@@ -2212,7 +2287,7 @@ def batch_periods_refresh():
                 ) subs_cte
                 WHERE t.posting = 'T' 
                     AND tal.posting = 'T' 
-                    AND tal.accountingbook = 1
+                    AND tal.accountingbook = {accountingbook}
                     AND ap.isyear = 'F' 
                     AND ap.isquarter = 'F'
                     AND ap.enddate < TO_DATE('{start_date}', 'YYYY-MM-DD')
@@ -2337,6 +2412,16 @@ def batch_full_year_refresh_bs():
     department = convert_name_to_id('department', data.get('department', ''))
     location = convert_name_to_id('location', data.get('location', ''))
     
+    # Multi-Book Accounting support - default to Primary Book (ID 1)
+    accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
+    if isinstance(accountingbook, str) and accountingbook.strip():
+        try:
+            accountingbook = int(accountingbook)
+        except ValueError:
+            accountingbook = DEFAULT_ACCOUNTING_BOOK
+    elif not accountingbook:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
     
     filters = {}
@@ -2350,6 +2435,7 @@ def batch_full_year_refresh_bs():
         print(f"📊 BALANCE SHEET FULL YEAR REFRESH (CORRECTED): {fiscal_year}", flush=True)
         print(f"   Target subsidiary: {target_sub}", flush=True)
         print(f"   Filters: {filters}", flush=True)
+        print(f"   Accounting Book: {accountingbook}", flush=True)
         print(f"   Using FIXED target period for CONSOLIDATE (matches NetSuite GL Balance)", flush=True)
         print(f"{'='*80}\n", flush=True)
         
@@ -2370,7 +2456,7 @@ def batch_full_year_refresh_bs():
             print(f"   📥 Querying {period_name}...", flush=True)
             
             # Build the corrected query with CROSS JOIN for target period
-            query = build_bs_cumulative_balance_query(period_name, target_sub, filters)
+            query = build_bs_cumulative_balance_query(period_name, target_sub, filters, accountingbook)
             
             try:
                 # Run the query
@@ -2460,6 +2546,16 @@ def batch_bs_periods():
     department = convert_name_to_id('department', data.get('department', ''))
     location = convert_name_to_id('location', data.get('location', ''))
     
+    # Multi-Book Accounting support - default to Primary Book (ID 1)
+    accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
+    if isinstance(accountingbook, str) and accountingbook.strip():
+        try:
+            accountingbook = int(accountingbook)
+        except ValueError:
+            accountingbook = DEFAULT_ACCOUNTING_BOOK
+    elif not accountingbook:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
     target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
     
     filters = {}
@@ -2474,6 +2570,7 @@ def batch_bs_periods():
         print(f"   Periods ({len(periods)}): {', '.join(periods)}", flush=True)
         print(f"   Target subsidiary: {target_sub}", flush=True)
         print(f"   Filters: {filters}", flush=True)
+        print(f"   Accounting Book: {accountingbook}", flush=True)
         print(f"   ONE query for ALL periods (much faster!)", flush=True)
         print(f"{'='*80}\n", flush=True)
         
@@ -2482,7 +2579,7 @@ def batch_bs_periods():
         filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
         
         # Build the efficient multi-period query
-        query = build_bs_multi_period_query(periods, target_sub, filters)
+        query = build_bs_multi_period_query(periods, target_sub, filters, accountingbook)
         
         if not query:
             return jsonify({'error': 'Could not build query for provided periods'}), 400
@@ -2606,6 +2703,16 @@ def batch_balance():
     class_id = data.get('class', '')
     department = data.get('department', '')
     location = data.get('location', '')
+    
+    # Multi-Book Accounting support - default to Primary Book (ID 1)
+    accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
+    if isinstance(accountingbook, str) and accountingbook.strip():
+        try:
+            accountingbook = int(accountingbook)
+        except ValueError:
+            accountingbook = DEFAULT_ACCOUNTING_BOOK
+    elif not accountingbook:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     # Convert names to IDs (accepts names OR IDs)
     subsidiary = convert_name_to_id('subsidiary', subsidiary)
@@ -2781,9 +2888,9 @@ def batch_balance():
             pl_where_clauses.append(f"a.acctnumber IN ({pl_accounts_in})")
             pl_base_where = " AND ".join(pl_where_clauses)
             
-            pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join)
+            pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join, accountingbook)
             
-            print(f"DEBUG - P&L Query (for {len(pl_accounts)} accounts):\n{pl_query[:500]}...", file=sys.stderr)
+            print(f"DEBUG - P&L Query (for {len(pl_accounts)} accounts, book={accountingbook}):\n{pl_query[:500]}...", file=sys.stderr)
             
             pl_result = query_netsuite(pl_query)
             
@@ -2816,10 +2923,10 @@ def batch_balance():
                 try:
                     # Build query for THIS period only, with BS accounts only
                     period_query = build_bs_query_single_period(
-                        bs_accounts, period, info, bs_base_where, target_sub, needs_line_join
+                        bs_accounts, period, info, bs_base_where, target_sub, needs_line_join, accountingbook
                     )
                     
-                    print(f"DEBUG - BS Query for {period}:\n{period_query[:300]}...", file=sys.stderr)
+                    print(f"DEBUG - BS Query for {period} (book={accountingbook}):\n{period_query[:300]}...", file=sys.stderr)
                     
                     # Balance Sheet queries can be slower - use 90 second timeout
                     bs_result = query_netsuite(period_query, timeout=90)
@@ -3470,6 +3577,13 @@ def get_budget():
         department = request.args.get('department', '')
         location = request.args.get('location', '')
         
+        # Multi-Book Accounting support - default to Primary Book (ID 1)
+        accountingbook = request.args.get('accountingbook', str(DEFAULT_ACCOUNTING_BOOK))
+        try:
+            accountingbook = int(accountingbook) if accountingbook else DEFAULT_ACCOUNTING_BOOK
+        except ValueError:
+            accountingbook = DEFAULT_ACCOUNTING_BOOK
+        
         # Convert names to IDs (accepts names OR IDs)
         subsidiary = convert_name_to_id('subsidiary', subsidiary)
         class_id = convert_name_to_id('class', class_id)
@@ -3518,6 +3632,10 @@ def get_budget():
         
         if location and location != '':
             where_clauses.append(f"b.location = {location}")
+        
+        # Add accountingbook filter (Multi-Book Accounting support)
+        # NetSuite Budget table has an accountingbook field
+        where_clauses.append(f"b.accountingbook = {accountingbook}")
         
         where_clause = " AND ".join(where_clauses)
         
@@ -3847,10 +3965,57 @@ def get_all_accounts():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/lookups/accountingbooks')
+def get_accounting_books():
+    """
+    Get list of accounting books for Multi-Book Accounting.
+    Returns all active accounting books (Primary and Secondary).
+    
+    NetSuite Multi-Book Accounting allows maintaining multiple sets of books
+    for different accounting standards (GAAP, IFRS, Tax, etc.)
+    """
+    try:
+        query = """
+            SELECT 
+                id,
+                name,
+                isprimary
+            FROM accountingbook
+            WHERE isinactive = 'F'
+            ORDER BY isprimary DESC, name
+        """
+        
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result['error']}), 500
+        
+        books = []
+        if isinstance(result, list):
+            for row in result:
+                book_name = row.get('name', '')
+                is_primary = row.get('isprimary', 'F') == 'T'
+                # Mark primary book for clarity
+                if is_primary:
+                    book_name = f"{book_name} (Primary)"
+                books.append({
+                    'id': str(row.get('id', '')),
+                    'name': book_name,
+                    'isPrimary': is_primary
+                })
+        
+        print(f"✓ Returning {len(books)} accounting books")
+        return jsonify(books)
+        
+    except Exception as e:
+        print(f"❌ Accounting books lookup error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/lookups/all')
 def get_all_lookups():
     """
-    Get all lookups at once - Subsidiary, Department, Location, Class
+    Get all lookups at once - Subsidiary, Department, Location, Class, Accounting Books
     Returns data from the in-memory cache (already loaded at startup)
     
     For subsidiaries that are parents (have children), we also add a "(Consolidated)" option
@@ -3866,7 +4031,8 @@ def get_all_lookups():
             'subsidiaries': [],
             'departments': [],
             'classes': [],
-            'locations': []
+            'locations': [],
+            'accountingBooks': []
         }
         
         # Get subsidiary hierarchy to identify parents
@@ -3929,6 +4095,36 @@ def get_all_lookups():
             lookups['locations'].append({
                 'id': id_val,
                 'name': name  # Keep location names as-is
+            })
+        
+        # Fetch accounting books (Multi-Book Accounting)
+        try:
+            books_query = """
+                SELECT id, name, isprimary
+                FROM accountingbook
+                WHERE isinactive = 'F'
+                ORDER BY isprimary DESC, name
+            """
+            books_result = query_netsuite(books_query)
+            
+            if isinstance(books_result, list):
+                for row in books_result:
+                    book_name = row.get('name', '')
+                    is_primary = row.get('isprimary', 'F') == 'T'
+                    if is_primary:
+                        book_name = f"{book_name} (Primary)"
+                    lookups['accountingBooks'].append({
+                        'id': str(row.get('id', '')),
+                        'name': book_name,
+                        'isPrimary': is_primary
+                    })
+        except Exception as e:
+            print(f"Error loading accounting books: {e}", file=sys.stderr)
+            # Default to Primary Book (ID 1) if query fails
+            lookups['accountingBooks'].append({
+                'id': '1',
+                'name': 'Primary Book',
+                'isPrimary': True
             })
         
         return jsonify(lookups)

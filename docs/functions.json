@@ -124,6 +124,13 @@
           "type": "any",
           "dimensionality": "scalar",
           "optional": true
+        },
+        {
+          "name": "accountingBook",
+          "description": "Accounting Book ID (optional, defaults to Primary Book). For Multi-Book Accounting.",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
         }
       ],
       "options": {
@@ -184,6 +191,13 @@
         {
           "name": "classId",
           "description": "Class ID (optional, use \"\" to ignore)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "accountingBook",
+          "description": "Accounting Book ID (optional, defaults to Primary Book). For Multi-Book Accounting.",
           "type": "any",
           "dimensionality": "scalar",
           "optional": true
