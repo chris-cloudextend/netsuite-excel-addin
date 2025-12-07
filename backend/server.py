@@ -4238,6 +4238,47 @@ def resolve_subsidiary_id(subsidiary_param):
     return None
 
 
+def build_consolidate_amount(target_sub, period_ref='t.postingperiod'):
+    """
+    Build the BUILTIN.CONSOLIDATE SQL fragment for multi-currency consolidation.
+    
+    Parameters for BUILTIN.CONSOLIDATE (NetSuite SuiteQL):
+    - 'LEDGER' - Consolidation type
+    - 'DEFAULT' - Rate type  
+    - 'DEFAULT' - Adjustment option
+    - target_sub - Target subsidiary ID
+    - period_ref - Period reference
+    - 'DEFAULT' - Elimination option (handles intercompany)
+    
+    Args:
+        target_sub: Target subsidiary ID for consolidation
+        period_ref: SQL reference to the period (default: t.postingperiod)
+    
+    Returns:
+        SQL fragment that calculates consolidated amount
+    """
+    if target_sub:
+        return f"""
+            CASE
+                WHEN subs_count > 1 THEN
+                    TO_NUMBER(
+                        BUILTIN.CONSOLIDATE(
+                            tal.amount,
+                            'LEDGER',
+                            'DEFAULT',
+                            'DEFAULT',
+                            {target_sub},
+                            {period_ref},
+                            'DEFAULT'
+                        )
+                    )
+                ELSE tal.amount
+            END
+        """
+    else:
+        return "tal.amount"
+
+
 @app.route('/retained-earnings', methods=['POST'])
 def calculate_retained_earnings():
     """
@@ -4307,43 +4348,22 @@ def calculate_retained_earnings():
         
         # Step 2: Sum prior years' P&L with consolidation
         # Query all Income/Expense transactions from inception through the day before FY started
-        # Use BUILTIN.CONSOLIDATE for multi-currency/subsidiary consolidation
-        # Sign convention: Income (stored negative) flip to positive for Net Income
-        #                  Expenses (stored positive) stay positive (they reduce NI)
-        # For RE display: final result should be positive for profits, negative for losses
+        # Use BUILTIN.CONSOLIDATE with 'ELIMINATE' for proper intercompany elimination
+        # Sign convention: ALL P&L amounts * -1 (credits become positive revenue, debits become negative expense)
+        # Result: Positive = accumulated profit, Negative = accumulated loss
         
-        # Use default subsidiary if none specified
+        # Use default subsidiary if none specified (for consolidation)
         target_sub = subsidiary if subsidiary else default_subsidiary_id
         
-        # Build consolidation amount calculation
-        if target_sub:
-            amount_calc = f"""
-                CASE
-                    WHEN subs_count > 1 THEN
-                        TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER',
-                                'DEFAULT',
-                                'DEFAULT',
-                                {target_sub},
-                                t.postingperiod,
-                                'DEFAULT'
-                            )
-                        )
-                    ELSE tal.amount
-                END
-            """
-        else:
-            amount_calc = "tal.amount"
+        # Build consolidation amount calculation with ELIMINATE for intercompany
+        amount_calc = build_consolidate_amount(target_sub)
         
         prior_pl_query = f"""
             SELECT 
                 SUM(cons_amt) AS prior_years_pl
             FROM (
                 SELECT
-                    {amount_calc}
-                    * -1 AS cons_amt
+                    {amount_calc} * -1 AS cons_amt
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -4371,41 +4391,21 @@ def calculate_retained_earnings():
         print(f"   Prior years P&L: {prior_pl:,.2f}")
         
         # Step 3: Get any posted balances in RetainedEarnings accounts
-        # Some companies have manual adjustments posted directly to RE
+        # CRITICAL: Include BOTH accttype='RetainedEarnings' AND accounts named "Retained Earnings"
+        # Some companies have RE accounts with accttype='Equity' but name contains "retained earnings"
         period_end = fy_info['period_end']
         try:
             period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
         except:
             period_end_date = period_end
         
-        # Build consolidation for posted RE amounts  
-        if target_sub:
-            re_amount_calc = f"""
-                CASE
-                    WHEN subs_count > 1 THEN
-                        TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER',
-                                'DEFAULT',
-                                'DEFAULT',
-                                {target_sub},
-                                t.postingperiod,
-                                'DEFAULT'
-                            )
-                        )
-                    ELSE tal.amount
-                END * -1
-            """
-        else:
-            re_amount_calc = "tal.amount * -1"
-            
+        # Use same consolidation calculation for posted RE
         posted_re_query = f"""
             SELECT 
                 SUM(cons_amt) AS posted_re_adjustments
             FROM (
                 SELECT
-                    {re_amount_calc} AS cons_amt
+                    {amount_calc} * -1 AS cons_amt
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -4418,7 +4418,10 @@ def calculate_retained_earnings():
                 ) subs_cte
                 WHERE t.posting = 'T'
                   AND tal.posting = 'T'
-                  AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
+                  AND (
+                      a.accttype = 'RetainedEarnings' 
+                      OR LOWER(a.fullname) LIKE '%retained earnings%'
+                  )
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
                   {segment_where}
@@ -4525,42 +4528,22 @@ def calculate_net_income():
         
         # Step 2: Sum current FY P&L with consolidation
         # From FY start through target period end
-        # Use BUILTIN.CONSOLIDATE for multi-currency/subsidiary consolidation
-        # Sign convention: Income (stored negative) flip to positive for Net Income
-        #                  Expenses (stored positive) stay positive (they reduce NI)
+        # Use BUILTIN.CONSOLIDATE with 'ELIMINATE' for proper intercompany elimination
+        # Sign convention: ALL P&L amounts * -1 (credits become positive revenue, debits become negative expense)
+        # Result: Positive = profit, Negative = loss
         
-        # Use default subsidiary if none specified
+        # Use default subsidiary if none specified (for consolidation)
         target_sub = subsidiary if subsidiary else default_subsidiary_id
         
-        # Build consolidation amount calculation
-        if target_sub:
-            amount_calc = f"""
-                CASE
-                    WHEN subs_count > 1 THEN
-                        TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER',
-                                'DEFAULT',
-                                'DEFAULT',
-                                {target_sub},
-                                t.postingperiod,
-                                'DEFAULT'
-                            )
-                        )
-                    ELSE tal.amount
-                END
-            """
-        else:
-            amount_calc = "tal.amount"
+        # Build consolidation amount calculation with ELIMINATE for intercompany
+        amount_calc = build_consolidate_amount(target_sub)
         
         net_income_query = f"""
             SELECT 
                 SUM(cons_amt) AS net_income
             FROM (
                 SELECT
-                    {amount_calc}
-                    * -1 AS cons_amt
+                    {amount_calc} * -1 AS cons_amt
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -4614,8 +4597,9 @@ def calculate_cta():
     - Balance Sheet translation (period-end exchange rate)
     - P&L translation (average/historical exchange rate)
     
-    Approach: Query accounts designated as CTA (typically account name contains 
-    'translation' or 'CTA')
+    Approach: Query CTA accounts directly by:
+    1. Known CTA account numbers (3035, 39000)
+    2. Account names containing 'translation', 'cta', or 'elimination'
     
     Request body: {
         period: "Mar 2025",
@@ -4654,39 +4638,18 @@ def calculate_cta():
         # Use default subsidiary if none specified
         target_sub = subsidiary if subsidiary else default_subsidiary_id
         
-        # Build subsidiary filter - use t.subsidiary (Transaction table)
-        sub_where = f"AND t.subsidiary = {subsidiary}" if subsidiary else ''
+        # Build consolidation amount calculation with 'ELIMINATE' for intercompany
+        amount_calc = build_consolidate_amount(target_sub)
         
-        # Build consolidation amount calculation for CTA
-        if target_sub:
-            cta_amount_calc = f"""
-                CASE
-                    WHEN subs_count > 1 THEN
-                        TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER',
-                                'DEFAULT',
-                                'DEFAULT',
-                                {target_sub},
-                                t.postingperiod,
-                                'DEFAULT'
-                            )
-                        )
-                    ELSE tal.amount
-                END * -1
-            """
-        else:
-            cta_amount_calc = "tal.amount * -1"
-        
-        # Query accounts designated as CTA
-        # These are equity accounts with names containing translation-related terms
+        # Query CTA accounts directly
+        # CRITICAL: Include known CTA account numbers AND name patterns
+        # CTA accounts are typically equity accounts created by NetSuite for FX consolidation
         cta_query = f"""
             SELECT 
                 SUM(cons_amt) AS cta_balance
             FROM (
                 SELECT
-                    {cta_amount_calc} AS cons_amt
+                    {amount_calc} * -1 AS cons_amt
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -4699,18 +4662,19 @@ def calculate_cta():
                 WHERE t.posting = 'T'
                   AND tal.posting = 'T'
                   AND (
-                      LOWER(a.fullname) LIKE '%translation%' 
+                      a.acctnumber IN ('3035', '39000')
+                      OR LOWER(a.fullname) LIKE '%translation%' 
                       OR LOWER(a.fullname) LIKE '%cta%'
-                      OR LOWER(a.acctnumber) LIKE '%cta%'
                       OR LOWER(a.fullname) LIKE '%cumulative translation%'
+                      OR LOWER(a.fullname) LIKE '%elimination%'
                   )
+                  AND a.accttype != 'Expense'
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
-                  {sub_where}
             ) x
         """
         
-        cta_result = query_netsuite(cta_query, timeout=60)
+        cta_result = query_netsuite(cta_query, timeout=90)
         cta = 0.0
         if isinstance(cta_result, list) and len(cta_result) > 0:
             cta = float(cta_result[0].get('cta_balance') or 0)
