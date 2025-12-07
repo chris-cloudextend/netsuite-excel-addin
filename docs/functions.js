@@ -143,6 +143,10 @@ const cache = {
     parent: new Map()      // parent account cache
 };
 
+// In-flight request tracking for expensive calculations (RE, NI, CTA)
+// This prevents duplicate concurrent API calls for the same period
+const inFlightRequests = new Map();
+
 // Track last access time to implement LRU if needed
 const cacheStats = {
     hits: 0,
@@ -2819,42 +2823,60 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
             return cache.balance.get(cacheKey);
         }
         
+        // Check if there's already a request in-flight for this exact key
+        // This prevents duplicate API calls when Excel evaluates the formula multiple times
+        if (inFlightRequests.has(cacheKey)) {
+            console.log(`⏳ Waiting for in-flight request [retained earnings]: ${period}`);
+            return await inFlightRequests.get(cacheKey);
+        }
+        
         cacheStats.misses++;
         console.log(`📥 Calculating Retained Earnings for ${period}...`);
         
-        try {
-            const response = await fetch(`${SERVER_URL}/retained-earnings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    period,
-                    subsidiary,
-                    accountingBook,
-                    classId,
-                    department,
-                    location
-                })
-            });
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Retained Earnings API error: ${response.status}`, errorText);
+        // Create the promise and store it BEFORE awaiting
+        const requestPromise = (async () => {
+            try {
+                const response = await fetch(`${SERVER_URL}/retained-earnings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        period,
+                        subsidiary,
+                        accountingBook,
+                        classId,
+                        department,
+                        location
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`Retained Earnings API error: ${response.status}`, errorText);
+                    return 0;
+                }
+                
+                const data = await response.json();
+                const value = parseFloat(data.value) || 0;
+                
+                // Cache the result
+                cache.balance.set(cacheKey, value);
+                console.log(`✅ Retained Earnings (${period}): ${value.toLocaleString()}`);
+                
+                return value;
+                
+            } catch (error) {
+                console.error('Retained Earnings fetch error:', error);
                 return 0;
+            } finally {
+                // Remove from in-flight after completion
+                inFlightRequests.delete(cacheKey);
             }
-            
-            const data = await response.json();
-            const value = parseFloat(data.value) || 0;
-            
-            // Cache the result
-            cache.balance.set(cacheKey, value);
-            console.log(`✅ Retained Earnings (${period}): ${value.toLocaleString()}`);
-            
-            return value;
-            
-        } catch (error) {
-            console.error('Retained Earnings fetch error:', error);
-            return 0;
-        }
+        })();
+        
+        // Store the promise for deduplication
+        inFlightRequests.set(cacheKey, requestPromise);
+        
+        return await requestPromise;
         
     } catch (error) {
         console.error('RETAINEDEARNINGS error:', error);
@@ -2907,42 +2929,56 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
             return cache.balance.get(cacheKey);
         }
         
+        // Check if there's already a request in-flight for this exact key
+        if (inFlightRequests.has(cacheKey)) {
+            console.log(`⏳ Waiting for in-flight request [net income]: ${period}`);
+            return await inFlightRequests.get(cacheKey);
+        }
+        
         cacheStats.misses++;
         console.log(`📥 Calculating Net Income for ${period}...`);
         
-        try {
-            const response = await fetch(`${SERVER_URL}/net-income`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    period,
-                    subsidiary,
-                    accountingBook,
-                    classId,
-                    department,
-                    location
-                })
-            });
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`Net Income API error: ${response.status}`, errorText);
+        // Create the promise and store it BEFORE awaiting
+        const requestPromise = (async () => {
+            try {
+                const response = await fetch(`${SERVER_URL}/net-income`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        period,
+                        subsidiary,
+                        accountingBook,
+                        classId,
+                        department,
+                        location
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`Net Income API error: ${response.status}`, errorText);
+                    return 0;
+                }
+                
+                const data = await response.json();
+                const value = parseFloat(data.value) || 0;
+                
+                // Cache the result
+                cache.balance.set(cacheKey, value);
+                console.log(`✅ Net Income (${period}): ${value.toLocaleString()}`);
+                
+                return value;
+                
+            } catch (error) {
+                console.error('Net Income fetch error:', error);
                 return 0;
+            } finally {
+                inFlightRequests.delete(cacheKey);
             }
-            
-            const data = await response.json();
-            const value = parseFloat(data.value) || 0;
-            
-            // Cache the result
-            cache.balance.set(cacheKey, value);
-            console.log(`✅ Net Income (${period}): ${value.toLocaleString()}`);
-            
-            return value;
-            
-        } catch (error) {
-            console.error('Net Income fetch error:', error);
-            return 0;
-        }
+        })();
+        
+        inFlightRequests.set(cacheKey, requestPromise);
+        return await requestPromise;
         
     } catch (error) {
         console.error('NETINCOME error:', error);
@@ -2989,39 +3025,53 @@ async function CTA(period, subsidiary, accountingBook) {
             return cache.balance.get(cacheKey);
         }
         
+        // Check if there's already a request in-flight for this exact key
+        if (inFlightRequests.has(cacheKey)) {
+            console.log(`⏳ Waiting for in-flight request [CTA]: ${period}`);
+            return await inFlightRequests.get(cacheKey);
+        }
+        
         cacheStats.misses++;
         console.log(`📥 Calculating CTA for ${period}...`);
         
-        try {
-            const response = await fetch(`${SERVER_URL}/cta`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    period,
-                    subsidiary,
-                    accountingBook
-                })
-            });
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`CTA API error: ${response.status}`, errorText);
+        // Create the promise and store it BEFORE awaiting
+        const requestPromise = (async () => {
+            try {
+                const response = await fetch(`${SERVER_URL}/cta`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        period,
+                        subsidiary,
+                        accountingBook
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`CTA API error: ${response.status}`, errorText);
+                    return 0;
+                }
+                
+                const data = await response.json();
+                const value = parseFloat(data.value) || 0;
+                
+                // Cache the result
+                cache.balance.set(cacheKey, value);
+                console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
+                
+                return value;
+                
+            } catch (error) {
+                console.error('CTA fetch error:', error);
                 return 0;
+            } finally {
+                inFlightRequests.delete(cacheKey);
             }
-            
-            const data = await response.json();
-            const value = parseFloat(data.value) || 0;
-            
-            // Cache the result
-            cache.balance.set(cacheKey, value);
-            console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
-            
-            return value;
-            
-        } catch (error) {
-            console.error('CTA fetch error:', error);
-            return 0;
-        }
+        })();
+        
+        inFlightRequests.set(cacheKey, requestPromise);
+        return await requestPromise;
         
     } catch (error) {
         console.error('CTA error:', error);
@@ -3043,8 +3093,10 @@ function CLEARCACHE(itemsJson) {
     console.log('🔧 CLEARCACHE called with:', itemsJson);
     
     try {
-        if (!itemsJson || itemsJson === '' || itemsJson === 'ALL') {
-            // Clear ALL caches
+        // IMPORTANT: Only clear ALL caches when explicitly requested with "ALL"
+        // This prevents accidental cache clearing during calculations
+        if (itemsJson === 'ALL') {
+            // Clear ALL caches - explicit request only
             cache.balance.clear();
             cache.title.clear();
             cache.budget.clear();
@@ -3053,8 +3105,12 @@ function CLEARCACHE(itemsJson) {
             if (fullYearCache) {
                 Object.keys(fullYearCache).forEach(k => delete fullYearCache[k]);
             }
-            console.log('🗑️ Cleared ALL in-memory caches');
+            console.log('🗑️ Cleared ALL in-memory caches (explicit ALL request)');
             return 'CLEARED_ALL';
+        } else if (!itemsJson || itemsJson === '' || itemsJson === null) {
+            // Empty/null call - do nothing (prevents accidental clearing)
+            console.log('⚠️ CLEARCACHE called with empty/null - ignoring (use "ALL" to clear everything)');
+            return 'IGNORED';
         } else {
             // Clear specific items
             const items = JSON.parse(itemsJson);
