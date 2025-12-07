@@ -4619,11 +4619,13 @@ def calculate_net_income():
 @app.route('/cta', methods=['POST'])
 def calculate_cta():
     """
-    Calculate Cumulative Translation Adjustment (CTA)
+    Calculate Cumulative Translation Adjustment (CTA) using the PLUG METHOD
     
-    CTA is the "plug" figure that forces the Balance Sheet to balance after
-    multi-currency consolidation. Query CTA accounts directly (account 39000
-    and any accounts with "translation" or "CTA" in the name).
+    CTA = (Total Assets - Total Liabilities) - Posted Equity - RE - NI
+    
+    This is the only way to get 100% accuracy because NetSuite calculates
+    additional translation adjustments at runtime that are never posted to accounts.
+    The plug method guarantees the Balance Sheet balances.
     
     Request body: {
         period: "Mar 2025",
@@ -4637,7 +4639,7 @@ def calculate_cta():
         subsidiary_param = params.get('subsidiary', '')
         accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
         
-        print(f"📊 Calculating CTA for {period_name}")
+        print(f"📊 Calculating CTA (PLUG METHOD) for {period_name}")
         
         # Resolve subsidiary name to ID if needed
         subsidiary = resolve_subsidiary_id(subsidiary_param) if subsidiary_param else None
@@ -4646,95 +4648,211 @@ def calculate_cta():
         else:
             print(f"   Subsidiary: {subsidiary_param} → ID {subsidiary}")
         
-        # Get period end date
+        # Get period info
         fy_info = get_fiscal_year_for_period(period_name, accountingbook)
         if not fy_info:
             return jsonify({'error': f'Could not find period {period_name}'}), 400
         
         period_end = fy_info['period_end']
+        fy_start = fy_info['fy_start']
         
         from datetime import datetime
         try:
             period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
         except:
             period_end_date = period_end
+        try:
+            fy_start_date = datetime.strptime(fy_start, '%m/%d/%Y').strftime('%Y-%m-%d')
+        except:
+            fy_start_date = fy_start
         
         # Use default subsidiary if none specified
         target_sub = subsidiary if subsidiary else default_subsidiary_id
         
-        # Build consolidation amount calculation
-        amount_calc = build_consolidate_amount(target_sub)
+        # Define account type groups
+        # Asset types: debit balance positive (no flip)
+        asset_types = "'Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense', 'UnbilledRec'"
+        # Liability types: credit balance (flip to positive for display)
+        liability_types = "'AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue'"
         
-        # Find CTA accounts dynamically by name pattern (works across any NetSuite account)
-        # CTA accounts typically have "translation", "CTA", or "cumulative translation" in their name
-        # They are equity accounts used for multi-currency consolidation adjustments
-        cta_accounts_query = """
-            SELECT acctnumber FROM account 
-            WHERE accttype IN ('Equity', 'OthAsset', 'OthCurrLiab')
-              AND (
-                  LOWER(fullname) LIKE '%translation%'
-                  OR LOWER(fullname) LIKE '%cta%'
-                  OR LOWER(fullname) LIKE '%cumulative translation%'
-                  OR LOWER(fullname) LIKE '%currency adjustment%'
-                  OR LOWER(fullname) LIKE '%fx adjustment%'
-              )
+        # Build consolidation SQL
+        if target_sub:
+            cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, t.postingperiod, 'DEFAULT'))"""
+        else:
+            cons_amount = "tal.amount"
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # STEP 1: Query Total Assets
+        # ═══════════════════════════════════════════════════════════════════════
+        print(f"   [1/5] Querying Total Assets...")
+        assets_query = f"""
+            SELECT SUM({cons_amount}) AS total_assets
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ({asset_types})
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
         """
-        cta_accounts_result = query_netsuite(cta_accounts_query, timeout=15)
-        cta_account_numbers = []
-        if isinstance(cta_accounts_result, list):
-            cta_account_numbers = [str(acc.get('acctnumber')) for acc in cta_accounts_result if acc.get('acctnumber')]
-        print(f"   Found CTA accounts (dynamic discovery): {cta_account_numbers}")
+        assets_result = query_netsuite(assets_query, timeout=120)
+        total_assets = 0.0
+        if isinstance(assets_result, list) and len(assets_result) > 0:
+            total_assets = float(assets_result[0].get('total_assets') or 0)
+        print(f"         Total Assets: {total_assets:,.2f}")
         
-        cta = 0.0
-        if cta_account_numbers:
-            # Query CTA with consolidation - optimized query without CROSS JOIN
-            acct_list = "'" + "','".join(cta_account_numbers) + "'"
-            
-            if target_sub:
-                cta_query = f"""
-                    SELECT SUM(
-                        TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER', 'DEFAULT', 'DEFAULT',
-                                {target_sub}, t.postingperiod, 'DEFAULT'
-                            )
-                        ) * -1
-                    ) AS cta_balance
-                    FROM transactionaccountingline tal
-                    JOIN transaction t ON t.id = tal.transaction
-                    JOIN account a ON a.id = tal.account
-                    JOIN accountingperiod ap ON ap.id = t.postingperiod
-                    WHERE t.posting = 'T'
-                      AND tal.posting = 'T'
-                      AND a.acctnumber IN ({acct_list})
-                      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-                      AND tal.accountingbook = {accountingbook}
-                """
-            else:
-                cta_query = f"""
-                    SELECT SUM(tal.amount * -1) AS cta_balance
-                    FROM transactionaccountingline tal
-                    JOIN transaction t ON t.id = tal.transaction
-                    JOIN account a ON a.id = tal.account
-                    JOIN accountingperiod ap ON ap.id = t.postingperiod
-                    WHERE t.posting = 'T'
-                      AND tal.posting = 'T'
-                      AND a.acctnumber IN ({acct_list})
-                      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-                      AND tal.accountingbook = {accountingbook}
-                """
-            
-            cta_result = query_netsuite(cta_query, timeout=120)
-            if isinstance(cta_result, list) and len(cta_result) > 0:
-                cta = float(cta_result[0].get('cta_balance') or 0)
+        # ═══════════════════════════════════════════════════════════════════════
+        # STEP 2: Query Total Liabilities (flip sign for display)
+        # ═══════════════════════════════════════════════════════════════════════
+        print(f"   [2/5] Querying Total Liabilities...")
+        liabilities_query = f"""
+            SELECT SUM({cons_amount} * -1) AS total_liabilities
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ({liability_types})
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+        """
+        liabilities_result = query_netsuite(liabilities_query, timeout=120)
+        total_liabilities = 0.0
+        if isinstance(liabilities_result, list) and len(liabilities_result) > 0:
+            total_liabilities = float(liabilities_result[0].get('total_liabilities') or 0)
+        print(f"         Total Liabilities: {total_liabilities:,.2f}")
         
-        print(f"   ✅ CTA: {cta:,.2f}")
+        # Total Equity = Assets - Liabilities
+        total_equity = total_assets - total_liabilities
+        print(f"         Total Equity (A-L): {total_equity:,.2f}")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # STEP 3: Query Posted Equity (EXCLUDING RE, NI, CTA accounts)
+        # ═══════════════════════════════════════════════════════════════════════
+        print(f"   [3/5] Querying Posted Equity...")
+        posted_equity_query = f"""
+            SELECT SUM({cons_amount} * -1) AS posted_equity
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ('Equity', 'RetainedEarnings')
+              AND LOWER(a.fullname) NOT LIKE '%retained earnings%'
+              AND LOWER(a.fullname) NOT LIKE '%translation%'
+              AND LOWER(a.fullname) NOT LIKE '%cta%'
+              AND LOWER(a.fullname) NOT LIKE '%net income%'
+              AND LOWER(a.fullname) NOT LIKE '%cumulative translation%'
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+        """
+        posted_equity_result = query_netsuite(posted_equity_query, timeout=120)
+        posted_equity = 0.0
+        if isinstance(posted_equity_result, list) and len(posted_equity_result) > 0:
+            posted_equity = float(posted_equity_result[0].get('posted_equity') or 0)
+        print(f"         Posted Equity: {posted_equity:,.2f}")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # STEP 4: Calculate Retained Earnings (prior years P&L + posted RE)
+        # ═══════════════════════════════════════════════════════════════════════
+        print(f"   [4/5] Calculating Retained Earnings...")
+        
+        # Part A: Prior years P&L
+        prior_pl_query = f"""
+            SELECT SUM({cons_amount} * -1) AS prior_pl
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ({PL_TYPES_SQL})
+              AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+        """
+        prior_pl_result = query_netsuite(prior_pl_query, timeout=120)
+        prior_pl = 0.0
+        if isinstance(prior_pl_result, list) and len(prior_pl_result) > 0:
+            prior_pl = float(prior_pl_result[0].get('prior_pl') or 0)
+        
+        # Part B: Posted RE account adjustments
+        posted_re_query = f"""
+            SELECT SUM({cons_amount} * -1) AS posted_re
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+        """
+        posted_re_result = query_netsuite(posted_re_query, timeout=120)
+        posted_re = 0.0
+        if isinstance(posted_re_result, list) and len(posted_re_result) > 0:
+            posted_re = float(posted_re_result[0].get('posted_re') or 0)
+        
+        retained_earnings = prior_pl + posted_re
+        print(f"         Prior Years P&L: {prior_pl:,.2f}")
+        print(f"         Posted RE: {posted_re:,.2f}")
+        print(f"         Retained Earnings: {retained_earnings:,.2f}")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # STEP 5: Calculate Net Income (current FY P&L)
+        # ═══════════════════════════════════════════════════════════════════════
+        print(f"   [5/5] Calculating Net Income...")
+        ni_query = f"""
+            SELECT SUM({cons_amount} * -1) AS net_income
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ({PL_TYPES_SQL})
+              AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+        """
+        ni_result = query_netsuite(ni_query, timeout=120)
+        net_income = 0.0
+        if isinstance(ni_result, list) and len(ni_result) > 0:
+            net_income = float(ni_result[0].get('net_income') or 0)
+        print(f"         Net Income: {net_income:,.2f}")
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # FINAL: Calculate CTA as PLUG
+        # CTA = Total Equity - Posted Equity - RE - NI
+        # ═══════════════════════════════════════════════════════════════════════
+        cta = total_equity - posted_equity - retained_earnings - net_income
+        
+        print(f"\n   ╔═══════════════════════════════════════════════════════════╗")
+        print(f"   ║  CTA PLUG CALCULATION                                     ║")
+        print(f"   ╠═══════════════════════════════════════════════════════════╣")
+        print(f"   ║  Total Equity (A-L):     {total_equity:>20,.2f}        ║")
+        print(f"   ║  - Posted Equity:        {posted_equity:>20,.2f}        ║")
+        print(f"   ║  - Retained Earnings:    {retained_earnings:>20,.2f}        ║")
+        print(f"   ║  - Net Income:           {net_income:>20,.2f}        ║")
+        print(f"   ║  ─────────────────────────────────────────────────────    ║")
+        print(f"   ║  = CTA (plug):           {cta:>20,.2f}        ║")
+        print(f"   ╚═══════════════════════════════════════════════════════════╝")
         
         return jsonify({
             'value': cta,
             'period': period_name,
-            'accounts': cta_account_numbers
+            'components': {
+                'total_assets': total_assets,
+                'total_liabilities': total_liabilities,
+                'total_equity': total_equity,
+                'posted_equity': posted_equity,
+                'retained_earnings': retained_earnings,
+                'net_income': net_income
+            }
         })
         
     except Exception as e:
