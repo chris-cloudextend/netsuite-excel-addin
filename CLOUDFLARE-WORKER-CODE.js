@@ -9,15 +9,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://humanities-initiatives-plymouth-experiments.trycloudflare.com
+// CURRENT TUNNEL URL: https://mold-dresses-knowledgestorm-involve.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 6, 2025 - 1:54 PM
+// Last Updated: Dec 7, 2025 - Multi-Book Accounting support
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://humanities-initiatives-plymouth-experiments.trycloudflare.com';
+    const TUNNEL_URL = 'https://mold-dresses-knowledgestorm-involve.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {

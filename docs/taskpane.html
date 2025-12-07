@@ -1910,7 +1910,7 @@
                     <div class="filter-group">
                         <label class="filter-label">Accounting Book <span style="font-size:10px;color:#888;">(Multi-Book)</span></label>
                         <select id="accountingBookSelect" class="filter-select">
-                            <option value="">Primary Book (Default)</option>
+                            <option value="1">Primary Book (Default)</option>
                         </select>
                         <button class="btn-filter" onclick="insertLookupValue('accountingBook')">Insert</button>
                     </div>
@@ -3636,8 +3636,9 @@ export default {
                 
                 // Populate accounting book dropdown - Show NAMES, use IDs as values
                 // Multi-Book Accounting: Primary Book, Secondary Books (GAAP, IFRS, Tax, etc.)
+                // Note: value="1" is the Primary Book ID in NetSuite
                 const bookSelect = document.getElementById('accountingBookSelect');
-                bookSelect.innerHTML = '<option value="">Primary Book (Default)</option>';
+                bookSelect.innerHTML = '<option value="1">Primary Book (Default)</option>';
                 (data.accountingBooks || []).forEach(item => {
                     const option = document.createElement('option');
                     option.value = item.id;  // Use ID as value (backend expects numeric ID)
@@ -3688,12 +3689,16 @@ export default {
                 await Excel.run(async (context) => {
                     const range = context.workbook.getSelectedRange();
                     
-                    // Insert the NAME (backend will convert to ID automatically!)
-                    range.values = [[selectedValue]];  // Name or empty string
+                    // Insert the value (NAME for most filters, ID for accounting book)
+                    range.values = [[selectedValue]];
                     await context.sync();
                     
                     if (selectedValue === '') {
                         statusEl.textContent = `✓ Inserted: All ${typeName}s (no filter)`;
+                    } else if (type === 'accountingBook') {
+                        // For accounting book, show the selected text not the ID
+                        const selectedText = select.options[select.selectedIndex].text;
+                        statusEl.textContent = `✓ Inserted ${typeName} ID: ${selectedValue} (${selectedText})`;
                     } else {
                         statusEl.textContent = `✓ Inserted ${typeName}: "${selectedValue}"`;
                     }
