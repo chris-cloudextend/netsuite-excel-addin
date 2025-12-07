@@ -232,6 +232,159 @@
         "cancelable": false,
         "volatile": true
       }
+    },
+    {
+      "id": "RETAINEDEARNINGS",
+      "name": "RETAINEDEARNINGS",
+      "description": "Get calculated retained earnings (prior years' cumulative P&L). NetSuite calculates this dynamically - no account number needed.",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "number",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "period",
+          "description": "Accounting period (e.g., \"Mar 2025\")",
+          "type": "any",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "subsidiary",
+          "description": "Subsidiary ID (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "accountingBook",
+          "description": "Accounting Book ID (optional, defaults to Primary Book)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "classId",
+          "description": "Class filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "department",
+          "description": "Department filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "location",
+          "description": "Location filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": false,
+        "volatile": false
+      }
+    },
+    {
+      "id": "NETINCOME",
+      "name": "NETINCOME",
+      "description": "Get current fiscal year net income through target period. NetSuite calculates this dynamically - no account number needed.",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "number",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "period",
+          "description": "Accounting period (e.g., \"Mar 2025\")",
+          "type": "any",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "subsidiary",
+          "description": "Subsidiary ID (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "accountingBook",
+          "description": "Accounting Book ID (optional, defaults to Primary Book)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "classId",
+          "description": "Class filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "department",
+          "description": "Department filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "location",
+          "description": "Location filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": false,
+        "volatile": false
+      }
+    },
+    {
+      "id": "CTA",
+      "name": "CTA",
+      "description": "Get cumulative translation adjustment for consolidated multi-currency reports. This is a 'plug' figure that balances the Balance Sheet after currency translation.",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "number",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "period",
+          "description": "Accounting period (e.g., \"Mar 2025\")",
+          "type": "any",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "subsidiary",
+          "description": "Subsidiary ID (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "accountingBook",
+          "description": "Accounting Book ID (optional, defaults to Primary Book)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": false,
+        "volatile": false
+      }
     }
   ]
 }

@@ -2775,6 +2775,261 @@ function expandPeriodRange(fromPeriod, toPeriod) {
 // (Old streaming functions removed - not needed for Phase 3 non-streaming async)
 
 // ============================================================================
+// RETAINEDEARNINGS - Calculate prior years' cumulative P&L (no account number)
+// NetSuite calculates this dynamically at report runtime
+// ============================================================================
+/**
+ * Get calculated retained earnings (prior years' cumulative P&L).
+ * NetSuite calculates this dynamically - there is no account number to query.
+ * RE = Sum of all P&L from inception through prior fiscal year end + posted RE adjustments.
+ * 
+ * @customfunction RETAINEDEARNINGS
+ * @param {any} period Accounting period (e.g., "Mar 2025")
+ * @param {any} [subsidiary] Subsidiary ID (optional)
+ * @param {any} [accountingBook] Accounting Book ID (optional, defaults to Primary Book)
+ * @param {any} [classId] Class filter (optional)
+ * @param {any} [department] Department filter (optional)
+ * @param {any} [location] Location filter (optional)
+ * @returns {Promise<number>} Retained earnings value
+ */
+async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, department, location) {
+    try {
+        // Convert date values to "Mon YYYY" format
+        period = convertToMonthYear(period);
+        
+        if (!period) {
+            console.error('RETAINEDEARNINGS: period is required');
+            return 0;
+        }
+        
+        // Normalize optional parameters
+        subsidiary = String(subsidiary || '').trim();
+        accountingBook = String(accountingBook || '').trim();
+        classId = String(classId || '').trim();
+        department = String(department || '').trim();
+        location = String(location || '').trim();
+        
+        // Build cache key
+        const cacheKey = `retainedearnings:${period}:${subsidiary}:${accountingBook}:${classId}:${department}:${location}`;
+        
+        // Check cache first
+        if (cache.balance.has(cacheKey)) {
+            cacheStats.hits++;
+            console.log(`📥 CACHE HIT [retained earnings]: ${period}`);
+            return cache.balance.get(cacheKey);
+        }
+        
+        cacheStats.misses++;
+        console.log(`📥 Calculating Retained Earnings for ${period}...`);
+        
+        try {
+            const response = await fetch(`${SERVER_URL}/retained-earnings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    period,
+                    subsidiary,
+                    accountingBook,
+                    classId,
+                    department,
+                    location
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Retained Earnings API error: ${response.status}`, errorText);
+                return 0;
+            }
+            
+            const data = await response.json();
+            const value = parseFloat(data.value) || 0;
+            
+            // Cache the result
+            cache.balance.set(cacheKey, value);
+            console.log(`✅ Retained Earnings (${period}): ${value.toLocaleString()}`);
+            
+            return value;
+            
+        } catch (error) {
+            console.error('Retained Earnings fetch error:', error);
+            return 0;
+        }
+        
+    } catch (error) {
+        console.error('RETAINEDEARNINGS error:', error);
+        return 0;
+    }
+}
+
+// ============================================================================
+// NETINCOME - Calculate current fiscal year net income (no account number)
+// NetSuite calculates this dynamically at report runtime
+// ============================================================================
+/**
+ * Get current fiscal year net income through target period.
+ * NetSuite calculates this dynamically - there is no account number to query.
+ * NI = Sum of all P&L from fiscal year start through target period end.
+ * 
+ * @customfunction NETINCOME
+ * @param {any} period Accounting period (e.g., "Mar 2025")
+ * @param {any} [subsidiary] Subsidiary ID (optional)
+ * @param {any} [accountingBook] Accounting Book ID (optional, defaults to Primary Book)
+ * @param {any} [classId] Class filter (optional)
+ * @param {any} [department] Department filter (optional)
+ * @param {any} [location] Location filter (optional)
+ * @returns {Promise<number>} Net income value
+ */
+async function NETINCOME(period, subsidiary, accountingBook, classId, department, location) {
+    try {
+        // Convert date values to "Mon YYYY" format
+        period = convertToMonthYear(period);
+        
+        if (!period) {
+            console.error('NETINCOME: period is required');
+            return 0;
+        }
+        
+        // Normalize optional parameters
+        subsidiary = String(subsidiary || '').trim();
+        accountingBook = String(accountingBook || '').trim();
+        classId = String(classId || '').trim();
+        department = String(department || '').trim();
+        location = String(location || '').trim();
+        
+        // Build cache key
+        const cacheKey = `netincome:${period}:${subsidiary}:${accountingBook}:${classId}:${department}:${location}`;
+        
+        // Check cache first
+        if (cache.balance.has(cacheKey)) {
+            cacheStats.hits++;
+            console.log(`📥 CACHE HIT [net income]: ${period}`);
+            return cache.balance.get(cacheKey);
+        }
+        
+        cacheStats.misses++;
+        console.log(`📥 Calculating Net Income for ${period}...`);
+        
+        try {
+            const response = await fetch(`${SERVER_URL}/net-income`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    period,
+                    subsidiary,
+                    accountingBook,
+                    classId,
+                    department,
+                    location
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Net Income API error: ${response.status}`, errorText);
+                return 0;
+            }
+            
+            const data = await response.json();
+            const value = parseFloat(data.value) || 0;
+            
+            // Cache the result
+            cache.balance.set(cacheKey, value);
+            console.log(`✅ Net Income (${period}): ${value.toLocaleString()}`);
+            
+            return value;
+            
+        } catch (error) {
+            console.error('Net Income fetch error:', error);
+            return 0;
+        }
+        
+    } catch (error) {
+        console.error('NETINCOME error:', error);
+        return 0;
+    }
+}
+
+// ============================================================================
+// CTA - Calculate Cumulative Translation Adjustment (multi-currency plug)
+// This is the balancing figure after currency translation in consolidation
+// ============================================================================
+/**
+ * Get cumulative translation adjustment for consolidated multi-currency reports.
+ * This is a "plug" figure that forces the Balance Sheet to balance after currency translation.
+ * Note: CTA omits segment filters because translation adjustments apply at entity level.
+ * 
+ * @customfunction CTA
+ * @param {any} period Accounting period (e.g., "Mar 2025")
+ * @param {any} [subsidiary] Subsidiary ID (optional)
+ * @param {any} [accountingBook] Accounting Book ID (optional, defaults to Primary Book)
+ * @returns {Promise<number>} CTA value
+ */
+async function CTA(period, subsidiary, accountingBook) {
+    try {
+        // Convert date values to "Mon YYYY" format
+        period = convertToMonthYear(period);
+        
+        if (!period) {
+            console.error('CTA: period is required');
+            return 0;
+        }
+        
+        // Normalize optional parameters
+        subsidiary = String(subsidiary || '').trim();
+        accountingBook = String(accountingBook || '').trim();
+        
+        // Build cache key (no segment filters for CTA - entity level only)
+        const cacheKey = `cta:${period}:${subsidiary}:${accountingBook}`;
+        
+        // Check cache first
+        if (cache.balance.has(cacheKey)) {
+            cacheStats.hits++;
+            console.log(`📥 CACHE HIT [CTA]: ${period}`);
+            return cache.balance.get(cacheKey);
+        }
+        
+        cacheStats.misses++;
+        console.log(`📥 Calculating CTA for ${period}...`);
+        
+        try {
+            const response = await fetch(`${SERVER_URL}/cta`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    period,
+                    subsidiary,
+                    accountingBook
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`CTA API error: ${response.status}`, errorText);
+                return 0;
+            }
+            
+            const data = await response.json();
+            const value = parseFloat(data.value) || 0;
+            
+            // Cache the result
+            cache.balance.set(cacheKey, value);
+            console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
+            
+            return value;
+            
+        } catch (error) {
+            console.error('CTA fetch error:', error);
+            return 0;
+        }
+        
+    } catch (error) {
+        console.error('CTA error:', error);
+        return 0;
+    }
+}
+
+// ============================================================================
 // CLEARCACHE - Internal function to clear caches from taskpane
 // Called via Excel.evaluate("=NS.CLEARCACHE(items)") from taskpane
 // ============================================================================
@@ -2861,6 +3116,9 @@ if (typeof CustomFunctions !== 'undefined') {
     CustomFunctions.associate('PARENT', PARENT);
     CustomFunctions.associate('BALANCE', BALANCE);
     CustomFunctions.associate('BUDGET', BUDGET);
+    CustomFunctions.associate('RETAINEDEARNINGS', RETAINEDEARNINGS);
+    CustomFunctions.associate('NETINCOME', NETINCOME);
+    CustomFunctions.associate('CTA', CTA);
     CustomFunctions.associate('CLEARCACHE', CLEARCACHE);
     console.log('✅ Custom functions registered with Excel');
 } else {

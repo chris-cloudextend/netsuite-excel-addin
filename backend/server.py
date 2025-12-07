@@ -4133,6 +4133,408 @@ def get_all_lookups():
         return jsonify({'error': str(e)}), 500
 
 
+# ============================================================================
+# RETAINED EARNINGS, NET INCOME, and CTA CALCULATIONS
+# These equity line items are calculated by NetSuite at runtime - no account to query
+# ============================================================================
+
+def get_fiscal_year_for_period(period_name, accountingbook=None):
+    """
+    Get the fiscal year containing the specified period.
+    Works for any fiscal calendar (calendar year, Apr-Mar, etc.)
+    
+    Args:
+        period_name: Period name like "Mar 2025"
+        accountingbook: Accounting book ID (optional)
+        
+    Returns:
+        dict with: fiscal_year_id, fy_start, fy_end, period_id, period_start, period_end
+        or None if not found
+    """
+    query = f"""
+        SELECT 
+            fy.id AS fiscal_year_id,
+            fy.startdate AS fy_start,
+            fy.enddate AS fy_end,
+            tp.id AS period_id,
+            tp.startdate AS period_start,
+            tp.enddate AS period_end
+        FROM accountingperiod tp
+        JOIN accountingperiod fy 
+            ON fy.isyear = 'T'
+            AND fy.startdate <= tp.enddate
+            AND fy.enddate >= tp.startdate
+        WHERE LOWER(tp.periodname) = LOWER('{escape_sql(period_name)}')
+          AND tp.isquarter = 'F'
+          AND tp.isyear = 'F'
+        ORDER BY fy.enddate ASC
+        FETCH FIRST 1 ROWS ONLY
+    """
+    
+    result = query_netsuite(query)
+    if isinstance(result, list) and len(result) > 0:
+        row = result[0]
+        return {
+            'fiscal_year_id': row.get('fiscal_year_id'),
+            'fy_start': row.get('fy_start'),
+            'fy_end': row.get('fy_end'),
+            'period_id': row.get('period_id'),
+            'period_start': row.get('period_start'),
+            'period_end': row.get('period_end')
+        }
+    return None
+
+
+def build_segment_filter(filters, prefix='tal'):
+    """Build WHERE clause additions for segment filters (class, dept, location)"""
+    clauses = []
+    if filters.get('subsidiary'):
+        clauses.append(f"{prefix}.subsidiary = {filters['subsidiary']}")
+    if filters.get('department'):
+        clauses.append(f"{prefix}.department = {filters['department']}")
+    if filters.get('location'):
+        clauses.append(f"{prefix}.location = {filters['location']}")
+    if filters.get('classId'):
+        clauses.append(f"{prefix}.class = {filters['classId']}")
+    return ' AND '.join(clauses) if clauses else ''
+
+
+@app.route('/retained-earnings', methods=['POST'])
+def calculate_retained_earnings():
+    """
+    Calculate Retained Earnings (prior years' cumulative P&L)
+    
+    RE = Sum of all P&L transactions from inception through prior fiscal year end
+       + Any manual journal entries posted directly to RetainedEarnings accounts
+    
+    Request body: {
+        period: "Mar 2025",
+        subsidiary: "1" (optional),
+        accountingBook: "1" (optional),
+        classId: "1" (optional),
+        department: "1" (optional),
+        location: "1" (optional)
+    }
+    """
+    try:
+        params = request.json or {}
+        period_name = params.get('period', '')
+        subsidiary = params.get('subsidiary', '')
+        accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
+        classId = params.get('classId', '')
+        department = params.get('department', '')
+        location = params.get('location', '')
+        
+        print(f"📊 Calculating Retained Earnings for {period_name}")
+        
+        # Step 1: Get fiscal year boundaries for this period
+        fy_info = get_fiscal_year_for_period(period_name, accountingbook)
+        if not fy_info:
+            return jsonify({'error': f'Could not find fiscal year for period {period_name}'}), 400
+        
+        fy_start = fy_info['fy_start']
+        print(f"   Fiscal year starts: {fy_start}")
+        
+        # Build segment filters
+        segment_filters = []
+        if subsidiary:
+            segment_filters.append(f"tal.subsidiary = {subsidiary}")
+        if department:
+            segment_filters.append(f"tal.department = {department}")
+        if location:
+            segment_filters.append(f"tal.location = {location}")
+        if classId:
+            segment_filters.append(f"tal.class = {classId}")
+        
+        segment_where = ' AND ' + ' AND '.join(segment_filters) if segment_filters else ''
+        
+        # Determine if we need consolidation
+        target_sub = subsidiary if subsidiary else default_subsidiary_id
+        
+        # Parse fy_start date for comparison
+        from datetime import datetime
+        try:
+            fy_start_date = datetime.strptime(fy_start, '%m/%d/%Y').strftime('%Y-%m-%d')
+        except:
+            fy_start_date = fy_start
+        
+        # Step 2: Sum prior years' P&L
+        # Query all Income/Expense transactions from inception through the day before FY started
+        # Income amounts are stored negative (credits), flip to positive
+        # Expense amounts are stored positive (debits), flip to negative for net income calc
+        # Net Income = Revenue - Expenses, so we flip income to + and expenses to -
+        prior_pl_query = f"""
+            SELECT 
+                SUM(
+                    CASE 
+                        WHEN a.accttype IN ('Income', 'OthIncome') THEN tal.amount * -1
+                        WHEN a.accttype IN ({PL_TYPES_SQL}) THEN tal.amount * -1
+                        ELSE 0
+                    END
+                ) AS prior_years_pl
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ({PL_TYPES_SQL})
+              AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+              {segment_where}
+        """
+        
+        prior_pl_result = query_netsuite(prior_pl_query, timeout=120)
+        prior_pl = 0.0
+        if isinstance(prior_pl_result, list) and len(prior_pl_result) > 0:
+            prior_pl = float(prior_pl_result[0].get('prior_years_pl') or 0)
+        
+        print(f"   Prior years P&L: {prior_pl:,.2f}")
+        
+        # Step 3: Get any posted balances in RetainedEarnings accounts
+        # Some companies have manual adjustments posted directly to RE
+        period_end = fy_info['period_end']
+        try:
+            period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
+        except:
+            period_end_date = period_end
+            
+        posted_re_query = f"""
+            SELECT 
+                SUM(tal.amount * -1) AS posted_re_adjustments
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+              {segment_where}
+        """
+        
+        posted_re_result = query_netsuite(posted_re_query, timeout=60)
+        posted_re = 0.0
+        if isinstance(posted_re_result, list) and len(posted_re_result) > 0:
+            posted_re = float(posted_re_result[0].get('posted_re_adjustments') or 0)
+        
+        print(f"   Posted RE adjustments: {posted_re:,.2f}")
+        
+        # Final RE = prior years P&L + posted RE adjustments
+        retained_earnings = prior_pl + posted_re
+        print(f"   ✅ Retained Earnings: {retained_earnings:,.2f}")
+        
+        return jsonify({
+            'value': retained_earnings,
+            'period': period_name,
+            'components': {
+                'prior_years_pl': prior_pl,
+                'posted_re_adjustments': posted_re
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Error calculating retained earnings: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/net-income', methods=['POST'])
+def calculate_net_income():
+    """
+    Calculate Net Income (current fiscal year P&L through target period)
+    
+    NI = Sum of all P&L transactions from FY start through target period end
+    
+    Request body: {
+        period: "Mar 2025",
+        subsidiary: "1" (optional),
+        accountingBook: "1" (optional),
+        classId: "1" (optional),
+        department: "1" (optional),
+        location: "1" (optional)
+    }
+    """
+    try:
+        params = request.json or {}
+        period_name = params.get('period', '')
+        subsidiary = params.get('subsidiary', '')
+        accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
+        classId = params.get('classId', '')
+        department = params.get('department', '')
+        location = params.get('location', '')
+        
+        print(f"📊 Calculating Net Income for {period_name}")
+        
+        # Step 1: Get fiscal year boundaries for this period
+        fy_info = get_fiscal_year_for_period(period_name, accountingbook)
+        if not fy_info:
+            return jsonify({'error': f'Could not find fiscal year for period {period_name}'}), 400
+        
+        fy_start = fy_info['fy_start']
+        period_end = fy_info['period_end']
+        print(f"   FY start: {fy_start}, Period end: {period_end}")
+        
+        # Build segment filters
+        segment_filters = []
+        if subsidiary:
+            segment_filters.append(f"tal.subsidiary = {subsidiary}")
+        if department:
+            segment_filters.append(f"tal.department = {department}")
+        if location:
+            segment_filters.append(f"tal.location = {location}")
+        if classId:
+            segment_filters.append(f"tal.class = {classId}")
+        
+        segment_where = ' AND ' + ' AND '.join(segment_filters) if segment_filters else ''
+        
+        # Parse dates
+        from datetime import datetime
+        try:
+            fy_start_date = datetime.strptime(fy_start, '%m/%d/%Y').strftime('%Y-%m-%d')
+        except:
+            fy_start_date = fy_start
+        try:
+            period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
+        except:
+            period_end_date = period_end
+        
+        # Step 2: Sum current FY P&L
+        # From FY start through target period end
+        # Sign convention: Revenue (stored negative) → flip to positive
+        #                  Expenses (stored positive) → flip to negative
+        # Result: Positive = profit, Negative = loss
+        net_income_query = f"""
+            SELECT 
+                SUM(
+                    CASE 
+                        WHEN a.accttype IN ('Income', 'OthIncome') THEN tal.amount * -1
+                        WHEN a.accttype IN ({PL_TYPES_SQL}) THEN tal.amount * -1
+                        ELSE 0
+                    END
+                ) AS net_income
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ({PL_TYPES_SQL})
+              AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+              {segment_where}
+        """
+        
+        ni_result = query_netsuite(net_income_query, timeout=120)
+        net_income = 0.0
+        if isinstance(ni_result, list) and len(ni_result) > 0:
+            net_income = float(ni_result[0].get('net_income') or 0)
+        
+        print(f"   ✅ Net Income: {net_income:,.2f}")
+        
+        return jsonify({
+            'value': net_income,
+            'period': period_name,
+            'fiscal_year': {
+                'start': fy_start,
+                'end': fy_info['fy_end']
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Error calculating net income: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/cta', methods=['POST'])
+def calculate_cta():
+    """
+    Calculate Cumulative Translation Adjustment (CTA)
+    
+    CTA is the "plug" figure that forces the Balance Sheet to balance after
+    multi-currency consolidation. It absorbs the difference between:
+    - Balance Sheet translation (period-end exchange rate)
+    - P&L translation (average/historical exchange rate)
+    
+    Approach: Query accounts designated as CTA (typically account name contains 
+    'translation' or 'CTA')
+    
+    Request body: {
+        period: "Mar 2025",
+        subsidiary: "1" (optional),
+        accountingBook: "1" (optional)
+    }
+    """
+    try:
+        params = request.json or {}
+        period_name = params.get('period', '')
+        subsidiary = params.get('subsidiary', '')
+        accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
+        
+        print(f"📊 Calculating CTA for {period_name}")
+        
+        # Get period end date
+        fy_info = get_fiscal_year_for_period(period_name, accountingbook)
+        if not fy_info:
+            return jsonify({'error': f'Could not find period {period_name}'}), 400
+        
+        period_end = fy_info['period_end']
+        
+        from datetime import datetime
+        try:
+            period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
+        except:
+            period_end_date = period_end
+        
+        # Build subsidiary filter
+        sub_where = f"AND tal.subsidiary = {subsidiary}" if subsidiary else ''
+        
+        # Query accounts designated as CTA
+        # These are equity accounts with names containing translation-related terms
+        cta_query = f"""
+            SELECT 
+                SUM(tal.amount * -1) AS cta_balance
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN accountingperiod ap ON ap.id = t.postingperiod
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND (
+                  LOWER(a.fullname) LIKE '%translation%' 
+                  OR LOWER(a.fullname) LIKE '%cta%'
+                  OR LOWER(a.acctnumber) LIKE '%cta%'
+                  OR LOWER(a.fullname) LIKE '%cumulative translation%'
+              )
+              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+              AND tal.accountingbook = {accountingbook}
+              {sub_where}
+        """
+        
+        cta_result = query_netsuite(cta_query, timeout=60)
+        cta = 0.0
+        if isinstance(cta_result, list) and len(cta_result) > 0:
+            cta = float(cta_result[0].get('cta_balance') or 0)
+        
+        print(f"   ✅ CTA: {cta:,.2f}")
+        
+        return jsonify({
+            'value': cta,
+            'period': period_name
+        })
+        
+    except Exception as e:
+        print(f"❌ Error calculating CTA: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     print("=" * 80)
     print("NetSuite Excel Formulas - Backend Server")
