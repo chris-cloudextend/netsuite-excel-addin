@@ -4390,48 +4390,77 @@ def calculate_retained_earnings():
         
         print(f"   Prior years P&L: {prior_pl:,.2f}")
         
-        # Step 3: Get any posted balances in RetainedEarnings accounts
-        # CRITICAL: Include BOTH accttype='RetainedEarnings' AND accounts named "Retained Earnings"
-        # Some companies have RE accounts with accttype='Equity' but name contains "retained earnings"
+        # Step 3: Get posted balances from RE-named accounts (e.g., account 39999 "Retained Earnings")
+        # CRITICAL: Query by specific account number for reliability (avoids timeouts from LIKE patterns)
         period_end = fy_info['period_end']
         try:
             period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
         except:
             period_end_date = period_end
         
-        # Use same consolidation calculation for posted RE
-        posted_re_query = f"""
-            SELECT 
-                SUM(cons_amt) AS posted_re_adjustments
-            FROM (
-                SELECT
-                    {amount_calc} * -1 AS cons_amt
-                FROM transactionaccountingline tal
-                JOIN transaction t ON t.id = tal.transaction
-                JOIN account a ON a.id = tal.account
-                JOIN accountingperiod ap ON ap.id = t.postingperiod
-                {tl_join}
-                CROSS JOIN (
-                    SELECT COUNT(*) AS subs_count
-                    FROM Subsidiary
-                    WHERE isinactive = 'F'
-                ) subs_cte
-                WHERE t.posting = 'T'
-                  AND tal.posting = 'T'
-                  AND (
-                      a.accttype = 'RetainedEarnings' 
-                      OR LOWER(a.fullname) LIKE '%retained earnings%'
-                  )
-                  AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-                  AND tal.accountingbook = {accountingbook}
-                  {segment_where}
-            ) x
+        # Find RE accounts dynamically by type and name pattern (works across any NetSuite account)
+        # RE accounts can be: accttype='RetainedEarnings' OR name contains "retained earnings"
+        re_accounts_query = """
+            SELECT acctnumber FROM account 
+            WHERE accttype = 'RetainedEarnings' 
+               OR LOWER(fullname) LIKE '%retained earnings%'
         """
+        re_accounts_result = query_netsuite(re_accounts_query, timeout=15)
+        re_account_numbers = []
+        if isinstance(re_accounts_result, list):
+            re_account_numbers = [str(acc.get('acctnumber')) for acc in re_accounts_result if acc.get('acctnumber')]
+        print(f"   Found RE accounts (dynamic discovery): {re_account_numbers}")
         
-        posted_re_result = query_netsuite(posted_re_query, timeout=60)
         posted_re = 0.0
-        if isinstance(posted_re_result, list) and len(posted_re_result) > 0:
-            posted_re = float(posted_re_result[0].get('posted_re_adjustments') or 0)
+        if re_account_numbers:
+            # Query posted RE with consolidation - optimized query without CROSS JOIN
+            # This is faster and less likely to timeout
+            acct_list = "'" + "','".join(re_account_numbers) + "'"
+            
+            # Check if multi-subsidiary
+            if target_sub:
+                posted_re_query = f"""
+                    SELECT SUM(
+                        TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            )
+                        ) * -1
+                    ) AS posted_re_adjustments
+                    FROM transactionaccountingline tal
+                    JOIN transaction t ON t.id = tal.transaction
+                    JOIN account a ON a.id = tal.account
+                    JOIN accountingperiod ap ON ap.id = t.postingperiod
+                    {tl_join}
+                    WHERE t.posting = 'T'
+                      AND tal.posting = 'T'
+                      AND a.acctnumber IN ({acct_list})
+                      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                      AND tal.accountingbook = {accountingbook}
+                      {segment_where}
+                """
+            else:
+                # No consolidation needed
+                posted_re_query = f"""
+                    SELECT SUM(tal.amount * -1) AS posted_re_adjustments
+                    FROM transactionaccountingline tal
+                    JOIN transaction t ON t.id = tal.transaction
+                    JOIN account a ON a.id = tal.account
+                    JOIN accountingperiod ap ON ap.id = t.postingperiod
+                    {tl_join}
+                    WHERE t.posting = 'T'
+                      AND tal.posting = 'T'
+                      AND a.acctnumber IN ({acct_list})
+                      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                      AND tal.accountingbook = {accountingbook}
+                      {segment_where}
+                """
+            
+            posted_re_result = query_netsuite(posted_re_query, timeout=120)
+            if isinstance(posted_re_result, list) and len(posted_re_result) > 0:
+                posted_re = float(posted_re_result[0].get('posted_re_adjustments') or 0)
         
         print(f"   Posted RE adjustments: {posted_re:,.2f}")
         
@@ -4593,13 +4622,8 @@ def calculate_cta():
     Calculate Cumulative Translation Adjustment (CTA)
     
     CTA is the "plug" figure that forces the Balance Sheet to balance after
-    multi-currency consolidation. It absorbs the difference between:
-    - Balance Sheet translation (period-end exchange rate)
-    - P&L translation (average/historical exchange rate)
-    
-    Approach: Query CTA accounts directly by:
-    1. Known CTA account numbers (3035, 39000)
-    2. Account names containing 'translation', 'cta', or 'elimination'
+    multi-currency consolidation. Query CTA accounts directly (account 39000
+    and any accounts with "translation" or "CTA" in the name).
     
     Request body: {
         period: "Mar 2025",
@@ -4638,52 +4662,79 @@ def calculate_cta():
         # Use default subsidiary if none specified
         target_sub = subsidiary if subsidiary else default_subsidiary_id
         
-        # Build consolidation amount calculation with 'ELIMINATE' for intercompany
+        # Build consolidation amount calculation
         amount_calc = build_consolidate_amount(target_sub)
         
-        # Query CTA accounts directly
-        # CRITICAL: Include known CTA account numbers AND name patterns
-        # CTA accounts are typically equity accounts created by NetSuite for FX consolidation
-        cta_query = f"""
-            SELECT 
-                SUM(cons_amt) AS cta_balance
-            FROM (
-                SELECT
-                    {amount_calc} * -1 AS cons_amt
-                FROM transactionaccountingline tal
-                JOIN transaction t ON t.id = tal.transaction
-                JOIN account a ON a.id = tal.account
-                JOIN accountingperiod ap ON ap.id = t.postingperiod
-                CROSS JOIN (
-                    SELECT COUNT(*) AS subs_count
-                    FROM Subsidiary
-                    WHERE isinactive = 'F'
-                ) subs_cte
-                WHERE t.posting = 'T'
-                  AND tal.posting = 'T'
-                  AND (
-                      a.acctnumber IN ('3035', '39000')
-                      OR LOWER(a.fullname) LIKE '%translation%' 
-                      OR LOWER(a.fullname) LIKE '%cta%'
-                      OR LOWER(a.fullname) LIKE '%cumulative translation%'
-                      OR LOWER(a.fullname) LIKE '%elimination%'
-                  )
-                  AND a.accttype != 'Expense'
-                  AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-                  AND tal.accountingbook = {accountingbook}
-            ) x
+        # Find CTA accounts dynamically by name pattern (works across any NetSuite account)
+        # CTA accounts typically have "translation", "CTA", or "cumulative translation" in their name
+        # They are equity accounts used for multi-currency consolidation adjustments
+        cta_accounts_query = """
+            SELECT acctnumber FROM account 
+            WHERE accttype IN ('Equity', 'OthAsset', 'OthCurrLiab')
+              AND (
+                  LOWER(fullname) LIKE '%translation%'
+                  OR LOWER(fullname) LIKE '%cta%'
+                  OR LOWER(fullname) LIKE '%cumulative translation%'
+                  OR LOWER(fullname) LIKE '%currency adjustment%'
+                  OR LOWER(fullname) LIKE '%fx adjustment%'
+              )
         """
+        cta_accounts_result = query_netsuite(cta_accounts_query, timeout=15)
+        cta_account_numbers = []
+        if isinstance(cta_accounts_result, list):
+            cta_account_numbers = [str(acc.get('acctnumber')) for acc in cta_accounts_result if acc.get('acctnumber')]
+        print(f"   Found CTA accounts (dynamic discovery): {cta_account_numbers}")
         
-        cta_result = query_netsuite(cta_query, timeout=90)
         cta = 0.0
-        if isinstance(cta_result, list) and len(cta_result) > 0:
-            cta = float(cta_result[0].get('cta_balance') or 0)
+        if cta_account_numbers:
+            # Query CTA with consolidation - optimized query without CROSS JOIN
+            acct_list = "'" + "','".join(cta_account_numbers) + "'"
+            
+            if target_sub:
+                cta_query = f"""
+                    SELECT SUM(
+                        TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER', 'DEFAULT', 'DEFAULT',
+                                {target_sub}, t.postingperiod, 'DEFAULT'
+                            )
+                        ) * -1
+                    ) AS cta_balance
+                    FROM transactionaccountingline tal
+                    JOIN transaction t ON t.id = tal.transaction
+                    JOIN account a ON a.id = tal.account
+                    JOIN accountingperiod ap ON ap.id = t.postingperiod
+                    WHERE t.posting = 'T'
+                      AND tal.posting = 'T'
+                      AND a.acctnumber IN ({acct_list})
+                      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                      AND tal.accountingbook = {accountingbook}
+                """
+            else:
+                cta_query = f"""
+                    SELECT SUM(tal.amount * -1) AS cta_balance
+                    FROM transactionaccountingline tal
+                    JOIN transaction t ON t.id = tal.transaction
+                    JOIN account a ON a.id = tal.account
+                    JOIN accountingperiod ap ON ap.id = t.postingperiod
+                    WHERE t.posting = 'T'
+                      AND tal.posting = 'T'
+                      AND a.acctnumber IN ({acct_list})
+                      AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                      AND tal.accountingbook = {accountingbook}
+                """
+            
+            cta_result = query_netsuite(cta_query, timeout=120)
+            if isinstance(cta_result, list) and len(cta_result) > 0:
+                cta = float(cta_result[0].get('cta_balance') or 0)
         
         print(f"   ✅ CTA: {cta:,.2f}")
         
         return jsonify({
             'value': cta,
-            'period': period_name
+            'period': period_name,
+            'accounts': cta_account_numbers
         })
         
     except Exception as e:
