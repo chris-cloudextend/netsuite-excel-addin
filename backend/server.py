@@ -4682,9 +4682,10 @@ def calculate_cta():
             cons_amount = "tal.amount"
         
         # ═══════════════════════════════════════════════════════════════════════
-        # STEP 1: Query Total Assets
+        # STEP 1: Query Total Assets (EXCLUDING intercompany elimination accounts)
+        # NetSuite's Balance Sheet eliminates these to near-zero, so we exclude them
         # ═══════════════════════════════════════════════════════════════════════
-        print(f"   [1/5] Querying Total Assets...")
+        print(f"   [1/5] Querying Total Assets (excluding IC elimination accounts)...")
         assets_query = f"""
             SELECT SUM({cons_amount}) AS total_assets
             FROM transactionaccountingline tal
@@ -4694,6 +4695,7 @@ def calculate_cta():
             WHERE t.posting = 'T'
               AND tal.posting = 'T'
               AND a.accttype IN ({asset_types})
+              AND NVL(a.eliminate, 'F') != 'T'
               AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
               AND tal.accountingbook = {accountingbook}
         """
@@ -4704,9 +4706,9 @@ def calculate_cta():
         print(f"         Total Assets: {total_assets:,.2f}")
         
         # ═══════════════════════════════════════════════════════════════════════
-        # STEP 2: Query Total Liabilities (flip sign for display)
+        # STEP 2: Query Total Liabilities (EXCLUDING IC elimination accounts, flip sign)
         # ═══════════════════════════════════════════════════════════════════════
-        print(f"   [2/5] Querying Total Liabilities...")
+        print(f"   [2/5] Querying Total Liabilities (excluding IC elimination accounts)...")
         liabilities_query = f"""
             SELECT SUM({cons_amount} * -1) AS total_liabilities
             FROM transactionaccountingline tal
@@ -4716,6 +4718,7 @@ def calculate_cta():
             WHERE t.posting = 'T'
               AND tal.posting = 'T'
               AND a.accttype IN ({liability_types})
+              AND NVL(a.eliminate, 'F') != 'T'
               AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
               AND tal.accountingbook = {accountingbook}
         """

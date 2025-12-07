@@ -1,89 +1,70 @@
-# CTA Investigation - Final Status
+# CTA Investigation - Final Analysis
 
-## ✅ SOLVED Components
+## ✅ SOLVED Components (EXACT MATCH)
 
 | Component | My Query | NetSuite | Status |
 |-----------|----------|----------|--------|
-| **Retained Earnings** | -$88,022,956.91 | -$88,022,956.91 | **✅ EXACT** |
-| **Net Income** | -$8,781,243.65 | -$8,781,243.65 | **✅ EXACT** |
-| **Posted Equity** | $90,378,938.81 | $90,378,938.81 | **✅ EXACT** |
+| **Retained Earnings** | -$88,022,956.91 | -$88,022,956.91 | ✅ |
+| **Net Income** | -$8,781,243.65 | -$8,781,243.65 | ✅ |
+| **Posted Equity** | $90,378,938.81 | $90,378,938.81 | ✅ |
+| **Accounts Receivable** | ~$10,565,707 | $10,565,670.64 | ✅ (~$37 diff) |
 
-## ❌ Remaining Issue: Total Equity
+## ❌ Remaining Discrepancies by Section
 
-| Component | My Query | NetSuite | Difference |
-|-----------|----------|----------|------------|
-| **Total Assets** | $53,681,594.33 | $53,322,353.28 | **+$359,241** |
-| **Total Liabilities** | $60,099,076.91 | $59,987,254.09 | **+$111,823** |
-| **Total Equity (A-L)** | -$6,417,482.58 | -$6,664,900.80 | **+$247,418** |
+| Section | NetSuite BS | My Query | Difference |
+|---------|-------------|----------|------------|
+| **Bank** | $20,735,309.24 | $20,850,298.77 | **+$115K** |
+| **Fixed Assets** | $593,668.75 | $411,084.02 | **-$183K** |
+| **Other Assets** | $1,675,214.28 | $1,889,891.51 | **+$215K** |
+| **Other Current Assets** | $19,751,480.58 | $19,933,072.12 | **+$182K** |
+| **TOTAL ASSETS** | **$53,322,353.28** | **$53,653,058.30** | **+$331K** |
 
-## CTA Formula Verification
+## Fixed Assets Deep Dive
 
-Using NetSuite's Total Equity, the plug formula WORKS:
+My query results:
+| Account | Name | My Query | NetSuite BS |
+|---------|------|----------|-------------|
+| 18010 | Computer Equipment | $1,788,185.20 | $1,762,155.09 |
+| 18015 | Computer Software | $3,959.30 | $3,750.19 |
+| 18020 | Office Furniture | $57,676.65 | $45,285.86 |
+| 18025 | Leasehold Improvements | $34,014.64 | $53,848.91 |
+| 18200 | Accumulated Depreciation | **-$1,472,751.77** | **-$1,641,446.11** |
+| **TOTAL** | | **$411,084.02** | **$593,668.75** |
+
+**Key finding:** Accumulated Depreciation differs by ~$169K. This could be due to:
+- Different exchange rates applied to historical assets vs period depreciation
+- Currency translation adjustment allocation
+
+## The CTA Math (Still Works)
+
+If we could get exact Total Equity from Assets - Liabilities:
 ```
 CTA = Total Equity - Posted Equity - RE - NI
 CTA = -6,664,900.80 - 90,378,938.81 + 88,022,956.91 + 8,781,243.65
 CTA = -239,639.05 ✅
 ```
 
-Using MY Total Equity:
-```
-CTA = -6,417,482.58 - 90,378,938.81 + 88,022,956.91 + 8,781,243.65
-CTA = +7,779.17 ❌
-```
+## What We Need from Claude
 
-## Key Finding: CTA-Elimination Account
+The $331K asset discrepancy appears to come from:
 
-The "Cumulative Translation Adjustment-Elimination" account has **NO ACCOUNT NUMBER** but exists with ID 915 and has balance **$149,119.94**.
+1. **Currency translation differences** - Fixed Assets showing different consolidated values
+2. **IC accounts still being included** - Some IC accounts in Bank/OthAsset sections
+3. **Exchange rate timing** - BUILTIN.CONSOLIDATE may use different rates than BS report
 
-This account MUST be included in Posted Equity query. Updated query now finds it correctly.
+**Question:** Does NetSuite's Balance Sheet report apply additional adjustments that BUILTIN.CONSOLIDATE doesn't capture? Specifically:
+- Historical rate translation for Fixed Assets?
+- Different elimination logic for IC accounts?
+- Period-end vs transaction date exchange rates?
 
-## Next Step: Debug Assets/Liabilities
+## Current Queries (Working)
 
-The $247K discrepancy in Total Equity comes from:
-- Assets being +$359K too high
-- Liabilities being +$112K too high
-
-To find the source, compare MY values section-by-section with NetSuite Balance Sheet:
-
-| Section | My Query | NetSuite BS | Diff |
-|---------|----------|-------------|------|
-| Bank | $20,850,298.77 | ? | ? |
-| Accounts Receivable | $10,597,247.92 | ? | ? |
-| Other Current Assets | $4,292,258.05 | ? | ? |
-| Fixed Assets | $411,084.02 | ? | ? |
-| Other Assets | $1,889,891.51 | ? | ? |
-| Deferred Expense | $15,640,814.07 | ? | ? |
-| **Total Assets** | **$53,681,594.33** | **$53,322,353.28** | **+$359,241** |
-
-User needs to run NetSuite's native Balance Sheet for Dec 2024 (Celigo Inc. Consolidated) and fill in the "NetSuite BS" column to identify which section has the discrepancy.
-
-## Current Code Status
-
-All queries now working:
-- ✅ RE = prior years P&L + posted RE (account 39999)
-- ✅ NI = current FY P&L  
-- ✅ Posted Equity = all Equity-type accounts EXCEPT "retained earnings" named accounts
-- ⚠️ Assets/Liabilities queries need debugging
-
-## Query Used for Posted Equity (Working)
-
+All queries use:
 ```sql
-SELECT SUM(
-    TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', 1, t.postingperiod, 'DEFAULT'))
-) * -1 AS posted_equity
-FROM transactionaccountingline tal
-JOIN transaction t ON t.id = tal.transaction
-JOIN account a ON a.id = tal.account
-JOIN accountingperiod ap ON ap.id = t.postingperiod
-WHERE t.posting = 'T'
-  AND tal.posting = 'T'
-  AND a.accttype = 'Equity'
-  AND LOWER(a.fullname) NOT LIKE '%retained earnings%'
-  AND ap.enddate <= TO_DATE('2024-12-31', 'YYYY-MM-DD')
-  AND tal.accountingbook = 1
+BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', 1, t.postingperiod, 'DEFAULT')
 ```
 
-This query correctly includes:
-- All numbered equity accounts (30xxx, 31xxx, 38xxx, 39xxx)
-- The CTA-Elimination account (no number, ID 915)
-- Excludes account 39999 (Retained Earnings)
+And exclude IC accounts with:
+```sql
+AND NVL(a.eliminate, 'F') != 'T'
+```
