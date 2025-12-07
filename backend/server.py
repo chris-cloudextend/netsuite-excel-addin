@@ -4730,7 +4730,8 @@ def calculate_cta():
         print(f"         Total Equity (A-L): {total_equity:,.2f}")
         
         # ═══════════════════════════════════════════════════════════════════════
-        # STEP 3: Query Posted Equity (EXCLUDING RE, NI, CTA accounts)
+        # STEP 3: Query Posted Equity (ALL Equity accounts EXCEPT Retained Earnings account)
+        # CRITICAL: Must include accounts with no account number (like CTA-Elimination)
         # ═══════════════════════════════════════════════════════════════════════
         print(f"   [3/5] Querying Posted Equity...")
         posted_equity_query = f"""
@@ -4741,12 +4742,8 @@ def calculate_cta():
             JOIN accountingperiod ap ON ap.id = t.postingperiod
             WHERE t.posting = 'T'
               AND tal.posting = 'T'
-              AND a.accttype IN ('Equity', 'RetainedEarnings')
+              AND a.accttype = 'Equity'
               AND LOWER(a.fullname) NOT LIKE '%retained earnings%'
-              AND LOWER(a.fullname) NOT LIKE '%translation%'
-              AND LOWER(a.fullname) NOT LIKE '%cta%'
-              AND LOWER(a.fullname) NOT LIKE '%net income%'
-              AND LOWER(a.fullname) NOT LIKE '%cumulative translation%'
               AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
               AND tal.accountingbook = {accountingbook}
         """
