@@ -3083,6 +3083,10 @@ async function CTA(period, subsidiary, accountingBook) {
 // CLEARCACHE - Internal function to clear caches from taskpane
 // Called via Excel.evaluate("=NS.CLEARCACHE(items)") from taskpane
 // ============================================================================
+// Track last CLEARCACHE time to prevent repeated clearing during formula evaluation
+let lastClearCacheTime = 0;
+const CLEARCACHE_DEBOUNCE_MS = 5000; // 5 second debounce
+
 /**
  * Internal function - clears specified items from in-memory cache
  * @customfunction CLEARCACHE
@@ -3096,6 +3100,15 @@ function CLEARCACHE(itemsJson) {
         // IMPORTANT: Only clear ALL caches when explicitly requested with "ALL"
         // This prevents accidental cache clearing during calculations
         if (itemsJson === 'ALL') {
+            // DEBOUNCE: Prevent repeated "ALL" clears within 5 seconds
+            // This happens when Excel re-evaluates =XAVI.CLEARCACHE("ALL") during formula calculations
+            const now = Date.now();
+            if (now - lastClearCacheTime < CLEARCACHE_DEBOUNCE_MS) {
+                console.log(`⚠️ CLEARCACHE("ALL") debounced - last clear was ${Math.round((now - lastClearCacheTime)/1000)}s ago`);
+                return 'DEBOUNCED';
+            }
+            lastClearCacheTime = now;
+            
             // Clear ALL caches - explicit request only
             cache.balance.clear();
             cache.title.clear();
