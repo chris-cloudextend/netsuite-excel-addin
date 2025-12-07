@@ -4199,6 +4199,45 @@ def build_segment_filter(filters, prefix='tal'):
     return ' AND '.join(clauses) if clauses else ''
 
 
+def resolve_subsidiary_id(subsidiary_param):
+    """
+    Resolve subsidiary parameter to a numeric ID.
+    Accepts: numeric ID as string/int, or subsidiary name.
+    Returns: numeric ID as string, or None if not found.
+    """
+    if not subsidiary_param:
+        return None
+    
+    sub_str = str(subsidiary_param).strip()
+    
+    # If it's already numeric, return it
+    if sub_str.isdigit():
+        return sub_str
+    
+    # Look up by name in cache
+    sub_lower = sub_str.lower()
+    # Handle "(Consolidated)" suffix
+    if sub_lower.endswith(' (consolidated)'):
+        sub_lower = sub_lower.replace(' (consolidated)', '')
+    
+    for name, id_val in lookup_cache.get('subsidiaries', {}).items():
+        if name.lower() == sub_lower:
+            return str(id_val)
+    
+    # Not found in cache - try direct lookup
+    query = f"""
+        SELECT id FROM subsidiary 
+        WHERE LOWER(name) = '{escape_sql(sub_lower)}'
+        AND isinactive = 'F'
+        FETCH FIRST 1 ROWS ONLY
+    """
+    result = query_netsuite(query, timeout=10)
+    if isinstance(result, list) and len(result) > 0:
+        return str(result[0].get('id'))
+    
+    return None
+
+
 @app.route('/retained-earnings', methods=['POST'])
 def calculate_retained_earnings():
     """
@@ -4209,7 +4248,7 @@ def calculate_retained_earnings():
     
     Request body: {
         period: "Mar 2025",
-        subsidiary: "1" (optional),
+        subsidiary: "1" or "Celigo Inc." (optional),
         accountingBook: "1" (optional),
         classId: "1" (optional),
         department: "1" (optional),
@@ -4219,13 +4258,20 @@ def calculate_retained_earnings():
     try:
         params = request.json or {}
         period_name = params.get('period', '')
-        subsidiary = params.get('subsidiary', '')
+        subsidiary_param = params.get('subsidiary', '')
         accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
         classId = params.get('classId', '')
         department = params.get('department', '')
         location = params.get('location', '')
         
         print(f"📊 Calculating Retained Earnings for {period_name}")
+        
+        # Resolve subsidiary name to ID if needed
+        subsidiary = resolve_subsidiary_id(subsidiary_param) if subsidiary_param else None
+        if subsidiary_param and not subsidiary:
+            print(f"   ⚠️ Could not resolve subsidiary: {subsidiary_param}")
+        else:
+            print(f"   Subsidiary: {subsidiary_param} → ID {subsidiary}")
         
         # Step 1: Get fiscal year boundaries for this period
         fy_info = get_fiscal_year_for_period(period_name, accountingbook)
@@ -4235,21 +4281,22 @@ def calculate_retained_earnings():
         fy_start = fy_info['fy_start']
         print(f"   Fiscal year starts: {fy_start}")
         
-        # Build segment filters
+        # Build segment filters - use t.subsidiary (Transaction table), not tal.subsidiary
         segment_filters = []
         if subsidiary:
-            segment_filters.append(f"tal.subsidiary = {subsidiary}")
+            segment_filters.append(f"t.subsidiary = {subsidiary}")
         if department:
-            segment_filters.append(f"tal.department = {department}")
+            segment_filters.append(f"tl.department = {department}")
         if location:
-            segment_filters.append(f"tal.location = {location}")
+            segment_filters.append(f"tl.location = {location}")
         if classId:
-            segment_filters.append(f"tal.class = {classId}")
+            segment_filters.append(f"tl.class = {classId}")
         
         segment_where = ' AND ' + ' AND '.join(segment_filters) if segment_filters else ''
         
-        # Determine if we need consolidation
-        target_sub = subsidiary if subsidiary else default_subsidiary_id
+        # Need TransactionLine join if filtering by dept/class/loc
+        needs_tl_join = department or classId or location
+        tl_join = "JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_tl_join else ""
         
         # Parse fy_start date for comparison
         from datetime import datetime
@@ -4258,30 +4305,62 @@ def calculate_retained_earnings():
         except:
             fy_start_date = fy_start
         
-        # Step 2: Sum prior years' P&L
+        # Step 2: Sum prior years' P&L with consolidation
         # Query all Income/Expense transactions from inception through the day before FY started
-        # Income amounts are stored negative (credits), flip to positive
-        # Expense amounts are stored positive (debits), flip to negative for net income calc
-        # Net Income = Revenue - Expenses, so we flip income to + and expenses to -
+        # Use BUILTIN.CONSOLIDATE for multi-currency/subsidiary consolidation
+        # Sign convention: Income (stored negative) flip to positive for Net Income
+        #                  Expenses (stored positive) stay positive (they reduce NI)
+        # For RE display: final result should be positive for profits, negative for losses
+        
+        # Use default subsidiary if none specified
+        target_sub = subsidiary if subsidiary else default_subsidiary_id
+        
+        # Build consolidation amount calculation
+        if target_sub:
+            amount_calc = f"""
+                CASE
+                    WHEN subs_count > 1 THEN
+                        TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER',
+                                'DEFAULT',
+                                'DEFAULT',
+                                {target_sub},
+                                t.postingperiod,
+                                'DEFAULT'
+                            )
+                        )
+                    ELSE tal.amount
+                END
+            """
+        else:
+            amount_calc = "tal.amount"
+        
         prior_pl_query = f"""
             SELECT 
-                SUM(
-                    CASE 
-                        WHEN a.accttype IN ('Income', 'OthIncome') THEN tal.amount * -1
-                        WHEN a.accttype IN ({PL_TYPES_SQL}) THEN tal.amount * -1
-                        ELSE 0
-                    END
-                ) AS prior_years_pl
-            FROM transactionaccountingline tal
-            JOIN transaction t ON t.id = tal.transaction
-            JOIN account a ON a.id = tal.account
-            JOIN accountingperiod ap ON ap.id = t.postingperiod
-            WHERE t.posting = 'T'
-              AND tal.posting = 'T'
-              AND a.accttype IN ({PL_TYPES_SQL})
-              AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
-              AND tal.accountingbook = {accountingbook}
-              {segment_where}
+                SUM(cons_amt) AS prior_years_pl
+            FROM (
+                SELECT
+                    {amount_calc}
+                    * -1 AS cons_amt
+                FROM transactionaccountingline tal
+                JOIN transaction t ON t.id = tal.transaction
+                JOIN account a ON a.id = tal.account
+                JOIN accountingperiod ap ON ap.id = t.postingperiod
+                {tl_join}
+                CROSS JOIN (
+                    SELECT COUNT(*) AS subs_count
+                    FROM Subsidiary
+                    WHERE isinactive = 'F'
+                ) subs_cte
+                WHERE t.posting = 'T'
+                  AND tal.posting = 'T'
+                  AND a.accttype IN ({PL_TYPES_SQL})
+                  AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+                  AND tal.accountingbook = {accountingbook}
+                  {segment_where}
+            ) x
         """
         
         prior_pl_result = query_netsuite(prior_pl_query, timeout=120)
@@ -4298,20 +4377,52 @@ def calculate_retained_earnings():
             period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
         except:
             period_end_date = period_end
+        
+        # Build consolidation for posted RE amounts  
+        if target_sub:
+            re_amount_calc = f"""
+                CASE
+                    WHEN subs_count > 1 THEN
+                        TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER',
+                                'DEFAULT',
+                                'DEFAULT',
+                                {target_sub},
+                                t.postingperiod,
+                                'DEFAULT'
+                            )
+                        )
+                    ELSE tal.amount
+                END * -1
+            """
+        else:
+            re_amount_calc = "tal.amount * -1"
             
         posted_re_query = f"""
             SELECT 
-                SUM(tal.amount * -1) AS posted_re_adjustments
-            FROM transactionaccountingline tal
-            JOIN transaction t ON t.id = tal.transaction
-            JOIN account a ON a.id = tal.account
-            JOIN accountingperiod ap ON ap.id = t.postingperiod
-            WHERE t.posting = 'T'
-              AND tal.posting = 'T'
-              AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
-              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-              AND tal.accountingbook = {accountingbook}
-              {segment_where}
+                SUM(cons_amt) AS posted_re_adjustments
+            FROM (
+                SELECT
+                    {re_amount_calc} AS cons_amt
+                FROM transactionaccountingline tal
+                JOIN transaction t ON t.id = tal.transaction
+                JOIN account a ON a.id = tal.account
+                JOIN accountingperiod ap ON ap.id = t.postingperiod
+                {tl_join}
+                CROSS JOIN (
+                    SELECT COUNT(*) AS subs_count
+                    FROM Subsidiary
+                    WHERE isinactive = 'F'
+                ) subs_cte
+                WHERE t.posting = 'T'
+                  AND tal.posting = 'T'
+                  AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
+                  AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                  AND tal.accountingbook = {accountingbook}
+                  {segment_where}
+            ) x
         """
         
         posted_re_result = query_netsuite(posted_re_query, timeout=60)
@@ -4350,7 +4461,7 @@ def calculate_net_income():
     
     Request body: {
         period: "Mar 2025",
-        subsidiary: "1" (optional),
+        subsidiary: "1" or "Celigo Inc." (optional),
         accountingBook: "1" (optional),
         classId: "1" (optional),
         department: "1" (optional),
@@ -4360,13 +4471,20 @@ def calculate_net_income():
     try:
         params = request.json or {}
         period_name = params.get('period', '')
-        subsidiary = params.get('subsidiary', '')
+        subsidiary_param = params.get('subsidiary', '')
         accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
         classId = params.get('classId', '')
         department = params.get('department', '')
         location = params.get('location', '')
         
         print(f"📊 Calculating Net Income for {period_name}")
+        
+        # Resolve subsidiary name to ID if needed
+        subsidiary = resolve_subsidiary_id(subsidiary_param) if subsidiary_param else None
+        if subsidiary_param and not subsidiary:
+            print(f"   ⚠️ Could not resolve subsidiary: {subsidiary_param}")
+        else:
+            print(f"   Subsidiary: {subsidiary_param} → ID {subsidiary}")
         
         # Step 1: Get fiscal year boundaries for this period
         fy_info = get_fiscal_year_for_period(period_name, accountingbook)
@@ -4377,18 +4495,22 @@ def calculate_net_income():
         period_end = fy_info['period_end']
         print(f"   FY start: {fy_start}, Period end: {period_end}")
         
-        # Build segment filters
+        # Build segment filters - use t.subsidiary (Transaction table), not tal.subsidiary
         segment_filters = []
         if subsidiary:
-            segment_filters.append(f"tal.subsidiary = {subsidiary}")
+            segment_filters.append(f"t.subsidiary = {subsidiary}")
         if department:
-            segment_filters.append(f"tal.department = {department}")
+            segment_filters.append(f"tl.department = {department}")
         if location:
-            segment_filters.append(f"tal.location = {location}")
+            segment_filters.append(f"tl.location = {location}")
         if classId:
-            segment_filters.append(f"tal.class = {classId}")
+            segment_filters.append(f"tl.class = {classId}")
         
         segment_where = ' AND ' + ' AND '.join(segment_filters) if segment_filters else ''
+        
+        # Need TransactionLine join if filtering by dept/class/loc
+        needs_tl_join = department or classId or location
+        tl_join = "JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_tl_join else ""
         
         # Parse dates
         from datetime import datetime
@@ -4401,31 +4523,62 @@ def calculate_net_income():
         except:
             period_end_date = period_end
         
-        # Step 2: Sum current FY P&L
+        # Step 2: Sum current FY P&L with consolidation
         # From FY start through target period end
-        # Sign convention: Revenue (stored negative) → flip to positive
-        #                  Expenses (stored positive) → flip to negative
-        # Result: Positive = profit, Negative = loss
+        # Use BUILTIN.CONSOLIDATE for multi-currency/subsidiary consolidation
+        # Sign convention: Income (stored negative) flip to positive for Net Income
+        #                  Expenses (stored positive) stay positive (they reduce NI)
+        
+        # Use default subsidiary if none specified
+        target_sub = subsidiary if subsidiary else default_subsidiary_id
+        
+        # Build consolidation amount calculation
+        if target_sub:
+            amount_calc = f"""
+                CASE
+                    WHEN subs_count > 1 THEN
+                        TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER',
+                                'DEFAULT',
+                                'DEFAULT',
+                                {target_sub},
+                                t.postingperiod,
+                                'DEFAULT'
+                            )
+                        )
+                    ELSE tal.amount
+                END
+            """
+        else:
+            amount_calc = "tal.amount"
+        
         net_income_query = f"""
             SELECT 
-                SUM(
-                    CASE 
-                        WHEN a.accttype IN ('Income', 'OthIncome') THEN tal.amount * -1
-                        WHEN a.accttype IN ({PL_TYPES_SQL}) THEN tal.amount * -1
-                        ELSE 0
-                    END
-                ) AS net_income
-            FROM transactionaccountingline tal
-            JOIN transaction t ON t.id = tal.transaction
-            JOIN account a ON a.id = tal.account
-            JOIN accountingperiod ap ON ap.id = t.postingperiod
-            WHERE t.posting = 'T'
-              AND tal.posting = 'T'
-              AND a.accttype IN ({PL_TYPES_SQL})
-              AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
-              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-              AND tal.accountingbook = {accountingbook}
-              {segment_where}
+                SUM(cons_amt) AS net_income
+            FROM (
+                SELECT
+                    {amount_calc}
+                    * -1 AS cons_amt
+                FROM transactionaccountingline tal
+                JOIN transaction t ON t.id = tal.transaction
+                JOIN account a ON a.id = tal.account
+                JOIN accountingperiod ap ON ap.id = t.postingperiod
+                {tl_join}
+                CROSS JOIN (
+                    SELECT COUNT(*) AS subs_count
+                    FROM Subsidiary
+                    WHERE isinactive = 'F'
+                ) subs_cte
+                WHERE t.posting = 'T'
+                  AND tal.posting = 'T'
+                  AND a.accttype IN ({PL_TYPES_SQL})
+                  AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+                  AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                  AND tal.accountingbook = {accountingbook}
+                  {segment_where}
+            ) x
         """
         
         ni_result = query_netsuite(net_income_query, timeout=120)
@@ -4466,17 +4619,24 @@ def calculate_cta():
     
     Request body: {
         period: "Mar 2025",
-        subsidiary: "1" (optional),
+        subsidiary: "1" or "Celigo Inc." (optional),
         accountingBook: "1" (optional)
     }
     """
     try:
         params = request.json or {}
         period_name = params.get('period', '')
-        subsidiary = params.get('subsidiary', '')
+        subsidiary_param = params.get('subsidiary', '')
         accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
         
         print(f"📊 Calculating CTA for {period_name}")
+        
+        # Resolve subsidiary name to ID if needed
+        subsidiary = resolve_subsidiary_id(subsidiary_param) if subsidiary_param else None
+        if subsidiary_param and not subsidiary:
+            print(f"   ⚠️ Could not resolve subsidiary: {subsidiary_param}")
+        else:
+            print(f"   Subsidiary: {subsidiary_param} → ID {subsidiary}")
         
         # Get period end date
         fy_info = get_fiscal_year_for_period(period_name, accountingbook)
@@ -4491,29 +4651,63 @@ def calculate_cta():
         except:
             period_end_date = period_end
         
-        # Build subsidiary filter
-        sub_where = f"AND tal.subsidiary = {subsidiary}" if subsidiary else ''
+        # Use default subsidiary if none specified
+        target_sub = subsidiary if subsidiary else default_subsidiary_id
+        
+        # Build subsidiary filter - use t.subsidiary (Transaction table)
+        sub_where = f"AND t.subsidiary = {subsidiary}" if subsidiary else ''
+        
+        # Build consolidation amount calculation for CTA
+        if target_sub:
+            cta_amount_calc = f"""
+                CASE
+                    WHEN subs_count > 1 THEN
+                        TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER',
+                                'DEFAULT',
+                                'DEFAULT',
+                                {target_sub},
+                                t.postingperiod,
+                                'DEFAULT'
+                            )
+                        )
+                    ELSE tal.amount
+                END * -1
+            """
+        else:
+            cta_amount_calc = "tal.amount * -1"
         
         # Query accounts designated as CTA
         # These are equity accounts with names containing translation-related terms
         cta_query = f"""
             SELECT 
-                SUM(tal.amount * -1) AS cta_balance
-            FROM transactionaccountingline tal
-            JOIN transaction t ON t.id = tal.transaction
-            JOIN account a ON a.id = tal.account
-            JOIN accountingperiod ap ON ap.id = t.postingperiod
-            WHERE t.posting = 'T'
-              AND tal.posting = 'T'
-              AND (
-                  LOWER(a.fullname) LIKE '%translation%' 
-                  OR LOWER(a.fullname) LIKE '%cta%'
-                  OR LOWER(a.acctnumber) LIKE '%cta%'
-                  OR LOWER(a.fullname) LIKE '%cumulative translation%'
-              )
-              AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
-              AND tal.accountingbook = {accountingbook}
-              {sub_where}
+                SUM(cons_amt) AS cta_balance
+            FROM (
+                SELECT
+                    {cta_amount_calc} AS cons_amt
+                FROM transactionaccountingline tal
+                JOIN transaction t ON t.id = tal.transaction
+                JOIN account a ON a.id = tal.account
+                JOIN accountingperiod ap ON ap.id = t.postingperiod
+                CROSS JOIN (
+                    SELECT COUNT(*) AS subs_count
+                    FROM Subsidiary
+                    WHERE isinactive = 'F'
+                ) subs_cte
+                WHERE t.posting = 'T'
+                  AND tal.posting = 'T'
+                  AND (
+                      LOWER(a.fullname) LIKE '%translation%' 
+                      OR LOWER(a.fullname) LIKE '%cta%'
+                      OR LOWER(a.acctnumber) LIKE '%cta%'
+                      OR LOWER(a.fullname) LIKE '%cumulative translation%'
+                  )
+                  AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                  AND tal.accountingbook = {accountingbook}
+                  {sub_where}
+            ) x
         """
         
         cta_result = query_netsuite(cta_query, timeout=60)

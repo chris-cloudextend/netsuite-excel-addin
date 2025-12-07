@@ -9,15 +9,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://mold-dresses-knowledgestorm-involve.trycloudflare.com
+// CURRENT TUNNEL URL: https://guy-cookbook-champagne-clinton.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 7, 2025 - Multi-Book Accounting support
+// Last Updated: Dec 7, 2025 - RETAINEDEARNINGS, NETINCOME, CTA functions
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://mold-dresses-knowledgestorm-involve.trycloudflare.com';
+    const TUNNEL_URL = 'https://guy-cookbook-champagne-clinton.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
