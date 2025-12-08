@@ -2844,8 +2844,8 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
         let toastId = null;
         if (typeof window.showToast === 'function') {
             toastId = window.showToast({
-                title: 'Calculating Retained Earnings',
-                message: `Period: ${period}<br><br><em>This calculates cumulative P&L from inception through prior fiscal year end. Takes 10-30 seconds due to complex historical queries.</em>`,
+                title: 'Computing Retained Earnings…',
+                message: `<strong>${period}</strong><br><br>This calculation aggregates all historical profit and loss activity from the company's inception through the prior fiscal year end. Because it pulls and consolidates many years of detailed accounting data, it may take up to two minutes to complete.`,
                 type: 'calculating',
                 duration: 0
             });
@@ -2977,8 +2977,8 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
         let toastId = null;
         if (typeof window.showToast === 'function') {
             toastId = window.showToast({
-                title: 'Calculating Net Income',
-                message: `Period: ${period}<br><br><em>This sums all P&L from fiscal year start through target period. Takes 10-20 seconds due to P&L aggregation.</em>`,
+                title: 'Calculating Year-to-Date Net Income…',
+                message: `<strong>${period}</strong><br><br>This formula summarizes all revenue, cost, and expense activity from the start of the fiscal year through the selected period. It typically runs in 10–20 seconds due to the volume of P&L data involved.`,
                 type: 'calculating',
                 duration: 0
             });
@@ -3101,8 +3101,8 @@ async function CTA(period, subsidiary, accountingBook) {
         let toastId = null;
         if (typeof window.showToast === 'function') {
             toastId = window.showToast({
-                title: 'Calculating CTA',
-                message: `Period: ${period}<br><br><em>Cumulative Translation Adjustment runs 6 parallel queries (assets, liabilities, equity, RE, NI). Takes 30-60 seconds due to currency consolidation.</em>`,
+                title: 'Preparing Cumulative Translation Adjustment…',
+                message: `<strong>${period}</strong><br><br>This step runs several consolidated queries across assets, liabilities, equity, retained earnings, and net income to capture FX differences when consolidating foreign subsidiaries. The system performs currency translation across each category, so this process can take 60 seconds or more.`,
                 type: 'calculating',
                 duration: 0
             });
