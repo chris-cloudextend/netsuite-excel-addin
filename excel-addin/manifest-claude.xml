@@ -12,8 +12,8 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="XAVI for NetSuite"/>
   <Description DefaultValue="XAVI - Financial reporting formulas for NetSuite"/>
-  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=1085"/>
-  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=1085"/>
+  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=159"/>
+  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=159"/>
   <SupportUrl DefaultValue="https://www.cloudextend.io"/>
 
   <Hosts>
@@ -22,7 +22,7 @@
 
   <!-- Task Pane -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=15400"/>
+    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=159"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -142,18 +142,18 @@
 
       <!-- Icons -->
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=1085"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=1085"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=1085"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=159"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=159"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=159"/>
       </bt:Images>
 
-      <!-- External Files (cache-busted) -->
+      <!-- External Files (cache-busted) - Update ?v= when version changes -->
       <bt:Urls>
-        <bt:Url id="Commands.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/commands.html?v=15400"/>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=15400"/>
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=15400"/>
-        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=15400"/>
-        <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=15400"/>
+        <bt:Url id="Commands.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/commands.html?v=159"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=159"/>
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=159"/>
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=159"/>
+        <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=159"/>
       </bt:Urls>
 
       <!-- Strings -->
