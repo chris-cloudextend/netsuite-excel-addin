@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.15.0';
+        const ADDIN_VERSION = '1.5.16.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -4560,6 +4560,7 @@ export default {
                 const start = Date.now();
                 let formulasFound = [];
                 let detectedYears = new Set();
+                let detectedPeriods = new Set();  // Specific periods like "Dec 2024", "Jan 2025"
                 let detectedAccounts = new Set();
                 let cellsToUpdate = [];  // BALANCE formulas
                 let specialFormulas = []; // RETAINEDEARNINGS, NETINCOME, CTA formulas
@@ -4610,42 +4611,50 @@ export default {
                         }
                     }
                     
-                    // Also scan for date values to detect years
+                    // Also scan for date values to detect SPECIFIC PERIODS (not just years)
                     // Support multiple formats: "Jan 2025", "12/1/24", Excel serial dates
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    const yearRegex4Digit = /\b(20\d{2})\b/;  // "2024", "2025"
-                    const yearRegex2Digit = /\/(\d{2})$/;      // "12/1/24" -> "24"
                     const dateSlashFormat = /^\d{1,2}\/\d{1,2}\/\d{2,4}$/;  // "12/1/24" or "12/1/2024"
+                    
+                    // Helper to convert date to "Mon YYYY" format
+                    function toPeriodFormat(date) {
+                        if (!date || isNaN(date.getTime())) return null;
+                        return `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+                    }
                     
                     for (let row = 0; row < Math.min(rowCount, 20); row++) {
                         for (let col = 0; col < Math.min(colCount, 50); col++) {
                             const cellValue = values[row][col];
-                            const val = String(cellValue || '');
+                            const val = String(cellValue || '').trim();
                             
-                            // Check for "Jan 2025" format
-                            const yearMatch4 = val.match(yearRegex4Digit);
-                            if (yearMatch4 && monthNames.some(m => val.includes(m))) {
-                                detectedYears.add(parseInt(yearMatch4[1]));
-                                continue;
+                            // Check for "Jan 2025" format - already in correct format!
+                            const monYearMatch = val.match(/^([A-Za-z]{3})\s+(20\d{2})$/);
+                            if (monYearMatch) {
+                                const monthIdx = monthNames.findIndex(m => m.toLowerCase() === monYearMatch[1].toLowerCase());
+                                if (monthIdx >= 0) {
+                                    const period = `${monthNames[monthIdx]} ${monYearMatch[2]}`;
+                                    detectedPeriods.add(period);
+                                    detectedYears.add(parseInt(monYearMatch[2]));
+                                    continue;
+                                }
                             }
                             
-                            // Check for "12/1/24" or "1/1/25" format
+                            // Check for "12/1/24" or "1/1/25" or "12/1/2024" format
                             if (dateSlashFormat.test(val)) {
-                                const yearMatch2 = val.match(yearRegex2Digit);
-                                if (yearMatch2) {
-                                    let year = parseInt(yearMatch2[1]);
+                                const parts = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+                                if (parts) {
+                                    let year = parseInt(parts[3]);
                                     // Convert 2-digit year: 24 -> 2024, 25 -> 2025
                                     if (year < 100) year += 2000;
-                                    detectedYears.add(year);
-                                    continue;
+                                    const month = parseInt(parts[1]) - 1; // 0-indexed
+                                    if (month >= 0 && month < 12) {
+                                        const period = `${monthNames[month]} ${year}`;
+                                        detectedPeriods.add(period);
+                                        detectedYears.add(year);
+                                    }
                                 }
-                                // Check for 4-digit year in date: "12/1/2024"
-                                const yearMatch4Date = val.match(/\/(\d{4})$/);
-                                if (yearMatch4Date) {
-                                    detectedYears.add(parseInt(yearMatch4Date[1]));
-                                    continue;
-                                }
+                                continue;
                             }
                             
                             // Check for Excel serial date number (e.g., 45627)
@@ -4653,19 +4662,23 @@ export default {
                                 // Convert Excel serial to JS date
                                 const excelEpoch = new Date(1899, 11, 30);
                                 const jsDate = new Date(excelEpoch.getTime() + cellValue * 86400000);
-                                if (!isNaN(jsDate.getTime())) {
+                                const period = toPeriodFormat(jsDate);
+                                if (period) {
+                                    detectedPeriods.add(period);
                                     detectedYears.add(jsDate.getFullYear());
                                 }
                             }
                         }
                     }
                     
-                    console.log(`📊 Detected years from sheet: ${[...detectedYears].sort().join(', ')}`);
+                    console.log(`📊 Detected SPECIFIC periods: ${[...detectedPeriods].join(', ')}`);
+                    console.log(`📊 Detected years: ${[...detectedYears].sort().join(', ')}`);
                 });
                 
                 console.log(`📊 Found ${cellsToUpdate.length} XAVI.BALANCE formulas`);
                 console.log(`📊 Found ${specialFormulas.length} special formulas (RETAINEDEARNINGS/NETINCOME/CTA)`);
                 console.log(`📊 Detected accounts: ${detectedAccounts.size}`);
+                console.log(`📊 Detected periods: ${[...detectedPeriods].join(', ')} (${detectedPeriods.size} total)`);
                 console.log(`📊 Detected years: ${[...detectedYears].join(', ')}`);
                 
                 if (cellsToUpdate.length === 0 && specialFormulas.length === 0) {
@@ -4803,19 +4816,24 @@ export default {
                     updateLoading('Fetching Balance Sheet accounts...', 50, 
                         `Unlike P&L accounts, Balance Sheet accounts must be summed from the beginning of time (inception-to-date). Using OPTIMIZED single-query approach.`);
                     
-                    // Build list of all periods for all detected years
-                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    const allPeriods = [];
-                    for (const year of yearsArray) {
-                        for (const month of months) {
-                            allPeriods.push(`${month} ${year}`);
-                        }
-                    }
+                    // Use ONLY the specific periods detected on the sheet (not all 12 months per year!)
+                    const allPeriods = [...detectedPeriods];
                     
-                    console.log(`📊 BS: Fetching ${allPeriods.length} periods in ONE query (optimized)`);
+                    // If no specific periods detected, fall back to all months for detected years
+                    if (allPeriods.length === 0 && yearsArray.length > 0) {
+                        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                        for (const year of yearsArray) {
+                            for (const month of months) {
+                                allPeriods.push(`${month} ${year}`);
+                            }
+                        }
+                        console.log(`📊 BS: No specific periods detected, falling back to all ${allPeriods.length} periods`);
+                    } else {
+                        console.log(`📊 BS: Fetching ONLY ${allPeriods.length} specific periods (optimized!)`);
+                    }
                     updateLoading(`Fetching BS data (${allPeriods.length} periods)...`, 55, 
-                        `Running OPTIMIZED single query for all BS periods. ~30-60 seconds.`);
+                        `Running single query for ${allPeriods.length} BS periods. ~${Math.max(10, allPeriods.length * 2)} seconds.`);
                     
                     try {
                         // Use the EFFICIENT batch_bs_periods endpoint
