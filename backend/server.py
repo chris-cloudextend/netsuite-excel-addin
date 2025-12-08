@@ -4169,6 +4169,9 @@ def get_fiscal_year_for_period(period_name, accountingbook=None):
     
     print(f"   [FY CACHE MISS] {period_name} - querying NetSuite...")
     
+    # Use period's parent hierarchy to find the correct fiscal year
+    # This ensures we use the fiscal year the period actually belongs to,
+    # not just any fiscal year that overlaps with the period dates
     query = f"""
         SELECT 
             fy.id AS fiscal_year_id,
@@ -4178,14 +4181,15 @@ def get_fiscal_year_for_period(period_name, accountingbook=None):
             tp.startdate AS period_start,
             tp.enddate AS period_end
         FROM accountingperiod tp
-        JOIN accountingperiod fy 
-            ON fy.isyear = 'T'
-            AND fy.startdate <= tp.enddate
-            AND fy.enddate >= tp.startdate
+        LEFT JOIN accountingperiod q ON q.id = tp.parent AND q.isquarter = 'T'
+        LEFT JOIN accountingperiod fy ON (
+            (q.parent IS NOT NULL AND fy.id = q.parent) OR  -- Month → Quarter → Year
+            (q.parent IS NULL AND tp.parent IS NOT NULL AND fy.id = tp.parent)  -- Month → Year (no quarters)
+        )
         WHERE LOWER(tp.periodname) = LOWER('{escape_sql(period_name)}')
           AND tp.isquarter = 'F'
           AND tp.isyear = 'F'
-        ORDER BY fy.enddate ASC
+          AND fy.isyear = 'T'
         FETCH FIRST 1 ROWS ONLY
     """
     
