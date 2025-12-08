@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.18.0';
+        const ADDIN_VERSION = '1.5.19.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -2544,7 +2544,7 @@
                     statusText.textContent = `Connected (${data.account || 'NetSuite'})`;
                     lastConnectionCheck = { status: 'connected', time: Date.now() };
                     if (!silent) {
-                        showToast('success', 'Connection OK', 'Backend and tunnel are working.', 3000);
+                        showToast({ type: 'success', title: 'Connection OK', message: 'Backend and tunnel are working.', duration: 3000 });
                     }
                     return true;
                 } else if (response.status === 502 || response.status === 524 || response.status === 522) {
@@ -2553,8 +2553,8 @@
                     statusText.textContent = 'Tunnel Down';
                     lastConnectionCheck = { status: 'disconnected', time: Date.now(), error: `HTTP ${response.status}` };
                     if (!silent) {
-                        showToast('error', 'Tunnel Disconnected', 
-                            `Error ${response.status}: The Cloudflare tunnel may have expired. Check the terminal for a new tunnel URL and update the Worker.`, 10000);
+                        showToast({ type: 'error', title: 'Tunnel Disconnected', 
+                            message: `Error ${response.status}: The Cloudflare tunnel may have expired. Check the terminal for a new tunnel URL and update the Worker.`, duration: 10000 });
                     }
                     return false;
                 } else {
@@ -2569,15 +2569,15 @@
                     statusText.textContent = 'Timeout';
                     lastConnectionCheck = { status: 'timeout', time: Date.now() };
                     if (!silent) {
-                        showToast('error', 'Connection Timeout', 
-                            'Could not reach the backend. The tunnel may have expired.', 8000);
+                        showToast({ type: 'error', title: 'Connection Timeout', 
+                            message: 'Could not reach the backend. The tunnel may have expired.', duration: 8000 });
                     }
                 } else {
                     statusText.textContent = 'Disconnected';
                     lastConnectionCheck = { status: 'disconnected', time: Date.now(), error: error.message };
                     if (!silent) {
-                        showToast('error', 'Connection Failed', 
-                            `Could not connect: ${error.message}`, 8000);
+                        showToast({ type: 'error', title: 'Connection Failed', 
+                            message: `Could not connect: ${error.message}`, duration: 8000 });
                     }
                 }
                 return false;
@@ -2818,6 +2818,18 @@
             }
         }
         
+        // Clear ALL toasts from the container
+        function hideToast() {
+            const container = document.getElementById('toastContainer');
+            if (container) {
+                const toasts = container.querySelectorAll('.toast');
+                toasts.forEach(toast => {
+                    toast.classList.add('removing');
+                    setTimeout(() => toast.remove(), 300);
+                });
+            }
+        }
+        
         function updateToast(toastId, { title, message, type }) {
             const toast = document.getElementById(toastId);
             if (toast) {
@@ -2841,6 +2853,7 @@
         window.showToast = showToast;
         window.removeToast = removeToast;
         window.updateToast = updateToast;
+        window.hideToast = hideToast;
 
         // ========================================================================
         // SETTINGS MODAL
@@ -4544,9 +4557,9 @@ export default {
                     btn.disabled = false;
                     btn.innerHTML = '<span class="action-icon">⚡</span>Refresh All';
                     
-                    showToast('error', 'Connection Failed', 
-                        'Cannot reach the backend server. The Cloudflare tunnel may have expired. ' +
-                        'Check the terminal for a new tunnel URL and update the Cloudflare Worker.', 15000);
+                    showToast({ type: 'error', title: 'Connection Failed', 
+                        message: 'Cannot reach the backend server. The Cloudflare tunnel may have expired. ' +
+                        'Check the terminal for a new tunnel URL and update the Cloudflare Worker.', duration: 15000 });
                     
                     if (statusEl) {
                         statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px; border-left: 4px solid #dc2626;">
@@ -4789,19 +4802,19 @@ export default {
                             } else if (response.status === 502 || response.status === 524 || response.status === 522) {
                                 // Tunnel/proxy error - this is critical
                                 console.error(`❌ P&L fetch FAILED: Tunnel error ${response.status}`);
-                                showToast('error', 'Connection Lost', 
-                                    `Tunnel error (${response.status}) while fetching P&L data. The tunnel may have expired.`, 10000);
+                                showToast({ type: 'error', title: 'Connection Lost', 
+                                    message: `Tunnel error (${response.status}) while fetching P&L data. The tunnel may have expired.`, duration: 10000 });
                                 // Update connection status
                                 await checkConnectionStatus(true);
                             } else {
                                 console.error(`❌ P&L fetch error: ${response.status}`);
-                                showToast('warning', 'P&L Fetch Warning', 
-                                    `Error ${response.status} loading P&L for ${year}. Some data may be missing.`, 6000);
+                                showToast({ type: 'warning', title: 'P&L Fetch Warning', 
+                                    message: `Error ${response.status} loading P&L for ${year}. Some data may be missing.`, duration: 6000 });
                             }
                         } catch (e) {
                             console.error(`Error fetching year ${year}:`, e);
-                            showToast('error', 'P&L Fetch Error', 
-                                `Failed to load P&L for ${year}: ${e.message}. Check connection.`, 8000);
+                            showToast({ type: 'error', title: 'P&L Fetch Error', 
+                                message: `Failed to load P&L for ${year}: ${e.message}. Check connection.`, duration: 8000 });
                             // Update connection status
                             await checkConnectionStatus(true);
                         }
@@ -4868,15 +4881,15 @@ export default {
                             console.error(`⚠️ BS fetch TIMEOUT (${response.status})`);
                             updateLoading(`BS fetch timed out`, 85, 
                                 `Tunnel timeout (${response.status}). BS formulas may show stale data.`);
-                            showToast('warning', 'Balance Sheet Timeout', 
-                                `BS query timed out (${response.status}). Use "Refresh Selected" on individual cells.`, 10000);
+                            showToast({ type: 'warning', title: 'Balance Sheet Timeout', 
+                                message: `BS query timed out (${response.status}). Use "Refresh Selected" on individual cells.`, duration: 10000 });
                         } else {
                             console.error(`❌ BS fetch error: ${response.status}`);
-                            showToast('error', 'BS Fetch Error', `Error ${response.status} loading Balance Sheet data.`, 8000);
+                            showToast({ type: 'error', title: 'BS Fetch Error', message: `Error ${response.status} loading Balance Sheet data.`, duration: 8000 });
                         }
                     } catch (e) {
                         console.error(`Error fetching BS data:`, e);
-                        showToast('error', 'BS Fetch Error', `Error loading Balance Sheet: ${e.message}. Check connection.`, 8000);
+                        showToast({ type: 'error', title: 'BS Fetch Error', message: `Error loading Balance Sheet: ${e.message}. Check connection.`, duration: 8000 });
                         // Update connection status
                         await checkConnectionStatus(true);
                     }
@@ -5031,8 +5044,8 @@ export default {
                             maxWaitTime = 180000; // 3 minutes max for CTA
                         }
                         
+                        // Update task pane loading indicator (NO toast - all status in task pane)
                         updateLoading(toastTitle, progress, toastMessage);
-                        showToast('calculating', toastTitle, toastMessage, maxWaitTime);
                         console.log(`📊 ${type} [${periodDisplay}] - formula ${i + 1}/${specialFormulas.length}`);
                         
                         // Trigger the formula recalculation
@@ -5056,18 +5069,20 @@ export default {
                         
                         specialFormulasRefreshed++;
                         
-                        // Update toast based on result
+                        // Update task pane with result (NO toast - all status in task pane)
                         if (result.resolved) {
                             const valueDisplay = typeof result.value === 'number' 
                                 ? result.value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
                                 : String(result.value);
-                            showToast('success', `${type} Complete`, `${periodDisplay}: ${valueDisplay} (${result.elapsed}s)`, 3000);
+                            console.log(`   ✅ ${type} [${periodDisplay}] = ${valueDisplay} (${result.elapsed}s)`);
+                            updateLoading(`✓ ${type} Complete`, progress, `${periodDisplay}: ${valueDisplay}`);
                         } else {
-                            showToast('warning', `${type} Timeout`, `${periodDisplay} took too long. Cell may show #TIMEOUT#`, 5000);
+                            console.log(`   ⏰ ${type} [${periodDisplay}] TIMEOUT after ${result.elapsed}s`);
+                            updateLoading(`⏰ ${type} Timeout`, progress, `${periodDisplay} - may show #TIMEOUT#`);
                         }
                         
-                        // Brief pause before next formula
-                        await new Promise(r => setTimeout(r, 1000));
+                        // Brief pause before next formula (reduced since no toast animation needed)
+                        await new Promise(r => setTimeout(r, 500));
                     }
                     
                     // Clear bulk refresh flag
@@ -5108,8 +5123,8 @@ export default {
                             </span>
                         </div>
                     `;
-                    showToast('warning', 'No Data Retrieved', 
-                        'Formulas refreshed but no account data was loaded. The tunnel may have issues.', 10000);
+                    showToast({ type: 'warning', title: 'No Data Retrieved', 
+                        message: 'Formulas refreshed but no account data was loaded. The tunnel may have issues.', duration: 10000 });
                 } else {
                     statusEl.innerHTML = `
                         <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
