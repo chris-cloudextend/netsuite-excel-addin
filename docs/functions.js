@@ -3218,6 +3218,13 @@ async function CTA(period, subsidiary, accountingBook) {
                         console.warn(`CTA timeout (${response.status}), attempt ${attempt}/${maxRetries}`);
                         lastError = `Timeout (${response.status})`;
                         if (attempt < maxRetries) continue; // Retry
+                        // All retries exhausted - return #TIMEOUT#
+                        if (toastId) {
+                            updateBroadcastToast(toastId, 'CTA Timed Out', 
+                                `Tunnel timeout after ${maxRetries} attempts. Cell shows #TIMEOUT#. Refresh single cell to retry, or delete formula for SUM to work.`, 'error');
+                            setTimeout(() => removeBroadcastToast(toastId), 8000);
+                        }
+                        return '#TIMEOUT#';
                     }
                     
                     if (!response.ok) {
@@ -3227,7 +3234,7 @@ async function CTA(period, subsidiary, accountingBook) {
                             updateBroadcastToast(toastId, 'CTA Failed', `Error: ${response.status}`, 'error');
                             setTimeout(() => removeBroadcastToast(toastId), 5000);
                         }
-                        return 0;
+                        return '#ERROR#';
                     }
                     
                     const data = await response.json();
@@ -3255,10 +3262,10 @@ async function CTA(period, subsidiary, accountingBook) {
                     if (attempt >= maxRetries) {
                         if (toastId) {
                             updateBroadcastToast(toastId, 'CTA Failed', 
-                                `Failed after ${maxRetries} attempts. Try again later.`, 'error');
+                                `Failed after ${maxRetries} attempts. Cell shows #TIMEOUT#.`, 'error');
                             setTimeout(() => removeBroadcastToast(toastId), 5000);
                         }
-                        return 0;
+                        return '#TIMEOUT#';
                     }
                     // Continue to next retry
                 }
@@ -3267,11 +3274,11 @@ async function CTA(period, subsidiary, accountingBook) {
             // If we get here, all retries failed
             console.error(`CTA failed after ${maxRetries} attempts:`, lastError);
             if (toastId) {
-                updateBroadcastToast(toastId, 'CTA Failed', 
-                    `Timeout after ${maxRetries} attempts`, 'error');
+                updateBroadcastToast(toastId, 'CTA Timed Out', 
+                    `Timeout after ${maxRetries} attempts. Cell shows #TIMEOUT#.`, 'error');
                 setTimeout(() => removeBroadcastToast(toastId), 5000);
             }
-            return 0;
+            return '#TIMEOUT#';
         })().finally(() => {
             inFlightRequests.delete(cacheKey);
         });
@@ -3281,7 +3288,7 @@ async function CTA(period, subsidiary, accountingBook) {
         
     } catch (error) {
         console.error('CTA error:', error);
-        return 0;
+        return '#ERROR#';
     }
 }
 

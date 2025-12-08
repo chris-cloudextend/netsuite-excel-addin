@@ -4607,9 +4607,19 @@ export default {
                                 }
                                 totalAccountsLoaded += Object.keys(data.balances || {}).length;
                                 console.log(`✅ Year ${year}: ${Object.keys(data.balances || {}).length} BS accounts`);
+                            } else if (response.status === 524 || response.status === 522 || response.status === 504) {
+                                // Tunnel timeout - show warning but continue
+                                console.error(`⚠️ BS fetch TIMEOUT (${response.status}) for ${year}`);
+                                updateLoading(`BS fetch timed out for ${year}`, progress, 
+                                    `Tunnel timeout (${response.status}). BS formulas may show stale data. Try Refresh Selected for individual cells.`);
+                                showToast('warning', 'Balance Sheet Timeout', 
+                                    `Year ${year} timed out. BS formulas may not update. Use "Refresh Selected" on individual cells.`, 10000);
+                            } else {
+                                console.error(`❌ BS fetch error: ${response.status} for ${year}`);
                             }
-                    } catch (e) {
+                        } catch (e) {
                             console.error(`Error fetching BS year ${year}:`, e);
+                            showToast('error', 'BS Fetch Error', `Error loading Balance Sheet for ${year}: ${e.message}`, 8000);
                         }
                     }
                 }
