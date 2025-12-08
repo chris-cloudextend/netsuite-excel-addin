@@ -1570,6 +1570,77 @@
             background: rgba(107, 114, 128, 0.5);
             cursor: not-allowed;
         }
+        
+        /* Floating status widget for special formulas */
+        .floating-status {
+            position: fixed;
+            bottom: 20px;
+            left: 10px;
+            right: 10px;
+            background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+            border-radius: 12px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .floating-status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .floating-status-title {
+            color: #93c5fd;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .floating-status-dismiss {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.5);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .floating-status-dismiss:hover {
+            color: white;
+        }
+        
+        .floating-status-message {
+            color: white;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        
+        .floating-status-detail {
+            color: rgba(255,255,255,0.7);
+            font-size: 11px;
+        }
+        
+        .floating-status-progress {
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        
+        .floating-status-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
 
         .info-box {
             background: linear-gradient(135deg, rgba(10, 226, 193, 0.1) 0%, rgba(0, 121, 255, 0.05) 100%);
@@ -1733,6 +1804,19 @@
             <button id="cancelRefreshBtn" class="cancel-btn" onclick="cancelRefresh()" style="display: none;">
                 ✕ Cancel Refresh
             </button>
+        </div>
+    </div>
+
+    <!-- Floating Status Widget for Special Formulas -->
+    <div class="floating-status" id="floatingStatus">
+        <div class="floating-status-header">
+            <span class="floating-status-title">🔄 Background Processing</span>
+            <button class="floating-status-dismiss" onclick="hideFloatingStatus()">×</button>
+        </div>
+        <div class="floating-status-message" id="floatingStatusMessage">Processing special formulas...</div>
+        <div class="floating-status-detail" id="floatingStatusDetail">You can continue working while these complete.</div>
+        <div class="floating-status-progress">
+            <div class="floating-status-progress-bar" id="floatingStatusProgressBar" style="width: 0%"></div>
         </div>
     </div>
 
@@ -2527,7 +2611,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.30.0';
+        const ADDIN_VERSION = '1.5.31.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -2559,6 +2643,40 @@
             const cancelBtn = document.getElementById('cancelRefreshBtn');
             if (cancelBtn) {
                 cancelBtn.style.display = 'none';
+            }
+        }
+        
+        // ============================================
+        // FLOATING STATUS WIDGET (for special formulas)
+        // ============================================
+        function showFloatingStatus(message, detail, progress = 0) {
+            const widget = document.getElementById('floatingStatus');
+            const msgEl = document.getElementById('floatingStatusMessage');
+            const detailEl = document.getElementById('floatingStatusDetail');
+            const progressBar = document.getElementById('floatingStatusProgressBar');
+            
+            if (widget) {
+                widget.style.display = 'block';
+                if (msgEl) msgEl.textContent = message;
+                if (detailEl) detailEl.innerHTML = detail;
+                if (progressBar) progressBar.style.width = `${progress}%`;
+            }
+        }
+        
+        function updateFloatingStatus(message, detail, progress) {
+            const msgEl = document.getElementById('floatingStatusMessage');
+            const detailEl = document.getElementById('floatingStatusDetail');
+            const progressBar = document.getElementById('floatingStatusProgressBar');
+            
+            if (msgEl && message) msgEl.textContent = message;
+            if (detailEl && detail) detailEl.innerHTML = detail;
+            if (progressBar && progress !== undefined) progressBar.style.width = `${progress}%`;
+        }
+        
+        function hideFloatingStatus() {
+            const widget = document.getElementById('floatingStatus');
+            if (widget) {
+                widget.style.display = 'none';
             }
         }
         
@@ -5165,21 +5283,27 @@ export default {
                 console.log(`✅ BALANCE formulas complete in ${balanceElapsed}s`);
                 
                 if (specialFormulas.length > 0) {
-                    // Update task pane to show BALANCE is done and special formulas are starting
-                    updateLoading('✓ BALANCE formulas complete!', 93, 
-                        `${formulasRefreshed} BALANCE formulas refreshed in ${balanceElapsed}s. ` +
-                        `You may continue working. Processing ${specialFormulas.length} special formula(s)...`);
+                    // BALANCE complete - hide the full overlay and show floating status instead
+                    hideLoading();
+                    hideCancelButton();
                     
-                    // Also update the status element with a persistent message
+                    // Show persistent message that BALANCE is done and user can continue
                     statusEl.innerHTML = `
-                        <div style="background: #dbeafe; padding: 12px; border-radius: 8px; margin-top: 10px; border-left: 4px solid #3b82f6;">
-                            <strong style="color: #1d4ed8; font-size: 14px;">✓ BALANCE Data Ready - Safe to Work!</strong><br>
-                            <span style="font-size: 12px; color: #1e40af;">
-                                ${totalAccountsLoaded} accounts loaded • ${formulasRefreshed} BALANCE formulas refreshed<br>
-                                <span style="color: #6b7280;">Now processing ${specialFormulas.length} special formula(s) in background...</span>
+                        <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; border-left: 4px solid #10b981;">
+                            <strong style="color: #047857; font-size: 14px;">✓ GL Account Balances Updated!</strong><br>
+                            <span style="font-size: 12px; color: #065f46;">
+                                ${totalAccountsLoaded} accounts loaded • ${formulasRefreshed} formulas refreshed in ${balanceElapsed}s<br>
+                                <strong>You can continue working in Excel.</strong>
                             </span>
                         </div>
                     `;
+                    
+                    // Show floating status for special formulas
+                    showFloatingStatus(
+                        `Processing ${specialFormulas.length} special calculations...`,
+                        `<strong>Net Income</strong>, <strong>Retained Earnings</strong>, and <strong>CTA</strong> require longer queries.<br>These will complete in the background.`,
+                        0
+                    );
                 }
                 
                 // ============================================
@@ -5284,7 +5408,20 @@ export default {
                         
                         // Extract period from formula for display
                         const periodMatch = formula.match(/\(([^,)]+)/);
-                        const periodDisplay = periodMatch ? periodMatch[1].replace(/["']/g, '').trim() : '';
+                        const rawPeriod = periodMatch ? periodMatch[1].replace(/["']/g, '').trim() : '';
+                        
+                        // Convert "Dec 2024" to "Period Ending December 2024"
+                        const monthMap = {
+                            'Jan': 'January', 'Feb': 'February', 'Mar': 'March', 'Apr': 'April',
+                            'May': 'May', 'Jun': 'June', 'Jul': 'July', 'Aug': 'August',
+                            'Sep': 'September', 'Oct': 'October', 'Nov': 'November', 'Dec': 'December'
+                        };
+                        let periodDisplay = rawPeriod;
+                        const periodParts = rawPeriod.match(/^(\w+)\s+(\d{4})$/);
+                        if (periodParts) {
+                            const fullMonth = monthMap[periodParts[1]] || periodParts[1];
+                            periodDisplay = `Period Ending ${fullMonth} ${periodParts[2]}`;
+                        }
                         
                         // Show toast for this specific formula
                         let toastTitle = '';
@@ -5305,9 +5442,10 @@ export default {
                             maxWaitTime = 180000; // 3 minutes max for CTA
                         }
                         
-                        // Update task pane loading indicator (NO toast - all status in task pane)
-                        updateLoading(toastTitle, progress, toastMessage);
-                        console.log(`📊 ${type} [${periodDisplay}] - formula ${i + 1}/${specialFormulas.length}`);
+                        // Update floating status (not the full-screen overlay)
+                        const specialProgress = Math.round((i / specialFormulas.length) * 100);
+                        updateFloatingStatus(toastTitle, toastMessage, specialProgress);
+                        console.log(`📊 ${type} [${rawPeriod}] - formula ${i + 1}/${specialFormulas.length}`);
                         
                         // CRITICAL: Clear the cache for THIS SPECIFIC formula before triggering
                         // This prevents returning stale cached values from earlier in the refresh
@@ -5317,7 +5455,8 @@ export default {
                                 const tempRange = sheet.getRange('ZZ9998');
                                 
                                 // Use SPECIAL: mode to clear this formula type and period
-                                const clearCmd = `SPECIAL:${type}:${periodDisplay}`;
+                                // Use rawPeriod (e.g., "Dec 2024") for cache key, not formatted display
+                                const clearCmd = `SPECIAL:${type}:${rawPeriod}`;
                                 tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","${clearCmd}","")`]];
                                 await context.sync();
                                 
@@ -5325,7 +5464,7 @@ export default {
                                 
                                 tempRange.load('values');
                                 await context.sync();
-                                console.log(`   🗑️ Cleared cache for ${type}:${periodDisplay} - result: ${tempRange.values[0][0]}`);
+                                console.log(`   🗑️ Cleared cache for ${type}:${rawPeriod} - result: ${tempRange.values[0][0]}`);
                                 
                                 tempRange.clear();
                                 await context.sync();
@@ -5378,16 +5517,25 @@ export default {
                     localStorage.removeItem('netsuite_bulk_refresh');
                     localStorage.removeItem('netsuite_show_toasts');
                     console.log(`✅ Refreshed ${specialFormulasRefreshed} special formulas (sequentially)`);
+                    
+                    // Hide floating status and show completion
+                    hideFloatingStatus();
+                    updateFloatingStatus('✓ All calculations complete!', 'Net Income, Retained Earnings, and CTA updated.', 100);
+                    showFloatingStatus('✓ All calculations complete!', 'Net Income, Retained Earnings, and CTA updated.', 100);
+                    setTimeout(() => hideFloatingStatus(), 3000);
                 }
                 
                 const elapsed = ((Date.now() - start) / 1000).toFixed(1);
                 
                 if (refreshCancelled) {
-                    updateLoading('Cancelled', 100, `Stopped by user. ${formulasRefreshed} formulas were refreshed before cancellation.`);
-                } else {
-                    updateLoading('Complete!', 100, `${formulasRefreshed + specialFormulasRefreshed} formulas refreshed`);
+                    hideFloatingStatus();
+                    // Only show loading overlay if it was still up
+                } else if (specialFormulas.length === 0) {
+                    // No special formulas - show regular completion
+                    updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
+                    await new Promise(resolve => setTimeout(resolve, 800));
                 }
-                await new Promise(resolve => setTimeout(resolve, 800));
+                // For special formulas case, the floating status handles the completion
                 hideLoading();
                 hideCancelButton();
                 

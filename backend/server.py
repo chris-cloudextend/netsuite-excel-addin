@@ -4912,6 +4912,14 @@ def calculate_cta():
                   AND LOWER(a.fullname) NOT LIKE '%translation%'
                   AND LOWER(a.fullname) NOT LIKE '%cta%'
                   AND LOWER(a.fullname) NOT LIKE '%cumulative%'
+                  AND LOWER(a.fullname) NOT LIKE '%currency%'
+                  AND LOWER(a.fullname) NOT LIKE '%fx%'
+                  AND LOWER(a.fullname) NOT LIKE '%foreign%'
+                  AND LOWER(a.fullname) NOT LIKE '%oci%'
+                  AND LOWER(a.fullname) NOT LIKE '%comprehensive%'
+                  AND LOWER(a.fullname) NOT LIKE '%elimination%'
+                  AND LOWER(a.fullname) NOT LIKE '%intercompany%'
+                  AND LOWER(a.fullname) NOT LIKE '%ic %'
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
                   AND t.subsidiary IN ({sub_filter})
@@ -4957,6 +4965,37 @@ def calculate_cta():
                   AND t.subsidiary IN ({sub_filter})
             """
         }
+        
+        # DIAGNOSTIC: Log what equity accounts would be included in Posted Equity
+        # This helps debug inflated Posted Equity values
+        equity_accounts_query = f"""
+            SELECT DISTINCT a.acctnumber, a.fullname, a.accttype
+            FROM account a
+            WHERE a.accttype = 'Equity'
+              AND a.isinactive = 'F'
+              AND LOWER(a.fullname) NOT LIKE '%retained earnings%'
+              AND LOWER(a.fullname) NOT LIKE '%translation%'
+              AND LOWER(a.fullname) NOT LIKE '%cta%'
+              AND LOWER(a.fullname) NOT LIKE '%cumulative%'
+              AND LOWER(a.fullname) NOT LIKE '%currency%'
+              AND LOWER(a.fullname) NOT LIKE '%fx%'
+              AND LOWER(a.fullname) NOT LIKE '%foreign%'
+              AND LOWER(a.fullname) NOT LIKE '%oci%'
+              AND LOWER(a.fullname) NOT LIKE '%comprehensive%'
+              AND LOWER(a.fullname) NOT LIKE '%elimination%'
+              AND LOWER(a.fullname) NOT LIKE '%intercompany%'
+              AND LOWER(a.fullname) NOT LIKE '%ic %'
+            ORDER BY a.acctnumber
+        """
+        equity_accounts = query_netsuite(equity_accounts_query, 30)
+        if isinstance(equity_accounts, list) and len(equity_accounts) > 0:
+            print(f"   📋 Posted Equity will include {len(equity_accounts)} accounts:")
+            for acct in equity_accounts[:10]:  # Show first 10
+                print(f"      - {acct.get('acctnumber')}: {acct.get('fullname')}")
+            if len(equity_accounts) > 10:
+                print(f"      ... and {len(equity_accounts) - 10} more")
+        else:
+            print(f"   ⚠️ No equity accounts found for Posted Equity (or query failed)")
         
         # Execute queries in parallel using ThreadPoolExecutor
         # IMPORTANT: NetSuite has a concurrency limit (typically 5)
