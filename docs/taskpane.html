@@ -3971,7 +3971,8 @@ export default {
                 let formulasFound = [];
                 let detectedYears = new Set();
                 let detectedAccounts = new Set();
-                let cellsToUpdate = [];
+                let cellsToUpdate = [];  // BALANCE formulas
+                let specialFormulas = []; // RETAINEDEARNINGS, NETINCOME, CTA formulas
                 
                 // ============================================
                 // STEP 1: Scan sheet to detect years & accounts
@@ -3989,18 +3990,31 @@ export default {
                     
                     console.log(`📊 Scanning ${rowCount} × ${colCount} cells...`);
                     
-                    // Find all XAVI.BALANCE formulas
+                    // Find all XAVI formulas (BALANCE and special formulas)
                     for (let row = 0; row < rowCount; row++) {
                         for (let col = 0; col < colCount; col++) {
                             const formula = formulas[row][col];
-                            if (formula && typeof formula === 'string' && 
-                                formula.toUpperCase().includes('XAVI.BALANCE')) {
-                                cellsToUpdate.push({ row, col, formula });
+                            if (formula && typeof formula === 'string') {
+                                const upperFormula = formula.toUpperCase();
                                 
-                                // Try to extract account from formula
-                                const accountMatch = formula.match(/XAVI\.BALANCE\s*\(\s*["']?(\d+)["']?/i);
-                                if (accountMatch) {
-                                    detectedAccounts.add(accountMatch[1]);
+                                // BALANCE formulas - refresh first
+                                if (upperFormula.includes('XAVI.BALANCE')) {
+                                    cellsToUpdate.push({ row, col, formula });
+                                    
+                                    // Try to extract account from formula
+                                    const accountMatch = formula.match(/XAVI\.BALANCE\s*\(\s*["']?(\d+)["']?/i);
+                                    if (accountMatch) {
+                                        detectedAccounts.add(accountMatch[1]);
+                                    }
+                                }
+                                
+                                // Special formulas - refresh AFTER BALANCE data is loaded
+                                if (upperFormula.includes('XAVI.RETAINEDEARNINGS') ||
+                                    upperFormula.includes('XAVI.NETINCOME') ||
+                                    upperFormula.includes('XAVI.CTA')) {
+                                    const formulaType = upperFormula.includes('RETAINEDEARNINGS') ? 'RETAINEDEARNINGS' :
+                                                       upperFormula.includes('NETINCOME') ? 'NETINCOME' : 'CTA';
+                                    specialFormulas.push({ row, col, formula, type: formulaType });
                                 }
                             }
                         }
@@ -4023,12 +4037,13 @@ export default {
                 });
                 
                 console.log(`📊 Found ${cellsToUpdate.length} XAVI.BALANCE formulas`);
+                console.log(`📊 Found ${specialFormulas.length} special formulas (RETAINEDEARNINGS/NETINCOME/CTA)`);
                 console.log(`📊 Detected accounts: ${detectedAccounts.size}`);
                 console.log(`📊 Detected years: ${[...detectedYears].join(', ')}`);
                 
-                if (cellsToUpdate.length === 0) {
+                if (cellsToUpdate.length === 0 && specialFormulas.length === 0) {
                     hideLoading();
-                    statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #92400e;">No XAVI.BALANCE formulas found</strong></div>`;
+                    statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #92400e;">No XAVI formulas found</strong></div>`;
                     setTimeout(() => { statusEl.textContent = ''; }, 5000);
                     return;
                 }
@@ -4224,14 +4239,67 @@ export default {
                         }
                     }
                     
-                    updateLoading('Final recalculation...', 98);
+                    updateLoading('Recalculating BALANCE formulas...', 92);
                     usedRange.calculate();
                     await context.sync();
                 });
                 
+                // ============================================
+                // STEP 7: Refresh special formulas AFTER BALANCE data is loaded
+                // These depend on BALANCE data, so they must run second
+                // ============================================
+                let specialFormulasRefreshed = 0;
+                
+                if (specialFormulas.length > 0) {
+                    console.log(`📊 Refreshing ${specialFormulas.length} special formulas (RETAINEDEARNINGS/NETINCOME/CTA)...`);
+                    updateLoading('Refreshing special formulas...', 94, 
+                        `${specialFormulas.length} RETAINEDEARNINGS/NETINCOME/CTA formulas`);
+                    
+                    // Small delay to ensure BALANCE cache is fully populated
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const usedRange = sheet.getUsedRange();
+                        usedRange.load("address");
+                        await context.sync();
+                        
+                        const BATCH_SIZE = 50; // Smaller batch for special formulas
+                        const totalBatches = Math.ceil(specialFormulas.length / BATCH_SIZE);
+                        
+                        for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
+                            const batchStart = batchNum * BATCH_SIZE;
+                            const batchEnd = Math.min(batchStart + BATCH_SIZE, specialFormulas.length);
+                            const batch = specialFormulas.slice(batchStart, batchEnd);
+                            
+                            const progress = 94 + Math.round((batchNum / totalBatches) * 4);
+                            updateLoading(`Refreshing special formulas...`, progress, 
+                                `Batch ${batchNum + 1}/${totalBatches}`);
+                            
+                            for (const { row, col, formula, type } of batch) {
+                                const cell = usedRange.getCell(row, col);
+                                cell.formulas = [[formula]];
+                                specialFormulasRefreshed++;
+                            }
+                            
+                            await context.sync();
+                            
+                            if (batchNum < totalBatches - 1) {
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                            }
+                        }
+                        
+                        updateLoading('Final recalculation...', 98);
+                        usedRange.calculate();
+                        await context.sync();
+                    });
+                    
+                    console.log(`✅ Refreshed ${specialFormulasRefreshed} special formulas`);
+                }
+                
                 const elapsed = ((Date.now() - start) / 1000).toFixed(1);
                 
-                updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
+                updateLoading('Complete!', 100, `${formulasRefreshed + specialFormulasRefreshed} formulas refreshed`);
                 await new Promise(resolve => setTimeout(resolve, 800));
                 hideLoading();
                 
@@ -4243,13 +4311,16 @@ export default {
                 if (bsAccounts.length > 0) {
                     summaryParts.push(`Balance Sheet: ${bsAccounts.length} accounts`);
                 }
+                if (specialFormulasRefreshed > 0) {
+                    summaryParts.push(`Special: ${specialFormulasRefreshed}`);
+                }
                 
                 statusEl.innerHTML = `
                     <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
                         <strong style="color: #059669; font-size: 14px;">✓ Refresh Complete!</strong><br>
                         <span style="font-size: 12px; color: #047857;">
                             ${summaryParts.join(' • ')}<br>
-                            ${formulasRefreshed} formulas refreshed in ${elapsed}s
+                            ${formulasRefreshed + specialFormulasRefreshed} formulas refreshed in ${elapsed}s
                         </span>
                     </div>
                 `;

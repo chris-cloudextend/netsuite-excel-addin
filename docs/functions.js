@@ -167,6 +167,13 @@ window.clearAllCaches = function() {
     cache.type.clear();
     cache.parent.clear();
     
+    // Clear in-flight requests for special formulas (RETAINEDEARNINGS, NETINCOME, CTA)
+    // This ensures fresh API calls will be made when formulas re-evaluate
+    if (inFlightRequests && inFlightRequests.size > 0) {
+        console.log(`  Clearing ${inFlightRequests.size} in-flight requests...`);
+        inFlightRequests.clear();
+    }
+    
     // Reset stats
     cacheStats.hits = 0;
     cacheStats.misses = 0;
