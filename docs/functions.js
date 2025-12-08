@@ -198,6 +198,84 @@ const cache = {
 // This prevents duplicate concurrent API calls for the same period
 const inFlightRequests = new Map();
 
+// ============================================================================
+// SPECIAL FORMULA SEMAPHORE - Ensures only ONE special formula runs at a time
+// This prevents the backend from being overwhelmed with parallel queries
+// Queue: NETINCOME → RETAINEDEARNINGS → CTA (in order of complexity)
+// ============================================================================
+let specialFormulaSemaphore = {
+    locked: false,
+    queue: [],
+    currentKey: null
+};
+
+/**
+ * Acquire the special formula lock - only one formula can run at a time
+ * Returns a promise that resolves when the lock is acquired
+ */
+async function acquireSpecialFormulaLock(cacheKey, formulaType) {
+    // Define priority: NETINCOME (1) < RETAINEDEARNINGS (2) < CTA (3)
+    const priority = formulaType === 'NETINCOME' ? 1 : 
+                    formulaType === 'RETAINEDEARNINGS' ? 2 : 3;
+    
+    return new Promise((resolve) => {
+        const tryAcquire = () => {
+            if (!specialFormulaSemaphore.locked) {
+                specialFormulaSemaphore.locked = true;
+                specialFormulaSemaphore.currentKey = cacheKey;
+                console.log(`🔒 SPECIAL LOCK ACQUIRED: ${formulaType} - ${cacheKey}`);
+                resolve();
+            } else {
+                // Already locked - add to priority queue
+                specialFormulaSemaphore.queue.push({ 
+                    cacheKey, 
+                    formulaType,
+                    priority,
+                    tryAcquire 
+                });
+                // Sort queue by priority (lower = higher priority)
+                specialFormulaSemaphore.queue.sort((a, b) => a.priority - b.priority);
+                console.log(`⏳ SPECIAL LOCK QUEUED: ${formulaType} - ${cacheKey} (queue: ${specialFormulaSemaphore.queue.length}, current: ${specialFormulaSemaphore.currentKey})`);
+            }
+        };
+        tryAcquire();
+    });
+}
+
+/**
+ * Release the special formula lock and process next in queue
+ */
+function releaseSpecialFormulaLock(cacheKey) {
+    console.log(`🔓 SPECIAL LOCK RELEASED: ${cacheKey}`);
+    specialFormulaSemaphore.locked = false;
+    specialFormulaSemaphore.currentKey = null;
+    
+    // Process next in queue (already sorted by priority)
+    if (specialFormulaSemaphore.queue.length > 0) {
+        const next = specialFormulaSemaphore.queue.shift();
+        console.log(`🔄 SPECIAL LOCK: Processing next in queue: ${next.formulaType} - ${next.cacheKey}`);
+        // Small delay to prevent stack overflow and allow Excel to update
+        setTimeout(() => next.tryAcquire(), 100);
+    }
+}
+
+/**
+ * Check if special formulas are currently being processed
+ */
+function isSpecialFormulaLocked() {
+    return specialFormulaSemaphore.locked;
+}
+
+/**
+ * Clear the special formula queue (used during cache clear)
+ */
+function clearSpecialFormulaQueue() {
+    specialFormulaSemaphore.queue = [];
+    specialFormulaSemaphore.locked = false;
+    specialFormulaSemaphore.currentKey = null;
+    console.log('🧹 SPECIAL LOCK: Queue cleared');
+}
+
 // Track last access time to implement LRU if needed
 const cacheStats = {
     hits: 0,
@@ -224,6 +302,10 @@ window.clearAllCaches = function() {
         console.log(`  Clearing ${inFlightRequests.size} in-flight requests...`);
         inFlightRequests.clear();
     }
+    
+    // Clear the special formula semaphore queue
+    // This prevents old queued formulas from running after cache is cleared
+    clearSpecialFormulaQueue();
     
     // Reset stats
     cacheStats.hits = 0;
@@ -2976,6 +3058,12 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
         cacheStats.misses++;
         console.log(`📥 Calculating Retained Earnings for ${period}...`);
         
+        // ═══════════════════════════════════════════════════════════════
+        // SEQUENTIAL EXECUTION: Acquire semaphore lock before API call
+        // This prevents multiple special formulas from hitting the backend simultaneously
+        // ═══════════════════════════════════════════════════════════════
+        await acquireSpecialFormulaLock(cacheKey, 'RETAINEDEARNINGS');
+        
         // Broadcast toast notification to taskpane
         const toastId = broadcastToast(
             'Computing Retained Earnings…',
@@ -3062,6 +3150,8 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
             } finally {
                 // Remove from in-flight after completion
                 inFlightRequests.delete(cacheKey);
+                // CRITICAL: Release the semaphore lock to allow next formula to run
+                releaseSpecialFormulaLock(cacheKey);
             }
         })();
         
@@ -3129,6 +3219,12 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
         
         cacheStats.misses++;
         console.log(`📥 Calculating Net Income for ${period}...`);
+        
+        // ═══════════════════════════════════════════════════════════════
+        // SEQUENTIAL EXECUTION: Acquire semaphore lock before API call
+        // This prevents multiple special formulas from hitting the backend simultaneously
+        // ═══════════════════════════════════════════════════════════════
+        await acquireSpecialFormulaLock(cacheKey, 'NETINCOME');
         
         // Broadcast toast notification to taskpane
         const toastId = broadcastToast(
@@ -3215,6 +3311,8 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 return '#ERROR#';
             } finally {
                 inFlightRequests.delete(cacheKey);
+                // CRITICAL: Release the semaphore lock to allow next formula to run
+                releaseSpecialFormulaLock(cacheKey);
             }
         })();
         
@@ -3274,6 +3372,12 @@ async function CTA(period, subsidiary, accountingBook) {
         
         cacheStats.misses++;
         console.log(`📥 Calculating CTA for ${period}...`);
+        
+        // ═══════════════════════════════════════════════════════════════
+        // SEQUENTIAL EXECUTION: Acquire semaphore lock before API call
+        // This prevents multiple special formulas from hitting the backend simultaneously
+        // ═══════════════════════════════════════════════════════════════
+        await acquireSpecialFormulaLock(cacheKey, 'CTA');
         
         // Broadcast toast notification to taskpane
         const toastId = broadcastToast(
@@ -3401,6 +3505,8 @@ async function CTA(period, subsidiary, accountingBook) {
             return '#TIMEOUT#';
         })().finally(() => {
             inFlightRequests.delete(cacheKey);
+            // CRITICAL: Release the semaphore lock to allow next formula to run
+            releaseSpecialFormulaLock(cacheKey);
         });
         
         inFlightRequests.set(cacheKey, requestPromise);
