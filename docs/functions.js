@@ -218,7 +218,7 @@ async function acquireSpecialFormulaLock(cacheKey, formulaType) {
     const priority = formulaType === 'NETINCOME' ? 1 : 
                     formulaType === 'RETAINEDEARNINGS' ? 2 : 3;
     
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const tryAcquire = () => {
             if (!specialFormulaSemaphore.locked) {
                 specialFormulaSemaphore.locked = true;
@@ -231,7 +231,8 @@ async function acquireSpecialFormulaLock(cacheKey, formulaType) {
                     cacheKey, 
                     formulaType,
                     priority,
-                    tryAcquire 
+                    tryAcquire,
+                    reject
                 });
                 // Sort queue by priority (lower = higher priority)
                 specialFormulaSemaphore.queue.sort((a, b) => a.priority - b.priority);
@@ -270,10 +271,28 @@ function isSpecialFormulaLocked() {
  * Clear the special formula queue (used during cache clear)
  */
 function clearSpecialFormulaQueue() {
+    const queueLength = specialFormulaSemaphore.queue.length;
+    
+    // CRITICAL: Reject all queued promises before clearing
+    // This prevents formulas from hanging indefinitely
+    if (queueLength > 0) {
+        console.log(`🧹 SPECIAL LOCK: Rejecting ${queueLength} queued formulas...`);
+        for (const item of specialFormulaSemaphore.queue) {
+            if (item.reject) {
+                try {
+                    item.reject(new Error('QUEUE_CLEARED'));
+                    console.log(`   ✗ Rejected: ${item.formulaType} - ${item.cacheKey}`);
+                } catch (e) {
+                    // Ignore rejection errors
+                }
+            }
+        }
+    }
+    
     specialFormulaSemaphore.queue = [];
     specialFormulaSemaphore.locked = false;
     specialFormulaSemaphore.currentKey = null;
-    console.log('🧹 SPECIAL LOCK: Queue cleared');
+    console.log(`🧹 SPECIAL LOCK: Queue cleared (${queueLength} items rejected)`);
 }
 
 // Track last access time to implement LRU if needed
@@ -408,7 +427,7 @@ window.enterFullRefreshMode = function(year) {
     window.clearAllCaches();
     
     // Return a Promise that resolves when full refresh completes
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         fullRefreshResolver = resolve;
     });
 };
