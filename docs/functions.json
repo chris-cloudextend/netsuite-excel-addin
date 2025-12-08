@@ -239,7 +239,7 @@
       "description": "Get calculated retained earnings (prior years' cumulative P&L). NetSuite calculates this dynamically - no account number needed.",
       "helpUrl": "https://www.example.com/help",
       "result": {
-        "type": "number",
+        "type": "any",
         "dimensionality": "scalar"
       },
       "parameters": [
@@ -297,7 +297,7 @@
       "description": "Get current fiscal year net income through target period. NetSuite calculates this dynamically - no account number needed.",
       "helpUrl": "https://www.example.com/help",
       "result": {
-        "type": "number",
+        "type": "any",
         "dimensionality": "scalar"
       },
       "parameters": [

@@ -40,6 +40,13 @@ function clearStatus() {
 let toastIdCounter = 0;
 
 function broadcastToast(title, message, type = 'info', duration = 5000) {
+    // Check if bulk refresh is in progress - suppress toasts during bulk operations
+    const bulkRefreshFlag = localStorage.getItem('netsuite_bulk_refresh');
+    if (bulkRefreshFlag === 'true') {
+        console.log(`🔕 Toast suppressed (bulk refresh): ${title}`);
+        return null; // Return null to indicate no toast was created
+    }
+    
     try {
         const toastId = `toast-${++toastIdCounter}-${Date.now()}`;
         localStorage.setItem('netsuite_toast', JSON.stringify({
@@ -2955,7 +2962,11 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
                         updateBroadcastToast(toastId, 'Retained Earnings Failed', `Error: ${response.status}`, 'error');
                         setTimeout(() => removeBroadcastToast(toastId), 5000);
                     }
-                    return 0;
+                    // Return #ERROR# for non-timeout errors, #TIMEOUT# for timeouts
+                    if (response.status === 524 || response.status === 522 || response.status === 504) {
+                        return '#TIMEOUT#';
+                    }
+                    return '#ERROR#';
                 }
                 
                 const data = await response.json();
@@ -2982,7 +2993,7 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
                 if (toastId) {
                     removeBroadcastToast(toastId);
                 }
-                return 0;
+                return '#ERROR#';
             } finally {
                 // Remove from in-flight after completion
                 inFlightRequests.delete(cacheKey);
@@ -2996,7 +3007,7 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
         
     } catch (error) {
         console.error('RETAINEDEARNINGS error:', error);
-        return 0;
+        return '#ERROR#';
     }
 }
 
@@ -3085,7 +3096,11 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                         updateBroadcastToast(toastId, 'Net Income Failed', `Error: ${response.status}`, 'error');
                         setTimeout(() => removeBroadcastToast(toastId), 5000);
                     }
-                    return 0;
+                    // Return #ERROR# for non-timeout errors, #TIMEOUT# for timeouts
+                    if (response.status === 524 || response.status === 522 || response.status === 504) {
+                        return '#TIMEOUT#';
+                    }
+                    return '#ERROR#';
                 }
                 
                 const data = await response.json();
@@ -3112,7 +3127,7 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 if (toastId) {
                     removeBroadcastToast(toastId);
                 }
-                return 0;
+                return '#ERROR#';
             } finally {
                 inFlightRequests.delete(cacheKey);
             }
@@ -3123,7 +3138,7 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
         
     } catch (error) {
         console.error('NETINCOME error:', error);
-        return 0;
+        return '#ERROR#';
     }
 }
 

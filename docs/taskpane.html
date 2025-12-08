@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.16.0';
+        const ADDIN_VERSION = '1.5.17.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -4530,6 +4530,9 @@ export default {
                 btn.disabled = true;
                 btn.textContent = 'Checking connection...';
                 
+                // Clear any stale bulk refresh flag from previous runs
+                localStorage.removeItem('netsuite_bulk_refresh');
+                
                 // ============================================
                 // STEP 0: Verify connection before starting
                 // ============================================
@@ -4941,7 +4944,7 @@ export default {
                 
                 // ============================================
                 // STEP 7: Refresh special formulas AFTER BALANCE data is loaded
-                // Run ONE AT A TIME to avoid tunnel timeouts
+                // Run ONE AT A TIME with proper waiting
                 // Order: NETINCOME (fastest ~20s) → RETAINEDEARNINGS (~2min) → CTA (~2min)
                 // ============================================
                 let specialFormulasRefreshed = 0;
@@ -4949,30 +4952,47 @@ export default {
                 if (specialFormulas.length > 0) {
                     console.log(`📊 Refreshing ${specialFormulas.length} special formulas sequentially...`);
                     
+                    // CRITICAL: Set bulk refresh flag to suppress toasts from functions.js
+                    localStorage.setItem('netsuite_bulk_refresh', 'true');
+                    
                     // Sort by type: NETINCOME first (fastest), then RETAINEDEARNINGS, then CTA (slowest)
                     const typeOrder = { 'NETINCOME': 1, 'RETAINEDEARNINGS': 2, 'CTA': 3 };
                     specialFormulas.sort((a, b) => (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99));
                     
                     // Small delay to ensure BALANCE cache is fully populated
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     
-                    // Process ONE formula at a time to avoid tunnel timeouts
+                    // Process ONE formula at a time with proper waiting
                     for (let i = 0; i < specialFormulas.length; i++) {
                         const { row, col, formula, type } = specialFormulas[i];
                         const progress = 94 + Math.round((i / specialFormulas.length) * 5);
                         
-                        // Show detailed message based on formula type
-                        let typeMessage = '';
+                        // Extract period from formula for display
+                        const periodMatch = formula.match(/\(([^,)]+)/);
+                        const periodDisplay = periodMatch ? periodMatch[1].replace(/["']/g, '').trim() : '';
+                        
+                        // Show toast for this specific formula
+                        let toastTitle = '';
+                        let toastMessage = '';
+                        let estimatedTime = 20;
+                        
                         if (type === 'NETINCOME') {
-                            typeMessage = 'Calculating YTD Net Income (sum of P&L from fiscal year start)...';
+                            toastTitle = `Calculating Net Income (${i + 1}/${specialFormulas.length})`;
+                            toastMessage = `${periodDisplay} - Summarizing YTD P&L activity. ~20 seconds.`;
+                            estimatedTime = 25;
                         } else if (type === 'RETAINEDEARNINGS') {
-                            typeMessage = 'Computing Retained Earnings (all P&L from company inception through prior FY)...';
+                            toastTitle = `Computing Retained Earnings (${i + 1}/${specialFormulas.length})`;
+                            toastMessage = `${periodDisplay} - Aggregating all historical P&L. May take 1-2 minutes.`;
+                            estimatedTime = 120;
                         } else if (type === 'CTA') {
-                            typeMessage = 'Computing CTA (6 parallel queries for FX translation differences)...';
+                            toastTitle = `Computing CTA (${i + 1}/${specialFormulas.length})`;
+                            toastMessage = `${periodDisplay} - Running 6 consolidated queries. May take 1-2 minutes.`;
+                            estimatedTime = 120;
                         }
                         
-                        updateLoading(`Special formula ${i + 1}/${specialFormulas.length}`, progress, typeMessage);
-                        console.log(`📊 ${type} formula ${i + 1}/${specialFormulas.length}`);
+                        updateLoading(toastTitle, progress, toastMessage);
+                        showToast('calculating', toastTitle, toastMessage, estimatedTime * 1000);
+                        console.log(`📊 ${type} [${periodDisplay}] - formula ${i + 1}/${specialFormulas.length}`);
                         
                         await Excel.run(async (context) => {
                             const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -4991,14 +5011,18 @@ export default {
                         
                         specialFormulasRefreshed++;
                         
-                        // Wait between formulas to let the API call complete
-                        // NETINCOME: 20s, RETAINEDEARNINGS: 120s, CTA: 120s
-                        if (i < specialFormulas.length - 1) {
-                            const waitTime = type === 'CTA' ? 5000 : (type === 'RETAINEDEARNINGS' ? 3000 : 1000);
-                            await new Promise(resolve => setTimeout(resolve, waitTime));
-                        }
+                        // Wait for the API call to complete based on formula type
+                        // These are long-running queries - we need adequate wait times
+                        const waitTime = type === 'CTA' ? 130000 : (type === 'RETAINEDEARNINGS' ? 130000 : 30000);
+                        console.log(`   ⏳ Waiting ${waitTime/1000}s for ${type} to complete...`);
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                        
+                        // Hide the toast for this formula
+                        hideToast();
                     }
                     
+                    // Clear bulk refresh flag
+                    localStorage.removeItem('netsuite_bulk_refresh');
                     console.log(`✅ Refreshed ${specialFormulasRefreshed} special formulas (sequentially)`);
                 }
                 
@@ -5054,6 +5078,10 @@ export default {
             } catch (error) {
                 console.error('Error refreshing sheet:', error);
                 hideLoading();
+                hideToast(); // Clear any lingering toast
+                
+                // Clear bulk refresh flag on error
+                localStorage.removeItem('netsuite_bulk_refresh');
                 
                 statusEl.innerHTML = `
                     <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px;">
@@ -5064,6 +5092,9 @@ export default {
                 
                 setTimeout(() => { statusEl.textContent = ''; }, 8000);
             } finally {
+                // Always clean up
+                localStorage.removeItem('netsuite_bulk_refresh');
+                hideToast();
                 btn.disabled = false;
                 btn.innerHTML = '<span class="action-icon">⚡</span><span class="action-text">Refresh All</span>';
             }
