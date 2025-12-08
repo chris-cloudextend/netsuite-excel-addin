@@ -492,6 +492,92 @@ def load_default_subsidiary():
         print(f"⚠ Error finding parent subsidiary: {e}, defaulting to ID=1")
 
 
+# Cache for subsidiary hierarchy (populated on first use)
+subsidiary_hierarchy_cache = {}
+
+
+def get_subsidiaries_in_hierarchy(target_sub_id):
+    """
+    Get all subsidiary IDs that roll up to the target subsidiary (including the target itself).
+    
+    For consolidated reporting, we need to include transactions from:
+    - The target subsidiary itself
+    - All child subsidiaries (direct and indirect)
+    - Elimination subsidiaries in the hierarchy (for intercompany eliminations)
+    
+    Args:
+        target_sub_id: The target/parent subsidiary ID (string or int)
+        
+    Returns:
+        List of subsidiary IDs (as strings) that should be included in consolidation
+    """
+    global subsidiary_hierarchy_cache
+    
+    target_id = str(target_sub_id)
+    
+    # Check cache first
+    if target_id in subsidiary_hierarchy_cache:
+        return subsidiary_hierarchy_cache[target_id]
+    
+    try:
+        # Query all active subsidiaries with their parent relationships
+        hierarchy_query = """
+            SELECT id, parent, iselimination
+            FROM Subsidiary
+            WHERE isinactive = 'F'
+        """
+        result = query_netsuite(hierarchy_query)
+        
+        if not isinstance(result, list):
+            print(f"   ⚠️ Could not load subsidiary hierarchy, using target only")
+            return [target_id]
+        
+        # Build parent->children map
+        children_map = {}  # parent_id -> [child_ids]
+        all_subs = {}  # id -> {parent, iselimination}
+        
+        for row in result:
+            sub_id = str(row.get('id', ''))
+            parent_id = str(row.get('parent', '')) if row.get('parent') else None
+            is_elim = row.get('iselimination', 'F') == 'T'
+            
+            all_subs[sub_id] = {'parent': parent_id, 'iselimination': is_elim}
+            
+            if parent_id:
+                if parent_id not in children_map:
+                    children_map[parent_id] = []
+                children_map[parent_id].append(sub_id)
+        
+        # If target is the root (parent IS NULL), include ALL non-elimination subsidiaries
+        # plus elimination subsidiaries (needed for intercompany eliminations)
+        if target_id in all_subs and all_subs[target_id]['parent'] is None:
+            # Root subsidiary - include all subsidiaries
+            hierarchy_ids = list(all_subs.keys())
+            print(f"   📊 Root subsidiary {target_id}: including ALL {len(hierarchy_ids)} subsidiaries")
+        else:
+            # Non-root: recursively find all children
+            hierarchy_ids = [target_id]
+            to_process = [target_id]
+            
+            while to_process:
+                current = to_process.pop(0)
+                if current in children_map:
+                    for child_id in children_map[current]:
+                        if child_id not in hierarchy_ids:
+                            hierarchy_ids.append(child_id)
+                            to_process.append(child_id)
+            
+            print(f"   📊 Subsidiary {target_id} hierarchy: {len(hierarchy_ids)} subsidiaries")
+        
+        # Cache the result
+        subsidiary_hierarchy_cache[target_id] = hierarchy_ids
+        return hierarchy_ids
+        
+    except Exception as e:
+        print(f"   ⚠️ Error getting subsidiary hierarchy: {e}")
+        return [target_id]  # Fallback to just the target
+
+
 def convert_name_to_id(dimension_type, value):
     """
     Convert a dimension name to its ID
@@ -4739,6 +4825,15 @@ def calculate_cta():
         target_period_id = fy_info['period_id']
         print(f"   Target period ID: {target_period_id} (for period-end exchange rates)")
         
+        # ═══════════════════════════════════════════════════════════════════════
+        # CRITICAL: Get all subsidiaries in the target's hierarchy
+        # Without this filter, we'd be consolidating ALL subsidiaries (including
+        # those outside the hierarchy), leading to incorrect CTA calculations
+        # ═══════════════════════════════════════════════════════════════════════
+        hierarchy_subs = get_subsidiaries_in_hierarchy(target_sub)
+        sub_filter = ', '.join(hierarchy_subs)
+        print(f"   Subsidiary filter: {len(hierarchy_subs)} subsidiaries in hierarchy")
+        
         # Use constants for account types - single source of truth
         # Asset types: debit balance positive (no flip)
         asset_types = BS_ASSET_TYPES_SQL
@@ -4756,10 +4851,11 @@ def calculate_cta():
         # ═══════════════════════════════════════════════════════════════════════
         # PARALLEL QUERY EXECUTION - Run all 6 queries concurrently to reduce time
         # Sequential: ~4 minutes → Parallel: ~1.5 minutes
+        # NOTE: All queries now filter by subsidiary hierarchy to ensure correct consolidation
         # ═══════════════════════════════════════════════════════════════════════
         print(f"   Running 6 queries in PARALLEL for faster results...")
         
-        # Define all queries
+        # Define all queries - ALL include subsidiary filter
         queries = {
             'total_assets': f"""
                 SELECT SUM({cons_amount}) AS value
@@ -4772,6 +4868,7 @@ def calculate_cta():
                   AND a.accttype IN ({asset_types})
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
+                  AND tal.subsidiary IN ({sub_filter})
             """,
             'total_liabilities': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4784,6 +4881,7 @@ def calculate_cta():
                   AND a.accttype IN ({liability_types})
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
+                  AND tal.subsidiary IN ({sub_filter})
             """,
             'posted_equity': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4797,6 +4895,7 @@ def calculate_cta():
                   AND LOWER(a.fullname) NOT LIKE '%retained earnings%'
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
+                  AND tal.subsidiary IN ({sub_filter})
             """,
             'prior_pl': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4809,6 +4908,7 @@ def calculate_cta():
                   AND a.accttype IN ({PL_TYPES_SQL})
                   AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
+                  AND tal.subsidiary IN ({sub_filter})
             """,
             'posted_re': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4821,6 +4921,7 @@ def calculate_cta():
                   AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
+                  AND tal.subsidiary IN ({sub_filter})
             """,
             'net_income': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4834,6 +4935,7 @@ def calculate_cta():
                   AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
+                  AND tal.subsidiary IN ({sub_filter})
             """
         }
         
