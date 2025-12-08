@@ -4909,6 +4909,9 @@ def calculate_cta():
                   AND tal.posting = 'T'
                   AND a.accttype = 'Equity'
                   AND LOWER(a.fullname) NOT LIKE '%retained earnings%'
+                  AND LOWER(a.fullname) NOT LIKE '%translation%'
+                  AND LOWER(a.fullname) NOT LIKE '%cta%'
+                  AND LOWER(a.fullname) NOT LIKE '%cumulative%'
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
                   AND t.subsidiary IN ({sub_filter})
