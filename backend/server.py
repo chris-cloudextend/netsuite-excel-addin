@@ -4868,7 +4868,7 @@ def calculate_cta():
                   AND a.accttype IN ({asset_types})
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
-                  AND tal.subsidiary IN ({sub_filter})
+                  AND t.subsidiary IN ({sub_filter})
             """,
             'total_liabilities': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4881,7 +4881,7 @@ def calculate_cta():
                   AND a.accttype IN ({liability_types})
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
-                  AND tal.subsidiary IN ({sub_filter})
+                  AND t.subsidiary IN ({sub_filter})
             """,
             'posted_equity': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4895,7 +4895,7 @@ def calculate_cta():
                   AND LOWER(a.fullname) NOT LIKE '%retained earnings%'
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
-                  AND tal.subsidiary IN ({sub_filter})
+                  AND t.subsidiary IN ({sub_filter})
             """,
             'prior_pl': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4908,7 +4908,7 @@ def calculate_cta():
                   AND a.accttype IN ({PL_TYPES_SQL})
                   AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
-                  AND tal.subsidiary IN ({sub_filter})
+                  AND t.subsidiary IN ({sub_filter})
             """,
             'posted_re': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4921,7 +4921,7 @@ def calculate_cta():
                   AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
-                  AND tal.subsidiary IN ({sub_filter})
+                  AND t.subsidiary IN ({sub_filter})
             """,
             'net_income': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4935,7 +4935,7 @@ def calculate_cta():
                   AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
-                  AND tal.subsidiary IN ({sub_filter})
+                  AND t.subsidiary IN ({sub_filter})
             """
         }
         
