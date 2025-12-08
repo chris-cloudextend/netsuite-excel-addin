@@ -432,19 +432,29 @@ def load_default_subsidiary():
     Find the top-level parent subsidiary (where parent IS NULL)
     This subsidiary will be used as the default when no subsidiary is specified.
     For consolidated reporting, this gives the full company view.
+    
+    Important considerations:
+    - Must exclude elimination subsidiaries (iselimination = 'F')
+    - Must be active (isinactive = 'F')
+    - For non-OneWorld accounts, subsidiary may be hidden but still exists
+    - Root subsidiary has parent IS NULL
     """
     global default_subsidiary_id
     
     try:
-        # Query for top-level parent (where parent IS NULL and active)
-        # Note: SuiteQL doesn't support LIMIT, use ROWNUM instead
+        # Primary query: Find the root parent subsidiary
+        # - parent IS NULL = top-level in hierarchy
+        # - isinactive = 'F' = active
+        # - iselimination = 'F' OR NULL = not an elimination subsidiary
+        # FETCH FIRST is the proper way to limit in SuiteQL (not ROWNUM before ORDER BY)
         parent_query = """
             SELECT id, name
             FROM Subsidiary
-            WHERE parent IS NULL
-              AND isinactive = 'F'
-              AND ROWNUM = 1
+            WHERE isinactive = 'F'
+              AND (iselimination = 'F' OR iselimination IS NULL)
+              AND parent IS NULL
             ORDER BY id
+            FETCH FIRST 1 ROWS ONLY
         """
         result = query_netsuite(parent_query)
         
@@ -452,10 +462,29 @@ def load_default_subsidiary():
             default_subsidiary_id = str(result[0]['id'])
             parent_name = result[0]['name']
             print(f"✓ Default subsidiary: {parent_name} (ID: {default_subsidiary_id})")
+            return
+        
+        # Fallback: If no root parent found, get any active non-elimination subsidiary
+        # This handles edge cases like non-OneWorld accounts or unusual configurations
+        print(f"⚠ No root parent subsidiary found, trying fallback query...")
+        fallback_query = """
+            SELECT id, name
+            FROM Subsidiary
+            WHERE isinactive = 'F'
+              AND (iselimination = 'F' OR iselimination IS NULL)
+            ORDER BY id
+            FETCH FIRST 1 ROWS ONLY
+        """
+        fallback = query_netsuite(fallback_query)
+        
+        if isinstance(fallback, list) and len(fallback) > 0:
+            default_subsidiary_id = str(fallback[0]['id'])
+            fallback_name = fallback[0]['name']
+            print(f"✓ Default subsidiary (fallback): {fallback_name} (ID: {default_subsidiary_id})")
         else:
-            # Fallback: use '1' if query fails
+            # Last resort: use '1' if all queries fail
             default_subsidiary_id = '1'
-            print(f"⚠ Could not determine parent subsidiary, defaulting to ID=1")
+            print(f"⚠ Could not determine subsidiary, defaulting to ID=1")
             
     except Exception as e:
         # Fallback: use '1' if query fails
