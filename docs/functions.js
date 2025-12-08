@@ -3062,7 +3062,15 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
         // SEQUENTIAL EXECUTION: Acquire semaphore lock before API call
         // This prevents multiple special formulas from hitting the backend simultaneously
         // ═══════════════════════════════════════════════════════════════
-        await acquireSpecialFormulaLock(cacheKey, 'RETAINEDEARNINGS');
+        try {
+            await acquireSpecialFormulaLock(cacheKey, 'RETAINEDEARNINGS');
+        } catch (lockError) {
+            if (lockError.message === 'QUEUE_CLEARED') {
+                console.log(`🚫 RETAINEDEARNINGS ${period}: Queue cleared, formula will re-evaluate`);
+                return '#BUSY!';
+            }
+            throw lockError;
+        }
         
         // Broadcast toast notification to taskpane
         const toastId = broadcastToast(
@@ -3224,7 +3232,15 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
         // SEQUENTIAL EXECUTION: Acquire semaphore lock before API call
         // This prevents multiple special formulas from hitting the backend simultaneously
         // ═══════════════════════════════════════════════════════════════
-        await acquireSpecialFormulaLock(cacheKey, 'NETINCOME');
+        try {
+            await acquireSpecialFormulaLock(cacheKey, 'NETINCOME');
+        } catch (lockError) {
+            if (lockError.message === 'QUEUE_CLEARED') {
+                console.log(`🚫 NETINCOME ${period}: Queue cleared, formula will re-evaluate`);
+                return '#BUSY!';
+            }
+            throw lockError;
+        }
         
         // Broadcast toast notification to taskpane
         const toastId = broadcastToast(
@@ -3382,7 +3398,7 @@ async function CTA(period, subsidiary, accountingBook) {
         } catch (lockError) {
             if (lockError.message === 'QUEUE_CLEARED') {
                 console.log(`🚫 CTA ${period}: Queue cleared, formula will re-evaluate`);
-                return '#BUSY!'; // Return BUSY so Excel re-evaluates after cache clear
+                return '#BUSY!';
             }
             throw lockError;
         }
