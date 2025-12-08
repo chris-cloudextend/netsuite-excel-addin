@@ -1848,6 +1848,51 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
             
             let cleared = 0;
             
+            // ================================================================
+            // SPECIAL MODE: Clear special formula caches (NETINCOME, RE, CTA)
+            // Usage: =XAVI.BALANCE("__CLEARCACHE__", "SPECIAL:NETINCOME:Dec 2024", "")
+            //        =XAVI.BALANCE("__CLEARCACHE__", "SPECIAL:RETAINEDEARNINGS:Jan 2025", "")
+            //        =XAVI.BALANCE("__CLEARCACHE__", "SPECIAL:CTA:Feb 2025", "")
+            //        =XAVI.BALANCE("__CLEARCACHE__", "SPECIAL:ALL:Dec 2024", "") - clears all 3 for that period
+            // ================================================================
+            if (itemsStr.startsWith('SPECIAL:')) {
+                const parts = itemsStr.split(':');
+                const formulaType = parts[1]; // NETINCOME, RETAINEDEARNINGS, CTA, or ALL
+                const period = parts.slice(2).join(':'); // Period might contain colons
+                
+                console.log(`🎯 SPECIAL CACHE CLEAR: type=${formulaType}, period=${period}`);
+                
+                // Clear from cache.balance by prefix matching
+                const typesToClear = formulaType === 'ALL' 
+                    ? ['netincome', 're', 'cta'] 
+                    : [formulaType === 'RETAINEDEARNINGS' ? 're' : formulaType.toLowerCase()];
+                
+                for (const type of typesToClear) {
+                    const prefix = `${type}:${period}`;
+                    
+                    // Clear from in-memory cache
+                    for (const [key, _] of cache.balance) {
+                        if (key.startsWith(prefix)) {
+                            cache.balance.delete(key);
+                            cleared++;
+                            console.log(`   ✓ Cleared cache: ${key}`);
+                        }
+                    }
+                    
+                    // CRITICAL: Also clear from inFlightRequests map
+                    for (const [key, _] of inFlightRequests) {
+                        if (key.startsWith(prefix)) {
+                            inFlightRequests.delete(key);
+                            console.log(`   ✓ Cleared in-flight: ${key}`);
+                            cleared++;
+                        }
+                    }
+                }
+                
+                console.log(`🗑️ SPECIAL CACHE CLEAR complete: ${cleared} entries cleared for ${formulaType} ${period}`);
+                return cleared;
+            }
+            
             if (!itemsStr || itemsStr === 'ALL') {
                 // Clear EVERYTHING - all caches including localStorage
                 cleared = cache.balance.size;

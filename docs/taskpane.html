@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.21.0';
+        const ADDIN_VERSION = '1.5.22.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -4998,8 +4998,36 @@ export default {
                     const typeOrder = { 'NETINCOME': 1, 'RETAINEDEARNINGS': 2, 'CTA': 3 };
                     specialFormulas.sort((a, b) => (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99));
                     
-                    // Small delay to ensure BALANCE cache is fully populated
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // CRITICAL: Clear ALL special formula caches BEFORE processing
+                    // During BALANCE refresh, Excel may have triggered these formulas in the background
+                    // resulting in stale cached values or in-flight requests
+                    console.log('🗑️ Pre-clearing ALL special formula caches to ensure fresh calculations...');
+                    for (const period of detectedPeriods) {
+                        try {
+                            await Excel.run(async (context) => {
+                                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                                const tempRange = sheet.getRange('ZZ9997');
+                                
+                                // Clear ALL special formulas for this period
+                                const clearCmd = `SPECIAL:ALL:${period}`;
+                                tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","${clearCmd}","")`]];
+                                await context.sync();
+                                await new Promise(r => setTimeout(r, 200));
+                                
+                                tempRange.load('values');
+                                await context.sync();
+                                console.log(`   ✓ Pre-cleared special caches for ${period}: ${tempRange.values[0][0]} entries`);
+                                
+                                tempRange.clear();
+                                await context.sync();
+                            });
+                        } catch (e) {
+                            console.warn(`   ⚠️ Pre-clear failed for ${period}:`, e.message);
+                        }
+                    }
+                    
+                    // Small delay to ensure cache clears are processed
+                    await new Promise(resolve => setTimeout(resolve, 500));
                     
                     // Helper function to wait for a cell to resolve (poll until not #BUSY#)
                     async function waitForCellToResolve(row, col, maxWaitMs = 180000) {
@@ -5073,6 +5101,34 @@ export default {
                         // Update task pane loading indicator (NO toast - all status in task pane)
                         updateLoading(toastTitle, progress, toastMessage);
                         console.log(`📊 ${type} [${periodDisplay}] - formula ${i + 1}/${specialFormulas.length}`);
+                        
+                        // CRITICAL: Clear the cache for THIS SPECIFIC formula before triggering
+                        // This prevents returning stale cached values from earlier in the refresh
+                        try {
+                            await Excel.run(async (context) => {
+                                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                                const tempRange = sheet.getRange('ZZ9998');
+                                
+                                // Use SPECIAL: mode to clear this formula type and period
+                                const clearCmd = `SPECIAL:${type}:${periodDisplay}`;
+                                tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","${clearCmd}","")`]];
+                                await context.sync();
+                                
+                                await new Promise(r => setTimeout(r, 300));
+                                
+                                tempRange.load('values');
+                                await context.sync();
+                                console.log(`   🗑️ Cleared cache for ${type}:${periodDisplay} - result: ${tempRange.values[0][0]}`);
+                                
+                                tempRange.clear();
+                                await context.sync();
+                            });
+                        } catch (clearErr) {
+                            console.warn(`   ⚠️ Cache clear failed for ${type}:${periodDisplay}:`, clearErr.message);
+                        }
+                        
+                        // Small delay to ensure cache clear is processed
+                        await new Promise(r => setTimeout(r, 200));
                         
                         // Trigger the formula recalculation
                         await Excel.run(async (context) => {
