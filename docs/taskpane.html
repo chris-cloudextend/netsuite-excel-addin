@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.23.0';
+        const ADDIN_VERSION = '1.5.24.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -4963,6 +4963,60 @@ export default {
                     usedRange.calculate();
                     await context.sync();
                 });
+                
+                // ============================================
+                // CRITICAL: Wait for BALANCE formulas to actually resolve
+                // context.sync() only sends the command - formulas may still be #BUSY#
+                // We need to poll and wait for them to finish before moving on
+                // ============================================
+                updateLoading('Waiting for BALANCE formulas to resolve...', 93);
+                console.log('⏳ Waiting for BALANCE formulas to resolve (up to 60s)...');
+                
+                const balanceWaitStart = Date.now();
+                const maxBalanceWait = 60000; // 60 seconds max wait for BALANCE formulas
+                let balanceResolved = false;
+                
+                while (Date.now() - balanceWaitStart < maxBalanceWait) {
+                    let busyCount = 0;
+                    let resolvedCount = 0;
+                    
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const usedRange = sheet.getUsedRange();
+                        usedRange.load('values');
+                        await context.sync();
+                        
+                        const values = usedRange.values;
+                        for (let row = 0; row < values.length; row++) {
+                            for (let col = 0; col < values[row].length; col++) {
+                                const val = String(values[row][col] || '');
+                                if (val.includes('BUSY') || val === '#BUSY!' || val === '#BUSY#') {
+                                    busyCount++;
+                                }
+                            }
+                        }
+                        resolvedCount = cellsToUpdate.length - busyCount;
+                    });
+                    
+                    const elapsed = ((Date.now() - balanceWaitStart) / 1000).toFixed(1);
+                    
+                    if (busyCount === 0) {
+                        console.log(`✅ All BALANCE formulas resolved in ${elapsed}s`);
+                        balanceResolved = true;
+                        break;
+                    }
+                    
+                    console.log(`   ⏳ Still waiting: ${busyCount} formulas still calculating (${elapsed}s)...`);
+                    updateLoading('Waiting for BALANCE formulas...', 93, 
+                        `${busyCount} formulas still calculating...`);
+                    
+                    // Wait 2 seconds before checking again
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+                
+                if (!balanceResolved) {
+                    console.warn(`⚠️ BALANCE formulas did not fully resolve within ${maxBalanceWait/1000}s - proceeding anyway`);
+                }
                 
                 // ============================================
                 // BALANCE formulas complete - notify user it's safe to work
