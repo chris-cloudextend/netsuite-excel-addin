@@ -37,6 +37,10 @@ balance_cache = {}
 balance_cache_timestamp = None
 BALANCE_CACHE_TTL = 300  # 5 minutes in seconds
 
+# In-memory cache for fiscal year lookups (to avoid repeated API calls)
+# Structure: { 'period_name': {fiscal_year_id, fy_start, fy_end, period_id, period_start, period_end} }
+fiscal_year_cache = {}
+
 # In-memory cache for BS ACTIVITY data (used to compute cumulative balances)
 # Structure: { 'account:period:filters_hash': activity_value }
 # Backend computes cumulative by summing activity from Jan through requested period
@@ -4142,6 +4146,7 @@ def get_fiscal_year_for_period(period_name, accountingbook=None):
     """
     Get the fiscal year containing the specified period.
     Works for any fiscal calendar (calendar year, Apr-Mar, etc.)
+    CACHED to avoid repeated API calls for same period.
     
     Args:
         period_name: Period name like "Mar 2025"
@@ -4151,6 +4156,16 @@ def get_fiscal_year_for_period(period_name, accountingbook=None):
         dict with: fiscal_year_id, fy_start, fy_end, period_id, period_start, period_end
         or None if not found
     """
+    global fiscal_year_cache
+    
+    # Check cache first
+    cache_key = f"{period_name}:{accountingbook or ''}"
+    if cache_key in fiscal_year_cache:
+        print(f"   [FY CACHE HIT] {period_name}")
+        return fiscal_year_cache[cache_key]
+    
+    print(f"   [FY CACHE MISS] {period_name} - querying NetSuite...")
+    
     query = f"""
         SELECT 
             fy.id AS fiscal_year_id,
@@ -4174,7 +4189,7 @@ def get_fiscal_year_for_period(period_name, accountingbook=None):
     result = query_netsuite(query)
     if isinstance(result, list) and len(result) > 0:
         row = result[0]
-        return {
+        fy_info = {
             'fiscal_year_id': row.get('fiscal_year_id'),
             'fy_start': row.get('fy_start'),
             'fy_end': row.get('fy_end'),
@@ -4182,6 +4197,12 @@ def get_fiscal_year_for_period(period_name, accountingbook=None):
             'period_start': row.get('period_start'),
             'period_end': row.get('period_end')
         }
+        # Cache the result
+        fiscal_year_cache[cache_key] = fy_info
+        print(f"   [FY CACHED] {period_name} → FY {fy_info['fy_start']} - {fy_info['fy_end']}")
+        return fy_info
+    
+    print(f"   [FY NOT FOUND] {period_name}")
     return None
 
 
@@ -4353,7 +4374,7 @@ def calculate_retained_earnings():
         # Result: Positive = accumulated profit, Negative = accumulated loss
         
         # Use default subsidiary if none specified (for consolidation)
-        target_sub = subsidiary if subsidiary else default_subsidiary_id
+        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
         
         # CRITICAL: Get target period ID for BUILTIN.CONSOLIDATE
         # ALL Balance Sheet amounts must be translated at the report period-end rate
@@ -4410,14 +4431,29 @@ def calculate_retained_earnings():
               {segment_where}
         """
         
-        # Execute both queries in parallel
+        # Execute both queries in parallel with retry logic for rate limiting
+        import time
         prior_pl = 0.0
         posted_re = 0.0
         
+        def query_with_retry_re(name, sql, max_retries=3):
+            """Execute query with retry logic for rate limiting"""
+            for attempt in range(max_retries):
+                result = query_netsuite(sql, 120)
+                if isinstance(result, dict) and 'error' in result:
+                    error_str = str(result.get('details', ''))
+                    if 'CONCURRENCY_LIMIT_EXCEEDED' in error_str or '429' in error_str:
+                        wait_time = (attempt + 1) * 2
+                        print(f"      ⏳ {name}: Rate limited, retrying in {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                return result
+            return result
+        
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {
-                executor.submit(query_netsuite, prior_pl_query, 120): 'prior_pl',
-                executor.submit(query_netsuite, posted_re_query, 120): 'posted_re'
+                executor.submit(query_with_retry_re, 'prior_pl', prior_pl_query): 'prior_pl',
+                executor.submit(query_with_retry_re, 'posted_re', posted_re_query): 'posted_re'
             }
             for future in as_completed(futures):
                 name = futures[future]
@@ -4533,7 +4569,7 @@ def calculate_net_income():
         # Result: Positive = profit, Negative = loss
         
         # Use default subsidiary if none specified (for consolidation)
-        target_sub = subsidiary if subsidiary else default_subsidiary_id
+        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
         
         # CRITICAL: Get target period ID for BUILTIN.CONSOLIDATE
         # ALL amounts for Balance Sheet components must be translated at report period-end rate
@@ -4637,7 +4673,7 @@ def calculate_cta():
             fy_start_date = fy_start
         
         # Use default subsidiary if none specified
-        target_sub = subsidiary if subsidiary else default_subsidiary_id
+        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
         
         # Get the target period ID for BUILTIN.CONSOLIDATE
         # CRITICAL: Must use target period ID, NOT t.postingperiod!
@@ -4743,11 +4779,29 @@ def calculate_cta():
             """
         }
         
-        # Execute all queries in parallel using ThreadPoolExecutor
+        # Execute queries in parallel using ThreadPoolExecutor
+        # IMPORTANT: NetSuite has a concurrency limit (typically 5)
+        # Using max_workers=3 to leave room for other concurrent requests
         results = {}
-        with ThreadPoolExecutor(max_workers=6) as executor:
+        import time
+        
+        def query_with_retry(name, sql, max_retries=3):
+            """Execute query with retry logic for rate limiting"""
+            for attempt in range(max_retries):
+                result = query_netsuite(sql, 120)
+                if isinstance(result, dict) and 'error' in result:
+                    error_str = str(result.get('details', ''))
+                    if 'CONCURRENCY_LIMIT_EXCEEDED' in error_str or '429' in error_str:
+                        wait_time = (attempt + 1) * 2  # 2s, 4s, 6s
+                        print(f"      ⏳ {name}: Rate limited, retrying in {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                return result
+            return result  # Return last result even if failed
+        
+        with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {
-                executor.submit(query_netsuite, sql, 120): name 
+                executor.submit(query_with_retry, name, sql): name 
                 for name, sql in queries.items()
             }
             for future in as_completed(futures):
