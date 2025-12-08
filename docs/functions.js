@@ -2840,6 +2840,17 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
         cacheStats.misses++;
         console.log(`📥 Calculating Retained Earnings for ${period}...`);
         
+        // Show toast notification (if available in taskpane context)
+        let toastId = null;
+        if (typeof window.showToast === 'function') {
+            toastId = window.showToast({
+                title: 'Calculating Retained Earnings',
+                message: `Period: ${period}<br><br><em>This calculates cumulative P&L from inception through prior fiscal year end. Takes 10-30 seconds due to complex historical queries.</em>`,
+                type: 'calculating',
+                duration: 0
+            });
+        }
+        
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
             try {
@@ -2859,6 +2870,10 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error(`Retained Earnings API error: ${response.status}`, errorText);
+                    if (toastId && typeof window.updateToast === 'function') {
+                        window.updateToast(toastId, { title: 'Retained Earnings Failed', message: `Error: ${response.status}`, type: 'error' });
+                        setTimeout(() => window.removeToast(toastId), 5000);
+                    }
                     return 0;
                 }
                 
@@ -2869,10 +2884,23 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
                 cache.balance.set(cacheKey, value);
                 console.log(`✅ Retained Earnings (${period}): ${value.toLocaleString()}`);
                 
+                // Update toast with success
+                if (toastId && typeof window.updateToast === 'function') {
+                    window.updateToast(toastId, { 
+                        title: 'Retained Earnings Complete', 
+                        message: `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
+                        type: 'success' 
+                    });
+                    setTimeout(() => window.removeToast(toastId), 4000);
+                }
+                
                 return value;
                 
             } catch (error) {
                 console.error('Retained Earnings fetch error:', error);
+                if (toastId && typeof window.removeToast === 'function') {
+                    window.removeToast(toastId);
+                }
                 return 0;
             } finally {
                 // Remove from in-flight after completion
@@ -2945,6 +2973,17 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
         cacheStats.misses++;
         console.log(`📥 Calculating Net Income for ${period}...`);
         
+        // Show toast notification (if available in taskpane context)
+        let toastId = null;
+        if (typeof window.showToast === 'function') {
+            toastId = window.showToast({
+                title: 'Calculating Net Income',
+                message: `Period: ${period}<br><br><em>This sums all P&L from fiscal year start through target period. Takes 10-20 seconds due to P&L aggregation.</em>`,
+                type: 'calculating',
+                duration: 0
+            });
+        }
+        
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
             try {
@@ -2964,6 +3003,10 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error(`Net Income API error: ${response.status}`, errorText);
+                    if (toastId && typeof window.updateToast === 'function') {
+                        window.updateToast(toastId, { title: 'Net Income Failed', message: `Error: ${response.status}`, type: 'error' });
+                        setTimeout(() => window.removeToast(toastId), 5000);
+                    }
                     return 0;
                 }
                 
@@ -2974,10 +3017,23 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 cache.balance.set(cacheKey, value);
                 console.log(`✅ Net Income (${period}): ${value.toLocaleString()}`);
                 
+                // Update toast with success
+                if (toastId && typeof window.updateToast === 'function') {
+                    window.updateToast(toastId, { 
+                        title: 'Net Income Complete', 
+                        message: `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
+                        type: 'success' 
+                    });
+                    setTimeout(() => window.removeToast(toastId), 4000);
+                }
+                
                 return value;
                 
             } catch (error) {
                 console.error('Net Income fetch error:', error);
+                if (toastId && typeof window.removeToast === 'function') {
+                    window.removeToast(toastId);
+                }
                 return 0;
             } finally {
                 inFlightRequests.delete(cacheKey);
@@ -3041,6 +3097,17 @@ async function CTA(period, subsidiary, accountingBook) {
         cacheStats.misses++;
         console.log(`📥 Calculating CTA for ${period}...`);
         
+        // Show toast notification (if available in taskpane context)
+        let toastId = null;
+        if (typeof window.showToast === 'function') {
+            toastId = window.showToast({
+                title: 'Calculating CTA',
+                message: `Period: ${period}<br><br><em>Cumulative Translation Adjustment runs 6 parallel queries (assets, liabilities, equity, RE, NI). Takes 30-60 seconds due to currency consolidation.</em>`,
+                type: 'calculating',
+                duration: 0
+            });
+        }
+        
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
             try {
@@ -3057,6 +3124,10 @@ async function CTA(period, subsidiary, accountingBook) {
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error(`CTA API error: ${response.status}`, errorText);
+                    if (toastId && typeof window.updateToast === 'function') {
+                        window.updateToast(toastId, { title: 'CTA Failed', message: `Error: ${response.status}`, type: 'error' });
+                        setTimeout(() => window.removeToast(toastId), 5000);
+                    }
                     return 0;
                 }
                 
@@ -3067,10 +3138,23 @@ async function CTA(period, subsidiary, accountingBook) {
                 cache.balance.set(cacheKey, value);
                 console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
                 
+                // Update toast with success
+                if (toastId && typeof window.updateToast === 'function') {
+                    window.updateToast(toastId, { 
+                        title: 'CTA Complete', 
+                        message: `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
+                        type: 'success' 
+                    });
+                    setTimeout(() => window.removeToast(toastId), 4000);
+                }
+                
                 return value;
                 
             } catch (error) {
                 console.error('CTA fetch error:', error);
+                if (toastId && typeof window.removeToast === 'function') {
+                    window.removeToast(toastId);
+                }
                 return 0;
             } finally {
                 inFlightRequests.delete(cacheKey);

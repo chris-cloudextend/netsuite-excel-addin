@@ -1531,9 +1531,130 @@
             border-radius: 4px;
             font-size: 10px;
         }
+
+        /* Toast Notification System */
+        .toast-container {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 320px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background: var(--deep-dive);
+            border-radius: 10px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            animation: toastSlideIn 0.3s ease-out;
+            pointer-events: auto;
+            border-left: 4px solid var(--anenome);
+        }
+
+        .toast.info { border-left-color: var(--tidal-wave); }
+        .toast.success { border-left-color: #10b981; }
+        .toast.warning { border-left-color: #f59e0b; }
+        .toast.error { border-left-color: #ef4444; }
+        .toast.calculating { border-left-color: #8b5cf6; }
+
+        .toast-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .toast-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .toast-title {
+            font-weight: 600;
+            font-size: 13px;
+            color: white;
+            margin-bottom: 4px;
+        }
+
+        .toast-message {
+            font-size: 11px;
+            color: var(--chrome);
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
+        .toast-message code {
+            background: rgba(10, 226, 193, 0.2);
+            color: var(--anenome);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            display: inline-block;
+            margin-top: 4px;
+            cursor: pointer;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: var(--chrome);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .toast-close:hover {
+            opacity: 1;
+        }
+
+        @keyframes toastSlideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes toastSlideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+
+        .toast.removing {
+            animation: toastSlideOut 0.3s ease-in forwards;
+        }
+
+        .toast-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(139, 92, 246, 0.3);
+            border-top: 2px solid #8b5cf6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
     </style>
 </head>
 <body>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-content">
@@ -2320,6 +2441,93 @@
             const overlay = document.getElementById('loadingOverlay');
             overlay.classList.remove('active');
         }
+
+        // ========================================================================
+        // TOAST NOTIFICATION SYSTEM
+        // ========================================================================
+        let toastCounter = 0;
+        
+        /**
+         * Show a toast notification
+         * @param {object} options - Toast options
+         * @param {string} options.title - Toast title
+         * @param {string} options.message - Toast message (can include HTML)
+         * @param {string} options.type - Toast type: 'info', 'success', 'warning', 'error', 'calculating'
+         * @param {number} options.duration - Auto-dismiss duration in ms (0 = no auto-dismiss)
+         * @param {string} options.icon - Custom icon (emoji)
+         * @returns {string} Toast ID for manual removal
+         */
+        function showToast({ title, message, type = 'info', duration = 5000, icon }) {
+            const container = document.getElementById('toastContainer');
+            const toastId = `toast-${++toastCounter}`;
+            
+            // Default icons by type
+            const defaultIcons = {
+                info: '💡',
+                success: '✅',
+                warning: '⚠️',
+                error: '❌',
+                calculating: '' // Will use spinner
+            };
+            
+            const displayIcon = icon || defaultIcons[type] || '💡';
+            const iconHtml = type === 'calculating' 
+                ? '<div class="toast-spinner"></div>' 
+                : `<span class="toast-icon">${displayIcon}</span>`;
+            
+            const toast = document.createElement('div');
+            toast.id = toastId;
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                ${iconHtml}
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+                <button class="toast-close" onclick="removeToast('${toastId}')">&times;</button>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Auto-dismiss after duration (if set)
+            if (duration > 0) {
+                setTimeout(() => removeToast(toastId), duration);
+            }
+            
+            return toastId;
+        }
+        
+        function removeToast(toastId) {
+            const toast = document.getElementById(toastId);
+            if (toast) {
+                toast.classList.add('removing');
+                setTimeout(() => toast.remove(), 300);
+            }
+        }
+        
+        function updateToast(toastId, { title, message, type }) {
+            const toast = document.getElementById(toastId);
+            if (toast) {
+                if (title) toast.querySelector('.toast-title').textContent = title;
+                if (message) toast.querySelector('.toast-message').innerHTML = message;
+                if (type) {
+                    toast.className = `toast ${type}`;
+                    // Update icon for non-calculating types
+                    if (type !== 'calculating') {
+                        const iconSpan = toast.querySelector('.toast-icon');
+                        const spinner = toast.querySelector('.toast-spinner');
+                        if (spinner) {
+                            spinner.outerHTML = `<span class="toast-icon">${type === 'success' ? '✅' : type === 'error' ? '❌' : '💡'}</span>`;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Make toast functions globally accessible for functions.js
+        window.showToast = showToast;
+        window.removeToast = removeToast;
+        window.updateToast = updateToast;
 
         // ========================================================================
         // SETTINGS MODAL
@@ -3370,6 +3578,14 @@
             statusEl.className = 'status-indicator checking';
             statusEl.innerHTML = '<span class="status-dot checking"></span> Restarting...';
             
+            // Show toast notification
+            const toastId = showToast({
+                title: 'Restarting Server',
+                message: 'Sending restart command...',
+                type: 'calculating',
+                duration: 0 // Don't auto-dismiss
+            });
+            
             try {
                 const response = await fetch(`${SERVER_URL}/admin/restart`, { 
                     method: 'POST',
@@ -3378,41 +3594,71 @@
                 
                 if (response.ok) {
                     statusEl.innerHTML = '<span class="status-dot checking"></span> Server restarting...';
-                    
-                    // Wait 3 seconds then check status
-                    setTimeout(async () => {
-                        await checkServerStatus();
-                    }, 3000);
-                } else {
-                    throw new Error(`Status: ${response.status}`);
+                    updateToast(toastId, { message: 'Server is restarting...' });
                 }
             } catch (error) {
                 // Connection error is expected during restart
-                statusEl.innerHTML = '<span class="status-dot checking"></span> Waiting for restart...';
-                
-                // Keep checking until server is back
-                let attempts = 0;
-                const checkInterval = setInterval(async () => {
-                    attempts++;
-                    try {
-                        const healthResponse = await fetch(`${SERVER_URL}/health`, { 
-                            method: 'GET',
-                            signal: AbortSignal.timeout(3000)
-                        });
-                        if (healthResponse.ok) {
-                            clearInterval(checkInterval);
-                            statusEl.className = 'status-indicator connected';
-                            statusEl.innerHTML = '<span class="status-dot connected"></span> Restarted ✓';
-                        }
-                    } catch (e) {
-                        if (attempts > 10) {
-                            clearInterval(checkInterval);
-                            statusEl.className = 'status-indicator error';
-                            statusEl.innerHTML = '<span class="status-dot error"></span> Restart failed - check terminal';
+                console.log('Restart request sent (connection dropped as expected)');
+            }
+            
+            statusEl.innerHTML = '<span class="status-dot checking"></span> Waiting for restart...';
+            updateToast(toastId, { message: 'Waiting for server to come back online...' });
+            
+            // Keep checking until server is back
+            let attempts = 0;
+            const checkInterval = setInterval(async () => {
+                attempts++;
+                try {
+                    const healthResponse = await fetch(`${SERVER_URL}/health`, { 
+                        method: 'GET',
+                        signal: AbortSignal.timeout(3000)
+                    });
+                    if (healthResponse.ok) {
+                        clearInterval(checkInterval);
+                        statusEl.className = 'status-indicator connected';
+                        statusEl.innerHTML = '<span class="status-dot connected"></span> Restarted ✓';
+                        
+                        // Fetch and display tunnel URL
+                        try {
+                            const infoResponse = await fetch(`${SERVER_URL}/`, { 
+                                method: 'GET',
+                                signal: AbortSignal.timeout(3000)
+                            });
+                            if (infoResponse.ok) {
+                                const data = await infoResponse.json();
+                                // Update toast with success and show server info
+                                updateToast(toastId, {
+                                    title: 'Server Restarted',
+                                    message: `Server is back online!<br><br><strong>Local:</strong> http://localhost:5002<br><strong>Note:</strong> Cloudflare tunnel URL may have changed. Check terminal or run tunnel command.`,
+                                    type: 'success'
+                                });
+                                // Auto-dismiss after 8 seconds
+                                setTimeout(() => removeToast(toastId), 8000);
+                            }
+                        } catch (e) {
+                            updateToast(toastId, {
+                                title: 'Server Restarted',
+                                message: 'Server is back online!',
+                                type: 'success'
+                            });
+                            setTimeout(() => removeToast(toastId), 5000);
                         }
                     }
-                }, 2000);
-            }
+                } catch (e) {
+                    if (attempts > 10) {
+                        clearInterval(checkInterval);
+                        statusEl.className = 'status-indicator error';
+                        statusEl.innerHTML = '<span class="status-dot error"></span> Restart failed - check terminal';
+                        
+                        updateToast(toastId, {
+                            title: 'Restart Failed',
+                            message: 'Could not connect to server after restart. Check the terminal for errors.',
+                            type: 'error'
+                        });
+                        setTimeout(() => removeToast(toastId), 8000);
+                    }
+                }
+            }, 2000);
         }
 
         function copyTunnelCommand() {
