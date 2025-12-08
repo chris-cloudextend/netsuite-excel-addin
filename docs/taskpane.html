@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.24.0';
+        const ADDIN_VERSION = '1.5.25.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -4735,15 +4735,20 @@ export default {
                         if (typeResponse.ok) {
                             const typeData = await typeResponse.json();
                             // All Balance Sheet account types in NetSuite
-                            // Assets: Bank, AcctRec, OthCurrAsset, FixedAsset, OthAsset, DeferExpens (Prepaid)
-                            // Liabilities: AcctPay, CreditCard, OthCurrLiab, LongTermLiab, DeferRevenu (Deferred Revenue)
+                            // Assets: Bank, AcctRec, OthCurrAsset, FixedAsset, OthAsset, DeferExpens (Prepaid), UnbilledRec
+                            // Liabilities: AcctPay, CredCard (NOT CreditCard!), OthCurrLiab, LongTermLiab, DeferRevenu
                             // Equity: Equity, RetainedEarnings
                             const bsTypes = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpens',
-                                           'AcctPay', 'CreditCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenu',
-                                           'Equity', 'RetainedEarnings'];
+                                           'AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenu',
+                                           'Equity', 'RetainedEarnings', 'UnbilledRec'];
+                            
+                            // Log which types we received for debugging
+                            console.log('📊 Account types from API:', JSON.stringify(typeData.types));
                             
                             for (const [acct, type] of Object.entries(typeData.types || {})) {
-                                if (bsTypes.includes(type)) {
+                                const isBsType = bsTypes.includes(type);
+                                console.log(`   Account ${acct}: type="${type}" → ${isBsType ? 'BS' : 'P&L'}`);
+                                if (isBsType) {
                                     bsAccounts.push(acct);
                                 } else {
                                     plAccounts.push(acct);
@@ -4752,8 +4757,12 @@ export default {
                             console.log(`📊 P&L accounts: ${plAccounts.length}, BS accounts: ${bsAccounts.length}`);
                         }
                     } catch (e) {
-                        console.warn('Could not classify accounts, treating all as P&L:', e);
-                        plAccounts = [...detectedAccounts];
+                        // CRITICAL: If type API fails, treat all as BS (safer - BS refresh is slower but more accurate)
+                        // Previously we treated as P&L which caused unnecessary P&L fetches
+                        console.error('❌ Type API failed! Treating all accounts as Balance Sheet:', e);
+                        bsAccounts = [...detectedAccounts];
+                        showToast({ type: 'warning', title: 'Account Classification Failed', 
+                            message: 'Could not classify accounts. Treating all as Balance Sheet for safety.', duration: 8000 });
                     }
                 }
                 
@@ -4779,15 +4788,22 @@ export default {
                 
                 // ============================================
                 // STEP 3: Fetch P&L accounts (fast ~30s/year)
+                // ONLY fetch P&L if there are actually P&L accounts detected
+                // If detectedAccounts is empty AND there are BALANCE formulas, 
+                // we still need to classify them - skip P&L in that case
                 // ============================================
-                if (plAccounts.length > 0 || detectedAccounts.size === 0) {
-                    updateLoading('Fetching P&L accounts...', 15, `Years: ${yearsArray.join(', ')}`);
+                console.log(`📊 P&L decision: plAccounts=${plAccounts.length}, bsAccounts=${bsAccounts.length}, detectedAccounts=${detectedAccounts.size}`);
+                
+                // ONLY fetch P&L if we actually have P&L accounts identified
+                if (plAccounts.length > 0) {
+                    console.log(`📊 Fetching P&L data for ${plAccounts.length} accounts: ${plAccounts.join(', ')}`);
+                    updateLoading('Fetching P&L accounts...', 15, `${plAccounts.length} P&L accounts, Years: ${yearsArray.join(', ')}`);
                     
                     for (let i = 0; i < yearsArray.length; i++) {
                         const year = yearsArray[i];
                         const progress = 15 + (i / yearsArray.length) * 35;
                         updateLoading(`Fetching P&L data for ${year}...`, progress, 
-                            `Year ${i + 1} of ${yearsArray.length}`);
+                            `Year ${i + 1} of ${yearsArray.length} • ${plAccounts.length} P&L accounts`);
                         
                         try {
                 const response = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
@@ -4828,6 +4844,9 @@ export default {
                             await checkConnectionStatus(true);
                         }
                     }
+                } else {
+                    console.log('📊 SKIPPING P&L fetch - no P&L accounts detected on sheet');
+                    updateLoading('No P&L accounts to fetch', 50, 'All detected accounts are Balance Sheet type');
                 }
                 
                 // ============================================
@@ -4835,9 +4854,13 @@ export default {
                 // Uses batch_bs_periods endpoint - ONE query for ALL periods
                 // Instead of 12 queries (~14 min), runs 1 query (~36 sec)
                 // ============================================
-                if (bsAccounts.length > 0 || detectedAccounts.size === 0) {
-                    const bsCount = bsAccounts.length || 'All';
-                    console.log(`⚠️ ${bsCount} Balance Sheet accounts detected`);
+                console.log(`📊 BS decision: bsAccounts=${bsAccounts.length}, detectedAccounts=${detectedAccounts.size}`);
+                
+                // ONLY fetch BS if we have BS accounts, OR if we have no accounts at all (fallback for all BALANCE formulas)
+                if (bsAccounts.length > 0 || (detectedAccounts.size === 0 && cellsToUpdate.length > 0)) {
+                    const bsCount = bsAccounts.length || 'All detected';
+                    console.log(`📊 ${bsCount} Balance Sheet accounts detected: ${bsAccounts.join(', ') || '(all accounts)'}`);
+                    console.log(`📊 Fetching BS for ${bsCount} accounts`);
                     updateLoading('Fetching Balance Sheet accounts...', 50, 
                         `Unlike P&L accounts, Balance Sheet accounts must be summed from the beginning of time (inception-to-date). Using OPTIMIZED single-query approach.`);
                     
@@ -4909,16 +4932,61 @@ export default {
                 // ============================================
                 updateLoading('Saving to cache...', 88, `${totalAccountsLoaded} accounts loaded`);
                 
-                try {
-                    localStorage.setItem('netsuite_balance_cache', JSON.stringify(allBalances));
-                    localStorage.setItem('netsuite_balance_cache_timestamp', Date.now().toString());
-                    console.log(`✅ Saved ${Object.keys(allBalances).length} accounts to localStorage`);
-                } catch (e) {
-                    console.error('localStorage save error:', e);
+                const accountsLoaded = Object.keys(allBalances).length;
+                let periodsLoaded = 0;
+                for (const acct in allBalances) {
+                    periodsLoaded += Object.keys(allBalances[acct]).length;
                 }
                 
+                console.log(`📦 Preparing to save: ${accountsLoaded} accounts, ${periodsLoaded} period values`);
+                
+                // CRITICAL: Check if allBalances has data - if not, this is a major error
+                if (accountsLoaded === 0) {
+                    console.error('❌ CRITICAL: No balance data loaded! allBalances is empty.');
+                    showToast({ type: 'error', title: 'No Data Loaded', 
+                        message: 'Failed to load any balance data from the server. Check tunnel connection.', duration: 15000 });
+                } else {
+                    console.log(`📊 Sample data: ${JSON.stringify(Object.entries(allBalances).slice(0,2))}`);
+                }
+                
+                try {
+                    const cacheJson = JSON.stringify(allBalances);
+                    const cacheTimestamp = Date.now().toString();
+                    
+                    localStorage.setItem('netsuite_balance_cache', cacheJson);
+                    localStorage.setItem('netsuite_balance_cache_timestamp', cacheTimestamp);
+                    
+                    // CRITICAL: Verify the save was successful
+                    const verifyData = localStorage.getItem('netsuite_balance_cache');
+                    const verifyTimestamp = localStorage.getItem('netsuite_balance_cache_timestamp');
+                    
+                    if (!verifyData || verifyData.length < 10) {
+                        console.error('❌ localStorage save FAILED - verification failed');
+                        showToast({ type: 'error', title: 'Cache Save Failed', 
+                            message: 'Failed to save balance data to cache. Formulas may not resolve correctly.', duration: 10000 });
+                    } else {
+                        console.log(`✅ localStorage save VERIFIED: ${verifyData.length} chars, timestamp=${verifyTimestamp}`);
+                    }
+                    
+                    // Small delay to ensure localStorage is fully synced across contexts
+                    await new Promise(r => setTimeout(r, 200));
+                    
+                } catch (e) {
+                    console.error('localStorage save error:', e);
+                    showToast({ type: 'error', title: 'Cache Error', 
+                        message: `Failed to save data: ${e.message}`, duration: 10000 });
+                }
+                
+                // Also populate the in-memory cache if Shared Runtime is available
                 if (typeof window.setFullYearCache === 'function') {
-                    try { window.setFullYearCache(allBalances); } catch (e) {}
+                    try { 
+                        window.setFullYearCache(allBalances); 
+                        console.log('✅ setFullYearCache called successfully');
+                    } catch (e) {
+                        console.warn('setFullYearCache failed:', e.message);
+                    }
+                } else {
+                    console.log('⚠️ setFullYearCache not available (Shared Runtime may not be active)');
                 }
                 
                 // ============================================
