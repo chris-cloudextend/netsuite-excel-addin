@@ -3091,13 +3091,22 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
             throw lockError;
         }
         
-        // Broadcast toast notification to taskpane
-        const toastId = broadcastToast(
-            'Computing Retained Earnings…',
-            `<strong>${period}</strong><br><br>This calculation aggregates all historical profit and loss activity from the company's inception through the prior fiscal year end. Because it pulls and consolidates many years of detailed accounting data, it may take up to two minutes to complete.`,
-            'calculating',
-            0 // Don't auto-dismiss
-        );
+        // CRITICAL: Wrap post-lock code in try-catch to ensure lock release on error
+        let toastId;
+        try {
+            // Broadcast toast notification to taskpane
+            toastId = broadcastToast(
+                'Computing Retained Earnings…',
+                `<strong>${period}</strong><br><br>This calculation aggregates all historical profit and loss activity from the company's inception through the prior fiscal year end. Because it pulls and consolidates many years of detailed accounting data, it may take up to two minutes to complete.`,
+                'calculating',
+                0 // Don't auto-dismiss
+            );
+        } catch (setupError) {
+            // Error before inner promise - release lock immediately
+            console.error('RETAINEDEARNINGS setup error:', setupError);
+            releaseSpecialFormulaLock(cacheKey);
+            throw setupError;
+        }
         
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
@@ -3261,13 +3270,22 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
             throw lockError;
         }
         
-        // Broadcast toast notification to taskpane
-        const toastId = broadcastToast(
-            'Calculating Year-to-Date Net Income…',
-            `<strong>${period}</strong><br><br>This formula summarizes all revenue, cost, and expense activity from the start of the fiscal year through the selected period. It typically runs in 10–20 seconds due to the volume of P&L data involved.`,
-            'calculating',
-            0 // Don't auto-dismiss
-        );
+        // CRITICAL: Wrap post-lock code in try-catch to ensure lock release on error
+        let toastId;
+        try {
+            // Broadcast toast notification to taskpane
+            toastId = broadcastToast(
+                'Calculating Year-to-Date Net Income…',
+                `<strong>${period}</strong><br><br>This formula summarizes all revenue, cost, and expense activity from the start of the fiscal year through the selected period. It typically runs in 10–20 seconds due to the volume of P&L data involved.`,
+                'calculating',
+                0 // Don't auto-dismiss
+            );
+        } catch (setupError) {
+            // Error before inner promise - release lock immediately
+            console.error('NETINCOME setup error:', setupError);
+            releaseSpecialFormulaLock(cacheKey);
+            throw setupError;
+        }
         
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
@@ -3422,13 +3440,22 @@ async function CTA(period, subsidiary, accountingBook) {
             throw lockError;
         }
         
-        // Broadcast toast notification to taskpane
-        const toastId = broadcastToast(
-            'Preparing Cumulative Translation Adjustment…',
-            `<strong>${period}</strong><br><br>This step runs several consolidated queries across assets, liabilities, equity, retained earnings, and net income to capture FX differences when consolidating foreign subsidiaries. The system performs currency translation across each category, so this process can take 60 seconds or more.`,
-            'calculating',
-            0 // Don't auto-dismiss
-        );
+        // CRITICAL: Wrap post-lock code in try-catch to ensure lock release on error
+        let toastId;
+        try {
+            // Broadcast toast notification to taskpane
+            toastId = broadcastToast(
+                'Preparing Cumulative Translation Adjustment…',
+                `<strong>${period}</strong><br><br>This step runs several consolidated queries across assets, liabilities, equity, retained earnings, and net income to capture FX differences when consolidating foreign subsidiaries. The system performs currency translation across each category, so this process can take 60 seconds or more.`,
+                'calculating',
+                0 // Don't auto-dismiss
+            );
+        } catch (setupError) {
+            // Error before inner promise - release lock immediately
+            console.error('CTA setup error:', setupError);
+            releaseSpecialFormulaLock(cacheKey);
+            throw setupError;
+        }
         
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
