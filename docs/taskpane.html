@@ -1547,6 +1547,29 @@
             margin-top: 15px;
             font-family: 'Monaco', 'Courier New', monospace;
         }
+        
+        .cancel-btn {
+            margin-top: 20px;
+            padding: 10px 24px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .cancel-btn:hover {
+            background: rgba(220, 38, 38, 1);
+            transform: scale(1.02);
+        }
+        
+        .cancel-btn:disabled {
+            background: rgba(107, 114, 128, 0.5);
+            cursor: not-allowed;
+        }
 
         .info-box {
             background: linear-gradient(135deg, rgba(10, 226, 193, 0.1) 0%, rgba(0, 121, 255, 0.05) 100%);
@@ -1707,6 +1730,9 @@
                 <div class="loading-progress-bar" id="loadingProgressBar"></div>
             </div>
             <div class="loading-stats" id="loadingStats"></div>
+            <button id="cancelRefreshBtn" class="cancel-btn" onclick="cancelRefresh()" style="display: none;">
+                ✕ Cancel Refresh
+            </button>
         </div>
     </div>
 
@@ -2501,8 +2527,42 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.29.0';
+        const ADDIN_VERSION = '1.5.30.0';
         
+        // ============================================
+        // REFRESH CANCELLATION
+        // ============================================
+        let refreshCancelled = false;
+        
+        function cancelRefresh() {
+            refreshCancelled = true;
+            const cancelBtn = document.getElementById('cancelRefreshBtn');
+            if (cancelBtn) {
+                cancelBtn.disabled = true;
+                cancelBtn.textContent = 'Cancelling...';
+            }
+            updateLoading('Cancelling...', null, 
+                'Stopping after current operation completes. Any queries already sent to NetSuite will finish.');
+            console.log('🛑 Refresh cancelled by user');
+        }
+        
+        function showCancelButton() {
+            const cancelBtn = document.getElementById('cancelRefreshBtn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'block';
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = '✕ Cancel Refresh';
+            }
+        }
+        
+        function hideCancelButton() {
+            const cancelBtn = document.getElementById('cancelRefreshBtn');
+            if (cancelBtn) {
+                cancelBtn.style.display = 'none';
+            }
+        }
+        
+        // ============================================
         // Set version in all UI elements
         function initializeVersion() {
             const versionBadge = document.getElementById('versionBadge');
@@ -4543,6 +4603,10 @@ export default {
                 btn.disabled = true;
                 btn.textContent = 'Checking connection...';
                 
+                // Reset cancellation flag and show cancel button
+                refreshCancelled = false;
+                showCancelButton();
+                
                 // Clear any stale flags from previous runs
                 localStorage.removeItem('netsuite_bulk_refresh');
                 localStorage.removeItem('netsuite_show_toasts'); // Don't show toasts during Refresh All
@@ -4555,6 +4619,7 @@ export default {
                 const isConnected = await checkConnectionStatus(true);
                 if (!isConnected) {
                     hideLoading();
+                    hideCancelButton();
                     btn.disabled = false;
                     btn.innerHTML = '<span class="action-icon">⚡</span>Refresh All';
                     
@@ -4801,6 +4866,12 @@ export default {
                     updateLoading('Fetching P&L accounts...', 15, `${plAccounts.length} P&L accounts, Years: ${yearsArray.join(', ')}`);
                     
                     for (let i = 0; i < yearsArray.length; i++) {
+                        // Check for cancellation
+                        if (refreshCancelled) {
+                            console.log(`🛑 Refresh cancelled - stopping P&L fetch at year ${i + 1}/${yearsArray.length}`);
+                            break;
+                        }
+                        
                         const year = yearsArray[i];
                         const progress = 15 + (i / yearsArray.length) * 35;
                         updateLoading(`Fetching P&L data for ${year}...`, progress, 
@@ -5202,6 +5273,12 @@ export default {
                     
                     // Process ONE formula at a time - wait for each to actually complete
                     for (let i = 0; i < specialFormulas.length; i++) {
+                        // Check for cancellation
+                        if (refreshCancelled) {
+                            console.log(`🛑 Refresh cancelled - stopping at special formula ${i + 1}/${specialFormulas.length}`);
+                            break;
+                        }
+                        
                         const { row, col, formula, type } = specialFormulas[i];
                         const progress = 94 + Math.round((i / specialFormulas.length) * 5);
                         
@@ -5305,9 +5382,14 @@ export default {
                 
                 const elapsed = ((Date.now() - start) / 1000).toFixed(1);
                 
-                updateLoading('Complete!', 100, `${formulasRefreshed + specialFormulasRefreshed} formulas refreshed`);
+                if (refreshCancelled) {
+                    updateLoading('Cancelled', 100, `Stopped by user. ${formulasRefreshed} formulas were refreshed before cancellation.`);
+                } else {
+                    updateLoading('Complete!', 100, `${formulasRefreshed + specialFormulasRefreshed} formulas refreshed`);
+                }
                 await new Promise(resolve => setTimeout(resolve, 800));
                 hideLoading();
+                hideCancelButton();
                 
                 // Check if data was actually loaded
                 const dataLoaded = Object.keys(allBalances).length > 0;
@@ -5355,10 +5437,12 @@ export default {
             } catch (error) {
                 console.error('Error refreshing sheet:', error);
                 hideLoading();
+                hideCancelButton();
                 hideToast(); // Clear any lingering toast
                 
                 // Clear bulk refresh flag on error
                 localStorage.removeItem('netsuite_bulk_refresh');
+                localStorage.removeItem('netsuite_show_toasts');
                 
                 statusEl.innerHTML = `
                     <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px;">

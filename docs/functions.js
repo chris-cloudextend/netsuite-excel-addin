@@ -3184,6 +3184,11 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
                 if (toastId) {
                     removeBroadcastToast(toastId);
                 }
+                // Distinguish between network errors and server errors
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    console.error('❌ SERVER OFFLINE - Cannot connect to backend');
+                    return '#OFFLINE#';
+                }
                 return '#ERROR#';
             } finally {
                 // Remove from in-flight after completion
@@ -3362,6 +3367,11 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 console.error('Net Income fetch error:', error);
                 if (toastId) {
                     removeBroadcastToast(toastId);
+                }
+                // Distinguish between network errors and server errors
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    console.error('❌ SERVER OFFLINE - Cannot connect to backend');
+                    return '#OFFLINE#';
                 }
                 return '#ERROR#';
             } finally {
@@ -3566,6 +3576,18 @@ async function CTA(period, subsidiary, accountingBook) {
                 } catch (error) {
                     console.error(`CTA fetch error (attempt ${attempt}):`, error);
                     lastError = error.message;
+                    
+                    // Check for server offline (network error)
+                    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                        console.error('❌ SERVER OFFLINE - Cannot connect to backend');
+                        if (toastId) {
+                            updateBroadcastToast(toastId, 'Server Offline', 
+                                'Cannot connect to NetSuite backend. Please try again later.', 'error');
+                            setTimeout(() => removeBroadcastToast(toastId), 5000);
+                        }
+                        return '#OFFLINE#';
+                    }
+                    
                     if (attempt >= maxRetries) {
                         if (toastId) {
                             updateBroadcastToast(toastId, 'CTA Failed', 

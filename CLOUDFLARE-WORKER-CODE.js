@@ -17,7 +17,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://structures-boxed-minus-touring.trycloudflare.com';
+    const TUNNEL_URL = 'https://departure-lips-allocated-foods.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
