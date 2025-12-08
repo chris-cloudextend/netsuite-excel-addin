@@ -4574,15 +4574,16 @@ export default {
                 // so we can't know which are BS accounts - fetch all to be safe
                 // ============================================
                 if (bsAccounts.length > 0 || detectedAccounts.size === 0) {
-                    const bsWarning = `⚠️ ${bsAccounts.length} Balance Sheet accounts detected - this will take 2-3 minutes`;
-                    console.log(bsWarning);
-                    updateLoading('Fetching Balance Sheet accounts...', 50, bsWarning);
+                    const bsCount = bsAccounts.length || 'All';
+                    console.log(`⚠️ ${bsCount} Balance Sheet accounts detected`);
+                    updateLoading('Fetching Balance Sheet accounts...', 50, 
+                        `Unlike P&L accounts, Balance Sheet accounts must be summed from the beginning of time (inception-to-date). This requires more data and takes 2-3 minutes.`);
                     
                     for (let i = 0; i < yearsArray.length; i++) {
                         const year = yearsArray[i];
                         const progress = 50 + (i / yearsArray.length) * 35;
                         updateLoading(`Fetching BS data for ${year}...`, progress, 
-                            `Balance Sheet accounts take longer - please wait`);
+                            `Balance Sheet = cumulative from inception. This takes longer than P&L.`);
                         
                         try {
                             const response = await fetch(`${SERVER_URL}/batch/full_year_refresh_bs`, {
@@ -4675,55 +4676,65 @@ export default {
                 
                 // ============================================
                 // STEP 7: Refresh special formulas AFTER BALANCE data is loaded
-                // These depend on BALANCE data, so they must run second
+                // Run ONE AT A TIME to avoid tunnel timeouts
+                // Order: NETINCOME (fastest ~20s) → RETAINEDEARNINGS (~2min) → CTA (~2min)
                 // ============================================
                 let specialFormulasRefreshed = 0;
                 
                 if (specialFormulas.length > 0) {
-                    console.log(`📊 Refreshing ${specialFormulas.length} special formulas (RETAINEDEARNINGS/NETINCOME/CTA)...`);
-                    updateLoading('Refreshing special formulas...', 94, 
-                        `${specialFormulas.length} RETAINEDEARNINGS/NETINCOME/CTA formulas`);
+                    console.log(`📊 Refreshing ${specialFormulas.length} special formulas sequentially...`);
+                    
+                    // Sort by type: NETINCOME first (fastest), then RETAINEDEARNINGS, then CTA (slowest)
+                    const typeOrder = { 'NETINCOME': 1, 'RETAINEDEARNINGS': 2, 'CTA': 3 };
+                    specialFormulas.sort((a, b) => (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99));
                     
                     // Small delay to ensure BALANCE cache is fully populated
                     await new Promise(resolve => setTimeout(resolve, 500));
                     
-                    await Excel.run(async (context) => {
-                        const sheet = context.workbook.worksheets.getActiveWorksheet();
-                        const usedRange = sheet.getUsedRange();
-                        usedRange.load("address");
-                        await context.sync();
+                    // Process ONE formula at a time to avoid tunnel timeouts
+                    for (let i = 0; i < specialFormulas.length; i++) {
+                        const { row, col, formula, type } = specialFormulas[i];
+                        const progress = 94 + Math.round((i / specialFormulas.length) * 5);
                         
-                        const BATCH_SIZE = 50; // Smaller batch for special formulas
-                        const totalBatches = Math.ceil(specialFormulas.length / BATCH_SIZE);
-                        
-                        for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
-                            const batchStart = batchNum * BATCH_SIZE;
-                            const batchEnd = Math.min(batchStart + BATCH_SIZE, specialFormulas.length);
-                            const batch = specialFormulas.slice(batchStart, batchEnd);
-                            
-                            const progress = 94 + Math.round((batchNum / totalBatches) * 4);
-                            updateLoading(`Refreshing special formulas...`, progress, 
-                                `Batch ${batchNum + 1}/${totalBatches}`);
-                            
-                            for (const { row, col, formula, type } of batch) {
-                                const cell = usedRange.getCell(row, col);
-                                cell.formulas = [[formula]];
-                                specialFormulasRefreshed++;
-                            }
-                            
-                            await context.sync();
-                            
-                            if (batchNum < totalBatches - 1) {
-                                await new Promise(resolve => setTimeout(resolve, 100));
-                            }
+                        // Show detailed message based on formula type
+                        let typeMessage = '';
+                        if (type === 'NETINCOME') {
+                            typeMessage = 'Calculating YTD Net Income (sum of P&L from fiscal year start)...';
+                        } else if (type === 'RETAINEDEARNINGS') {
+                            typeMessage = 'Computing Retained Earnings (all P&L from company inception through prior FY)...';
+                        } else if (type === 'CTA') {
+                            typeMessage = 'Computing CTA (6 parallel queries for FX translation differences)...';
                         }
                         
-                        updateLoading('Final recalculation...', 98);
-                        usedRange.calculate();
-                        await context.sync();
-                    });
+                        updateLoading(`Special formula ${i + 1}/${specialFormulas.length}`, progress, typeMessage);
+                        console.log(`📊 ${type} formula ${i + 1}/${specialFormulas.length}`);
+                        
+                        await Excel.run(async (context) => {
+                            const sheet = context.workbook.worksheets.getActiveWorksheet();
+                            const usedRange = sheet.getUsedRange();
+                            usedRange.load("address");
+                            await context.sync();
+                            
+                            const cell = usedRange.getCell(row, col);
+                            cell.formulas = [[formula]];
+                            await context.sync();
+                            
+                            // Force recalculation of just this cell
+                            cell.calculate();
+                            await context.sync();
+                        });
+                        
+                        specialFormulasRefreshed++;
+                        
+                        // Wait between formulas to let the API call complete
+                        // NETINCOME: 20s, RETAINEDEARNINGS: 120s, CTA: 120s
+                        if (i < specialFormulas.length - 1) {
+                            const waitTime = type === 'CTA' ? 5000 : (type === 'RETAINEDEARNINGS' ? 3000 : 1000);
+                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                        }
+                    }
                     
-                    console.log(`✅ Refreshed ${specialFormulasRefreshed} special formulas`);
+                    console.log(`✅ Refreshed ${specialFormulasRefreshed} special formulas (sequentially)`);
                 }
                 
                 const elapsed = ((Date.now() - start) / 1000).toFixed(1);
