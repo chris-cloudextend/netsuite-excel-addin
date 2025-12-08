@@ -4569,58 +4569,69 @@ export default {
                 }
                 
                 // ============================================
-                // STEP 4: Fetch Balance Sheet accounts (slower)
-                // When detectedAccounts.size === 0, formulas use cell references
-                // so we can't know which are BS accounts - fetch all to be safe
+                // STEP 4: Fetch Balance Sheet accounts (OPTIMIZED!)
+                // Uses batch_bs_periods endpoint - ONE query for ALL periods
+                // Instead of 12 queries (~14 min), runs 1 query (~36 sec)
                 // ============================================
                 if (bsAccounts.length > 0 || detectedAccounts.size === 0) {
                     const bsCount = bsAccounts.length || 'All';
                     console.log(`⚠️ ${bsCount} Balance Sheet accounts detected`);
                     updateLoading('Fetching Balance Sheet accounts...', 50, 
-                        `Unlike P&L accounts, Balance Sheet accounts must be summed from the beginning of time (inception-to-date). This requires more data and takes 2-3 minutes.`);
+                        `Unlike P&L accounts, Balance Sheet accounts must be summed from the beginning of time (inception-to-date). Using OPTIMIZED single-query approach.`);
                     
-                    for (let i = 0; i < yearsArray.length; i++) {
-                        const year = yearsArray[i];
-                        const progress = 50 + (i / yearsArray.length) * 35;
-                        updateLoading(`Fetching BS data for ${year}...`, progress, 
-                            `Balance Sheet = cumulative from inception. This takes longer than P&L.`);
-                        
-                        try {
-                            const response = await fetch(`${SERVER_URL}/batch/full_year_refresh_bs`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    year: year,
-                                    subsidiary: '',
-                                    department: '',
-                                    location: '',
-                                    class: ''
-                                })
-                            });
-                            
-                            if (response.ok) {
-                                const data = await response.json();
-                                // Merge BS balances into allBalances
-                                for (const [acct, periods] of Object.entries(data.balances || {})) {
-                                    if (!allBalances[acct]) allBalances[acct] = {};
-                                    Object.assign(allBalances[acct], periods);
-                                }
-                                totalAccountsLoaded += Object.keys(data.balances || {}).length;
-                                console.log(`✅ Year ${year}: ${Object.keys(data.balances || {}).length} BS accounts`);
-                            } else if (response.status === 524 || response.status === 522 || response.status === 504) {
-                                // Tunnel timeout - show warning but continue
-                                console.error(`⚠️ BS fetch TIMEOUT (${response.status}) for ${year}`);
-                                updateLoading(`BS fetch timed out for ${year}`, progress, 
-                                    `Tunnel timeout (${response.status}). BS formulas may show stale data. Try Refresh Selected for individual cells.`);
-                                showToast('warning', 'Balance Sheet Timeout', 
-                                    `Year ${year} timed out. BS formulas may not update. Use "Refresh Selected" on individual cells.`, 10000);
-                            } else {
-                                console.error(`❌ BS fetch error: ${response.status} for ${year}`);
-                            }
-                        } catch (e) {
-                            console.error(`Error fetching BS year ${year}:`, e);
-                            showToast('error', 'BS Fetch Error', `Error loading Balance Sheet for ${year}: ${e.message}`, 8000);
+                    // Build list of all periods for all detected years
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const allPeriods = [];
+                    for (const year of yearsArray) {
+                        for (const month of months) {
+                            allPeriods.push(`${month} ${year}`);
                         }
+                    }
+                    
+                    console.log(`📊 BS: Fetching ${allPeriods.length} periods in ONE query (optimized)`);
+                    updateLoading(`Fetching BS data (${allPeriods.length} periods)...`, 55, 
+                        `Running OPTIMIZED single query for all BS periods. ~30-60 seconds.`);
+                    
+                    try {
+                        // Use the EFFICIENT batch_bs_periods endpoint
+                        const response = await fetch(`${SERVER_URL}/batch/bs_periods`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                periods: allPeriods,
+                                subsidiary: '',
+                                department: '',
+                                location: '',
+                                class: ''
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            // Merge BS balances into allBalances
+                            for (const [acct, periods] of Object.entries(data.balances || {})) {
+                                if (!allBalances[acct]) allBalances[acct] = {};
+                                Object.assign(allBalances[acct], periods);
+                            }
+                            totalAccountsLoaded += Object.keys(data.balances || {}).length;
+                            console.log(`✅ BS: ${Object.keys(data.balances || {}).length} accounts loaded in ${data.query_time?.toFixed(1) || '?'}s`);
+                            updateLoading('BS data loaded!', 85, 
+                                `${Object.keys(data.balances || {}).length} BS accounts in ${data.query_time?.toFixed(1) || '?'}s`);
+                        } else if (response.status === 524 || response.status === 522 || response.status === 504) {
+                            // Tunnel timeout - show warning
+                            console.error(`⚠️ BS fetch TIMEOUT (${response.status})`);
+                            updateLoading(`BS fetch timed out`, 85, 
+                                `Tunnel timeout (${response.status}). BS formulas may show stale data.`);
+                            showToast('warning', 'Balance Sheet Timeout', 
+                                `BS query timed out (${response.status}). Use "Refresh Selected" on individual cells.`, 10000);
+                        } else {
+                            console.error(`❌ BS fetch error: ${response.status}`);
+                            showToast('error', 'BS Fetch Error', `Error ${response.status} loading Balance Sheet data.`, 8000);
+                        }
+                    } catch (e) {
+                        console.error(`Error fetching BS data:`, e);
+                        showToast('error', 'BS Fetch Error', `Error loading Balance Sheet: ${e.message}`, 8000);
                     }
                 }
                 
