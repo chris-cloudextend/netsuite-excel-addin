@@ -3536,6 +3536,17 @@ async function CTA(period, subsidiary, accountingBook) {
                         return '#ERROR#';
                     }
                     
+                    // Log component breakdown for debugging
+                    if (data.components) {
+                        console.log(`📊 CTA Components (${period}):`);
+                        console.log(`   Total Assets:      ${data.components.total_assets?.toLocaleString() || 'N/A'}`);
+                        console.log(`   Total Liabilities: ${data.components.total_liabilities?.toLocaleString() || 'N/A'}`);
+                        console.log(`   Posted Equity:     ${data.components.posted_equity?.toLocaleString() || 'N/A'}`);
+                        console.log(`   Retained Earnings: ${data.components.retained_earnings?.toLocaleString() || 'N/A'}`);
+                        console.log(`   Net Income:        ${data.components.net_income?.toLocaleString() || 'N/A'}`);
+                        console.log(`   CTA (plug):        ${value.toLocaleString()}`);
+                    }
+                    
                     // Cache the result (only valid numbers)
                     cache.balance.set(cacheKey, value);
                     console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
