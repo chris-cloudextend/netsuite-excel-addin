@@ -26,7 +26,7 @@ class AccountType:
     OTHER_CURR_ASSET = 'OthCurrAsset'  # Other Current Asset
     FIXED_ASSET = 'FixedAsset'       # Fixed Asset
     OTHER_ASSET = 'OthAsset'         # Other Asset
-    DEFERRED_EXPENSE = 'DeferExpense'  # Deferred Expense (prepaid)
+    DEFERRED_EXPENSE = 'DeferExpens'  # Deferred Expense (prepaid) - NOTE: NetSuite truncates to 'DeferExpens'
     UNBILLED_REC = 'UnbilledRec'     # Unbilled Receivable
     
     # =========================================================================
@@ -36,7 +36,7 @@ class AccountType:
     CRED_CARD = 'CredCard'           # Credit Card (NOT 'CreditCard')
     OTHER_CURR_LIAB = 'OthCurrLiab'  # Other Current Liability
     LONG_TERM_LIAB = 'LongTermLiab'  # Long Term Liability
-    DEFERRED_REVENUE = 'DeferRevenue'  # Deferred Revenue (unearned)
+    DEFERRED_REVENUE = 'DeferRevenu'  # Deferred Revenue (unearned) - NOTE: NetSuite truncates to 'DeferRevenu'
     
     # =========================================================================
     # BALANCE SHEET - EQUITY (Credit balance, stored negative, FLIP × -1)
@@ -167,7 +167,7 @@ class AccountType:
 PL_TYPES_SQL = "'" + "', '".join(sorted(AccountType.PL_TYPES)) + "'"
 
 # Sign flip types for CASE WHEN a.accttype IN (...)
-# Result: 'AcctPay', 'CredCard', 'DeferRevenue', 'Equity', 'LongTermLiab', 'OthCurrLiab', 'RetainedEarnings'
+# Result: 'AcctPay', 'CredCard', 'DeferRevenu', 'Equity', 'LongTermLiab', 'OthCurrLiab', 'RetainedEarnings'
 SIGN_FLIP_TYPES_SQL = "'" + "', '".join(sorted(AccountType.SIGN_FLIP_TYPES)) + "'"
 
 # Income types for P&L sign flip (revenue is stored negative, flip to positive)
@@ -175,11 +175,11 @@ SIGN_FLIP_TYPES_SQL = "'" + "', '".join(sorted(AccountType.SIGN_FLIP_TYPES)) + "
 INCOME_TYPES_SQL = "'Income', 'OthIncome'"
 
 # Asset types for Balance Sheet (debit balance, no sign flip)
-# Result: 'AcctRec', 'Bank', 'DeferExpense', 'FixedAsset', 'OthAsset', 'OthCurrAsset', 'UnbilledRec'
+# Result: 'AcctRec', 'Bank', 'DeferExpens', 'FixedAsset', 'OthAsset', 'OthCurrAsset', 'UnbilledRec'
 BS_ASSET_TYPES_SQL = "'" + "', '".join(sorted(AccountType.BS_ASSET_TYPES)) + "'"
 
 # Liability types for Balance Sheet (credit balance, needs sign flip)
-# Result: 'AcctPay', 'CredCard', 'DeferRevenue', 'LongTermLiab', 'OthCurrLiab'
+# Result: 'AcctPay', 'CredCard', 'DeferRevenu', 'LongTermLiab', 'OthCurrLiab'
 BS_LIABILITY_TYPES_SQL = "'" + "', '".join(sorted(AccountType.BS_LIABILITY_TYPES)) + "'"
 
 # Equity types for Balance Sheet (credit balance, needs sign flip)
