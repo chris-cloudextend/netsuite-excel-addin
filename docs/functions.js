@@ -3145,56 +3145,96 @@ async function CTA(period, subsidiary, accountingBook) {
         
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
-            try {
-                const response = await fetch(`${SERVER_URL}/cta`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        period,
-                        subsidiary,
-                        accountingBook
-                    })
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error(`CTA API error: ${response.status}`, errorText);
-                    if (toastId) {
-                        updateBroadcastToast(toastId, 'CTA Failed', `Error: ${response.status}`, 'error');
-                        setTimeout(() => removeBroadcastToast(toastId), 5000);
+            const maxRetries = 3;
+            let lastError = null;
+            
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    if (attempt > 1) {
+                        const waitTime = attempt * 5; // 5s, 10s, 15s
+                        console.log(`⏳ CTA retry ${attempt}/${maxRetries} after ${waitTime}s...`);
+                        if (toastId) {
+                            updateBroadcastToast(toastId, 
+                                'CTA Retry in Progress…', 
+                                `Attempt ${attempt}/${maxRetries}. Large calculations may need multiple attempts.`,
+                                'calculating'
+                            );
+                        }
+                        await new Promise(r => setTimeout(r, waitTime * 1000));
                     }
-                    return 0;
+                    
+                    const response = await fetch(`${SERVER_URL}/cta`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            period,
+                            subsidiary,
+                            accountingBook
+                        })
+                    });
+                    
+                    // Handle timeout errors (524) with retry
+                    if (response.status === 524 || response.status === 522 || response.status === 504) {
+                        console.warn(`CTA timeout (${response.status}), attempt ${attempt}/${maxRetries}`);
+                        lastError = `Timeout (${response.status})`;
+                        if (attempt < maxRetries) continue; // Retry
+                    }
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`CTA API error: ${response.status}`, errorText);
+                        if (toastId) {
+                            updateBroadcastToast(toastId, 'CTA Failed', `Error: ${response.status}`, 'error');
+                            setTimeout(() => removeBroadcastToast(toastId), 5000);
+                        }
+                        return 0;
+                    }
+                    
+                    const data = await response.json();
+                    const value = parseFloat(data.value) || 0;
+                    
+                    // Cache the result
+                    cache.balance.set(cacheKey, value);
+                    console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
+                
+                    // Update toast with success
+                    if (toastId) {
+                        updateBroadcastToast(toastId, 
+                            'CTA Complete', 
+                            `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
+                            'success'
+                        );
+                        setTimeout(() => removeBroadcastToast(toastId), 4000);
+                    }
+                    
+                    return value;
+                    
+                } catch (error) {
+                    console.error(`CTA fetch error (attempt ${attempt}):`, error);
+                    lastError = error.message;
+                    if (attempt >= maxRetries) {
+                        if (toastId) {
+                            updateBroadcastToast(toastId, 'CTA Failed', 
+                                `Failed after ${maxRetries} attempts. Try again later.`, 'error');
+                            setTimeout(() => removeBroadcastToast(toastId), 5000);
+                        }
+                        return 0;
+                    }
+                    // Continue to next retry
                 }
-                
-                const data = await response.json();
-                const value = parseFloat(data.value) || 0;
-                
-                // Cache the result
-                cache.balance.set(cacheKey, value);
-                console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
-                
-                // Update toast with success
-                if (toastId) {
-                    updateBroadcastToast(toastId, 
-                        'CTA Complete', 
-                        `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
-                        'success'
-                    );
-                    setTimeout(() => removeBroadcastToast(toastId), 4000);
-                }
-                
-                return value;
-                
-            } catch (error) {
-                console.error('CTA fetch error:', error);
-                if (toastId) {
-                    removeBroadcastToast(toastId);
-                }
-                return 0;
-            } finally {
-                inFlightRequests.delete(cacheKey);
+            } // end for loop
+            
+            // If we get here, all retries failed
+            console.error(`CTA failed after ${maxRetries} attempts:`, lastError);
+            if (toastId) {
+                updateBroadcastToast(toastId, 'CTA Failed', 
+                    `Timeout after ${maxRetries} attempts`, 'error');
+                setTimeout(() => removeBroadcastToast(toastId), 5000);
             }
-        })();
+            return 0;
+        })().finally(() => {
+            inFlightRequests.delete(cacheKey);
+        });
         
         inFlightRequests.set(cacheKey, requestPromise);
         return await requestPromise;
