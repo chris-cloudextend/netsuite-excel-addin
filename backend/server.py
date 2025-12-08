@@ -15,7 +15,10 @@ from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import account type constants to avoid magic strings
-from constants import AccountType, PL_TYPES_SQL, SIGN_FLIP_TYPES_SQL, INCOME_TYPES_SQL
+from constants import (
+    AccountType, PL_TYPES_SQL, SIGN_FLIP_TYPES_SQL, INCOME_TYPES_SQL,
+    BS_ASSET_TYPES_SQL, BS_LIABILITY_TYPES_SQL, BS_EQUITY_TYPES_SQL
+)
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Excel add-in
@@ -4681,11 +4684,11 @@ def calculate_cta():
         target_period_id = fy_info['period_id']
         print(f"   Target period ID: {target_period_id} (for period-end exchange rates)")
         
-        # Define account type groups
+        # Use constants for account types - single source of truth
         # Asset types: debit balance positive (no flip)
-        asset_types = "'Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense'"
+        asset_types = BS_ASSET_TYPES_SQL
         # Liability types: credit balance (flip to positive for display)
-        liability_types = "'AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue'"
+        liability_types = BS_LIABILITY_TYPES_SQL
         
         # Build consolidation SQL - Use TARGET PERIOD ID for proper exchange rate translation
         # OLD (WRONG): t.postingperiod - translated at each transaction's posting period rate

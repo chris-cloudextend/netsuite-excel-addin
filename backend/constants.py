@@ -174,3 +174,15 @@ SIGN_FLIP_TYPES_SQL = "'" + "', '".join(sorted(AccountType.SIGN_FLIP_TYPES)) + "
 # Result: 'Income', 'OthIncome'
 INCOME_TYPES_SQL = "'Income', 'OthIncome'"
 
+# Asset types for Balance Sheet (debit balance, no sign flip)
+# Result: 'AcctRec', 'Bank', 'DeferExpense', 'FixedAsset', 'OthAsset', 'OthCurrAsset', 'UnbilledRec'
+BS_ASSET_TYPES_SQL = "'" + "', '".join(sorted(AccountType.BS_ASSET_TYPES)) + "'"
+
+# Liability types for Balance Sheet (credit balance, needs sign flip)
+# Result: 'AcctPay', 'CredCard', 'DeferRevenue', 'LongTermLiab', 'OthCurrLiab'
+BS_LIABILITY_TYPES_SQL = "'" + "', '".join(sorted(AccountType.BS_LIABILITY_TYPES)) + "'"
+
+# Equity types for Balance Sheet (credit balance, needs sign flip)
+# Result: 'Equity', 'RetainedEarnings'
+BS_EQUITY_TYPES_SQL = "'" + "', '".join(sorted(AccountType.BS_EQUITY_TYPES)) + "'"
+

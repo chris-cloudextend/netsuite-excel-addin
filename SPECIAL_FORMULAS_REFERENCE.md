@@ -601,11 +601,12 @@ JOIN account a ON a.id = tal.account
 JOIN accountingperiod ap ON ap.id = t.postingperiod
 WHERE t.posting = 'T'
   AND tal.posting = 'T'
-  AND a.accttype IN ('Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense')
+  AND a.accttype IN ({BS_ASSET_TYPES_SQL})
+  -- Expands to: 'AcctRec', 'Bank', 'DeferExpense', 'FixedAsset', 'OthAsset', 'OthCurrAsset', 'UnbilledRec'
   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
   AND tal.accountingbook = {accountingbook}
 ```
-**Note:** NO sign flip for assets (debit balance = positive)
+**Note:** NO sign flip for assets (debit balance = positive). Uses `BS_ASSET_TYPES_SQL` constant from `constants.py`.
 
 #### Query 2: Total Liabilities
 ```sql
@@ -621,11 +622,12 @@ JOIN account a ON a.id = tal.account
 JOIN accountingperiod ap ON ap.id = t.postingperiod
 WHERE t.posting = 'T'
   AND tal.posting = 'T'
-  AND a.accttype IN ('AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue')
+  AND a.accttype IN ({BS_LIABILITY_TYPES_SQL})
+  -- Expands to: 'AcctPay', 'CredCard', 'DeferRevenue', 'LongTermLiab', 'OthCurrLiab'
   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
   AND tal.accountingbook = {accountingbook}
 ```
-**Note:** × -1 because liabilities are stored as negative credits
+**Note:** × -1 because liabilities are stored as negative credits. Uses `BS_LIABILITY_TYPES_SQL` constant.
 
 #### Query 3: Posted Equity
 ```sql
