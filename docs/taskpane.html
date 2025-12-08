@@ -2252,6 +2252,108 @@
                     <div class="example-code">=XAVI.BUDGET(A4, B1, C1)</div>
                 </div>
             </div>
+
+            <!-- XAVI.RETAINEDEARNINGS -->
+            <div class="formula-card">
+                <div class="formula-name">XAVI.RETAINEDEARNINGS</div>
+                <div class="formula-description">
+                    Calculate Retained Earnings (cumulative P&L from company inception through prior fiscal year end). This value is computed dynamically—there is no account to query.
+                </div>
+                <div class="formula-syntax">
+                    =XAVI.RETAINEDEARNINGS(period, [subsidiary], [accountingBook], [class], [department], [location])
+                </div>
+                <div class="parameters">
+                    <div class="param-title">Required Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">period</span> - Target period (e.g., "Dec 2024")
+                    </div>
+                    <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">subsidiary</span> - Subsidiary ID or name
+                    </div>
+                    <div class="param-item">
+                        <span class="param-name">accountingBook</span> - Accounting Book ID
+                    </div>
+                    <div class="param-item">
+                        <span class="param-name">class, department, location</span> - Segment filters
+                    </div>
+                </div>
+                <div class="example">
+                    <div class="example-title">Examples</div>
+                    <div class="example-code">=XAVI.RETAINEDEARNINGS("Dec 2024")</div>
+                    <div class="example-code">=XAVI.RETAINEDEARNINGS(B1, "Celigo Inc.")</div>
+                </div>
+                <div class="help-tip" style="margin-top: 10px; font-size: 11px; color: var(--bottlenose);">
+                    ⏱️ Takes up to 2 minutes due to historical data aggregation
+                </div>
+            </div>
+
+            <!-- XAVI.NETINCOME -->
+            <div class="formula-card">
+                <div class="formula-name">XAVI.NETINCOME</div>
+                <div class="formula-description">
+                    Calculate Year-to-Date Net Income (sum of P&L from fiscal year start through target period). This value is computed dynamically—there is no account to query.
+                </div>
+                <div class="formula-syntax">
+                    =XAVI.NETINCOME(period, [subsidiary], [accountingBook], [class], [department], [location])
+                </div>
+                <div class="parameters">
+                    <div class="param-title">Required Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">period</span> - Target period (e.g., "Jan 2025")
+                    </div>
+                    <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">subsidiary</span> - Subsidiary ID or name
+                    </div>
+                    <div class="param-item">
+                        <span class="param-name">accountingBook</span> - Accounting Book ID
+                    </div>
+                    <div class="param-item">
+                        <span class="param-name">class, department, location</span> - Segment filters
+                    </div>
+                </div>
+                <div class="example">
+                    <div class="example-title">Examples</div>
+                    <div class="example-code">=XAVI.NETINCOME("Jan 2025")</div>
+                    <div class="example-code">=XAVI.NETINCOME(B1, "Celigo Inc.")</div>
+                </div>
+                <div class="help-tip" style="margin-top: 10px; font-size: 11px; color: var(--bottlenose);">
+                    ⏱️ Takes 10–20 seconds due to P&L aggregation
+                </div>
+            </div>
+
+            <!-- XAVI.CTA -->
+            <div class="formula-card">
+                <div class="formula-name">XAVI.CTA</div>
+                <div class="formula-description">
+                    Calculate Cumulative Translation Adjustment (FX plug for multi-currency consolidated Balance Sheets). Uses the "plug method" for 100% accuracy.
+                </div>
+                <div class="formula-syntax">
+                    =XAVI.CTA(period, [subsidiary], [accountingBook])
+                </div>
+                <div class="parameters">
+                    <div class="param-title">Required Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">period</span> - Target period (e.g., "Dec 2024")
+                    </div>
+                    <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">subsidiary</span> - Subsidiary ID or name
+                    </div>
+                    <div class="param-item">
+                        <span class="param-name">accountingBook</span> - Accounting Book ID
+                    </div>
+                </div>
+                <div class="example">
+                    <div class="example-title">Examples</div>
+                    <div class="example-code">=XAVI.CTA("Dec 2024")</div>
+                    <div class="example-code">=XAVI.CTA(B1, "Celigo Inc.")</div>
+                </div>
+                <div class="help-tip" style="margin-top: 10px; font-size: 11px; color: var(--bottlenose);">
+                    ⏱️ Takes 60+ seconds (runs 6 parallel queries for assets, liabilities, equity, RE, NI)
+                </div>
+            </div>
     
                     <div class="help-tip" style="margin-top: 16px;">
                         <h4>💡 Pro Tip: Date Formatting</h4>
