@@ -4448,19 +4448,56 @@ export default {
                     }
                     
                     // Also scan for date values to detect years
+                    // Support multiple formats: "Jan 2025", "12/1/24", Excel serial dates
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    const yearRegex = /\b(20\d{2})\b/;
+                    const yearRegex4Digit = /\b(20\d{2})\b/;  // "2024", "2025"
+                    const yearRegex2Digit = /\/(\d{2})$/;      // "12/1/24" -> "24"
+                    const dateSlashFormat = /^\d{1,2}\/\d{1,2}\/\d{2,4}$/;  // "12/1/24" or "12/1/2024"
                     
                     for (let row = 0; row < Math.min(rowCount, 20); row++) {
                         for (let col = 0; col < Math.min(colCount, 50); col++) {
-                            const val = String(values[row][col] || '');
-                            const yearMatch = val.match(yearRegex);
-                            if (yearMatch && monthNames.some(m => val.includes(m))) {
-                                detectedYears.add(parseInt(yearMatch[1]));
+                            const cellValue = values[row][col];
+                            const val = String(cellValue || '');
+                            
+                            // Check for "Jan 2025" format
+                            const yearMatch4 = val.match(yearRegex4Digit);
+                            if (yearMatch4 && monthNames.some(m => val.includes(m))) {
+                                detectedYears.add(parseInt(yearMatch4[1]));
+                                continue;
+                            }
+                            
+                            // Check for "12/1/24" or "1/1/25" format
+                            if (dateSlashFormat.test(val)) {
+                                const yearMatch2 = val.match(yearRegex2Digit);
+                                if (yearMatch2) {
+                                    let year = parseInt(yearMatch2[1]);
+                                    // Convert 2-digit year: 24 -> 2024, 25 -> 2025
+                                    if (year < 100) year += 2000;
+                                    detectedYears.add(year);
+                                    continue;
+                                }
+                                // Check for 4-digit year in date: "12/1/2024"
+                                const yearMatch4Date = val.match(/\/(\d{4})$/);
+                                if (yearMatch4Date) {
+                                    detectedYears.add(parseInt(yearMatch4Date[1]));
+                                    continue;
+                                }
+                            }
+                            
+                            // Check for Excel serial date number (e.g., 45627)
+                            if (typeof cellValue === 'number' && cellValue > 30000 && cellValue < 60000) {
+                                // Convert Excel serial to JS date
+                                const excelEpoch = new Date(1899, 11, 30);
+                                const jsDate = new Date(excelEpoch.getTime() + cellValue * 86400000);
+                                if (!isNaN(jsDate.getTime())) {
+                                    detectedYears.add(jsDate.getFullYear());
+                                }
                             }
                         }
                     }
+                    
+                    console.log(`📊 Detected years from sheet: ${[...detectedYears].sort().join(', ')}`);
                 });
                 
                 console.log(`📊 Found ${cellsToUpdate.length} XAVI.BALANCE formulas`);
@@ -4519,13 +4556,22 @@ export default {
                     }
                 }
                 
-                // Clear cache before fetching
+                // Clear cache before fetching - MUST use __CLEARCACHE__ formula
+                // because functions.js runs in a separate iframe context
                 localStorage.removeItem('netsuite_balance_cache');
                 localStorage.removeItem('netsuite_balance_cache_timestamp');
-                if (typeof window.clearAllCaches === 'function') {
-                    window.clearAllCaches();
-                }
-                console.log('🗑️ Cache cleared');
+                
+                console.log('🗑️ Clearing caches via __CLEARCACHE__ command...');
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const tempRange = sheet.getRange('ZZ9999');
+                    tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","ALL","")`]];
+                    await context.sync();
+                    await new Promise(r => setTimeout(r, 500));
+                    tempRange.clear();
+                    await context.sync();
+                });
+                console.log('🗑️ Cache cleared via __CLEARCACHE__');
                 
                 let totalAccountsLoaded = 0;
                 let allBalances = {};
