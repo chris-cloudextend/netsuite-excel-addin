@@ -4457,6 +4457,7 @@ def calculate_retained_earnings():
                 return result
             return result
         
+        query_errors = []
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = {
                 executor.submit(query_with_retry_re, 'prior_pl', prior_pl_query): 'prior_pl',
@@ -4467,8 +4468,18 @@ def calculate_retained_earnings():
                 try:
                     result = future.result()
                     value = 0.0
-                    if isinstance(result, list) and len(result) > 0:
-                        value = float(result[0].get('value') or 0)
+                    if isinstance(result, dict) and 'error' in result:
+                        # Query returned an error
+                        error_msg = result.get('details', result.get('error', 'Unknown error'))
+                        print(f"      ✗ {name} QUERY ERROR: {error_msg}")
+                        query_errors.append(f"{name}: {error_msg}")
+                    elif isinstance(result, list) and len(result) > 0:
+                        raw_value = result[0].get('value')
+                        value = float(raw_value) if raw_value is not None else 0.0
+                        print(f"      ✓ {name}: raw={raw_value}, parsed={value:,.2f}")
+                    else:
+                        print(f"      ⚠️ {name}: No results (empty query result)")
+                    
                     if name == 'prior_pl':
                         prior_pl = value
                         print(f"      ✓ Prior years P&L: {prior_pl:,.2f}")
@@ -4476,7 +4487,8 @@ def calculate_retained_earnings():
                         posted_re = value
                         print(f"      ✓ Posted RE adjustments: {posted_re:,.2f}")
                 except Exception as e:
-                    print(f"      ✗ {name} failed: {e}")
+                    print(f"      ✗ {name} EXCEPTION: {e}")
+                    query_errors.append(f"{name}: {str(e)}")
         
         # Final RE = prior years P&L + posted RE adjustments
         retained_earnings = prior_pl + posted_re
@@ -4608,8 +4620,18 @@ def calculate_net_income():
         
         ni_result = query_netsuite(net_income_query, timeout=120)
         net_income = 0.0
-        if isinstance(ni_result, list) and len(ni_result) > 0:
-            net_income = float(ni_result[0].get('net_income') or 0)
+        
+        if isinstance(ni_result, dict) and 'error' in ni_result:
+            # Query returned an error
+            error_msg = ni_result.get('details', ni_result.get('error', 'Unknown error'))
+            print(f"   ❌ Net Income QUERY ERROR: {error_msg}")
+            return jsonify({'error': f'Query failed: {error_msg}', 'value': None}), 500
+        elif isinstance(ni_result, list) and len(ni_result) > 0:
+            raw_value = ni_result[0].get('net_income')
+            print(f"   📊 Net Income raw value from DB: {raw_value}")
+            net_income = float(raw_value) if raw_value is not None else 0.0
+        else:
+            print(f"   ⚠️ Net Income: No results (empty query result)")
         
         print(f"   ✅ Net Income: {net_income:,.2f}")
         
@@ -4806,6 +4828,7 @@ def calculate_cta():
                 return result
             return result  # Return last result even if failed
         
+        query_errors = []
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {
                 executor.submit(query_with_retry, name, sql): name 
@@ -4816,13 +4839,25 @@ def calculate_cta():
                 try:
                     result = future.result()
                     value = 0.0
-                    if isinstance(result, list) and len(result) > 0:
-                        value = float(result[0].get('value') or 0)
+                    if isinstance(result, dict) and 'error' in result:
+                        # Query returned an error
+                        error_msg = result.get('details', result.get('error', 'Unknown error'))
+                        print(f"      ✗ {name} QUERY ERROR: {error_msg}")
+                        query_errors.append(f"{name}: {error_msg}")
+                    elif isinstance(result, list) and len(result) > 0:
+                        raw_value = result[0].get('value')
+                        value = float(raw_value) if raw_value is not None else 0.0
+                        print(f"      ✓ {name}: raw={raw_value}, parsed={value:,.2f}")
+                    else:
+                        print(f"      ⚠️ {name}: No results (empty query result)")
                     results[name] = value
-                    print(f"      ✓ {name}: {value:,.2f}")
                 except Exception as e:
-                    print(f"      ✗ {name} failed: {e}")
+                    print(f"      ✗ {name} EXCEPTION: {e}")
+                    query_errors.append(f"{name}: {str(e)}")
                     results[name] = 0.0
+        
+        if query_errors:
+            print(f"   ⚠️ CTA: {len(query_errors)} query errors occurred: {query_errors}")
         
         # Extract results
         total_assets = results.get('total_assets', 0.0)

@@ -2970,9 +2970,29 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
                 }
                 
                 const data = await response.json();
-                const value = parseFloat(data.value) || 0;
+                console.log(`📨 Retained Earnings API response:`, JSON.stringify(data));
                 
-                // Cache the result
+                // Validate response - don't mask null/undefined as 0
+                if (data.value === null || data.value === undefined) {
+                    console.error(`❌ Retained Earnings (${period}): API returned null/undefined`);
+                    if (toastId) {
+                        updateBroadcastToast(toastId, 'Retained Earnings Error', 'API returned empty value', 'error');
+                        setTimeout(() => removeBroadcastToast(toastId), 5000);
+                    }
+                    return '#NODATA#';
+                }
+                
+                const value = parseFloat(data.value);
+                if (isNaN(value)) {
+                    console.error(`❌ Retained Earnings (${period}): Invalid number: ${data.value}`);
+                    if (toastId) {
+                        updateBroadcastToast(toastId, 'Retained Earnings Error', `Invalid value: ${data.value}`, 'error');
+                        setTimeout(() => removeBroadcastToast(toastId), 5000);
+                    }
+                    return '#ERROR#';
+                }
+                
+                // Cache the result (only valid numbers)
                 cache.balance.set(cacheKey, value);
                 console.log(`✅ Retained Earnings (${period}): ${value.toLocaleString()}`);
                 
@@ -3104,9 +3124,29 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 }
                 
                 const data = await response.json();
-                const value = parseFloat(data.value) || 0;
+                console.log(`📨 Net Income API response:`, JSON.stringify(data));
                 
-                // Cache the result
+                // Validate response - don't mask null/undefined as 0
+                if (data.value === null || data.value === undefined) {
+                    console.error(`❌ Net Income (${period}): API returned null/undefined`);
+                    if (toastId) {
+                        updateBroadcastToast(toastId, 'Net Income Error', 'API returned empty value', 'error');
+                        setTimeout(() => removeBroadcastToast(toastId), 5000);
+                    }
+                    return '#NODATA#';
+                }
+                
+                const value = parseFloat(data.value);
+                if (isNaN(value)) {
+                    console.error(`❌ Net Income (${period}): Invalid number: ${data.value}`);
+                    if (toastId) {
+                        updateBroadcastToast(toastId, 'Net Income Error', `Invalid value: ${data.value}`, 'error');
+                        setTimeout(() => removeBroadcastToast(toastId), 5000);
+                    }
+                    return '#ERROR#';
+                }
+                
+                // Cache the result (only valid numbers)
                 cache.balance.set(cacheKey, value);
                 console.log(`✅ Net Income (${period}): ${value.toLocaleString()}`);
                 
@@ -3253,9 +3293,29 @@ async function CTA(period, subsidiary, accountingBook) {
                     }
                     
                     const data = await response.json();
-                    const value = parseFloat(data.value) || 0;
+                    console.log(`📨 CTA API response:`, JSON.stringify(data));
                     
-                    // Cache the result
+                    // Validate response - don't mask null/undefined as 0
+                    if (data.value === null || data.value === undefined) {
+                        console.error(`❌ CTA (${period}): API returned null/undefined`);
+                        if (toastId) {
+                            updateBroadcastToast(toastId, 'CTA Error', 'API returned empty value', 'error');
+                            setTimeout(() => removeBroadcastToast(toastId), 5000);
+                        }
+                        return '#NODATA#';
+                    }
+                    
+                    const value = parseFloat(data.value);
+                    if (isNaN(value)) {
+                        console.error(`❌ CTA (${period}): Invalid number: ${data.value}`);
+                        if (toastId) {
+                            updateBroadcastToast(toastId, 'CTA Error', `Invalid value: ${data.value}`, 'error');
+                            setTimeout(() => removeBroadcastToast(toastId), 5000);
+                        }
+                        return '#ERROR#';
+                    }
+                    
+                    // Cache the result (only valid numbers)
                     cache.balance.set(cacheKey, value);
                     console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
                 
