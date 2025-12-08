@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.17.0';
+        const ADDIN_VERSION = '1.5.18.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -4962,7 +4962,48 @@ export default {
                     // Small delay to ensure BALANCE cache is fully populated
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     
-                    // Process ONE formula at a time with proper waiting
+                    // Helper function to wait for a cell to resolve (poll until not #BUSY#)
+                    async function waitForCellToResolve(row, col, maxWaitMs = 180000) {
+                        const pollInterval = 2000; // Check every 2 seconds
+                        const startTime = Date.now();
+                        
+                        while (Date.now() - startTime < maxWaitMs) {
+                            let cellValue = null;
+                            
+                            await Excel.run(async (context) => {
+                                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                                const usedRange = sheet.getUsedRange();
+                                const cell = usedRange.getCell(row, col);
+                                cell.load("values");
+                                await context.sync();
+                                cellValue = cell.values[0][0];
+                            });
+                            
+                            // Check if resolved (not #BUSY# and not empty/calculating)
+                            const valueStr = String(cellValue || '');
+                            const isResolved = valueStr !== '' && 
+                                              valueStr !== '#BUSY!' && 
+                                              valueStr !== '#BUSY#' &&
+                                              !valueStr.includes('BUSY') &&
+                                              cellValue !== null &&
+                                              cellValue !== undefined;
+                            
+                            if (isResolved) {
+                                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                                console.log(`   ✅ Cell resolved in ${elapsed}s: ${valueStr.substring(0, 50)}`);
+                                return { resolved: true, value: cellValue, elapsed };
+                            }
+                            
+                            // Still busy - wait and poll again
+                            await new Promise(r => setTimeout(r, pollInterval));
+                        }
+                        
+                        // Timeout reached
+                        console.log(`   ⏰ Max wait time (${maxWaitMs/1000}s) reached`);
+                        return { resolved: false, value: null, elapsed: maxWaitMs / 1000 };
+                    }
+                    
+                    // Process ONE formula at a time - wait for each to actually complete
                     for (let i = 0; i < specialFormulas.length; i++) {
                         const { row, col, formula, type } = specialFormulas[i];
                         const progress = 94 + Math.round((i / specialFormulas.length) * 5);
@@ -4974,26 +5015,27 @@ export default {
                         // Show toast for this specific formula
                         let toastTitle = '';
                         let toastMessage = '';
-                        let estimatedTime = 20;
+                        let maxWaitTime = 180000; // 3 minutes default max
                         
                         if (type === 'NETINCOME') {
                             toastTitle = `Calculating Net Income (${i + 1}/${specialFormulas.length})`;
-                            toastMessage = `${periodDisplay} - Summarizing YTD P&L activity. ~20 seconds.`;
-                            estimatedTime = 25;
+                            toastMessage = `${periodDisplay} - Summarizing YTD P&L activity...`;
+                            maxWaitTime = 60000; // 1 minute max for NI
                         } else if (type === 'RETAINEDEARNINGS') {
                             toastTitle = `Computing Retained Earnings (${i + 1}/${specialFormulas.length})`;
-                            toastMessage = `${periodDisplay} - Aggregating all historical P&L. May take 1-2 minutes.`;
-                            estimatedTime = 120;
+                            toastMessage = `${periodDisplay} - Aggregating all historical P&L...`;
+                            maxWaitTime = 180000; // 3 minutes max for RE
                         } else if (type === 'CTA') {
                             toastTitle = `Computing CTA (${i + 1}/${specialFormulas.length})`;
-                            toastMessage = `${periodDisplay} - Running 6 consolidated queries. May take 1-2 minutes.`;
-                            estimatedTime = 120;
+                            toastMessage = `${periodDisplay} - Running consolidated queries...`;
+                            maxWaitTime = 180000; // 3 minutes max for CTA
                         }
                         
                         updateLoading(toastTitle, progress, toastMessage);
-                        showToast('calculating', toastTitle, toastMessage, estimatedTime * 1000);
+                        showToast('calculating', toastTitle, toastMessage, maxWaitTime);
                         console.log(`📊 ${type} [${periodDisplay}] - formula ${i + 1}/${specialFormulas.length}`);
                         
+                        // Trigger the formula recalculation
                         await Excel.run(async (context) => {
                             const sheet = context.workbook.worksheets.getActiveWorksheet();
                             const usedRange = sheet.getUsedRange();
@@ -5004,21 +5046,28 @@ export default {
                             cell.formulas = [[formula]];
                             await context.sync();
                             
-                            // Force recalculation of just this cell
+                            // Force recalculation
                             cell.calculate();
                             await context.sync();
                         });
                         
+                        // POLL until the cell resolves (no more guessing!)
+                        const result = await waitForCellToResolve(row, col, maxWaitTime);
+                        
                         specialFormulasRefreshed++;
                         
-                        // Wait for the API call to complete based on formula type
-                        // These are long-running queries - we need adequate wait times
-                        const waitTime = type === 'CTA' ? 130000 : (type === 'RETAINEDEARNINGS' ? 130000 : 30000);
-                        console.log(`   ⏳ Waiting ${waitTime/1000}s for ${type} to complete...`);
-                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                        // Update toast based on result
+                        if (result.resolved) {
+                            const valueDisplay = typeof result.value === 'number' 
+                                ? result.value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+                                : String(result.value);
+                            showToast('success', `${type} Complete`, `${periodDisplay}: ${valueDisplay} (${result.elapsed}s)`, 3000);
+                        } else {
+                            showToast('warning', `${type} Timeout`, `${periodDisplay} took too long. Cell may show #TIMEOUT#`, 5000);
+                        }
                         
-                        // Hide the toast for this formula
-                        hideToast();
+                        // Brief pause before next formula
+                        await new Promise(r => setTimeout(r, 1000));
                     }
                     
                     // Clear bulk refresh flag
