@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.19.0';
+        const ADDIN_VERSION = '1.5.20.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -4573,6 +4573,11 @@ export default {
                 btn.textContent = 'Analyzing...';
                 showLoading('Refresh All', 'Scanning formulas on sheet...', 5);
                 
+                // CRITICAL: Set bulk refresh flag IMMEDIATELY to suppress all toasts from functions.js
+                // This must happen BEFORE any formulas are recalculated
+                localStorage.setItem('netsuite_bulk_refresh', 'true');
+                console.log('🔕 Bulk refresh flag SET - all toasts from functions.js will be suppressed');
+                
                 const start = Date.now();
                 let formulasFound = [];
                 let detectedYears = new Set();
@@ -4956,6 +4961,30 @@ export default {
                 });
                 
                 // ============================================
+                // BALANCE formulas complete - notify user it's safe to work
+                // ============================================
+                const balanceElapsed = ((Date.now() - start) / 1000).toFixed(1);
+                console.log(`✅ BALANCE formulas complete in ${balanceElapsed}s`);
+                
+                if (specialFormulas.length > 0) {
+                    // Update task pane to show BALANCE is done and special formulas are starting
+                    updateLoading('✓ BALANCE formulas complete!', 93, 
+                        `${formulasRefreshed} BALANCE formulas refreshed in ${balanceElapsed}s. ` +
+                        `You may continue working. Processing ${specialFormulas.length} special formula(s)...`);
+                    
+                    // Also update the status element with a persistent message
+                    statusEl.innerHTML = `
+                        <div style="background: #dbeafe; padding: 12px; border-radius: 8px; margin-top: 10px; border-left: 4px solid #3b82f6;">
+                            <strong style="color: #1d4ed8; font-size: 14px;">✓ BALANCE Data Ready - Safe to Work!</strong><br>
+                            <span style="font-size: 12px; color: #1e40af;">
+                                ${totalAccountsLoaded} accounts loaded • ${formulasRefreshed} BALANCE formulas refreshed<br>
+                                <span style="color: #6b7280;">Now processing ${specialFormulas.length} special formula(s) in background...</span>
+                            </span>
+                        </div>
+                    `;
+                }
+                
+                // ============================================
                 // STEP 7: Refresh special formulas AFTER BALANCE data is loaded
                 // Run ONE AT A TIME with proper waiting
                 // Order: NETINCOME (fastest ~20s) → RETAINEDEARNINGS (~2min) → CTA (~2min)
@@ -4964,9 +4993,6 @@ export default {
                 
                 if (specialFormulas.length > 0) {
                     console.log(`📊 Refreshing ${specialFormulas.length} special formulas sequentially...`);
-                    
-                    // CRITICAL: Set bulk refresh flag to suppress toasts from functions.js
-                    localStorage.setItem('netsuite_bulk_refresh', 'true');
                     
                     // Sort by type: NETINCOME first (fastest), then RETAINEDEARNINGS, then CTA (slowest)
                     const typeOrder = { 'NETINCOME': 1, 'RETAINEDEARNINGS': 2, 'CTA': 3 };
