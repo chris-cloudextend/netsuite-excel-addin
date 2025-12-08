@@ -35,6 +35,50 @@ function clearStatus() {
 }
 
 // ============================================================================
+// TOAST BROADCAST - Send toast notifications to taskpane via localStorage
+// ============================================================================
+let toastIdCounter = 0;
+
+function broadcastToast(title, message, type = 'info', duration = 5000) {
+    try {
+        const toastId = `toast-${++toastIdCounter}-${Date.now()}`;
+        localStorage.setItem('netsuite_toast', JSON.stringify({
+            id: toastId,
+            title,
+            message,
+            type,
+            duration,
+            timestamp: Date.now()
+        }));
+        return toastId;
+    } catch (e) {
+        console.warn('Could not broadcast toast:', e);
+        return null;
+    }
+}
+
+function updateBroadcastToast(toastId, title, message, type) {
+    try {
+        localStorage.setItem('netsuite_toast_update', JSON.stringify({
+            id: toastId,
+            title,
+            message,
+            type,
+            timestamp: Date.now()
+        }));
+    } catch (e) {}
+}
+
+function removeBroadcastToast(toastId) {
+    try {
+        localStorage.setItem('netsuite_toast_remove', JSON.stringify({
+            id: toastId,
+            timestamp: Date.now()
+        }));
+    } catch (e) {}
+}
+
+// ============================================================================
 // PERIOD EXPANSION - Intelligently expand period ranges for better caching
 // ============================================================================
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
@@ -2840,16 +2884,13 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
         cacheStats.misses++;
         console.log(`📥 Calculating Retained Earnings for ${period}...`);
         
-        // Show toast notification (if available in taskpane context)
-        let toastId = null;
-        if (typeof window.showToast === 'function') {
-            toastId = window.showToast({
-                title: 'Computing Retained Earnings…',
-                message: `<strong>${period}</strong><br><br>This calculation aggregates all historical profit and loss activity from the company's inception through the prior fiscal year end. Because it pulls and consolidates many years of detailed accounting data, it may take up to two minutes to complete.`,
-                type: 'calculating',
-                duration: 0
-            });
-        }
+        // Broadcast toast notification to taskpane
+        const toastId = broadcastToast(
+            'Computing Retained Earnings…',
+            `<strong>${period}</strong><br><br>This calculation aggregates all historical profit and loss activity from the company's inception through the prior fiscal year end. Because it pulls and consolidates many years of detailed accounting data, it may take up to two minutes to complete.`,
+            'calculating',
+            0 // Don't auto-dismiss
+        );
         
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
@@ -2870,9 +2911,9 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error(`Retained Earnings API error: ${response.status}`, errorText);
-                    if (toastId && typeof window.updateToast === 'function') {
-                        window.updateToast(toastId, { title: 'Retained Earnings Failed', message: `Error: ${response.status}`, type: 'error' });
-                        setTimeout(() => window.removeToast(toastId), 5000);
+                    if (toastId) {
+                        updateBroadcastToast(toastId, 'Retained Earnings Failed', `Error: ${response.status}`, 'error');
+                        setTimeout(() => removeBroadcastToast(toastId), 5000);
                     }
                     return 0;
                 }
@@ -2885,21 +2926,21 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
                 console.log(`✅ Retained Earnings (${period}): ${value.toLocaleString()}`);
                 
                 // Update toast with success
-                if (toastId && typeof window.updateToast === 'function') {
-                    window.updateToast(toastId, { 
-                        title: 'Retained Earnings Complete', 
-                        message: `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
-                        type: 'success' 
-                    });
-                    setTimeout(() => window.removeToast(toastId), 4000);
+                if (toastId) {
+                    updateBroadcastToast(toastId, 
+                        'Retained Earnings Complete', 
+                        `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
+                        'success'
+                    );
+                    setTimeout(() => removeBroadcastToast(toastId), 4000);
                 }
                 
                 return value;
                 
             } catch (error) {
                 console.error('Retained Earnings fetch error:', error);
-                if (toastId && typeof window.removeToast === 'function') {
-                    window.removeToast(toastId);
+                if (toastId) {
+                    removeBroadcastToast(toastId);
                 }
                 return 0;
             } finally {
@@ -2973,16 +3014,13 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
         cacheStats.misses++;
         console.log(`📥 Calculating Net Income for ${period}...`);
         
-        // Show toast notification (if available in taskpane context)
-        let toastId = null;
-        if (typeof window.showToast === 'function') {
-            toastId = window.showToast({
-                title: 'Calculating Year-to-Date Net Income…',
-                message: `<strong>${period}</strong><br><br>This formula summarizes all revenue, cost, and expense activity from the start of the fiscal year through the selected period. It typically runs in 10–20 seconds due to the volume of P&L data involved.`,
-                type: 'calculating',
-                duration: 0
-            });
-        }
+        // Broadcast toast notification to taskpane
+        const toastId = broadcastToast(
+            'Calculating Year-to-Date Net Income…',
+            `<strong>${period}</strong><br><br>This formula summarizes all revenue, cost, and expense activity from the start of the fiscal year through the selected period. It typically runs in 10–20 seconds due to the volume of P&L data involved.`,
+            'calculating',
+            0 // Don't auto-dismiss
+        );
         
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
@@ -3003,9 +3041,9 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error(`Net Income API error: ${response.status}`, errorText);
-                    if (toastId && typeof window.updateToast === 'function') {
-                        window.updateToast(toastId, { title: 'Net Income Failed', message: `Error: ${response.status}`, type: 'error' });
-                        setTimeout(() => window.removeToast(toastId), 5000);
+                    if (toastId) {
+                        updateBroadcastToast(toastId, 'Net Income Failed', `Error: ${response.status}`, 'error');
+                        setTimeout(() => removeBroadcastToast(toastId), 5000);
                     }
                     return 0;
                 }
@@ -3018,21 +3056,21 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 console.log(`✅ Net Income (${period}): ${value.toLocaleString()}`);
                 
                 // Update toast with success
-                if (toastId && typeof window.updateToast === 'function') {
-                    window.updateToast(toastId, { 
-                        title: 'Net Income Complete', 
-                        message: `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
-                        type: 'success' 
-                    });
-                    setTimeout(() => window.removeToast(toastId), 4000);
+                if (toastId) {
+                    updateBroadcastToast(toastId, 
+                        'Net Income Complete', 
+                        `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
+                        'success'
+                    );
+                    setTimeout(() => removeBroadcastToast(toastId), 4000);
                 }
                 
                 return value;
                 
             } catch (error) {
                 console.error('Net Income fetch error:', error);
-                if (toastId && typeof window.removeToast === 'function') {
-                    window.removeToast(toastId);
+                if (toastId) {
+                    removeBroadcastToast(toastId);
                 }
                 return 0;
             } finally {
@@ -3097,16 +3135,13 @@ async function CTA(period, subsidiary, accountingBook) {
         cacheStats.misses++;
         console.log(`📥 Calculating CTA for ${period}...`);
         
-        // Show toast notification (if available in taskpane context)
-        let toastId = null;
-        if (typeof window.showToast === 'function') {
-            toastId = window.showToast({
-                title: 'Preparing Cumulative Translation Adjustment…',
-                message: `<strong>${period}</strong><br><br>This step runs several consolidated queries across assets, liabilities, equity, retained earnings, and net income to capture FX differences when consolidating foreign subsidiaries. The system performs currency translation across each category, so this process can take 60 seconds or more.`,
-                type: 'calculating',
-                duration: 0
-            });
-        }
+        // Broadcast toast notification to taskpane
+        const toastId = broadcastToast(
+            'Preparing Cumulative Translation Adjustment…',
+            `<strong>${period}</strong><br><br>This step runs several consolidated queries across assets, liabilities, equity, retained earnings, and net income to capture FX differences when consolidating foreign subsidiaries. The system performs currency translation across each category, so this process can take 60 seconds or more.`,
+            'calculating',
+            0 // Don't auto-dismiss
+        );
         
         // Create the promise and store it BEFORE awaiting
         const requestPromise = (async () => {
@@ -3124,9 +3159,9 @@ async function CTA(period, subsidiary, accountingBook) {
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error(`CTA API error: ${response.status}`, errorText);
-                    if (toastId && typeof window.updateToast === 'function') {
-                        window.updateToast(toastId, { title: 'CTA Failed', message: `Error: ${response.status}`, type: 'error' });
-                        setTimeout(() => window.removeToast(toastId), 5000);
+                    if (toastId) {
+                        updateBroadcastToast(toastId, 'CTA Failed', `Error: ${response.status}`, 'error');
+                        setTimeout(() => removeBroadcastToast(toastId), 5000);
                     }
                     return 0;
                 }
@@ -3139,21 +3174,21 @@ async function CTA(period, subsidiary, accountingBook) {
                 console.log(`✅ CTA (${period}): ${value.toLocaleString()}`);
                 
                 // Update toast with success
-                if (toastId && typeof window.updateToast === 'function') {
-                    window.updateToast(toastId, { 
-                        title: 'CTA Complete', 
-                        message: `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
-                        type: 'success' 
-                    });
-                    setTimeout(() => window.removeToast(toastId), 4000);
+                if (toastId) {
+                    updateBroadcastToast(toastId, 
+                        'CTA Complete', 
+                        `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
+                        'success'
+                    );
+                    setTimeout(() => removeBroadcastToast(toastId), 4000);
                 }
                 
                 return value;
                 
             } catch (error) {
                 console.error('CTA fetch error:', error);
-                if (toastId && typeof window.removeToast === 'function') {
-                    window.removeToast(toastId);
+                if (toastId) {
+                    removeBroadcastToast(toastId);
                 }
                 return 0;
             } finally {

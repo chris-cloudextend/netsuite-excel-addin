@@ -2422,6 +2422,69 @@
             }
         }, 500);  // Check every 500ms
 
+        // Poll for toast notifications from custom functions (via localStorage)
+        let lastToastTimestamp = 0;
+        let lastToastUpdateTimestamp = 0;
+        let lastToastRemoveTimestamp = 0;
+        const broadcastToastMap = new Map(); // Maps broadcast toast IDs to local toast IDs
+        
+        setInterval(() => {
+            try {
+                // Check for new toasts
+                const toastJson = localStorage.getItem('netsuite_toast');
+                if (toastJson) {
+                    const toast = JSON.parse(toastJson);
+                    if (toast.timestamp > lastToastTimestamp) {
+                        lastToastTimestamp = toast.timestamp;
+                        // Create local toast and map the ID
+                        const localId = showToast({
+                            title: toast.title,
+                            message: toast.message,
+                            type: toast.type,
+                            duration: toast.duration
+                        });
+                        broadcastToastMap.set(toast.id, localId);
+                        localStorage.removeItem('netsuite_toast');
+                    }
+                }
+                
+                // Check for toast updates
+                const updateJson = localStorage.getItem('netsuite_toast_update');
+                if (updateJson) {
+                    const update = JSON.parse(updateJson);
+                    if (update.timestamp > lastToastUpdateTimestamp) {
+                        lastToastUpdateTimestamp = update.timestamp;
+                        const localId = broadcastToastMap.get(update.id);
+                        if (localId) {
+                            updateToast(localId, {
+                                title: update.title,
+                                message: update.message,
+                                type: update.type
+                            });
+                        }
+                        localStorage.removeItem('netsuite_toast_update');
+                    }
+                }
+                
+                // Check for toast removals
+                const removeJson = localStorage.getItem('netsuite_toast_remove');
+                if (removeJson) {
+                    const remove = JSON.parse(removeJson);
+                    if (remove.timestamp > lastToastRemoveTimestamp) {
+                        lastToastRemoveTimestamp = remove.timestamp;
+                        const localId = broadcastToastMap.get(remove.id);
+                        if (localId) {
+                            removeToast(localId);
+                            broadcastToastMap.delete(remove.id);
+                        }
+                        localStorage.removeItem('netsuite_toast_remove');
+                    }
+                }
+            } catch (e) {
+                // Ignore parsing errors
+            }
+        }, 300);  // Check every 300ms for responsive toasts
+
         // ========================================================================
         // LOADING OVERLAY - Modern Progress Indicator
         // ========================================================================
