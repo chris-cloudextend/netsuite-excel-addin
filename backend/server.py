@@ -4465,10 +4465,21 @@ def calculate_retained_earnings():
         fy_start = fy_info['fy_start']
         print(f"   Fiscal year starts: {fy_start}")
         
-        # Build segment filters - use t.subsidiary (Transaction table), not tal.subsidiary
+        # Use default subsidiary if none specified (for consolidation)
+        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # CRITICAL: Get all subsidiaries in the target's hierarchy for consolidated view
+        # For Retained Earnings, we need transactions from ALL subsidiaries that roll up
+        # to the target subsidiary, not just the target itself
+        # ═══════════════════════════════════════════════════════════════════════
+        hierarchy_subs = get_subsidiaries_in_hierarchy(target_sub)
+        sub_filter = ', '.join(hierarchy_subs)
+        print(f"   Subsidiary hierarchy: {len(hierarchy_subs)} subsidiaries")
+        
+        # Build segment filters - use t.subsidiary IN (...) for consolidated view
         segment_filters = []
-        if subsidiary:
-            segment_filters.append(f"t.subsidiary = {subsidiary}")
+        segment_filters.append(f"t.subsidiary IN ({sub_filter})")  # Always filter by hierarchy
         if department:
             segment_filters.append(f"tl.department = {department}")
         if location:
@@ -4494,9 +4505,6 @@ def calculate_retained_earnings():
         # Use BUILTIN.CONSOLIDATE with 'ELIMINATE' for proper intercompany elimination
         # Sign convention: ALL P&L amounts * -1 (credits become positive revenue, debits become negative expense)
         # Result: Positive = accumulated profit, Negative = accumulated loss
-        
-        # Use default subsidiary if none specified (for consolidation)
-        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
         
         # CRITICAL: Get target period ID for BUILTIN.CONSOLIDATE
         # ALL Balance Sheet amounts must be translated at the report period-end rate
@@ -4668,10 +4676,21 @@ def calculate_net_income():
         period_end = fy_info['period_end']
         print(f"   FY start: {fy_start}, Period end: {period_end}")
         
-        # Build segment filters - use t.subsidiary (Transaction table), not tal.subsidiary
+        # Use default subsidiary if none specified (for consolidation)
+        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # CRITICAL: Get all subsidiaries in the target's hierarchy for consolidated view
+        # For Net Income, we need transactions from ALL subsidiaries that roll up
+        # to the target subsidiary, not just the target itself
+        # ═══════════════════════════════════════════════════════════════════════
+        hierarchy_subs = get_subsidiaries_in_hierarchy(target_sub)
+        sub_filter = ', '.join(hierarchy_subs)
+        print(f"   Subsidiary hierarchy: {len(hierarchy_subs)} subsidiaries")
+        
+        # Build segment filters - use t.subsidiary IN (...) for consolidated view
         segment_filters = []
-        if subsidiary:
-            segment_filters.append(f"t.subsidiary = {subsidiary}")
+        segment_filters.append(f"t.subsidiary IN ({sub_filter})")  # Always filter by hierarchy
         if department:
             segment_filters.append(f"tl.department = {department}")
         if location:
@@ -4701,9 +4720,6 @@ def calculate_net_income():
         # Use BUILTIN.CONSOLIDATE with 'ELIMINATE' for proper intercompany elimination
         # Sign convention: ALL P&L amounts * -1 (credits become positive revenue, debits become negative expense)
         # Result: Positive = profit, Negative = loss
-        
-        # Use default subsidiary if none specified (for consolidation)
-        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
         
         # CRITICAL: Get target period ID for BUILTIN.CONSOLIDATE
         # ALL amounts for Balance Sheet components must be translated at report period-end rate
