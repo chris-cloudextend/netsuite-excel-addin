@@ -875,6 +875,28 @@
             font-size: 12px;
             font-weight: 600;
             margin-bottom: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .status-badge:hover {
+            transform: scale(1.02);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .status-badge.connected {
+            background: linear-gradient(135deg, var(--anenome) 0%, #06d6a0 100%);
+            color: var(--deep-dive);
+        }
+
+        .status-badge.disconnected {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+            color: white;
+        }
+
+        .status-badge.checking {
+            background: linear-gradient(135deg, #ffd93d 0%, #ffb800 100%);
+            color: var(--deep-dive);
         }
 
         .status-badge::before {
@@ -884,6 +906,26 @@
             background: var(--deep-dive);
             border-radius: 50%;
             animation: pulse 2s infinite;
+        }
+
+        .status-badge.disconnected::before {
+            background: white;
+            animation: pulse-error 1s ease-in-out infinite;
+        }
+
+        .status-badge.checking::before {
+            background: var(--deep-dive);
+            animation: pulse-check 0.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse-error {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        @keyframes pulse-check {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
         }
 
         /* Primary action button */
@@ -1779,7 +1821,9 @@
         </div>
 
         <div class="content">
-            <div class="status-badge">Connected to NetSuite</div>
+            <div class="status-badge connected" id="connectionStatus" onclick="checkConnectionStatus()" title="Click to check connection">
+                <span id="connectionText">Checking connection...</span>
+            </div>
 
             <!-- GUIDE ME WIZARD -->
             <div class="guide-me-card" id="guideMeCard">
@@ -2457,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.14.0';
+        const ADDIN_VERSION = '1.5.15.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -2466,6 +2510,97 @@
             if (versionBadge) versionBadge.textContent = 'v' + ADDIN_VERSION;
             if (settingsVersion) settingsVersion.textContent = ADDIN_VERSION;
         }
+
+        // ========================================================================
+        // CONNECTION STATUS - Check if backend/tunnel is reachable
+        // ========================================================================
+        let lastConnectionCheck = null;
+        let connectionCheckInterval = null;
+        
+        async function checkConnectionStatus(silent = false) {
+            const statusBadge = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('connectionText');
+            
+            if (!statusBadge || !statusText) return false;
+            
+            // Show checking state
+            statusBadge.className = 'status-badge checking';
+            statusText.textContent = 'Checking...';
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                
+                const response = await fetch(`${SERVER_URL}/health`, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusBadge.className = 'status-badge connected';
+                    statusText.textContent = `Connected (${data.account || 'NetSuite'})`;
+                    lastConnectionCheck = { status: 'connected', time: Date.now() };
+                    if (!silent) {
+                        showToast('success', 'Connection OK', 'Backend and tunnel are working.', 3000);
+                    }
+                    return true;
+                } else if (response.status === 502 || response.status === 524 || response.status === 522) {
+                    // Tunnel/proxy error
+                    statusBadge.className = 'status-badge disconnected';
+                    statusText.textContent = 'Tunnel Down';
+                    lastConnectionCheck = { status: 'disconnected', time: Date.now(), error: `HTTP ${response.status}` };
+                    if (!silent) {
+                        showToast('error', 'Tunnel Disconnected', 
+                            `Error ${response.status}: The Cloudflare tunnel may have expired. Check the terminal for a new tunnel URL and update the Worker.`, 10000);
+                    }
+                    return false;
+                } else {
+                    statusBadge.className = 'status-badge disconnected';
+                    statusText.textContent = `Error (${response.status})`;
+                    lastConnectionCheck = { status: 'error', time: Date.now(), error: `HTTP ${response.status}` };
+                    return false;
+                }
+            } catch (error) {
+                statusBadge.className = 'status-badge disconnected';
+                if (error.name === 'AbortError') {
+                    statusText.textContent = 'Timeout';
+                    lastConnectionCheck = { status: 'timeout', time: Date.now() };
+                    if (!silent) {
+                        showToast('error', 'Connection Timeout', 
+                            'Could not reach the backend. The tunnel may have expired.', 8000);
+                    }
+                } else {
+                    statusText.textContent = 'Disconnected';
+                    lastConnectionCheck = { status: 'disconnected', time: Date.now(), error: error.message };
+                    if (!silent) {
+                        showToast('error', 'Connection Failed', 
+                            `Could not connect: ${error.message}`, 8000);
+                    }
+                }
+                return false;
+            }
+        }
+        
+        // Start periodic connection checks (every 60 seconds)
+        function startConnectionMonitor() {
+            // Initial check (silent)
+            checkConnectionStatus(true);
+            
+            // Periodic checks every 60 seconds
+            connectionCheckInterval = setInterval(() => {
+                checkConnectionStatus(true);
+            }, 60000);
+        }
+        
+        // Stop connection monitor when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (connectionCheckInterval) {
+                clearInterval(connectionCheckInterval);
+            }
+        });
 
         // ========================================================================
         // STATUS BAR - Persistent Progress Messages
@@ -4279,6 +4414,9 @@ export default {
             // Set version in UI elements
             initializeVersion();
             
+            // Start connection monitoring (checks every 60 seconds)
+            startConnectionMonitor();
+            
             // Auto-load lookups on open
             loadNetSuiteLookups();
             
@@ -4390,8 +4528,33 @@ export default {
             
             try {
                 btn.disabled = true;
-                btn.textContent = 'Analyzing...';
+                btn.textContent = 'Checking connection...';
                 
+                // ============================================
+                // STEP 0: Verify connection before starting
+                // ============================================
+                showLoading('Refresh All', 'Verifying connection to NetSuite...', 2);
+                
+                const isConnected = await checkConnectionStatus(true);
+                if (!isConnected) {
+                    hideLoading();
+                    btn.disabled = false;
+                    btn.innerHTML = '<span class="action-icon">⚡</span>Refresh All';
+                    
+                    showToast('error', 'Connection Failed', 
+                        'Cannot reach the backend server. The Cloudflare tunnel may have expired. ' +
+                        'Check the terminal for a new tunnel URL and update the Cloudflare Worker.', 15000);
+                    
+                    if (statusEl) {
+                        statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px; border-left: 4px solid #dc2626;">
+                            <strong style="color: #dc2626;">⚠️ Connection Failed</strong><br>
+                            <small style="color: #7f1d1d;">The tunnel may have expired. Check terminal for new URL.</small>
+                        </div>`;
+                    }
+                    return;
+                }
+                
+                btn.textContent = 'Analyzing...';
                 showLoading('Refresh All', 'Scanning formulas on sheet...', 5);
                 
                 const start = Date.now();
@@ -4607,9 +4770,24 @@ export default {
                                 Object.assign(allBalances, data.balances || {});
                                 totalAccountsLoaded += Object.keys(data.balances || {}).length;
                                 console.log(`✅ Year ${year}: ${Object.keys(data.balances || {}).length} P&L accounts`);
+                            } else if (response.status === 502 || response.status === 524 || response.status === 522) {
+                                // Tunnel/proxy error - this is critical
+                                console.error(`❌ P&L fetch FAILED: Tunnel error ${response.status}`);
+                                showToast('error', 'Connection Lost', 
+                                    `Tunnel error (${response.status}) while fetching P&L data. The tunnel may have expired.`, 10000);
+                                // Update connection status
+                                await checkConnectionStatus(true);
+                            } else {
+                                console.error(`❌ P&L fetch error: ${response.status}`);
+                                showToast('warning', 'P&L Fetch Warning', 
+                                    `Error ${response.status} loading P&L for ${year}. Some data may be missing.`, 6000);
                             }
                         } catch (e) {
                             console.error(`Error fetching year ${year}:`, e);
+                            showToast('error', 'P&L Fetch Error', 
+                                `Failed to load P&L for ${year}: ${e.message}. Check connection.`, 8000);
+                            // Update connection status
+                            await checkConnectionStatus(true);
                         }
                     }
                 }
@@ -4677,7 +4855,9 @@ export default {
                         }
                     } catch (e) {
                         console.error(`Error fetching BS data:`, e);
-                        showToast('error', 'BS Fetch Error', `Error loading Balance Sheet: ${e.message}`, 8000);
+                        showToast('error', 'BS Fetch Error', `Error loading Balance Sheet: ${e.message}. Check connection.`, 8000);
+                        // Update connection status
+                        await checkConnectionStatus(true);
                     }
                 }
                 
@@ -4810,6 +4990,9 @@ export default {
                 await new Promise(resolve => setTimeout(resolve, 800));
                 hideLoading();
                 
+                // Check if data was actually loaded
+                const dataLoaded = Object.keys(allBalances).length > 0;
+                
                 // Build summary message
                 let summaryParts = [];
                 if (plAccounts.length > 0 || bsAccounts.length === 0) {
@@ -4822,17 +5005,33 @@ export default {
                     summaryParts.push(`Special: ${specialFormulasRefreshed}`);
                 }
                 
-                statusEl.innerHTML = `
-                    <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
-                        <strong style="color: #059669; font-size: 14px;">✓ Refresh Complete!</strong><br>
-                        <span style="font-size: 12px; color: #047857;">
-                            ${summaryParts.join(' • ')}<br>
-                            ${formulasRefreshed + specialFormulasRefreshed} formulas refreshed in ${elapsed}s
-                        </span>
-                    </div>
-                `;
+                if (!dataLoaded) {
+                    // WARNING: No data was loaded - likely connection issue
+                    statusEl.innerHTML = `
+                        <div style="background: #fef3c7; padding: 12px; border-radius: 8px; margin-top: 10px; border-left: 4px solid #f59e0b;">
+                            <strong style="color: #b45309; font-size: 14px;">⚠️ Refresh Complete - No Data Loaded!</strong><br>
+                            <span style="font-size: 12px; color: #92400e;">
+                                Formulas were refreshed but no account data was retrieved.<br>
+                                This usually means the tunnel is down or expired.<br>
+                                Check the connection status and try again.
+                            </span>
+                        </div>
+                    `;
+                    showToast('warning', 'No Data Retrieved', 
+                        'Formulas refreshed but no account data was loaded. The tunnel may have issues.', 10000);
+                } else {
+                    statusEl.innerHTML = `
+                        <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
+                            <strong style="color: #059669; font-size: 14px;">✓ Refresh Complete!</strong><br>
+                            <span style="font-size: 12px; color: #047857;">
+                                ${summaryParts.join(' • ')}<br>
+                                ${totalAccountsLoaded} accounts loaded • ${formulasRefreshed + specialFormulasRefreshed} formulas refreshed in ${elapsed}s
+                            </span>
+                        </div>
+                    `;
+                }
                 
-                setTimeout(() => { statusEl.textContent = ''; }, 10000);
+                setTimeout(() => { statusEl.textContent = ''; }, 15000);
                 
             } catch (error) {
                 console.error('Error refreshing sheet:', error);

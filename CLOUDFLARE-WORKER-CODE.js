@@ -9,15 +9,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://guy-cookbook-champagne-clinton.trycloudflare.com
+// CURRENT TUNNEL URL: https://proud-basically-note-neighborhood.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 7, 2025 - RETAINEDEARNINGS, NETINCOME, CTA functions
+// Last Updated: Dec 8, 2025 - Fresh tunnel URL
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://trip-sonic-broker-loving.trycloudflare.com';
+    const TUNNEL_URL = 'https://proud-basically-note-neighborhood.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
