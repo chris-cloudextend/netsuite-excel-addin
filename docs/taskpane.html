@@ -4570,8 +4570,10 @@ export default {
                 
                 // ============================================
                 // STEP 4: Fetch Balance Sheet accounts (slower)
+                // When detectedAccounts.size === 0, formulas use cell references
+                // so we can't know which are BS accounts - fetch all to be safe
                 // ============================================
-                if (bsAccounts.length > 0) {
+                if (bsAccounts.length > 0 || detectedAccounts.size === 0) {
                     const bsWarning = `⚠️ ${bsAccounts.length} Balance Sheet accounts detected - this will take 2-3 minutes`;
                     console.log(bsWarning);
                     updateLoading('Fetching Balance Sheet accounts...', 50, bsWarning);

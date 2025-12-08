@@ -1511,7 +1511,20 @@ function getCacheKey(type, params) {
  * @cancelable
  */
 async function NAME(accountNumber, invocation) {
-    const account = normalizeAccountNumber(accountNumber);
+    // Retry logic for drag/drop scenarios where cell references may not be ready
+    let account = normalizeAccountNumber(accountNumber);
+    
+    if (!account) {
+        for (let retry = 0; retry < 3; retry++) {
+            await new Promise(r => setTimeout(r, 200));
+            account = normalizeAccountNumber(accountNumber);
+            if (account) {
+                console.log(`⏳ NAME retry ${retry + 1} succeeded for account`);
+                break;
+            }
+        }
+    }
+    
     if (!account) return '#N/A';
     
     const cacheKey = getCacheKey('title', { account });
@@ -1621,7 +1634,21 @@ async function NAME(accountNumber, invocation) {
  * @cancelable
  */
 async function TYPE(accountNumber, invocation) {
-    const account = normalizeAccountNumber(accountNumber);
+    // Retry logic for drag/drop scenarios where cell references may not be ready
+    let account = normalizeAccountNumber(accountNumber);
+    
+    // If account is empty, wait briefly and retry (drag/drop timing issue)
+    if (!account) {
+        for (let retry = 0; retry < 3; retry++) {
+            await new Promise(r => setTimeout(r, 200)); // Wait 200ms
+            account = normalizeAccountNumber(accountNumber);
+            if (account) {
+                console.log(`⏳ TYPE retry ${retry + 1} succeeded for account`);
+                break;
+            }
+        }
+    }
+    
     if (!account) return '#N/A';
     
     const cacheKey = getCacheKey('type', { account });
@@ -1706,7 +1733,20 @@ async function TYPE(accountNumber, invocation) {
  * @cancelable
  */
 async function PARENT(accountNumber, invocation) {
-    const account = normalizeAccountNumber(accountNumber);
+    // Retry logic for drag/drop scenarios where cell references may not be ready
+    let account = normalizeAccountNumber(accountNumber);
+    
+    if (!account) {
+        for (let retry = 0; retry < 3; retry++) {
+            await new Promise(r => setTimeout(r, 200));
+            account = normalizeAccountNumber(accountNumber);
+            if (account) {
+                console.log(`⏳ PARENT retry ${retry + 1} succeeded for account`);
+                break;
+            }
+        }
+    }
+    
     if (!account) return '#N/A';
     
     const cacheKey = getCacheKey('parent', { account });
