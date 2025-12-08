@@ -3377,7 +3377,15 @@ async function CTA(period, subsidiary, accountingBook) {
         // SEQUENTIAL EXECUTION: Acquire semaphore lock before API call
         // This prevents multiple special formulas from hitting the backend simultaneously
         // ═══════════════════════════════════════════════════════════════
-        await acquireSpecialFormulaLock(cacheKey, 'CTA');
+        try {
+            await acquireSpecialFormulaLock(cacheKey, 'CTA');
+        } catch (lockError) {
+            if (lockError.message === 'QUEUE_CLEARED') {
+                console.log(`🚫 CTA ${period}: Queue cleared, formula will re-evaluate`);
+                return '#BUSY!'; // Return BUSY so Excel re-evaluates after cache clear
+            }
+            throw lockError;
+        }
         
         // Broadcast toast notification to taskpane
         const toastId = broadcastToast(
@@ -3632,4 +3640,3 @@ if (typeof CustomFunctions !== 'undefined') {
 } else {
     console.error('❌ CustomFunctions not available!');
 }
-
