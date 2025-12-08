@@ -40,10 +40,12 @@ function clearStatus() {
 let toastIdCounter = 0;
 
 function broadcastToast(title, message, type = 'info', duration = 5000) {
-    // Check if bulk refresh is in progress - suppress toasts during bulk operations
-    const bulkRefreshFlag = localStorage.getItem('netsuite_bulk_refresh');
-    if (bulkRefreshFlag === 'true') {
-        console.log(`🔕 Toast suppressed (bulk refresh): ${title}`);
+    // INVERTED LOGIC: Only show toasts when explicitly enabled
+    // This prevents toasts from appearing during sheet open auto-recalculation
+    // Toasts are only shown when 'netsuite_show_toasts' is explicitly set to 'true'
+    const showToastsFlag = localStorage.getItem('netsuite_show_toasts');
+    if (showToastsFlag !== 'true') {
+        console.log(`🔕 Toast suppressed (not explicitly enabled): ${title}`);
         return null; // Return null to indicate no toast was created
     }
     

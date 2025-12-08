@@ -2501,7 +2501,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.27.0';
+        const ADDIN_VERSION = '1.5.28.0';
         
         // Set version in all UI elements
         function initializeVersion() {
@@ -4543,8 +4543,9 @@ export default {
                 btn.disabled = true;
                 btn.textContent = 'Checking connection...';
                 
-                // Clear any stale bulk refresh flag from previous runs
+                // Clear any stale flags from previous runs
                 localStorage.removeItem('netsuite_bulk_refresh');
+                localStorage.removeItem('netsuite_show_toasts'); // Don't show toasts during Refresh All
                 
                 // ============================================
                 // STEP 0: Verify connection before starting
@@ -4573,10 +4574,10 @@ export default {
                 btn.textContent = 'Analyzing...';
                 showLoading('Refresh All', 'Scanning formulas on sheet...', 5);
                 
-                // CRITICAL: Set bulk refresh flag IMMEDIATELY to suppress all toasts from functions.js
-                // This must happen BEFORE any formulas are recalculated
-                localStorage.setItem('netsuite_bulk_refresh', 'true');
-                console.log('🔕 Bulk refresh flag SET - all toasts from functions.js will be suppressed');
+                // NOTE: We do NOT set netsuite_show_toasts during Refresh All
+                // All status updates go to the task pane instead of toast popups
+                // This prevents toasts from appearing during bulk operations
+                console.log('🔕 Refresh All mode - toasts will NOT appear (status in task pane only)');
                 
                 const start = Date.now();
                 let formulasFound = [];
@@ -5295,6 +5296,7 @@ export default {
                     
                     // Clear bulk refresh flag
                     localStorage.removeItem('netsuite_bulk_refresh');
+                    localStorage.removeItem('netsuite_show_toasts');
                     console.log(`✅ Refreshed ${specialFormulasRefreshed} special formulas (sequentially)`);
                 }
                 
