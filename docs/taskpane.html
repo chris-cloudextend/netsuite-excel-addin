@@ -2629,7 +2629,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.38.0';
+        const ADDIN_VERSION = '1.5.39.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -3367,59 +3367,90 @@
                 updateProgress(60, '📊 Step 3 of 4: Building Template', 'Creating headers and formatting...');
                 
                 await Excel.run(async (context) => {
+                    console.log('Guide Me: Starting Excel.run');
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
+                    // Try to rename sheet (may fail if name exists)
                     try {
                         sheet.name = "Financial Report";
+                        await context.sync();
                     } catch (e) {
-                        console.log('Guide Me: Could not rename sheet (may already exist)');
+                        console.log('Guide Me: Sheet rename skipped');
                     }
                     
-                    try {
-                        sheet.showGridlines = false;
-                    } catch (e) {
-                        console.warn('Guide Me: Could not hide gridlines:', e.message);
-                    }
+                    // Skip gridlines - can cause issues on Mac
+                    // sheet.showGridlines = false;
                     
-                    // Write text headers (A1:C1)
-                    const textHeaderRange = sheet.getRange("A1:C1");
-                    textHeaderRange.values = [['Type', 'Account #', 'Account Name']];
-                    textHeaderRange.format.font.bold = true;
-                    textHeaderRange.format.font.color = "#FFFFFF";
-                    textHeaderRange.format.fill.color = "#09235C";
-                    textHeaderRange.format.horizontalAlignment = "Center";
+                    console.log('Guide Me: Writing text headers...');
+                    
+                    // Write text headers (A1:C1) - one at a time for Mac compatibility
+                    const cellA1 = sheet.getRange("A1");
+                    cellA1.values = [["Type"]];
+                    
+                    const cellB1 = sheet.getRange("B1");
+                    cellB1.values = [["Account #"]];
+                    
+                    const cellC1 = sheet.getRange("C1");
+                    cellC1.values = [["Account Name"]];
                     
                     await context.sync();
-                    console.log('Guide Me: Created text headers');
+                    console.log('Guide Me: Text header values written');
                     
-                    // Write date headers (D1:O1) using DATE formula
+                    // Format header row - separate from values
+                    try {
+                        const headerRange = sheet.getRange("A1:C1");
+                        headerRange.format.font.bold = true;
+                        headerRange.format.font.color = "#FFFFFF";
+                        headerRange.format.fill.color = "#09235C";
+                        await context.sync();
+                        console.log('Guide Me: Header formatting applied');
+                    } catch (formatErr) {
+                        console.warn('Guide Me: Header format warning:', formatErr.message);
+                    }
+                    
+                    console.log('Guide Me: Writing date headers...');
+                    
+                    // Write date headers (D1:O1) using DATE formula - one at a time
                     for (let m = 0; m < 12; m++) {
-                        const colLetter = String.fromCharCode(68 + m);
+                        const colLetter = String.fromCharCode(68 + m); // D=68
                         const cell = sheet.getRange(`${colLetter}1`);
                         cell.formulas = [[`=DATE(${currentYear},${m + 1},1)`]];
                     }
                     
                     await context.sync();
-                    console.log('Guide Me: Created date formulas');
+                    console.log('Guide Me: Date formulas written');
                     
-                    // Format month headers as "mmmm"
-                    const monthHeaderRange = sheet.getRange("D1:O1");
-                    monthHeaderRange.numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
-                    monthHeaderRange.format.font.bold = true;
-                    monthHeaderRange.format.font.color = "#FFFFFF";
-                    monthHeaderRange.format.fill.color = "#09235C";
-                    monthHeaderRange.format.horizontalAlignment = "Center";
+                    // Format month headers - separate step
+                    try {
+                        const monthHeaderRange = sheet.getRange("D1:O1");
+                        monthHeaderRange.numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
+                        monthHeaderRange.format.font.bold = true;
+                        monthHeaderRange.format.font.color = "#FFFFFF";
+                        monthHeaderRange.format.fill.color = "#09235C";
+                        await context.sync();
+                        console.log('Guide Me: Month header formatting applied');
+                    } catch (monthFormatErr) {
+                        console.warn('Guide Me: Month format warning:', monthFormatErr.message);
+                    }
                     
                     // Write YTD Total header (P1)
                     const totalHeaderRange = sheet.getRange("P1");
                     totalHeaderRange.values = [['YTD Total']];
-                    totalHeaderRange.format.font.bold = true;
-                    totalHeaderRange.format.font.color = "#FFFFFF";
-                    totalHeaderRange.format.fill.color = "#09235C";
-                    totalHeaderRange.format.horizontalAlignment = "Center";
                     
                     await context.sync();
-                    console.log('Guide Me: Formatted headers');
+                    console.log('Guide Me: YTD header written');
+                    
+                    // Format YTD header - separate step
+                    try {
+                        const ytdRange = sheet.getRange("P1");
+                        ytdRange.format.font.bold = true;
+                        ytdRange.format.font.color = "#FFFFFF";
+                        ytdRange.format.fill.color = "#09235C";
+                        await context.sync();
+                        console.log('Guide Me: YTD formatting applied');
+                    } catch (ytdFormatErr) {
+                        console.warn('Guide Me: YTD format warning:', ytdFormatErr.message);
+                    }
                     
                     updateProgress(70, '📝 Step 4 of 4: Adding Formulas', `Writing ${allAccounts.length} accounts...`);
                     
