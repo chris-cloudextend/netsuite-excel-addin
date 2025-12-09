@@ -3982,13 +3982,14 @@
                     let currentRow = 1;
                     
                     // ========== ROW 1-2: PARAMETERS ==========
+                    // Title with dynamic year reference
                     const titleCell = sheet.getRange("A1");
-                    titleCell.values = [["📊 Income Statement - " + currentYear]];
+                    titleCell.formulas = [['="Income Statement For: "&F2']];
                     await context.sync();
                     
                     try {
                         titleCell.format.font.bold = true;
-                        titleCell.format.font.size = 16;
+                        titleCell.format.font.size = 18;
                         titleCell.format.font.color = "#09235C";
                         await context.sync();
                     } catch (e) {}
@@ -4564,11 +4565,12 @@
                     let currentRow = 1;
                     
                     // ========== ROW 1: TITLE ==========
-                    sheet.getRange("A1").values = [["📊 Income Statement - " + targetYear]];
+                    // Title with dynamic year reference
+                    sheet.getRange("A1").formulas = [['="Income Statement For: "&F2']];
                     await context.sync();
                     try {
                         sheet.getRange("A1").format.font.bold = true;
-                        sheet.getRange("A1").format.font.size = 16;
+                        sheet.getRange("A1").format.font.size = 18;
                         sheet.getRange("A1").format.font.color = "#09235C";
                         await context.sync();
                     } catch (e) {}
