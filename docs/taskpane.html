@@ -152,6 +152,61 @@
             z-index: 1000;
         }
 
+        /* Tab Panels */
+        .tab-panel {
+            padding: 0;
+        }
+
+        /* Empty State for placeholder tabs */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 24px;
+            text-align: center;
+        }
+
+        .empty-state .empty-icon {
+            width: 64px;
+            height: 64px;
+            background: #f3f4f6;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .empty-state .empty-icon svg {
+            width: 32px;
+            height: 32px;
+            stroke: var(--bottlenose);
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .empty-state .coming-soon {
+            margin-top: 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--anenome);
+            background: rgba(10, 226, 193, 0.1);
+            padding: 6px 16px;
+            border-radius: 20px;
+        }
+
         /* Collapsible Section Styles - Card Design */
         .collapsible-section {
             border: 1px solid #e5e7eb;
@@ -2105,17 +2160,52 @@
                 </div>
             </div>
             <div class="tab-nav">
-                <button class="active" id="tabDataMgmt">Data Management</button>
+                <button id="tabDataMgmt">Data Management</button>
                 <button id="tabAnalytics">Analytics</button>
+                <button class="active" id="tabFinancial">Financial Reporting</button>
             </div>
         </div>
 
         <div class="content">
-            <div class="status-badge connected" id="connectionStatus" onclick="checkConnectionStatus()" title="Click to check connection">
-                <span id="connectionText">Checking connection...</span>
+            <!-- TAB PANEL: Data Management (placeholder) -->
+            <div class="tab-panel" id="panelDataMgmt" style="display: none;">
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="9" y1="21" x2="9" y2="9"></line>
+                        </svg>
+                    </div>
+                    <h3>Data Management</h3>
+                    <p>Download to modify and update back to NetSuite</p>
+                    <p class="coming-soon">Coming Soon</p>
+                </div>
             </div>
 
-            <!-- QUICK START - Accordion Section -->
+            <!-- TAB PANEL: Analytics (placeholder) -->
+            <div class="tab-panel" id="panelAnalytics" style="display: none;">
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="18" y1="20" x2="18" y2="10"></line>
+                            <line x1="12" y1="20" x2="12" y2="4"></line>
+                            <line x1="6" y1="20" x2="6" y2="14"></line>
+                        </svg>
+                    </div>
+                    <h3>Analytics</h3>
+                    <p>Build charts and dashboards from your data</p>
+                    <p class="coming-soon">Coming Soon</p>
+                </div>
+            </div>
+
+            <!-- TAB PANEL: Financial Reporting -->
+            <div class="tab-panel" id="panelFinancial" style="display: block;">
+                <div class="status-badge connected" id="connectionStatus" onclick="checkConnectionStatus()" title="Click to check connection">
+                    <span id="connectionText">Checking connection...</span>
+                </div>
+
+                <!-- QUICK START - Accordion Section -->
             <details class="collapsible-section help-section" id="quickStartSection" open>
                 <summary class="collapsible-header">
                     <h3>
@@ -2786,6 +2876,7 @@
                     </div>
                 </div>
             </details>
+            </div><!-- end panelFinancial -->
         </div>
 
         <div class="footer">
@@ -2881,7 +2972,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.46.0';
+        const ADDIN_VERSION = '1.5.48.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -6282,7 +6373,42 @@ export default {
             
             // Set up worksheet change listener for auto-sync
             setupAutoSyncListener();
+            
+            // Initialize tab navigation
+            initializeTabNavigation();
         });
+        
+        // Tab Navigation - switch between Data Management, Analytics, and Financial Reporting
+        function initializeTabNavigation() {
+            const tabs = {
+                'tabDataMgmt': 'panelDataMgmt',
+                'tabAnalytics': 'panelAnalytics',
+                'tabFinancial': 'panelFinancial'
+            };
+            
+            Object.keys(tabs).forEach(tabId => {
+                const tabBtn = document.getElementById(tabId);
+                if (tabBtn) {
+                    tabBtn.addEventListener('click', () => switchTab(tabId, tabs));
+                }
+            });
+        }
+        
+        function switchTab(activeTabId, tabs) {
+            // Update tab buttons
+            Object.keys(tabs).forEach(tabId => {
+                const tabBtn = document.getElementById(tabId);
+                const panel = document.getElementById(tabs[tabId]);
+                
+                if (tabId === activeTabId) {
+                    tabBtn.classList.add('active');
+                    panel.style.display = 'block';
+                } else {
+                    tabBtn.classList.remove('active');
+                    panel.style.display = 'none';
+                }
+            });
+        }
         
         // Initialize Quick Start section - expanded for first-time users, collapsed for returning users
         function initializeQuickStart() {
