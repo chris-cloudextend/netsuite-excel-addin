@@ -1292,50 +1292,65 @@
         /* Lightweight tooltip - smaller, lighter background, left-aligned */
         .help-icon[data-tip] {
             position: relative;
+            cursor: help;
         }
         
         .help-icon[data-tip]:hover::after {
             content: attr(data-tip);
-            position: fixed;
-            top: auto;
-            left: 16px;
-            right: 16px;
-            width: auto;
-            max-width: calc(100vw - 32px);
-            background: #f0f4f8;
-            color: #1a365d;
-            padding: 8px 10px;
-            border-radius: 6px;
-            font-size: 11px;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            width: max-content;
+            max-width: 280px;
+            background: #1a365d;
+            color: white;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 12px;
             font-weight: 400;
             white-space: normal;
-            line-height: 1.4;
+            line-height: 1.5;
             text-align: left;
             z-index: 10000;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
             animation: tooltipFadeIn 0.15s ease-out;
             pointer-events: none;
-            border: 1px solid #e2e8f0;
         }
         
-        /* Position tooltip near the bottom of viewport for visibility */
-        .help-icon[data-tip]:hover::after {
-            bottom: 60px;
-        }
-        
-        /* Arrow pointing up from tooltip */
+        /* Arrow pointing down from tooltip */
         .help-icon[data-tip]:hover::before {
-            display: none; /* Hide arrow since we're using fixed positioning */
+            content: '';
+            position: absolute;
+            bottom: calc(100% + 2px);
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: #1a365d;
+            z-index: 10001;
+        }
+        
+        /* If tooltip would go off left edge, align left instead */
+        .help-icon[data-tip].tip-left:hover::after {
+            left: 0;
+            transform: none;
+        }
+        
+        /* If tooltip would go off right edge, align right instead */
+        .help-icon[data-tip].tip-right:hover::after {
+            left: auto;
+            right: 0;
+            transform: none;
         }
         
         @keyframes tooltipFadeIn {
             from {
                 opacity: 0;
-                transform: translateY(4px);
+                transform: translateX(-50%) translateY(4px);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateX(-50%) translateY(0);
             }
         }
         
@@ -1714,8 +1729,36 @@
         .loading-content {
             text-align: center;
             color: white;
-            max-width: 400px;
-            padding: 40px;
+            max-width: 420px;
+            padding: 40px 32px;
+        }
+        
+        .loading-funfact {
+            margin-top: 24px;
+            padding: 16px 20px;
+            background: rgba(10, 226, 193, 0.15);
+            border-radius: 12px;
+            border: 1px solid rgba(10, 226, 193, 0.3);
+            text-align: left;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            min-height: 80px;
+        }
+        
+        .funfact-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        
+        .funfact-text {
+            font-size: 13px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.95);
+        }
+        
+        .funfact-text strong {
+            color: var(--anenome);
         }
 
         .spinner {
@@ -2027,6 +2070,10 @@
             <button id="cancelRefreshBtn" class="cancel-btn" onclick="cancelRefresh()" style="display: none;">
                 ✕ Cancel Refresh
             </button>
+            <div class="loading-funfact" id="loadingFunFact">
+                <div class="funfact-icon">💡</div>
+                <div class="funfact-text" id="funfactText"></div>
+            </div>
         </div>
     </div>
 
@@ -2272,17 +2319,6 @@
                         <p>Type formulas directly in any Excel cell. Start with <code>=XAVI.BALANCE("4220", "Jan 2024", "Jan 2024")</code> to get account 4220's January balance!</p>
                     </div>
                     
-                    <div class="help-tip" style="background: linear-gradient(135deg, rgba(26, 90, 62, 0.1) 0%, rgba(45, 138, 95, 0.1) 100%); border-color: #2d8a5f;">
-                        <h4>⚡ Pro Tip: Load Data First</h4>
-                        <p>For the fastest experience, use <strong>Data Management → Load Data</strong> before building your report:</p>
-                        <ol style="margin: 8px 0 0 16px; font-size: 12px; line-height: 1.6;">
-                            <li>Select cells containing your date headers (e.g., Jan 2025, Feb 2025)</li>
-                            <li>Click <strong>Load Data for Selected Dates</strong></li>
-                            <li>All GL data is pre-cached — formulas resolve instantly!</li>
-                        </ol>
-                        <p style="margin-top: 8px; font-size: 11px; color: var(--bottlenose);">Check "Include Balance Sheet Accounts" if you need Cash, AR, AP, etc.</p>
-                    </div>
-                    
                     <h4 style="color: var(--deep-dive); margin: 16px 0 10px; font-size: 14px;">Available Formulas</h4>
                     
                     <div class="formula-example-box">
@@ -2406,28 +2442,6 @@
                     <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </summary>
                 <div class="collapsible-content data-mgmt-content">
-                    
-                    <!-- PRELOAD SECTION - Primary action -->
-                    <div class="data-section preload-section" id="preloadCard">
-                        <div class="section-header">
-                            <h4>⚡ Load Data for Fast Analysis</h4>
-                            <span class="help-icon" data-tip="Select date headers (Jan 2025, Feb 2025, etc.) then click Load. All GL data for those periods will be cached for instant results.">?</span>
-                        </div>
-                        
-                        <div class="preload-controls">
-                            <button class="btn-load-data" id="preloadBtn" onclick="runPreloadSheet()">
-                                <span id="preloadBtnText">📥 Load Data for Selected Dates</span>
-                    </button>
-                            
-                            <label class="checkbox-row">
-                                <input type="checkbox" id="includeBSCheckbox">
-                                <span class="checkbox-label">Include Balance Sheet Accounts</span>
-                                <span class="help-icon small" data-tip="BS accounts (Cash, AR, AP) need cumulative calculations. Adds 2-3 min but enables instant BS formulas.">?</span>
-                            </label>
-                        </div>
-                        
-                        <div class="preload-status" id="preloadProgress" style="display: none;"></div>
-                    </div>
                     
                     <!-- REFRESH ACTIONS -->
                     <div class="data-section refresh-section">
@@ -2972,7 +2986,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.48.0';
+        const ADDIN_VERSION = '1.5.49.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -3264,19 +3278,58 @@
         // ========================================================================
         // LOADING OVERLAY - Modern Progress Indicator
         // ========================================================================
+        // Fun facts about finance teams and Excel - shown during loading
+        const financeFunFacts = [
+            { icon: '📊', text: '<strong>89% of finance teams</strong> still rely on Excel as their primary analysis tool, even with ERP systems in place.' },
+            { icon: '⏱️', text: '<strong>Finance professionals spend 20+ hours/month</strong> on manual data entry and report formatting in Excel.' },
+            { icon: '🌍', text: '<strong>750 million people</strong> worldwide use Excel — more than the population of Europe!' },
+            { icon: '💰', text: '<strong>CFOs cite Excel errors</strong> as a top concern — the average spreadsheet has a 1-2% formula error rate.' },
+            { icon: '📈', text: '<strong>Excel was born in 1985</strong> — 40 years later, it\'s still the #1 tool for financial modeling.' },
+            { icon: '🚀', text: '<strong>Power users create 50+ formulas</strong> per sheet. Your NetSuite integration just made that 10x faster!' },
+            { icon: '🔄', text: '<strong>Finance teams refresh reports 15+ times/month</strong> on average. Automation saves 100+ hours yearly.' },
+            { icon: '💡', text: '<strong>VLOOKUP is the most-used function</strong> in finance, followed by SUM and IF. But XAVI.BALANCE beats them all!' },
+            { icon: '🏆', text: '<strong>JPMorgan alone</strong> has over 200,000 Excel spreadsheets used for risk management and trading.' },
+            { icon: '📱', text: '<strong>Excel Online launched in 2010</strong> — the first time you could edit spreadsheets in a browser!' },
+            { icon: '⚡', text: '<strong>A single Excel file</strong> can have 17 billion cells. That\'s more data points than stars in the Milky Way visible to the naked eye!' },
+            { icon: '🎯', text: '<strong>88% of spreadsheets contain errors</strong> according to research. Real-time NetSuite data reduces manual entry mistakes.' },
+            { icon: '📋', text: '<strong>The average company</strong> has 1,000+ spreadsheets. CloudExtend helps keep them all in sync with NetSuite.' },
+            { icon: '🔗', text: '<strong>Before Excel, VisiCalc ruled</strong> — it was the "killer app" that made personal computers essential for business.' },
+            { icon: '💪', text: '<strong>Excel 2007 expanded to 1 million rows</strong> — finance teams everywhere celebrated the end of "row limit" errors!' }
+        ];
+        
+        let funFactInterval = null;
+        
         function showLoading(title, message, progress = 0) {
             const overlay = document.getElementById('loadingOverlay');
             const titleEl = document.getElementById('loadingTitle');
             const messageEl = document.getElementById('loadingMessage');
             const progressBar = document.getElementById('loadingProgressBar');
             const statsEl = document.getElementById('loadingStats');
+            const funfactEl = document.getElementById('funfactText');
             
             titleEl.textContent = title || 'Processing...';
             messageEl.textContent = message || 'Please wait';
             progressBar.style.width = progress + '%';
             statsEl.textContent = '';
             
+            // Show initial fun fact
+            showRandomFunFact();
+            
+            // Rotate fun facts every 6 seconds
+            if (funFactInterval) clearInterval(funFactInterval);
+            funFactInterval = setInterval(showRandomFunFact, 6000);
+            
             overlay.classList.add('active');
+        }
+        
+        function showRandomFunFact() {
+            const funfactEl = document.getElementById('funfactText');
+            const iconEl = document.querySelector('.funfact-icon');
+            if (!funfactEl) return;
+            
+            const fact = financeFunFacts[Math.floor(Math.random() * financeFunFacts.length)];
+            funfactEl.innerHTML = fact.text;
+            if (iconEl) iconEl.textContent = fact.icon;
         }
 
         function updateLoading(message, progress, stats) {
@@ -3292,6 +3345,12 @@
         function hideLoading() {
             const overlay = document.getElementById('loadingOverlay');
             overlay.classList.remove('active');
+            
+            // Clear fun fact rotation
+            if (funFactInterval) {
+                clearInterval(funFactInterval);
+                funFactInterval = null;
+            }
         }
 
         // ========================================================================
