@@ -2012,7 +2012,7 @@
                             <div class="guide-choice-title" style="color: var(--deep-dive);">Sample Report (Learn)</div>
                             <div class="guide-choice-desc" style="color: var(--bottlenose);">35 accounts with formulas you can study and extend</div>
                         </div>
-                    </div>
+            </div>
                     
                     <!-- Option 2: Full Income Statement -->
                     <div class="guide-choice" onclick="generateFullIncomeStatement()" style="background: rgba(255,255,255,0.8); border: 2px solid var(--deep-dive);">
@@ -3816,6 +3816,10 @@
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             
+            // Set flag to prevent auto-sync from triggering during generation
+            isSyncInProgress = true;
+            lastSyncedYear = currentYear;
+            
             // Excel tips during loading
             const excelTips = [
                 '=SUMIF(range, criteria, sum_range) → Sum by condition',
@@ -4397,6 +4401,9 @@
                     </div>`;
                 progress.style.lineHeight = '1.6';
                 
+                // Clear sync flag after successful generation
+                isSyncInProgress = false;
+                
             } catch (error) {
                 console.error('Income Statement error:', error);
                 clearInterval(tipInterval);
@@ -4405,6 +4412,9 @@
                 }
                 progress.style.display = 'block';
                 progress.textContent = `❌ Error: ${error.message}`;
+                
+                // Clear sync flag on error too
+                isSyncInProgress = false;
             }
         }
 
@@ -6000,8 +6010,18 @@ export default {
             }
         }
         
+        // Flag to prevent re-entry during sync operations
+        let isSyncInProgress = false;
+        let lastSyncedYear = null;
+        
         // Handle automatic structure sync when YEAR changes
         async function handleYearChange() {
+            // Prevent infinite loop - don't sync if already syncing
+            if (isSyncInProgress) {
+                console.log('⏸️ Sync already in progress, skipping...');
+                return;
+            }
+            
             try {
                 let shouldSync = false;
                 let newYear = null;
@@ -6024,17 +6044,23 @@ export default {
                     
                     const marker = String(markerCell.values[0][0] || '').toLowerCase();
                     const sync = String(syncCell.values[0][0] || '').toUpperCase();
+                    newYear = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                     
+                    // Only sync if: has marker, sync enabled, AND year actually changed
                     if ((marker.includes('structure sync') || marker.includes('🔄')) &&
-                        (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                        (sync === 'TRUE' || sync === 'YES' || sync === '1') &&
+                        newYear !== lastSyncedYear) {
                         shouldSync = true;
-                        newYear = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                         subsidiary = subCell.values[0][0] || '';
                     }
                 });
                 
                 if (shouldSync && newYear) {
                     console.log(`🔄 Auto-syncing structure for year ${newYear}...`);
+                    
+                    // Set flag to prevent re-entry
+                    isSyncInProgress = true;
+                    lastSyncedYear = newYear;
                     
                     // Show a brief notification
                     const statusEl = document.getElementById('refreshStatus');
@@ -6045,11 +6071,17 @@ export default {
                         </div>`;
                     }
                     
-                    // Trigger the sync by calling the same logic as Refresh Accounts
-                    await performStructureSync(newYear, subsidiary);
+                    try {
+                        // Trigger the sync
+                        await performStructureSync(newYear, subsidiary);
+                    } finally {
+                        // Always clear the flag when done
+                        isSyncInProgress = false;
+                    }
                 }
             } catch (e) {
                 console.warn('Auto-sync error:', e.message);
+                isSyncInProgress = false; // Clear flag on error
             }
         }
         
