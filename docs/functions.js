@@ -1520,11 +1520,14 @@ window.populateFrontendCache = function(balances, filters = {}) {
 // ============================================================================
 const pendingRequests = {
     balance: new Map(),    // Map<cacheKey, {params, resolve, reject}>
-    budget: new Map()
+    budget: new Map(),
+    type: new Map()        // Map<account, {resolve, reject}> - for TYPE batching
 };
 
-let batchTimer = null;  // Timer reference for batching
+let batchTimer = null;  // Timer reference for BALANCE batching
+let typeBatchTimer = null;  // Timer reference for TYPE batching
 const BATCH_DELAY = 500;           // Wait 500ms to collect multiple requests (matches build mode settle)
+const TYPE_BATCH_DELAY = 150;      // Faster batch delay for TYPE (lightweight queries)
 const CHUNK_SIZE = 50;             // Max 50 accounts per batch (balances NetSuite limits)
 const MAX_PERIODS_PER_BATCH = 3;   // Max 3 periods per batch (prevents backend timeout for high-volume accounts)
 const CHUNK_DELAY = 300;           // Wait 300ms between chunks (prevent rate limiting)
@@ -1735,6 +1738,71 @@ async function NAME(accountNumber, invocation) {
 // ============================================================================
 // TYPE - Get Account Type
 // ============================================================================
+// TYPE BATCH PROCESSING
+// When multiple TYPE formulas are triggered (e.g., drag to fill 80 rows),
+// we batch them into a single API call instead of 80 individual calls.
+// ============================================================================
+async function processTypeBatchQueue() {
+    typeBatchTimer = null;
+    
+    const pending = new Map(pendingRequests.type);
+    pendingRequests.type.clear();
+    
+    if (pending.size === 0) {
+        console.log('📦 TYPE batch queue empty, nothing to process');
+        return;
+    }
+    
+    console.log(`📦 Processing TYPE batch: ${pending.size} accounts`);
+    
+    const accounts = [...pending.keys()];
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/batch/account_types`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accounts })
+        });
+        
+        if (!response.ok) {
+            console.error(`TYPE batch API error: ${response.status}`);
+            // Reject all pending
+            for (const [account, { reject }] of pending) {
+                reject(new Error(`API error ${response.status}`));
+            }
+            return;
+        }
+        
+        const data = await response.json();
+        const types = data.types || {};
+        
+        console.log(`📦 TYPE batch response: ${Object.keys(types).length} types returned`);
+        
+        // Resolve each pending request
+        for (const [account, { resolve }] of pending) {
+            const type = types[account];
+            if (type) {
+                // Cache the result
+                const cacheKey = getCacheKey('type', { account });
+                if (!cache.type) cache.type = new Map();
+                cache.type.set(cacheKey, type);
+                console.log(`   ✓ ${account} → ${type}`);
+                resolve(type);
+            } else {
+                console.log(`   ✗ ${account} → #N/A (not found)`);
+                resolve('#N/A');
+            }
+        }
+        
+    } catch (error) {
+        console.error('TYPE batch fetch error:', error);
+        // Reject all pending
+        for (const [account, { reject }] of pending) {
+            reject(error);
+        }
+    }
+}
+
 /**
  * @customfunction TYPE
  * @param {any} accountNumber The account number
@@ -1788,47 +1856,37 @@ async function TYPE(accountNumber, invocation) {
         console.warn('localStorage type cache read error:', e.message);
     }
     
-    cacheStats.misses++;
-    console.log(`📥 CACHE MISS [type]: ${account}`);
-    
-    // Single request - make immediately
-    try {
-        const controller = new AbortController();
-        const signal = controller.signal;
-        
-        // Listen for cancellation
-        if (invocation) {
-            invocation.onCanceled = () => {
-                console.log(`Type request canceled for ${account}`);
-                controller.abort();
-            };
-        }
-        
-        // Use POST to avoid exposing account numbers in URLs/logs
-        const response = await fetch(`${SERVER_URL}/account/type`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ account: String(account) }),
-            signal
+    // Check if this account is already pending in the batch queue
+    if (pendingRequests.type.has(account)) {
+        console.log(`📥 TYPE already pending, waiting for batch: ${account}`);
+        // Wait for the existing request to complete
+        return new Promise((resolve, reject) => {
+            const existing = pendingRequests.type.get(account);
+            // Chain onto existing promise
+            existing.resolve = ((origResolve) => (value) => {
+                origResolve(value);
+                resolve(value);
+            })(existing.resolve);
         });
-        if (!response.ok) {
-            console.error(`Type API error: ${response.status}`);
-            return '#N/A';
-        }
-        
-        const type = await response.text();
-        cache.type.set(cacheKey, type);
-        console.log(`💾 Cached type: ${account} → "${type}"`);
-        return type;
-        
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            console.log('Type request was canceled');
-            return '#N/A';
-        }
-        console.error('Type fetch error:', error);
-        return '#N/A';
     }
+    
+    cacheStats.misses++;
+    console.log(`📥 CACHE MISS [type]: ${account} - adding to batch queue`);
+    
+    // Add to batch queue
+    return new Promise((resolve, reject) => {
+        pendingRequests.type.set(account, { resolve, reject });
+        
+        // Start batch timer if not already running
+        if (!typeBatchTimer) {
+            console.log(`⏱️ Starting TYPE batch timer (${TYPE_BATCH_DELAY}ms)`);
+            typeBatchTimer = setTimeout(() => {
+                processTypeBatchQueue().catch(err => {
+                    console.error('❌ TYPE batch processing error:', err);
+                });
+            }, TYPE_BATCH_DELAY);
+        }
+    });
 }
 
 // ============================================================================
