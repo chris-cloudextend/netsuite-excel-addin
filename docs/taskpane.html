@@ -3371,9 +3371,15 @@
                     
                     try {
                         sheet.name = "Financial Report";
-                    } catch (e) {}
+                    } catch (e) {
+                        console.log('Guide Me: Could not rename sheet (may already exist)');
+                    }
                     
-                    sheet.showGridlines = false;
+                    try {
+                        sheet.showGridlines = false;
+                    } catch (e) {
+                        console.warn('Guide Me: Could not hide gridlines:', e.message);
+                    }
                     
                     // Write text headers (A1:C1)
                     const textHeaderRange = sheet.getRange("A1:C1");
@@ -3383,6 +3389,9 @@
                     textHeaderRange.format.fill.color = "#09235C";
                     textHeaderRange.format.horizontalAlignment = "Center";
                     
+                    await context.sync();
+                    console.log('Guide Me: Created text headers');
+                    
                     // Write date headers (D1:O1) using DATE formula
                     for (let m = 0; m < 12; m++) {
                         const colLetter = String.fromCharCode(68 + m);
@@ -3390,9 +3399,12 @@
                         cell.formulas = [[`=DATE(${currentYear},${m + 1},1)`]];
                     }
                     
+                    await context.sync();
+                    console.log('Guide Me: Created date formulas');
+                    
                     // Format month headers as "mmmm"
                     const monthHeaderRange = sheet.getRange("D1:O1");
-                    monthHeaderRange.numberFormat = 'mmmm';
+                    monthHeaderRange.numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
                     monthHeaderRange.format.font.bold = true;
                     monthHeaderRange.format.font.color = "#FFFFFF";
                     monthHeaderRange.format.fill.color = "#09235C";
@@ -3407,6 +3419,7 @@
                     totalHeaderRange.format.horizontalAlignment = "Center";
                     
                     await context.sync();
+                    console.log('Guide Me: Formatted headers');
                     
                     updateProgress(70, '📝 Step 4 of 4: Adding Formulas', `Writing ${allAccounts.length} accounts...`);
                     
@@ -3415,36 +3428,49 @@
                         const acct = allAccounts[i];
                         const rowNum = i + 2;
                         
-                        // Column B: Account NUMBER (always populated)
-                        const numCell = sheet.getRange(`B${rowNum}`);
-                        numCell.values = [[acct.number]];
-                        
-                        // Only add formulas for first 25 rows
-                        if (i < formulaRows) {
-                            // Column A: Account TYPE formula
-                            const typeCell = sheet.getRange(`A${rowNum}`);
-                            typeCell.formulas = [[`=XAVI.TYPE(B${rowNum})`]];
-                            
-                            // Column C: Account NAME formula
-                            const nameCell = sheet.getRange(`C${rowNum}`);
-                            nameCell.formulas = [[`=XAVI.NAME(B${rowNum})`]];
-                            
-                            // Columns D-O: BALANCE formulas
-                            for (let m = 0; m < 12; m++) {
-                                const colLetter = String.fromCharCode(68 + m);
-                                const cell = sheet.getRange(`${colLetter}${rowNum}`);
-                                cell.formulas = [[`=XAVI.BALANCE($B${rowNum},TEXT(${colLetter}$1,"mmm yyyy"),TEXT(${colLetter}$1,"mmm yyyy"))`]];
-                            }
-                            
-                            // Column P: YTD Total formula
-                            const totalCell = sheet.getRange(`P${rowNum}`);
-                            totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
+                        // Validate account number
+                        if (!acct || !acct.number) {
+                            console.warn(`Guide Me: Skipping row ${rowNum} - invalid account data`);
+                            continue;
                         }
                         
-                        // Alternating row colors for all 35 rows
-                        if (i % 2 === 0) {
-                            const rowRange = sheet.getRange(`A${rowNum}:P${rowNum}`);
-                            rowRange.format.fill.color = "#F5F7FA";
+                        try {
+                            // Column B: Account NUMBER (always populated)
+                            const numCell = sheet.getRange(`B${rowNum}`);
+                            // Ensure account number is a string for consistent Excel handling
+                            const acctNum = String(acct.number);
+                            numCell.values = [[acctNum]];
+                            
+                            // Only add formulas for first 25 rows
+                            if (i < formulaRows) {
+                                // Column A: Account TYPE formula
+                                const typeCell = sheet.getRange(`A${rowNum}`);
+                                typeCell.formulas = [[`=XAVI.TYPE(B${rowNum})`]];
+                                
+                                // Column C: Account NAME formula
+                                const nameCell = sheet.getRange(`C${rowNum}`);
+                                nameCell.formulas = [[`=XAVI.NAME(B${rowNum})`]];
+                                
+                                // Columns D-O: BALANCE formulas
+                                for (let m = 0; m < 12; m++) {
+                                    const colLetter = String.fromCharCode(68 + m);
+                                    const cell = sheet.getRange(`${colLetter}${rowNum}`);
+                                    cell.formulas = [[`=XAVI.BALANCE($B${rowNum},TEXT(${colLetter}$1,"mmm yyyy"),TEXT(${colLetter}$1,"mmm yyyy"))`]];
+                                }
+                                
+                                // Column P: YTD Total formula
+                                const totalCell = sheet.getRange(`P${rowNum}`);
+                                totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
+                            }
+                            
+                            // Alternating row colors for all 35 rows
+                            if (i % 2 === 0) {
+                                const rowRange = sheet.getRange(`A${rowNum}:P${rowNum}`);
+                                rowRange.format.fill.color = "#F5F7FA";
+                            }
+                        } catch (rowError) {
+                            console.error(`Guide Me: Error writing row ${rowNum}:`, rowError.message);
+                            // Continue with next row
                         }
                         
                         // Update progress every 5 rows
@@ -3456,25 +3482,54 @@
                     }
                     
                     await context.sync();
+                    console.log(`Guide Me: Wrote ${allAccounts.length} accounts to sheet`);
                     
                     updateProgress(92, '🎨 Finishing Up', 'Applying formatting...');
                     
                     // Format number columns as CURRENCY with no decimals
-                    const numRange = sheet.getRange(`D2:P${allAccounts.length + 1}`);
-                    numRange.numberFormat = '"$"#,##0';
-                    
-                    // Add LEFT BORDER to YTD Total column (P) to separate it visually
-                    const totalColumn = sheet.getRange(`P1:P${allAccounts.length + 1}`);
-                    totalColumn.format.borders.getItem('EdgeLeft').style = 'Continuous';
-                    totalColumn.format.borders.getItem('EdgeLeft').weight = 'Medium';
-                    totalColumn.format.borders.getItem('EdgeLeft').color = '#09235C';
+                    try {
+                        const lastDataRow = Math.min(allAccounts.length + 1, 36); // Safety limit
+                        const numRange = sheet.getRange(`D2:P${lastDataRow}`);
+                        // Use 2D array for numberFormat to ensure compatibility across platforms
+                        const formatRows = lastDataRow - 1; // rows 2 through lastDataRow
+                        const formatCols = 13; // columns D through P
+                        const numberFormatArray = Array(formatRows).fill(null).map(() => 
+                            Array(formatCols).fill('"$"#,##0')
+                        );
+                        numRange.numberFormat = numberFormatArray;
+                        console.log(`Guide Me: Applied number format to D2:P${lastDataRow}`);
+                    } catch (formatError) {
+                        console.warn('Guide Me: Number format warning:', formatError.message);
+                        // Continue anyway - formatting is not critical
+                    }
                     
                     await context.sync();
                     
-                    updateProgress(96, '🎨 Finishing Up', 'Auto-fitting columns...');
+                    // Add LEFT BORDER to YTD Total column (P) to separate it visually
+                    try {
+                        const lastDataRow = Math.min(allAccounts.length + 1, 36);
+                        const totalColumn = sheet.getRange(`P1:P${lastDataRow}`);
+                        const leftBorder = totalColumn.format.borders.getItem('EdgeLeft');
+                        leftBorder.style = 'Continuous';
+                        leftBorder.weight = 'Medium';
+                        leftBorder.color = '#09235C';
+                        console.log(`Guide Me: Applied border to P1:P${lastDataRow}`);
+                    } catch (borderError) {
+                        console.warn('Guide Me: Border formatting warning:', borderError.message);
+                        // Continue anyway - formatting is not critical
+                    }
+                    
+                    await context.sync();
+                    
+                    updateProgress(96, '🎨 Finishing Up', 'Finalizing layout...');
                     
                     // Freeze header row
-                    sheet.freezePanes.freezeRows(1);
+                    try {
+                        sheet.freezePanes.freezeRows(1);
+                        console.log('Guide Me: Froze header row');
+                    } catch (freezeError) {
+                        console.warn('Guide Me: Freeze panes warning:', freezeError.message);
+                    }
                     
                     await context.sync();
                     
