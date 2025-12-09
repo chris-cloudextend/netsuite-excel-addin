@@ -1108,17 +1108,24 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters, a
     if accountingbook is None:
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
+    # Build filter clauses - class/department/location are on TransactionLine
     filter_clauses = []
+    needs_line_join = False
+    
     if filters.get('subsidiary'):
         filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
     if filters.get('department'):
-        filter_clauses.append(f"tal.department = {filters['department']}")
+        filter_clauses.append(f"tl.department = {filters['department']}")
+        needs_line_join = True
     if filters.get('location'):
-        filter_clauses.append(f"tal.location = {filters['location']}")
+        filter_clauses.append(f"tl.location = {filters['location']}")
+        needs_line_join = True
     if filters.get('class'):
-        filter_clauses.append(f"tal.class = {filters['class']}")
+        filter_clauses.append(f"tl.class = {filters['class']}")
+        needs_line_join = True
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    line_join = "INNER JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     # Use CROSS JOIN to get the target period ID, then use it for CONSOLIDATE
     query = f"""
@@ -1139,6 +1146,7 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters, a
       ) AS balance
     FROM TransactionAccountingLine tal
     INNER JOIN Transaction t ON t.id = tal.transaction
+    {line_join}
     INNER JOIN Account a ON a.id = tal.account
     INNER JOIN AccountingPeriod ap ON ap.id = t.postingperiod
     CROSS JOIN (
@@ -1200,18 +1208,24 @@ def build_bs_multi_period_query(periods, target_sub, filters, accountingbook=Non
     if accountingbook is None:
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
-    # Build filter clauses
+    # Build filter clauses - class/department/location are on TransactionLine
     filter_clauses = []
+    needs_line_join = False
+    
     if filters.get('subsidiary'):
         filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
     if filters.get('department'):
-        filter_clauses.append(f"tal.department = {filters['department']}")
+        filter_clauses.append(f"tl.department = {filters['department']}")
+        needs_line_join = True
     if filters.get('location'):
-        filter_clauses.append(f"tal.location = {filters['location']}")
+        filter_clauses.append(f"tl.location = {filters['location']}")
+        needs_line_join = True
     if filters.get('class'):
-        filter_clauses.append(f"tal.class = {filters['class']}")
+        filter_clauses.append(f"tl.class = {filters['class']}")
+        needs_line_join = True
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    line_join_sql = "INNER JOIN transactionline tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     # Parse periods and build components
     # Period format: "Mon YYYY" e.g., "Jan 2025"
@@ -1298,6 +1312,7 @@ SELECT
 
 FROM transactionaccountingline tal
   INNER JOIN transaction t ON t.id = tal.transaction
+  {line_join_sql}
   INNER JOIN account a ON a.id = tal.account
   INNER JOIN accountingperiod ap ON ap.id = t.postingperiod
   {joins_sql}
@@ -1486,17 +1501,26 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     # Build optional filter clauses
+    # Note: class, department, location are on TransactionLine, not TransactionAccountingLine
     filter_clauses = []
+    needs_line_join = False
+    
     if filters.get('subsidiary'):
         filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
     if filters.get('department'):
-        filter_clauses.append(f"tal.department = {filters['department']}")
+        filter_clauses.append(f"tl.department = {filters['department']}")
+        needs_line_join = True
     if filters.get('location'):
-        filter_clauses.append(f"tal.location = {filters['location']}")
+        filter_clauses.append(f"tl.location = {filters['location']}")
+        needs_line_join = True
     if filters.get('class'):
-        filter_clauses.append(f"tal.class = {filters['class']}")
+        filter_clauses.append(f"tl.class = {filters['class']}")
+        needs_line_join = True
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    
+    # Add TransactionLine join if filtering by class/department/location
+    line_join = "JOIN transactionline tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     # Build the pivoted query with all 12 months as columns
     query = f"""
@@ -1537,6 +1561,7 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
         * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
       FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
+        {line_join}
         JOIN account a ON a.id = tal.account
         JOIN accountingperiod apf ON apf.id = t.postingperiod
         CROSS JOIN (
