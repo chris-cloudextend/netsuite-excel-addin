@@ -192,108 +192,111 @@ When running consolidated reports across subsidiaries:
 
 ---
 
-# Why SuiteQL Over ODBC
+# Why SuiteQL (REST API) Over ODBC
 
 ## Executive Summary
 
-We chose SuiteQL (REST API) over NetSuite's ODBC driver (SuiteAnalytics Connect) for three primary reasons:
+We chose SuiteQL via REST API over NetSuite's ODBC driver (SuiteAnalytics Connect) for three primary reasons:
 
-| Factor | ODBC | SuiteQL |
-|--------|------|---------|
-| **Annual Cost** | $5,000 - $10,000+ | $0 (included) |
-| **Performance** | Slower for complex queries | Optimized for aggregations |
-| **Consolidation** | Manual currency translation | `BUILTIN.CONSOLIDATE` built-in |
+| Factor | ODBC (SuiteAnalytics Connect) | SuiteQL (REST API) |
+|--------|-------------------------------|-------------------|
+| **Annual Cost** | $5,000 - $20,000+ | $0 (included) |
+| **Client Setup** | Driver installation required | No installation |
+| **Firewall** | Database port required | HTTPS only (443) |
+
+> **Important Clarification:** Both ODBC and REST API can execute SuiteQL queries. ODBC via NetSuite2.com data source supports SuiteQL syntax including `BUILTIN.CONSOLIDATE`. The key differences are licensing cost and deployment simplicity, not query capabilities.
 
 ## Cost Analysis
 
 ### ODBC Driver Costs
-NetSuite's ODBC driver (SuiteAnalytics Connect) requires additional licensing:
+NetSuite's ODBC driver (SuiteAnalytics Connect) requires additional licensing purchased separately from your core NetSuite platform:
 
 | Cost Component | Annual Cost |
 |----------------|-------------|
-| SuiteAnalytics Connect License | **$3,000 - $6,000/year** |
-| Additional user seats (if required) | $500 - $1,000/seat |
-| Third-party connector tools | $1,000 - $3,000/year |
-| **Total** | **$5,000 - $10,000+/year** |
+| SuiteAnalytics Connect License | **$5,000 - $20,000/year** |
+| Additional user seats (if required) | Variable |
+| **Total** | **$5,000 - $20,000+/year** |
 
-> *Source: User reports from NetSuite Professionals community (2024) indicate ODBC licenses costing approximately $500/month ($6,000/year).*
+> *Pricing varies significantly by negotiation. Community reports range from $5K to $20K annually. Some customers have negotiated inclusion in their base contract.*
 
-### SuiteQL Costs
+### SuiteQL REST API Costs
 - **License Cost:** $0 - Included with all NetSuite subscriptions
 - **API Calls:** Included in standard governance limits
-- **Infrastructure:** Only backend server costs
+- **Infrastructure:** Only backend server costs (~$50/month for AWS hosting)
 
 ### ROI Calculation
 
-For an organization with 10 Excel users:
+For an organization:
 ```
 ODBC Approach:
-  License: $6,000/year
-  Connector: $2,000/year
-  Total: $8,000/year
+  SuiteAnalytics Connect License: $5,000-20,000/year
+  Driver deployment/maintenance: Time cost
 
-XAVI with SuiteQL:
+XAVI with SuiteQL REST:
   License: $0
   AWS hosting: ~$50/month = $600/year
   Total: $600/year
 
-Annual Savings: $7,400 (92% reduction)
+Annual Savings: $4,400 - $19,400 (88-97% reduction)
 ```
 
-## Performance Comparison
+## Technical Comparison
 
-### ODBC Limitations
+### What's the SAME (Both Use SuiteQL)
 
-1. **Connection Overhead:** Each query establishes a new database connection
-2. **Query Complexity:** Limited JOIN support, no native aggregation functions
-3. **Row Limits:** Must paginate manually for large result sets
-4. **No Consolidation:** Currency translation must be done client-side
+Both ODBC and REST API can run SuiteQL queries with:
+- ✅ `BUILTIN.CONSOLIDATE` for multi-currency consolidation
+- ✅ Complex JOINs, GROUP BY, aggregations
+- ✅ SQL-92 syntax support
+- ✅ Oracle syntax support (REST API has fewer limitations)
 
-### SuiteQL Advantages
+**Key limitation for ODBC:** Cannot use WITH clauses (CTEs) via ODBC. REST API supports full SuiteQL syntax.
 
-1. **Rich SQL Support:** Complex JOINs, GROUP BY, aggregations
-2. **BUILTIN Functions:** `BUILTIN.CONSOLIDATE` handles multi-currency automatically
-3. **Optimized for Analytics:** Designed for reporting workloads
-4. **Batch Operations:** Multiple queries can share authentication overhead
+### What's DIFFERENT
 
-### Benchmark Results (Typical)
+| Aspect | ODBC | REST API |
+|--------|------|----------|
+| **Licensing** | Additional purchase required | Included |
+| **Client Setup** | ODBC driver installation | None |
+| **Firewall** | Database port access | HTTPS (443) only |
+| **Authentication** | User/Pass, OAuth 2.0, or TBA | OAuth 1.0 (TBA) |
+| **Power BI** | Import only (no DirectQuery) | N/A for Excel |
+| **WITH Clauses** | Not supported | Supported |
 
-| Query Type | ODBC | SuiteQL |
-|------------|------|---------|
-| Single account balance | 2-4 sec | 1-2 sec |
-| Full year P&L (200 accounts) | 45-90 sec | 15-30 sec |
-| Multi-subsidiary consolidation | N/A (manual) | 20-40 sec |
+### Why We Chose REST API
 
-## Security Advantages
+1. **Zero Licensing Cost:** No SuiteAnalytics Connect purchase required
+2. **No Driver Installation:** Users don't need ODBC drivers on their machines
+3. **Simpler Firewall:** Only HTTPS (port 443) needed, no database ports
+4. **Full SuiteQL Support:** Including WITH clauses and modern Oracle features
+5. **Web-Native:** Works with Excel Add-ins hosted via GitHub Pages
 
-| Aspect | ODBC | SuiteQL |
-|--------|------|---------|
-| Authentication | Username/Password | OAuth 1.0 (HMAC-SHA256) |
-| Permissions | Database-level access | NetSuite role-based |
-| Audit Trail | Limited | Full NetSuite logging |
-| Firewall | Requires DB port open | Standard HTTPS (443) |
+### ODBC Advantages We Traded Away
 
-## Technical Limitations Avoided
+- **Direct BI Tool Integration:** Power BI, Tableau can connect directly via ODBC
+- **Familiar SQL Tools:** Works with any ODBC-compatible application
+- **Bulk Data Export:** May be faster for very large one-time exports
 
-### ODBC Pain Points We Avoid:
+For our use case (real-time Excel formulas), REST API's zero-cost and no-installation benefits outweigh ODBC's BI tool compatibility.
 
-1. **Driver Installation:** Users don't need to install ODBC drivers
-2. **Connection Strings:** No complex DSN configuration
-3. **Firewall Rules:** No special ports to open (HTTPS only)
-4. **Version Compatibility:** No driver version conflicts
+## Authentication Clarification
 
-### Why Not Both?
+**Both approaches support modern authentication:**
 
-Some tools use ODBC for bulk data and API for real-time. We use SuiteQL exclusively because:
-- **Consistency:** Same query language everywhere
-- **Simplicity:** One integration point to maintain
-- **Cost:** Zero additional licensing
+| Method | ODBC | REST API |
+|--------|------|----------|
+| Username/Password | ✅ | ❌ |
+| OAuth 2.0 | ✅ | ❌ |
+| Token-Based Auth (TBA) | ✅ | ✅ |
+| OAuth 1.0 | ❌ | ✅ |
+
+We use OAuth 1.0 with Token-Based Authentication (TBA) for the REST API.
 
 ## References
 
 - NetSuite SuiteQL Documentation: [docs.oracle.com/netsuite](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_157108952762.html)
-- ODBC Cost Reports: [NetSuite Professionals Archive](https://archive.netsuiteprofessionals.com/t/439676/what-is-the-advantage-of-using-suiteql-in-suitescript-n-quer)
-- Cost Comparison Analysis: [Coefficient.io](https://coefficient.io/use-cases/cost-comparison-netsuite-excel-integration-tools-trials)
+- SuiteAnalytics Connect: [NetSuite Help Center](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_3aborqgzaqc.html)
+- Community Pricing Discussion: [NetSuite Professionals](https://archive.netsuiteprofessionals.com/)
 
 ---
 
