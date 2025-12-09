@@ -2611,7 +2611,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.31.0';
+        const ADDIN_VERSION = '1.5.32.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -4941,12 +4941,13 @@ export default {
                             console.log(`📊 P&L accounts: ${plAccounts.length}, BS accounts: ${bsAccounts.length}`);
                         }
                     } catch (e) {
-                        // CRITICAL: If type API fails, treat all as BS (safer - BS refresh is slower but more accurate)
-                        // Previously we treated as P&L which caused unnecessary P&L fetches
-                        console.error('❌ Type API failed! Treating all accounts as Balance Sheet:', e);
+                        // If type API fails, fetch BOTH P&L and BS to be safe
+                        // This is slower but ensures no accounts are missed
+                        console.error('❌ Type API failed! Will fetch BOTH P&L and BS:', e);
+                        plAccounts = [...detectedAccounts];
                         bsAccounts = [...detectedAccounts];
                         showToast({ type: 'warning', title: 'Account Classification Failed', 
-                            message: 'Could not classify accounts. Treating all as Balance Sheet for safety.', duration: 8000 });
+                            message: 'Could not classify accounts. Fetching both P&L and BS data to be safe (slower).', duration: 8000 });
                     }
                 }
                 
