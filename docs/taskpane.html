@@ -2698,7 +2698,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.44.0';
+        const ADDIN_VERSION = '1.5.45.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -3721,7 +3721,7 @@
                         const formatRows = lastDataRow - dataStartRow + 1;
                         const formatCols = 13; // columns D through P
                         const numberFormatArray = Array(formatRows).fill(null).map(() => 
-                            Array(formatCols).fill('"$"#,##0')
+                            Array(formatCols).fill('#,##0')
                         );
                         numRange.numberFormat = numberFormatArray;
                         console.log(`Guide Me: Applied number format to D${dataStartRow}:P${lastDataRow}`);
@@ -4014,7 +4014,7 @@
                     // ========== ROW 1-2: PARAMETERS ==========
                     // Title with dynamic year reference
                     const titleCell = sheet.getRange("A1");
-                    titleCell.formulas = [['="Income Statement For: "&F2']];
+                    titleCell.formulas = [['="Income Statement For: "&P3']];
                     await context.sync();
                     
                     try {
@@ -4063,6 +4063,72 @@
                         sheet.getRange("R3").format.font.color = "#09235C";
                         await context.sync();
                     } catch (e) {}
+                    
+                    // ========== ROW 4: KPI METRICS DASHBOARD ==========
+                    // YTD Revenue (green)
+                    sheet.getRange("A4").values = [["📊 YTD REVENUE"]];
+                    sheet.getRange("B4").formulas = [['=SUMIF(B:B,"Total Revenue",O:O)']];
+                    // Gross Margin % (gold)
+                    sheet.getRange("D4").values = [["📈 GROSS MARGIN"]];
+                    sheet.getRange("E4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Gross Profit",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    // Net Income % (red/green based on value)
+                    sheet.getRange("G4").values = [["💰 NET INCOME"]];
+                    sheet.getRange("H4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Net Income",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    // OpEx Ratio (purple)
+                    sheet.getRange("J4").values = [["⚙️ OPEX RATIO"]];
+                    sheet.getRange("K4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Total Operating Expenses",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    await context.sync();
+                    
+                    // Style KPI cards
+                    try {
+                        // Revenue card - Green
+                        sheet.getRange("A4").format.font.bold = true;
+                        sheet.getRange("A4").format.font.size = 9;
+                        sheet.getRange("A4").format.font.color = "#FFFFFF";
+                        sheet.getRange("A4").format.fill.color = "#22C55E";
+                        sheet.getRange("B4").format.font.bold = true;
+                        sheet.getRange("B4").format.font.size = 12;
+                        sheet.getRange("B4").format.font.color = "#FFFFFF";
+                        sheet.getRange("B4").format.fill.color = "#22C55E";
+                        sheet.getRange("B4").numberFormat = [['#,##0']];
+                        
+                        // Gross Margin card - Gold
+                        sheet.getRange("D4").format.font.bold = true;
+                        sheet.getRange("D4").format.font.size = 9;
+                        sheet.getRange("D4").format.font.color = "#000000";
+                        sheet.getRange("D4").format.fill.color = "#FBBF24";
+                        sheet.getRange("E4").format.font.bold = true;
+                        sheet.getRange("E4").format.font.size = 12;
+                        sheet.getRange("E4").format.font.color = "#000000";
+                        sheet.getRange("E4").format.fill.color = "#FBBF24";
+                        sheet.getRange("E4").numberFormat = [['0.0%']];
+                        
+                        // Net Income card - Red
+                        sheet.getRange("G4").format.font.bold = true;
+                        sheet.getRange("G4").format.font.size = 9;
+                        sheet.getRange("G4").format.font.color = "#FFFFFF";
+                        sheet.getRange("G4").format.fill.color = "#EF4444";
+                        sheet.getRange("H4").format.font.bold = true;
+                        sheet.getRange("H4").format.font.size = 12;
+                        sheet.getRange("H4").format.font.color = "#FFFFFF";
+                        sheet.getRange("H4").format.fill.color = "#EF4444";
+                        sheet.getRange("H4").numberFormat = [['0.0%']];
+                        
+                        // OpEx Ratio card - Purple
+                        sheet.getRange("J4").format.font.bold = true;
+                        sheet.getRange("J4").format.font.size = 9;
+                        sheet.getRange("J4").format.font.color = "#FFFFFF";
+                        sheet.getRange("J4").format.fill.color = "#8B5CF6";
+                        sheet.getRange("K4").format.font.bold = true;
+                        sheet.getRange("K4").format.font.size = 12;
+                        sheet.getRange("K4").format.font.color = "#FFFFFF";
+                        sheet.getRange("K4").format.fill.color = "#8B5CF6";
+                        sheet.getRange("K4").numberFormat = [['0.0%']];
+                        
+                        await context.sync();
+                    } catch (e) {
+                        console.warn('KPI styling warning:', e.message);
+                    }
                     
                     // ========== ROW 5: COLUMN HEADERS ==========
                     const headerRow = 5;
@@ -4342,7 +4408,7 @@
                         const dataRange = sheet.getRange(`C6:O${netIncomeRow}`);
                         const rows = netIncomeRow - 5;
                         const cols = 13; // C through O
-                        const formatArray = Array(rows).fill(null).map(() => Array(cols).fill('"$"#,##0'));
+                        const formatArray = Array(rows).fill(null).map(() => Array(cols).fill('#,##0'));
                         dataRange.numberFormat = formatArray;
                         await context.sync();
                     } catch (e) {
@@ -4597,7 +4663,7 @@
                     
                     // ========== ROW 1: TITLE ==========
                     // Title with dynamic year reference
-                    sheet.getRange("A1").formulas = [['="Income Statement For: "&F2']];
+                    sheet.getRange("A1").formulas = [['="Income Statement For: "&P3']];
                     await context.sync();
                     try {
                         sheet.getRange("A1").format.font.bold = true;
@@ -4642,6 +4708,57 @@
                         sheet.getRange("R3").format.fill.color = "#0AE2C1";
                         sheet.getRange("R3").format.font.bold = true;
                         sheet.getRange("R3").format.font.color = "#09235C";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ========== ROW 4: KPI METRICS DASHBOARD ==========
+                    sheet.getRange("A4").values = [["📊 YTD REVENUE"]];
+                    sheet.getRange("B4").formulas = [['=SUMIF(B:B,"Total Revenue",O:O)']];
+                    sheet.getRange("D4").values = [["📈 GROSS MARGIN"]];
+                    sheet.getRange("E4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Gross Profit",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    sheet.getRange("G4").values = [["💰 NET INCOME"]];
+                    sheet.getRange("H4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Net Income",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    sheet.getRange("J4").values = [["⚙️ OPEX RATIO"]];
+                    sheet.getRange("K4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Total Operating Expenses",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    await context.sync();
+                    
+                    try {
+                        sheet.getRange("A4").format.font.bold = true;
+                        sheet.getRange("A4").format.font.size = 9;
+                        sheet.getRange("A4").format.font.color = "#FFFFFF";
+                        sheet.getRange("A4").format.fill.color = "#22C55E";
+                        sheet.getRange("B4").format.font.bold = true;
+                        sheet.getRange("B4").format.font.size = 12;
+                        sheet.getRange("B4").format.font.color = "#FFFFFF";
+                        sheet.getRange("B4").format.fill.color = "#22C55E";
+                        sheet.getRange("B4").numberFormat = [['#,##0']];
+                        sheet.getRange("D4").format.font.bold = true;
+                        sheet.getRange("D4").format.font.size = 9;
+                        sheet.getRange("D4").format.font.color = "#000000";
+                        sheet.getRange("D4").format.fill.color = "#FBBF24";
+                        sheet.getRange("E4").format.font.bold = true;
+                        sheet.getRange("E4").format.font.size = 12;
+                        sheet.getRange("E4").format.font.color = "#000000";
+                        sheet.getRange("E4").format.fill.color = "#FBBF24";
+                        sheet.getRange("E4").numberFormat = [['0.0%']];
+                        sheet.getRange("G4").format.font.bold = true;
+                        sheet.getRange("G4").format.font.size = 9;
+                        sheet.getRange("G4").format.font.color = "#FFFFFF";
+                        sheet.getRange("G4").format.fill.color = "#EF4444";
+                        sheet.getRange("H4").format.font.bold = true;
+                        sheet.getRange("H4").format.font.size = 12;
+                        sheet.getRange("H4").format.font.color = "#FFFFFF";
+                        sheet.getRange("H4").format.fill.color = "#EF4444";
+                        sheet.getRange("H4").numberFormat = [['0.0%']];
+                        sheet.getRange("J4").format.font.bold = true;
+                        sheet.getRange("J4").format.font.size = 9;
+                        sheet.getRange("J4").format.font.color = "#FFFFFF";
+                        sheet.getRange("J4").format.fill.color = "#8B5CF6";
+                        sheet.getRange("K4").format.font.bold = true;
+                        sheet.getRange("K4").format.font.size = 12;
+                        sheet.getRange("K4").format.font.color = "#FFFFFF";
+                        sheet.getRange("K4").format.fill.color = "#8B5CF6";
+                        sheet.getRange("K4").numberFormat = [['0.0%']];
                         await context.sync();
                     } catch (e) {}
                     
@@ -4831,7 +4948,7 @@
                     // Format numbers
                     try {
                         const rows = netIncomeRow - 5;
-                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill('"$"#,##0'));
+                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill('#,##0'));
                         sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                         await context.sync();
                     } catch (e) {}
@@ -6165,7 +6282,7 @@ export default {
                     try { sheet.showGridlines = false; await context.sync(); } catch (e) {}
                     
                     // ROW 1: TITLE
-                    sheet.getRange("A1").formulas = [['="Income Statement For: "&F2']];
+                    sheet.getRange("A1").formulas = [['="Income Statement For: "&P3']];
                     await context.sync();
                     try {
                         sheet.getRange("A1").format.font.bold = true;
@@ -6209,6 +6326,57 @@ export default {
                         sheet.getRange("R3").format.fill.color = "#0AE2C1";
                         sheet.getRange("R3").format.font.bold = true;
                         sheet.getRange("R3").format.font.color = "#09235C";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ROW 4: KPI METRICS DASHBOARD
+                    sheet.getRange("A4").values = [["📊 YTD REVENUE"]];
+                    sheet.getRange("B4").formulas = [['=SUMIF(B:B,"Total Revenue",O:O)']];
+                    sheet.getRange("D4").values = [["📈 GROSS MARGIN"]];
+                    sheet.getRange("E4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Gross Profit",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    sheet.getRange("G4").values = [["💰 NET INCOME"]];
+                    sheet.getRange("H4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Net Income",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    sheet.getRange("J4").values = [["⚙️ OPEX RATIO"]];
+                    sheet.getRange("K4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Total Operating Expenses",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                    await context.sync();
+                    
+                    try {
+                        sheet.getRange("A4").format.font.bold = true;
+                        sheet.getRange("A4").format.font.size = 9;
+                        sheet.getRange("A4").format.font.color = "#FFFFFF";
+                        sheet.getRange("A4").format.fill.color = "#22C55E";
+                        sheet.getRange("B4").format.font.bold = true;
+                        sheet.getRange("B4").format.font.size = 12;
+                        sheet.getRange("B4").format.font.color = "#FFFFFF";
+                        sheet.getRange("B4").format.fill.color = "#22C55E";
+                        sheet.getRange("B4").numberFormat = [['#,##0']];
+                        sheet.getRange("D4").format.font.bold = true;
+                        sheet.getRange("D4").format.font.size = 9;
+                        sheet.getRange("D4").format.font.color = "#000000";
+                        sheet.getRange("D4").format.fill.color = "#FBBF24";
+                        sheet.getRange("E4").format.font.bold = true;
+                        sheet.getRange("E4").format.font.size = 12;
+                        sheet.getRange("E4").format.font.color = "#000000";
+                        sheet.getRange("E4").format.fill.color = "#FBBF24";
+                        sheet.getRange("E4").numberFormat = [['0.0%']];
+                        sheet.getRange("G4").format.font.bold = true;
+                        sheet.getRange("G4").format.font.size = 9;
+                        sheet.getRange("G4").format.font.color = "#FFFFFF";
+                        sheet.getRange("G4").format.fill.color = "#EF4444";
+                        sheet.getRange("H4").format.font.bold = true;
+                        sheet.getRange("H4").format.font.size = 12;
+                        sheet.getRange("H4").format.font.color = "#FFFFFF";
+                        sheet.getRange("H4").format.fill.color = "#EF4444";
+                        sheet.getRange("H4").numberFormat = [['0.0%']];
+                        sheet.getRange("J4").format.font.bold = true;
+                        sheet.getRange("J4").format.font.size = 9;
+                        sheet.getRange("J4").format.font.color = "#FFFFFF";
+                        sheet.getRange("J4").format.fill.color = "#8B5CF6";
+                        sheet.getRange("K4").format.font.bold = true;
+                        sheet.getRange("K4").format.font.size = 12;
+                        sheet.getRange("K4").format.font.color = "#FFFFFF";
+                        sheet.getRange("K4").format.fill.color = "#8B5CF6";
+                        sheet.getRange("K4").numberFormat = [['0.0%']];
                         await context.sync();
                     } catch (e) {}
                     
@@ -6388,7 +6556,7 @@ export default {
                     
                     try {
                         const rows = netIncomeRow - 5;
-                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill('"$"#,##0'));
+                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill('#,##0'));
                         sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                         await context.sync();
                     } catch (e) {}
@@ -6686,7 +6854,7 @@ export default {
                             } catch (e) {}
                             
                             // ===== ROW 1: TITLE =====
-                            sheet.getRange("A1").formulas = [['="Income Statement For: "&F2']];
+                            sheet.getRange("A1").formulas = [['="Income Statement For: "&P3']];
                             await context.sync();
                             try {
                                 sheet.getRange("A1").format.font.bold = true;
@@ -6730,6 +6898,57 @@ export default {
                                 sheet.getRange("R3").format.fill.color = "#0AE2C1";
                                 sheet.getRange("R3").format.font.bold = true;
                                 sheet.getRange("R3").format.font.color = "#09235C";
+                                await context.sync();
+                            } catch (e) {}
+                            
+                            // ===== ROW 4: KPI METRICS =====
+                            sheet.getRange("A4").values = [["📊 YTD REVENUE"]];
+                            sheet.getRange("B4").formulas = [['=SUMIF(B:B,"Total Revenue",O:O)']];
+                            sheet.getRange("D4").values = [["📈 GROSS MARGIN"]];
+                            sheet.getRange("E4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Gross Profit",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                            sheet.getRange("G4").values = [["💰 NET INCOME"]];
+                            sheet.getRange("H4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Net Income",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                            sheet.getRange("J4").values = [["⚙️ OPEX RATIO"]];
+                            sheet.getRange("K4").formulas = [['=IF(SUMIF(B:B,"Total Revenue",O:O)=0,"N/A",SUMIF(B:B,"Total Operating Expenses",O:O)/SUMIF(B:B,"Total Revenue",O:O))']];
+                            await context.sync();
+                            
+                            try {
+                                sheet.getRange("A4").format.font.bold = true;
+                                sheet.getRange("A4").format.font.size = 9;
+                                sheet.getRange("A4").format.font.color = "#FFFFFF";
+                                sheet.getRange("A4").format.fill.color = "#22C55E";
+                                sheet.getRange("B4").format.font.bold = true;
+                                sheet.getRange("B4").format.font.size = 12;
+                                sheet.getRange("B4").format.font.color = "#FFFFFF";
+                                sheet.getRange("B4").format.fill.color = "#22C55E";
+                                sheet.getRange("B4").numberFormat = [['#,##0']];
+                                sheet.getRange("D4").format.font.bold = true;
+                                sheet.getRange("D4").format.font.size = 9;
+                                sheet.getRange("D4").format.font.color = "#000000";
+                                sheet.getRange("D4").format.fill.color = "#FBBF24";
+                                sheet.getRange("E4").format.font.bold = true;
+                                sheet.getRange("E4").format.font.size = 12;
+                                sheet.getRange("E4").format.font.color = "#000000";
+                                sheet.getRange("E4").format.fill.color = "#FBBF24";
+                                sheet.getRange("E4").numberFormat = [['0.0%']];
+                                sheet.getRange("G4").format.font.bold = true;
+                                sheet.getRange("G4").format.font.size = 9;
+                                sheet.getRange("G4").format.font.color = "#FFFFFF";
+                                sheet.getRange("G4").format.fill.color = "#EF4444";
+                                sheet.getRange("H4").format.font.bold = true;
+                                sheet.getRange("H4").format.font.size = 12;
+                                sheet.getRange("H4").format.font.color = "#FFFFFF";
+                                sheet.getRange("H4").format.fill.color = "#EF4444";
+                                sheet.getRange("H4").numberFormat = [['0.0%']];
+                                sheet.getRange("J4").format.font.bold = true;
+                                sheet.getRange("J4").format.font.size = 9;
+                                sheet.getRange("J4").format.font.color = "#FFFFFF";
+                                sheet.getRange("J4").format.fill.color = "#8B5CF6";
+                                sheet.getRange("K4").format.font.bold = true;
+                                sheet.getRange("K4").format.font.size = 12;
+                                sheet.getRange("K4").format.font.color = "#FFFFFF";
+                                sheet.getRange("K4").format.fill.color = "#8B5CF6";
+                                sheet.getRange("K4").numberFormat = [['0.0%']];
                                 await context.sync();
                             } catch (e) {}
                             
@@ -6919,7 +7138,7 @@ export default {
                             // Format numbers
                             try {
                                 const rows = netIncomeRow - 5;
-                                const formatArray = Array(rows).fill(null).map(() => Array(13).fill('"$"#,##0'));
+                                const formatArray = Array(rows).fill(null).map(() => Array(13).fill('#,##0'));
                                 sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                                 await context.sync();
                             } catch (e) {}
@@ -8528,7 +8747,7 @@ export default {
             dataRange.values = dataRows;
             
             // Format numbers as currency
-            drillSheet.getRange(`F5:H${4 + dataRows.length}`).numberFormat = [['$#,##0.00']];
+            drillSheet.getRange(`F5:H${4 + dataRows.length}`).numberFormat = [['#,##0.00']];
             
             // Add hyperlinks to NetSuite URLs
             for (let i = 0; i < transactions.length; i++) {
@@ -8563,7 +8782,7 @@ export default {
             drillSheet.getRange(`G${summaryRow}`).values = [[totalCredit]];
             drillSheet.getRange(`H${summaryRow}`).values = [[totalNet]];
             drillSheet.getRange(`E${summaryRow}:H${summaryRow}`).format.font.bold = true;
-            drillSheet.getRange(`F${summaryRow}:H${summaryRow}`).numberFormat = [['$#,##0.00']];
+            drillSheet.getRange(`F${summaryRow}:H${summaryRow}`).numberFormat = [['#,##0.00']];
             
             await context.sync();
         }
