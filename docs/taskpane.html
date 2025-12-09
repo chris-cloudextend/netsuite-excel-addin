@@ -2136,10 +2136,10 @@
                                 <span class="help-icon small" data-tip="Re-calculates only the cells you've selected. Faster than Refresh Accounts for quick updates.">?</span>
                             </button>
                             
-                            <button class="action-btn warning" onclick="recalculateSpecialFormulas()" title="Why is this separate? Retained Earnings, Net Income, and CTA require scanning your entire transaction history and applying currency consolidation. This typically takes 30-60 seconds per formula. When to recalculate: After posting journal entries, after period close, or when values seem stale.">
+                            <button class="action-btn warning" onclick="recalculateSpecialFormulas()" title="Retained Earnings, Net Income, and Cumulative Translation Adjustment (CTA) require scanning your entire transaction history and applying currency consolidation. This can take up to 5 minutes. When to recalculate: After posting journal entries, after period close, or when values seem stale. You can continue working in your sheet while recalculating.">
                                 <span class="action-icon">📊</span>
-                                <span class="action-text">Recalculate RE/NI/CTA</span>
-                                <span class="help-icon small" data-tip="Why is this separate? Retained Earnings, Net Income, and CTA require scanning your entire transaction history and applying currency consolidation. This typically takes 30-60 seconds per formula. When to recalculate: After posting journal entries, after period close, or when values seem stale.">?</span>
+                                <span class="action-text">Recalculate Retained Earnings</span>
+                                <span class="help-icon small" data-tip="Retained Earnings, Net Income, and Cumulative Translation Adjustment (CTA) require scanning your entire transaction history and applying currency consolidation. This can take up to 5 minutes. When to recalculate: After posting journal entries, after period close, or when values seem stale. You can continue working in your sheet while recalculating.">?</span>
                             </button>
                             
                             <button class="action-btn danger" onclick="clearCache()" title="Erases all cached data. Forces formulas to re-query NetSuite on next calculation.">
@@ -2627,7 +2627,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.33.0';
+        const ADDIN_VERSION = '1.5.34.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -5396,18 +5396,22 @@ export default {
         // ============================================
         // RECALCULATE SPECIAL FORMULAS (RE, NI, CTA)
         // Separate from Refresh Accounts because these require
-        // scanning entire transaction history and take 30-60s each
+        // scanning entire transaction history and take up to 5 minutes
+        // Uses floating status so user can continue working
         // ============================================
         async function recalculateSpecialFormulas() {
             const statusEl = document.getElementById('refreshStatus');
             const btn = event.target;
             
+            // Light orange color for highlighting pending cells
+            const PENDING_COLOR = '#FEF3C7'; // Light amber/orange
+            
             try {
                 btn.disabled = true;
                 const start = Date.now();
                 
-                // Check connection first
-                showLoading('Recalculate RE/NI/CTA', 'Verifying connection...', 5);
+                // Check connection first (brief full overlay just for connection check)
+                showLoading('Recalculate Retained Earnings', 'Verifying connection...', 5);
                 const isConnected = await checkConnectionStatus(true);
                 if (!isConnected) {
                     hideLoading();
@@ -5421,19 +5425,32 @@ export default {
                     return;
                 }
                 
-                showLoading('Recalculate RE/NI/CTA', 'Scanning for special formulas...', 10);
+                updateLoading('Scanning for formulas...', 10);
                 
-                // Scan sheet for special formulas
+                // Scan sheet for special formulas AND resolve cell references to actual dates
                 let specialFormulas = [];
                 let detectedPeriods = new Set();
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     const usedRange = sheet.getUsedRange();
-                    usedRange.load("values, formulas, rowCount, columnCount");
+                    usedRange.load("values, formulas, rowCount, columnCount, address");
                     await context.sync();
                     
                     const formulas = usedRange.formulas;
+                    const values = usedRange.values;
+                    
+                    // Helper to resolve cell reference to value
+                    const resolveCellRef = async (cellRef) => {
+                        try {
+                            const refRange = sheet.getRange(cellRef);
+                            refRange.load('values');
+                            await context.sync();
+                            return refRange.values[0][0];
+                        } catch (e) {
+                            return cellRef; // Return as-is if can't resolve
+                        }
+                    };
                     
                     for (let row = 0; row < usedRange.rowCount; row++) {
                         for (let col = 0; col < usedRange.columnCount; col++) {
@@ -5446,16 +5463,42 @@ export default {
                                     upperFormula.includes('XAVI.CTA')) {
                                     const formulaType = upperFormula.includes('RETAINEDEARNINGS') ? 'RETAINEDEARNINGS' :
                                                        upperFormula.includes('NETINCOME') ? 'NETINCOME' : 'CTA';
-                                    specialFormulas.push({ row, col, formula, type: formulaType });
                                     
-                                    // Extract period
+                                    // Extract period - could be a string literal or a cell reference
                                     const periodMatch = formula.match(/\(([^,)]+)/);
+                                    let rawPeriod = '';
+                                    let resolvedPeriod = '';
+                                    
                                     if (periodMatch) {
-                                        const rawPeriod = periodMatch[1].replace(/["']/g, '').trim();
-                                        if (rawPeriod.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i)) {
+                                        rawPeriod = periodMatch[1].replace(/["']/g, '').trim();
+                                        
+                                        // Check if it's a cell reference (like L$3, $L3, L3, etc.)
+                                        if (rawPeriod.match(/^\$?[A-Z]+\$?\d+$/i)) {
+                                            // It's a cell reference - resolve it
+                                            const refValue = await resolveCellRef(rawPeriod);
+                                            if (refValue) {
+                                                // Could be a date serial number or a string
+                                                if (typeof refValue === 'number') {
+                                                    // Excel date serial - convert to readable date
+                                                    const date = new Date((refValue - 25569) * 86400 * 1000);
+                                                    const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                                                                   'July', 'August', 'September', 'October', 'November', 'December'];
+                                                    resolvedPeriod = `${months[date.getMonth()]} ${date.getFullYear()}`;
+                                                } else {
+                                                    resolvedPeriod = String(refValue);
+                                                }
+                                            }
+                                        } else if (rawPeriod.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i)) {
+                                            // It's already a period string
+                                            resolvedPeriod = rawPeriod;
                                             detectedPeriods.add(rawPeriod);
                                         }
                                     }
+                                    
+                                    specialFormulas.push({ 
+                                        row, col, formula, type: formulaType, 
+                                        rawPeriod, resolvedPeriod: resolvedPeriod || rawPeriod 
+                                    });
                                 }
                             }
                         }
@@ -5466,7 +5509,7 @@ export default {
                     hideLoading();
                     statusEl.innerHTML = `
                         <div style="background: #fef3c7; padding: 12px; border-radius: 8px; margin-top: 10px;">
-                            <strong style="color: #92400e;">No RE/NI/CTA Formulas Found</strong><br>
+                            <strong style="color: #92400e;">No Formulas Found</strong><br>
                             <span style="font-size: 12px; color: #a16207;">This sheet doesn't contain any XAVI.RETAINEDEARNINGS, XAVI.NETINCOME, or XAVI.CTA formulas.</span>
                         </div>
                     `;
@@ -5481,8 +5524,30 @@ export default {
                 const typeOrder = { 'NETINCOME': 1, 'RETAINEDEARNINGS': 2, 'CTA': 3 };
                 specialFormulas.sort((a, b) => (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99));
                 
+                // Highlight ALL cells that will be recalculated with light orange
+                console.log('🎨 Highlighting cells to be recalculated...');
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const usedRange = sheet.getUsedRange();
+                    
+                    for (const { row, col } of specialFormulas) {
+                        const cell = usedRange.getCell(row, col);
+                        cell.format.fill.color = PENDING_COLOR;
+                    }
+                    await context.sync();
+                });
+                
+                // Hide full overlay - switch to floating status
+                hideLoading();
+                
+                // Show floating status (smaller, non-blocking)
+                showFloatingStatus(
+                    `Recalculating ${specialFormulas.length} formulas...`,
+                    `You can continue working. Highlighted cells will update.`,
+                    0
+                );
+                
                 // Pre-clear ALL special formula caches
-                updateLoading('Clearing caches...', 15);
                 console.log('🗑️ Pre-clearing special formula caches...');
                 for (const period of detectedPeriods) {
                     try {
@@ -5504,7 +5569,7 @@ export default {
                 await new Promise(resolve => setTimeout(resolve, 500));
                 
                 // Helper function to wait for a cell to resolve
-                async function waitForCellToResolve(row, col, maxWaitMs = 180000) {
+                async function waitForCellToResolve(row, col, maxWaitMs = 300000) {
                     const pollInterval = 2000;
                     const startTime = Date.now();
                     
@@ -5537,54 +5602,61 @@ export default {
                     return { resolved: false, value: null, elapsed: maxWaitMs / 1000 };
                 }
                 
-                // Process formulas ONE AT A TIME
-                let successCount = 0;
-                let errorCount = 0;
-                
-                for (let i = 0; i < specialFormulas.length; i++) {
-                    const { row, col, formula, type } = specialFormulas[i];
-                    const progress = 20 + Math.round((i / specialFormulas.length) * 70);
-                    
-                    // Extract period for display
-                    const periodMatch = formula.match(/\(([^,)]+)/);
-                    const rawPeriod = periodMatch ? periodMatch[1].replace(/["']/g, '').trim() : '';
-                    
+                // Helper to format period for display
+                const formatPeriodDisplay = (resolvedPeriod) => {
                     const monthMap = {
                         'Jan': 'January', 'Feb': 'February', 'Mar': 'March', 'Apr': 'April',
                         'May': 'May', 'Jun': 'June', 'Jul': 'July', 'Aug': 'August',
                         'Sep': 'September', 'Oct': 'October', 'Nov': 'November', 'Dec': 'December'
                     };
-                    let periodDisplay = rawPeriod;
-                    const periodParts = rawPeriod.match(/^(\w+)\s+(\d{4})$/);
+                    const periodParts = resolvedPeriod.match(/^(\w+)\s+(\d{4})$/);
                     if (periodParts) {
                         const fullMonth = monthMap[periodParts[1]] || periodParts[1];
-                        periodDisplay = `${fullMonth} ${periodParts[2]}`;
+                        return `${fullMonth} ${periodParts[2]}`;
                     }
+                    return resolvedPeriod;
+                };
+                
+                // Process formulas ONE AT A TIME
+                let successCount = 0;
+                let errorCount = 0;
+                
+                for (let i = 0; i < specialFormulas.length; i++) {
+                    const { row, col, formula, type, rawPeriod, resolvedPeriod } = specialFormulas[i];
+                    const progress = Math.round((i / specialFormulas.length) * 100);
+                    
+                    const periodDisplay = formatPeriodDisplay(resolvedPeriod);
                     
                     // Set max wait time and message based on type
-                    let maxWaitTime = 180000;
+                    let maxWaitTime = 300000; // 5 minutes default
                     let typeLabel = type;
                     if (type === 'NETINCOME') {
                         typeLabel = 'Net Income';
-                        maxWaitTime = 60000;
+                        maxWaitTime = 120000; // 2 minutes
                     } else if (type === 'RETAINEDEARNINGS') {
                         typeLabel = 'Retained Earnings';
-                        maxWaitTime = 180000;
+                        maxWaitTime = 300000; // 5 minutes
                     } else if (type === 'CTA') {
                         typeLabel = 'CTA';
-                        maxWaitTime = 180000;
+                        maxWaitTime = 300000; // 5 minutes
                     }
                     
-                    updateLoading(`${typeLabel} (${i + 1}/${specialFormulas.length})`, progress, 
-                        `${periodDisplay} - Scanning transaction history...`);
-                    console.log(`📊 Processing ${type} for ${rawPeriod}...`);
+                    // Update floating status
+                    updateFloatingStatus(
+                        `${typeLabel} (${i + 1}/${specialFormulas.length})`,
+                        `${periodDisplay}`,
+                        progress
+                    );
+                    console.log(`📊 Processing ${type} for ${periodDisplay}...`);
                     
-                    // Clear cache for THIS specific formula
+                    // Clear cache for THIS specific formula (use resolved period for cache key)
+                    const cacheKeyPeriod = resolvedPeriod.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$/i) 
+                        ? resolvedPeriod : rawPeriod;
                     try {
                         await Excel.run(async (context) => {
                             const sheet = context.workbook.worksheets.getActiveWorksheet();
                             const tempRange = sheet.getRange('ZZ9998');
-                            const clearCmd = `SPECIAL:${type}:${rawPeriod}`;
+                            const clearCmd = `SPECIAL:${type}:${cacheKeyPeriod}`;
                             tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","${clearCmd}","")`]];
                             await context.sync();
                             await new Promise(r => setTimeout(r, 300));
@@ -5592,7 +5664,7 @@ export default {
                             await context.sync();
                         });
                     } catch (e) {
-                        console.warn(`Cache clear failed for ${type}:${rawPeriod}:`, e.message);
+                        console.warn(`Cache clear failed for ${type}:${periodDisplay}:`, e.message);
                     }
                     
                     await new Promise(r => setTimeout(r, 200));
@@ -5611,6 +5683,15 @@ export default {
                     // Wait for resolution
                     const result = await waitForCellToResolve(row, col, maxWaitTime);
                     
+                    // Remove highlight from this cell (clear fill)
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const usedRange = sheet.getUsedRange();
+                        const cell = usedRange.getCell(row, col);
+                        cell.format.fill.clear();
+                        await context.sync();
+                    });
+                    
                     if (result.resolved) {
                         const valueDisplay = typeof result.value === 'number' 
                             ? result.value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -5627,9 +5708,11 @@ export default {
                 }
                 
                 const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-                hideLoading();
                 
-                // Show result
+                // Hide floating status
+                hideFloatingStatus();
+                
+                // Show result in status area
                 if (errorCount === 0) {
                     statusEl.innerHTML = `
                         <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px;">
@@ -5656,6 +5739,34 @@ export default {
             } catch (error) {
                 console.error('Error recalculating special formulas:', error);
                 hideLoading();
+                hideFloatingStatus();
+                
+                // Clear any remaining highlights on error
+                try {
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const usedRange = sheet.getUsedRange();
+                        usedRange.load("formulas, rowCount, columnCount");
+                        await context.sync();
+                        
+                        const formulas = usedRange.formulas;
+                        for (let row = 0; row < usedRange.rowCount; row++) {
+                            for (let col = 0; col < usedRange.columnCount; col++) {
+                                const formula = formulas[row][col];
+                                if (typeof formula === 'string' && 
+                                    (formula.toUpperCase().includes('XAVI.RETAINEDEARNINGS') ||
+                                     formula.toUpperCase().includes('XAVI.NETINCOME') ||
+                                     formula.toUpperCase().includes('XAVI.CTA'))) {
+                                    const cell = usedRange.getCell(row, col);
+                                    cell.format.fill.clear();
+                                }
+                            }
+                        }
+                        await context.sync();
+                    });
+                } catch (e) {
+                    // Ignore cleanup errors
+                }
                 
                 statusEl.innerHTML = `
                     <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px;">
