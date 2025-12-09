@@ -309,90 +309,68 @@ def load_lookup_cache():
     
     print("Loading name-to-ID lookup cache...")
     
-    # Load Classes - use known names + query NetSuite
-    class_known = {
-        'hardware': '1',
-        'furniture': '2',
-        'racks': '7',
-        'accessories': '10',
-        'consumer goods': '13',
-        'interior': '20',
-        'electronics': '22',
-        'electrical': '29'
-    }
-    lookup_cache['classes'] = class_known.copy()
-    
-    # Try to load more from NetSuite
-    try:
-        class_query = """
-            SELECT DISTINCT c.id, c.name
-            FROM Classification c
-            WHERE c.id IN (
-                SELECT DISTINCT tl.class
-                FROM TransactionLine tl
-                WHERE tl.class IS NOT NULL AND tl.class != 0
-                AND ROWNUM <= 100
-            )
-        """
-        class_result = query_netsuite(class_query)
-        if isinstance(class_result, list):
-            for row in class_result:
-                class_name_lower = row['name'].lower()
-                class_id = str(row['id'])
-                # Add or update
-                lookup_cache['classes'][class_name_lower] = class_id
-            print(f"✓ Loaded {len(lookup_cache['classes'])} classes")
-    except Exception as e:
-        print(f"✗ Class lookup error: {e}, using {len(lookup_cache['classes'])} known classes")
-    
-    # Load Locations (has real names from NetSuite)
-    try:
-        loc_query = """
-            SELECT DISTINCT l.id, l.name
-            FROM Location l
-            WHERE l.id IN (
-                SELECT DISTINCT tl.location
-                FROM TransactionLine tl
-                WHERE tl.location IS NOT NULL AND tl.location != 0
-                AND ROWNUM <= 100
-            )
-        """
-        loc_result = query_netsuite(loc_query)
-        if isinstance(loc_result, list):
-            for row in loc_result:
-                lookup_cache['locations'][row['name'].lower()] = str(row['id'])
-            print(f"✓ Loaded {len(lookup_cache['locations'])} locations")
-    except Exception as e:
-        print(f"✗ Location lookup error: {e}")
-    
-    # Departments - use known names + IDs
-    dept_known = {
-        'demo': '13',
-        'corporate': '1',
-        'sales': '2',
-        'operations': '7',
-        'marketing': '11'
-    }
-    lookup_cache['departments'] = dept_known.copy()
-    
-    # Try to load more from NetSuite
+    # Load Departments directly from Department table
     try:
         dept_query = """
-            SELECT DISTINCT tl.department as id
-            FROM TransactionLine tl
-            WHERE tl.department IS NOT NULL AND tl.department != 0
-            AND ROWNUM <= 100
+            SELECT id, name, fullName, isinactive 
+            FROM Department 
+            ORDER BY fullName
         """
         dept_result = query_netsuite(dept_query)
         if isinstance(dept_result, list):
             for row in dept_result:
                 dept_id = str(row['id'])
-                # Add as "Department {id}" if not in known list
-                if dept_id not in dept_known.values():
-                    lookup_cache['departments'][f'department {dept_id}'.lower()] = dept_id
-            print(f"✓ Loaded {len(lookup_cache['departments'])} departments")
+                # Use fullName for display, name for lookup key
+                dept_fullname = row.get('fullname') or row['name']
+                lookup_cache['departments'][dept_fullname.lower()] = dept_id
+                # Also add just the short name for easier lookup
+                if row['name'].lower() != dept_fullname.lower():
+                    lookup_cache['departments'][row['name'].lower()] = dept_id
+            print(f"✓ Loaded {len(dept_result)} departments")
     except Exception as e:
         print(f"✗ Department lookup error: {e}")
+    
+    # Load Classes directly from Classification table
+    try:
+        class_query = """
+            SELECT id, name, fullName, isinactive 
+            FROM Classification 
+            ORDER BY fullName
+        """
+        class_result = query_netsuite(class_query)
+        if isinstance(class_result, list):
+            for row in class_result:
+                class_id = str(row['id'])
+                # Use fullName for display, name for lookup key
+                class_fullname = row.get('fullname') or row['name']
+                lookup_cache['classes'][class_fullname.lower()] = class_id
+                # Also add just the short name for easier lookup
+                if row['name'].lower() != class_fullname.lower():
+                    lookup_cache['classes'][row['name'].lower()] = class_id
+            print(f"✓ Loaded {len(class_result)} classes")
+    except Exception as e:
+        print(f"✗ Class lookup error: {e}")
+    
+    # Load Locations directly from Location table
+    try:
+        loc_query = """
+            SELECT id, name, fullName, isinactive 
+            FROM Location 
+            ORDER BY fullName
+        """
+        loc_result = query_netsuite(loc_query)
+        if isinstance(loc_result, list):
+            for row in loc_result:
+                loc_id = str(row['id'])
+                # Use fullName for display, name for lookup key
+                loc_fullname = row.get('fullname') or row['name']
+                lookup_cache['locations'][loc_fullname.lower()] = loc_id
+                # Also add just the short name for easier lookup
+                if row['name'].lower() != loc_fullname.lower():
+                    lookup_cache['locations'][row['name'].lower()] = loc_id
+            print(f"✓ Loaded {len(loc_result)} locations")
+    except Exception as e:
+        print(f"✗ Location lookup error: {e}")
     
     # Subsidiaries - now we have access to the Subsidiary table!
     try:
@@ -4200,24 +4178,68 @@ def get_all_lookups():
                     'name': name.title()
                 })
         
-        # Convert cache data for other lookups
-        for name, id_val in lookup_cache['departments'].items():
-            lookups['departments'].append({
-                'id': id_val,
-                'name': name.title()  # Capitalize first letter
-            })
+        # Load Departments directly from table for proper display names
+        try:
+            dept_query = """
+                SELECT id, name, fullName, isinactive 
+                FROM Department 
+                WHERE isinactive = 'F'
+                ORDER BY fullName
+            """
+            dept_result = query_netsuite(dept_query)
+            if isinstance(dept_result, list):
+                for row in dept_result:
+                    lookups['departments'].append({
+                        'id': str(row['id']),
+                        'name': row.get('fullname') or row['name']  # Use fullName for hierarchy display
+                    })
+        except Exception as e:
+            print(f"Error loading departments for lookup: {e}", file=sys.stderr)
+            # Fallback to cache
+            for name, id_val in lookup_cache['departments'].items():
+                lookups['departments'].append({'id': id_val, 'name': name.title()})
         
-        for name, id_val in lookup_cache['classes'].items():
-            lookups['classes'].append({
-                'id': id_val,
-                'name': name.title()  # Capitalize first letter
-            })
+        # Load Classes directly from table for proper display names
+        try:
+            class_query = """
+                SELECT id, name, fullName, isinactive 
+                FROM Classification 
+                WHERE isinactive = 'F'
+                ORDER BY fullName
+            """
+            class_result = query_netsuite(class_query)
+            if isinstance(class_result, list):
+                for row in class_result:
+                    lookups['classes'].append({
+                        'id': str(row['id']),
+                        'name': row.get('fullname') or row['name']  # Use fullName for hierarchy display
+                    })
+        except Exception as e:
+            print(f"Error loading classes for lookup: {e}", file=sys.stderr)
+            # Fallback to cache
+            for name, id_val in lookup_cache['classes'].items():
+                lookups['classes'].append({'id': id_val, 'name': name.title()})
         
-        for name, id_val in lookup_cache['locations'].items():
-            lookups['locations'].append({
-                'id': id_val,
-                'name': name  # Keep location names as-is
-            })
+        # Load Locations directly from table for proper display names
+        try:
+            loc_query = """
+                SELECT id, name, fullName, isinactive 
+                FROM Location 
+                WHERE isinactive = 'F'
+                ORDER BY fullName
+            """
+            loc_result = query_netsuite(loc_query)
+            if isinstance(loc_result, list):
+                for row in loc_result:
+                    lookups['locations'].append({
+                        'id': str(row['id']),
+                        'name': row.get('fullname') or row['name']  # Use fullName for hierarchy display
+                    })
+        except Exception as e:
+            print(f"Error loading locations for lookup: {e}", file=sys.stderr)
+            # Fallback to cache
+            for name, id_val in lookup_cache['locations'].items():
+                lookups['locations'].append({'id': id_val, 'name': name})
         
         # Fetch accounting books (Multi-Book Accounting)
         try:
