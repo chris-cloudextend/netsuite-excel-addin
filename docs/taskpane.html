@@ -2201,12 +2201,6 @@
                                 <span class="help-icon small" data-tip="Retained Earnings, Net Income, and Cumulative Translation Adjustment (CTA) require scanning your entire transaction history and applying currency consolidation. This can take up to 5 minutes. When to recalculate: After posting journal entries, after period close, or when values seem stale. You can continue working in your sheet while recalculating.">?</span>
                             </button>
                             
-                            <button class="action-btn" onclick="syncIncomeStatementStructure()" style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);">
-                                <span class="action-icon">🔄</span>
-                                <span class="action-text">Sync Structure for Year</span>
-                                <span class="help-icon small" data-tip="For auto-generated Income Statements only. If you changed the YEAR parameter, this will regenerate the sheet with accounts that have data for that year. Only works if 'Structure Sync' is set to TRUE on row 3.">?</span>
-                            </button>
-                            
                             <button class="action-btn danger" onclick="clearCache()">
                                 <span class="action-icon">🗑️</span>
                                 <span class="action-text">Clear Cache</span>
@@ -3463,7 +3457,7 @@
                     
                     // Remove gridlines for cleaner look
                     try {
-                        sheet.showGridlines = false;
+                    sheet.showGridlines = false;
                         await context.sync();
                     } catch (e) {
                         console.warn('Could not hide gridlines');
@@ -6081,6 +6075,377 @@ export default {
                 }
                 
                 btn.textContent = 'Analyzing...';
+                showLoading('Refresh Accounts', 'Checking sheet type...', 5);
+                
+                // ============================================
+                // CHECK FOR AUTO-GENERATED INCOME STATEMENT
+                // If Structure Sync = TRUE, rebuild structure first
+                // ============================================
+                let shouldSyncStructure = false;
+                let syncYear = null;
+                let syncSubsidiary = null;
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Check A3 for sync marker
+                    const markerCell = sheet.getRange("A3");
+                    markerCell.load("values");
+                    
+                    // Check B3 for sync flag
+                    const syncCell = sheet.getRange("B3");
+                    syncCell.load("values");
+                    
+                    // Get year and subsidiary if this is an auto-generated sheet
+                    const yearCell = sheet.getRange("F2");
+                    yearCell.load("values");
+                    
+                    const subCell = sheet.getRange("I2");
+                    subCell.load("values");
+                    
+                    await context.sync();
+                    
+                    const markerValue = String(markerCell.values[0][0] || '').toLowerCase();
+                    const syncValue = String(syncCell.values[0][0] || '').toUpperCase();
+                    
+                    // Check if this is an auto-generated sheet with sync enabled
+                    if ((markerValue.includes('structure sync') || markerValue.includes('🔄')) &&
+                        (syncValue === 'TRUE' || syncValue === 'YES' || syncValue === '1')) {
+                        shouldSyncStructure = true;
+                        syncYear = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
+                        syncSubsidiary = subCell.values[0][0] || '';
+                        console.log(`📊 Auto-generated Income Statement detected. Year: ${syncYear}, Sync: enabled`);
+                    }
+                });
+                
+                // If this is an auto-generated sheet with sync enabled, rebuild structure
+                if (shouldSyncStructure) {
+                    showLoading('Refresh Accounts', `Syncing structure for ${syncYear}...`, 10);
+                    console.log(`🔄 Rebuilding Income Statement structure for year ${syncYear}`);
+                    
+                    // Fetch accounts for the target year
+                    const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            year: syncYear,
+                            subsidiary: '',
+                            department: '',
+                            location: '',
+                            class: ''
+                        })
+                    });
+                    
+                    if (refreshResponse.ok) {
+                        const refreshData = await refreshResponse.json();
+                        const allBalances = refreshData.balances || {};
+                        const accountTypes = refreshData.account_types || {};
+                        const accountNames = refreshData.account_names || {};
+                        
+                        // Categorize accounts
+                        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                        
+                        const categories = {
+                            income: [], othIncome: [], cogs: [], expense: [], othExpense: []
+                        };
+                        
+                        for (const acctNum in allBalances) {
+                            const monthData = allBalances[acctNum];
+                            const hasData = Object.values(monthData).some(val => val !== 0 && val !== null);
+                            
+                            if (hasData) {
+                                const acctInfo = {
+                                    number: acctNum,
+                                    name: accountNames[acctNum] || `Account ${acctNum}`,
+                                    type: accountTypes[acctNum] || 'Unknown'
+                                };
+                                
+                                const acctType = (accountTypes[acctNum] || '').toLowerCase();
+                                if (acctType === 'income') categories.income.push(acctInfo);
+                                else if (acctType === 'othincome') categories.othIncome.push(acctInfo);
+                                else if (acctType === 'cogs' || acctType === 'cost of goods sold') categories.cogs.push(acctInfo);
+                                else if (acctType === 'expense') categories.expense.push(acctInfo);
+                                else if (acctType === 'othexpense') categories.othExpense.push(acctInfo);
+                            }
+                        }
+                        
+                        // Sort categories
+                        for (const cat in categories) {
+                            categories[cat].sort((a, b) => a.number.localeCompare(b.number, undefined, {numeric: true}));
+                        }
+                        
+                        const totalAccounts = categories.income.length + categories.othIncome.length + 
+                                             categories.cogs.length + categories.expense.length + categories.othExpense.length;
+                        
+                        console.log(`📊 Found ${totalAccounts} P&L accounts for ${syncYear}`);
+                        showLoading('Refresh Accounts', `Rebuilding with ${totalAccounts} accounts...`, 20);
+                        
+                        // Rebuild the sheet
+                        await Excel.run(async (context) => {
+                            const sheet = context.workbook.worksheets.getActiveWorksheet();
+                            
+                            // Clear existing content
+                            const usedRange = sheet.getUsedRange();
+                            usedRange.clear();
+                            await context.sync();
+                            
+                            // Remove gridlines
+                            try {
+                                sheet.showGridlines = false;
+                                await context.sync();
+                            } catch (e) {}
+                            
+                            // ===== ROW 1: TITLE =====
+                            sheet.getRange("A1").formulas = [['="Income Statement For: "&F2']];
+                            await context.sync();
+                            try {
+                                sheet.getRange("A1").format.font.bold = true;
+                                sheet.getRange("A1").format.font.size = 18;
+                                sheet.getRange("A1").format.font.color = "#09235C";
+                                await context.sync();
+                            } catch (e) {}
+                            
+                            // ===== ROW 2: PARAMETERS =====
+                            sheet.getRange("E2").values = [["YEAR"]];
+                            sheet.getRange("F2").values = [[syncYear]];
+                            sheet.getRange("H2").values = [["Subsidiary"]];
+                            sheet.getRange("I2").values = [[syncSubsidiary || 'Celigo Inc. (Consolidated)']];
+                            await context.sync();
+                            
+                            try {
+                                sheet.getRange("F2").format.fill.color = "#0AE2C1";
+                                sheet.getRange("F2").format.font.bold = true;
+                                sheet.getRange("I2").format.fill.color = "#0AE2C1";
+                                sheet.getRange("I2").format.font.bold = true;
+                                sheet.getRange("E2").format.font.bold = true;
+                                sheet.getRange("H2").format.font.bold = true;
+                                await context.sync();
+                            } catch (e) {}
+                            
+                            // ===== ROW 3: SYNC FLAG =====
+                            sheet.getRange("A3").values = [["🔄 Structure Sync:"]];
+                            sheet.getRange("B3").values = [["TRUE"]];
+                            sheet.getRange("C3").values = [["← Change to FALSE if you customize this sheet"]];
+                            await context.sync();
+                            
+                            try {
+                                sheet.getRange("A3").format.font.bold = true;
+                                sheet.getRange("B3").format.fill.color = "#0AE2C1";
+                                sheet.getRange("B3").format.font.bold = true;
+                                sheet.getRange("C3").format.font.italic = true;
+                                sheet.getRange("C3").format.font.color = "#6B7280";
+                                await context.sync();
+                            } catch (e) {}
+                            
+                            // ===== ROW 5: HEADERS =====
+                            sheet.getRange("A5").values = [["Account #"]];
+                            sheet.getRange("B5").values = [["Account Name"]];
+                            for (let m = 0; m < 12; m++) {
+                                const col = String.fromCharCode(67 + m);
+                                sheet.getRange(`${col}5`).formulas = [[`=DATE($F$2,${m + 1},1)`]];
+                            }
+                            sheet.getRange("O5").values = [["YTD Total"]];
+                            await context.sync();
+                            
+                            try {
+                                sheet.getRange("A5:O5").format.font.bold = true;
+                                sheet.getRange("A5:O5").format.font.color = "#FFFFFF";
+                                sheet.getRange("A5:O5").format.fill.color = "#09235C";
+                                sheet.getRange("C5:N5").numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
+                                await context.sync();
+                            } catch (e) {}
+                            
+                            let currentRow = 6;
+                            
+                            // Helper functions
+                            const writeSectionHeader = async (text, row) => {
+                                sheet.getRange(`A${row}`).values = [[text]];
+                                await context.sync();
+                                try {
+                                    sheet.getRange(`A${row}:O${row}`).format.font.bold = true;
+                                    sheet.getRange(`A${row}:O${row}`).format.fill.color = "#E8EBF0";
+                                    await context.sync();
+                                } catch (e) {}
+                            };
+                            
+                            const writeAccountRow = (acct, row) => {
+                                sheet.getRange(`A${row}`).values = [[acct.number]];
+                                sheet.getRange(`B${row}`).values = [[acct.name]];
+                                for (let m = 0; m < 12; m++) {
+                                    const col = String.fromCharCode(67 + m);
+                                    sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$I$2)`]];
+                                }
+                                sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
+                            };
+                            
+                            const writeSubtotalRow = async (text, startRow, endRow, row) => {
+                                sheet.getRange(`B${row}`).values = [[text]];
+                                for (let m = 0; m < 12; m++) {
+                                    const col = String.fromCharCode(67 + m);
+                                    sheet.getRange(`${col}${row}`).formulas = [[`=SUM(${col}${startRow}:${col}${endRow})`]];
+                                }
+                                sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
+                                await context.sync();
+                                try {
+                                    sheet.getRange(`A${row}:O${row}`).format.font.bold = true;
+                                    sheet.getRange(`A${row}:O${row}`).format.borders.getItem('EdgeTop').style = 'Continuous';
+                                    await context.sync();
+                                } catch (e) {}
+                            };
+                            
+                            let revenueTotalRow, cogsTotalRow, grossProfitRow, expenseTotalRow, operatingIncomeRow;
+                            let othIncomeTotalRow, othExpenseTotalRow, netIncomeRow;
+                            
+                            // REVENUE
+                            if (categories.income.length > 0) {
+                                await writeSectionHeader('REVENUE', currentRow++);
+                                const startRow = currentRow;
+                                for (const acct of categories.income) writeAccountRow(acct, currentRow++);
+                                await context.sync();
+                                await writeSubtotalRow('Total Revenue', startRow, currentRow - 1, currentRow);
+                                revenueTotalRow = currentRow++;
+                                currentRow++;
+                            }
+                            
+                            // COGS
+                            if (categories.cogs.length > 0) {
+                                await writeSectionHeader('COST OF SALES', currentRow++);
+                                const startRow = currentRow;
+                                for (const acct of categories.cogs) writeAccountRow(acct, currentRow++);
+                                await context.sync();
+                                await writeSubtotalRow('Total Cost of Sales', startRow, currentRow - 1, currentRow);
+                                cogsTotalRow = currentRow++;
+                                currentRow++;
+                            }
+                            
+                            // GROSS PROFIT
+                            if (revenueTotalRow && cogsTotalRow) {
+                                sheet.getRange(`B${currentRow}`).values = [['GROSS PROFIT']];
+                                for (let m = 0; m < 12; m++) {
+                                    const col = String.fromCharCode(67 + m);
+                                    sheet.getRange(`${col}${currentRow}`).formulas = [[`=${col}${revenueTotalRow}-${col}${cogsTotalRow}`]];
+                                }
+                                sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                                await context.sync();
+                                try {
+                                    sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.bold = true;
+                                    sheet.getRange(`A${currentRow}:O${currentRow}`).format.fill.color = "#D4E6F1";
+                                    await context.sync();
+                                } catch (e) {}
+                                grossProfitRow = currentRow++;
+                                currentRow++;
+                            }
+                            
+                            // OPERATING EXPENSES
+                            if (categories.expense.length > 0) {
+                                await writeSectionHeader('OPERATING EXPENSES', currentRow++);
+                                const startRow = currentRow;
+                                for (const acct of categories.expense) writeAccountRow(acct, currentRow++);
+                                await context.sync();
+                                await writeSubtotalRow('Total Operating Expenses', startRow, currentRow - 1, currentRow);
+                                expenseTotalRow = currentRow++;
+                                currentRow++;
+                            }
+                            
+                            // OPERATING INCOME
+                            if (grossProfitRow && expenseTotalRow) {
+                                sheet.getRange(`B${currentRow}`).values = [['OPERATING INCOME']];
+                                for (let m = 0; m < 12; m++) {
+                                    const col = String.fromCharCode(67 + m);
+                                    sheet.getRange(`${col}${currentRow}`).formulas = [[`=${col}${grossProfitRow}-${col}${expenseTotalRow}`]];
+                                }
+                                sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                                await context.sync();
+                                try {
+                                    sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.bold = true;
+                                    sheet.getRange(`A${currentRow}:O${currentRow}`).format.fill.color = "#D5F5E3";
+                                    await context.sync();
+                                } catch (e) {}
+                                operatingIncomeRow = currentRow++;
+                                currentRow++;
+                            }
+                            
+                            // OTHER INCOME
+                            if (categories.othIncome.length > 0) {
+                                await writeSectionHeader('OTHER INCOME', currentRow++);
+                                const startRow = currentRow;
+                                for (const acct of categories.othIncome) writeAccountRow(acct, currentRow++);
+                                await context.sync();
+                                await writeSubtotalRow('Total Other Income', startRow, currentRow - 1, currentRow);
+                                othIncomeTotalRow = currentRow++;
+                                currentRow++;
+                            }
+                            
+                            // OTHER EXPENSE
+                            if (categories.othExpense.length > 0) {
+                                await writeSectionHeader('OTHER EXPENSE', currentRow++);
+                                const startRow = currentRow;
+                                for (const acct of categories.othExpense) writeAccountRow(acct, currentRow++);
+                                await context.sync();
+                                await writeSubtotalRow('Total Other Expense', startRow, currentRow - 1, currentRow);
+                                othExpenseTotalRow = currentRow++;
+                                currentRow++;
+                            }
+                            
+                            // NET INCOME
+                            sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
+                            for (let m = 0; m < 12; m++) {
+                                const col = String.fromCharCode(67 + m);
+                                let formula = '=';
+                                if (operatingIncomeRow) formula += `${col}${operatingIncomeRow}`;
+                                else if (grossProfitRow) formula += `${col}${grossProfitRow}`;
+                                else if (revenueTotalRow) formula += `${col}${revenueTotalRow}`;
+                                else formula += '0';
+                                if (othIncomeTotalRow) formula += `+${col}${othIncomeTotalRow}`;
+                                if (othExpenseTotalRow) formula += `-${col}${othExpenseTotalRow}`;
+                                sheet.getRange(`${col}${currentRow}`).formulas = [[formula]];
+                            }
+                            sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                            await context.sync();
+                            
+                            try {
+                                sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.bold = true;
+                                sheet.getRange(`A${currentRow}:O${currentRow}`).format.fill.color = "#09235C";
+                                sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.color = "#FFFFFF";
+                                await context.sync();
+                            } catch (e) {}
+                            netIncomeRow = currentRow;
+                            
+                            // Format numbers
+                            try {
+                                const rows = netIncomeRow - 5;
+                                const formatArray = Array(rows).fill(null).map(() => Array(13).fill('"$"#,##0'));
+                                sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
+                                await context.sync();
+                            } catch (e) {}
+                            
+                            // Freeze header rows
+                            try {
+                                sheet.freezePanes.freezeRows(5);
+                                await context.sync();
+                            } catch (e) {}
+                        });
+                        
+                        console.log(`✅ Income Statement structure synced for ${syncYear}`);
+                    }
+                    
+                    // After sync, the formulas are already set up - we're done!
+                    hideLoading();
+                    hideCancelButton();
+                    btn.disabled = false;
+                    btn.innerHTML = '<span class="action-icon">⚡</span>Refresh Accounts';
+                    
+                    if (statusEl) {
+                        statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px; border-left: 4px solid #10b981;">
+                            <strong style="color: #065f46;">✓ Structure Synced for ${syncYear}</strong><br>
+                            <small style="color: #047857;">Income Statement rebuilt with all accounts for ${syncYear}. Formulas will resolve shortly.</small>
+                        </div>`;
+                    }
+                    return; // Exit early - structure sync handles everything
+                }
+                
+                // Continue with normal refresh for non-auto-generated sheets...
                 showLoading('Refresh Accounts', 'Scanning formulas on sheet...', 5);
                 
                 // NOTE: We do NOT set netsuite_show_toasts during Refresh Accounts
