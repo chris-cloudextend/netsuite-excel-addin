@@ -565,6 +565,47 @@
             line-height: 1.5;
         }
 
+        /* Guide Me Choice Cards */
+        .guide-choice {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .guide-choice:hover {
+            background: rgba(10, 226, 193, 0.25);
+            border-color: var(--anenome);
+            transform: translateX(4px);
+        }
+        
+        .guide-choice-icon {
+            font-size: 28px;
+            margin-right: 14px;
+            flex-shrink: 0;
+        }
+        
+        .guide-choice-content {
+            flex: 1;
+        }
+        
+        .guide-choice-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 3px;
+        }
+        
+        .guide-choice-desc {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.75);
+            line-height: 1.4;
+        }
+
         /* Guide Me Loading Overlay */
         .guide-me-overlay {
             position: fixed;
@@ -1950,11 +1991,27 @@
             <!-- GUIDE ME WIZARD -->
             <div class="guide-me-card" id="guideMeCard">
                 <button class="guide-me-dismiss" onclick="dismissGuideMe()" title="Dismiss">×</button>
-                <h3>🚀 New Here?</h3>
-                <p>Let me build you a starter financial report with your NetSuite accounts, monthly columns, and formulas ready to go!</p>
-                <button class="guide-me-btn" id="guideMeBtn" onclick="runGuideMe()">
-                    <span id="guideMeBtnText">Build My Starter Report</span>
-                </button>
+                <h3>🚀 Build a Report</h3>
+                <p>Choose what type of report to generate:</p>
+                
+                <!-- Option 1: Sample Report -->
+                <div class="guide-choice" onclick="runGuideMe()" style="margin-bottom: 12px;">
+                    <div class="guide-choice-icon">📝</div>
+                    <div class="guide-choice-content">
+                        <div class="guide-choice-title">Sample Report (Learn)</div>
+                        <div class="guide-choice-desc">35 accounts with formulas you can study and extend</div>
+                    </div>
+                </div>
+                
+                <!-- Option 2: Full Income Statement -->
+                <div class="guide-choice" onclick="generateFullIncomeStatement()">
+                    <div class="guide-choice-icon">📊</div>
+                    <div class="guide-choice-content">
+                        <div class="guide-choice-title">Full Income Statement</div>
+                        <div class="guide-choice-desc">Complete P&L with all accounts, sections, and totals</div>
+                    </div>
+                </div>
+                
                 <div class="guide-me-progress" id="guideMeProgress" style="display: none;"></div>
             </div>
 
@@ -2629,7 +2686,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.40.0';
+        const ADDIN_VERSION = '1.5.41.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -3726,6 +3783,568 @@
                 btnText.textContent = 'Try Again';
                 btn.disabled = false;
                 btn.style.background = '';
+            }
+        }
+
+        // ================================================================
+        // GENERATE FULL INCOME STATEMENT
+        // ================================================================
+        
+        async function generateFullIncomeStatement() {
+            const progress = document.getElementById('guideMeProgress');
+            const currentYear = new Date().getFullYear();
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            
+            // Excel tips during loading
+            const excelTips = [
+                '=SUMIF(range, criteria, sum_range) → Sum by condition',
+                '=INDEX(array, MATCH(value, range, 0)) → Flexible lookup',
+                'Ctrl+Shift+L → Toggle filters quickly',
+                '=IFERROR(formula, 0) → Handle errors gracefully',
+                'Alt+= → Auto-sum selected range',
+                '=TEXT(date, "mmmm yyyy") → Format dates nicely',
+                'F4 → Toggle absolute refs ($A$1)',
+                '=ROUND(value, -3) → Round to nearest thousand'
+            ];
+            let tipIndex = 0;
+            
+            // Create loading overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'guide-me-overlay';
+            overlay.id = 'incomeStatementOverlay';
+            overlay.innerHTML = `
+                <div class="loading-spinner"></div>
+                <h2>Building Your Income Statement</h2>
+                <div class="loading-subtitle">
+                    ⏱️ This may take 2-3 minutes for large account sets
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="isProgressBar"></div>
+                    </div>
+                    <div class="progress-text" id="isProgressText">0% complete</div>
+                </div>
+                
+                <div class="loading-step" id="isStep">Connecting to NetSuite...</div>
+                <div class="loading-step-desc" id="isStepDesc">Establishing secure connection</div>
+                
+                <div class="tips-section">
+                    <div class="tips-label">Excel Pro Tips</div>
+                    <div class="loading-tip" id="isTip">${excelTips[0]}</div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            // Rotate tips
+            const tipInterval = setInterval(() => {
+                tipIndex = (tipIndex + 1) % excelTips.length;
+                const tipEl = document.getElementById('isTip');
+                if (tipEl) {
+                    tipEl.style.opacity = '0';
+                    setTimeout(() => {
+                        tipEl.textContent = excelTips[tipIndex];
+                        tipEl.style.opacity = '1';
+                    }, 200);
+                }
+            }, 3000);
+            
+            const updateProgress = (percent, step, desc) => {
+                const bar = document.getElementById('isProgressBar');
+                const text = document.getElementById('isProgressText');
+                const stepEl = document.getElementById('isStep');
+                const descEl = document.getElementById('isStepDesc');
+                if (bar) bar.style.width = percent + '%';
+                if (text) text.textContent = percent + '% complete';
+                if (stepEl) stepEl.textContent = step;
+                if (descEl) descEl.textContent = desc;
+            };
+            
+            try {
+                // Step 1: Fetch ALL account data
+                updateProgress(5, '📥 Step 1 of 5: Loading Accounts', 'Fetching all P&L accounts from NetSuite...');
+                
+                let artificialProgress = 5;
+                const progressInterval = setInterval(() => {
+                    if (artificialProgress < 30) {
+                        artificialProgress += 2;
+                        updateProgress(artificialProgress, '📥 Step 1 of 5: Loading Accounts', 
+                            'Querying NetSuite for all account balances...');
+                    }
+                }, 4000);
+                
+                const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: currentYear,
+                        subsidiary: '',
+                        department: '',
+                        location: '',
+                        class: ''
+                    })
+                });
+                
+                clearInterval(progressInterval);
+                
+                if (!refreshResponse.ok) {
+                    throw new Error(`Failed to load data: ${refreshResponse.status}`);
+                }
+                
+                const refreshData = await refreshResponse.json();
+                const allBalances = refreshData.balances || {};
+                const accountTypes = refreshData.account_types || {};
+                const accountNames = refreshData.account_names || {};
+                
+                console.log(`Income Statement: Loaded ${Object.keys(allBalances).length} accounts`);
+                
+                // Step 2: Categorize accounts by type
+                updateProgress(35, '🔍 Step 2 of 5: Categorizing', 'Grouping accounts by type...');
+                
+                const categories = {
+                    income: [],      // Revenue
+                    othIncome: [],   // Other Income
+                    cogs: [],        // Cost of Goods Sold
+                    expense: [],     // Operating Expenses
+                    othExpense: []   // Other Expenses
+                };
+                
+                for (const acctNum in allBalances) {
+                    const monthData = allBalances[acctNum];
+                    const hasData = Object.values(monthData).some(val => val !== 0 && val !== null);
+                    
+                    if (hasData) {
+                        const monthValues = monthNames.map(m => monthData[`${m} ${currentYear}`] || 0);
+                        const acctInfo = {
+                            number: acctNum,
+                            name: accountNames[acctNum] || `Account ${acctNum}`,
+                            type: accountTypes[acctNum] || 'Unknown',
+                            monthValues: monthValues,
+                            total: monthValues.reduce((a, b) => a + b, 0)
+                        };
+                        
+                        const acctType = (accountTypes[acctNum] || '').toLowerCase();
+                        if (acctType === 'income') {
+                            categories.income.push(acctInfo);
+                        } else if (acctType === 'othincome') {
+                            categories.othIncome.push(acctInfo);
+                        } else if (acctType === 'cogs' || acctType === 'cost of goods sold') {
+                            categories.cogs.push(acctInfo);
+                        } else if (acctType === 'expense') {
+                            categories.expense.push(acctInfo);
+                        } else if (acctType === 'othexpense') {
+                            categories.othExpense.push(acctInfo);
+                        }
+                    }
+                }
+                
+                // Sort each category by account number
+                for (const cat in categories) {
+                    categories[cat].sort((a, b) => a.number.localeCompare(b.number, undefined, {numeric: true}));
+                }
+                
+                console.log(`Income Statement: Revenue=${categories.income.length}, OthIncome=${categories.othIncome.length}, COGS=${categories.cogs.length}, Expense=${categories.expense.length}, OthExpense=${categories.othExpense.length}`);
+                
+                // Get default subsidiary
+                let defaultSubsidiary = 'Celigo Inc. (Consolidated)';
+                try {
+                    const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
+                    if (lookupsResponse.ok) {
+                        const lookups = await lookupsResponse.json();
+                        if (lookups.subsidiaries && lookups.subsidiaries.length > 0) {
+                            const consolidated = lookups.subsidiaries.find(s => 
+                                s.name.toLowerCase().includes('consolidated') || 
+                                s.name.toLowerCase().includes('parent')
+                            );
+                            defaultSubsidiary = consolidated ? consolidated.name : lookups.subsidiaries[0].name;
+                        }
+                    }
+                } catch (e) {}
+                
+                // Step 3: Build Excel structure
+                updateProgress(45, '📊 Step 3 of 5: Building Structure', 'Creating sections and headers...');
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    try {
+                        sheet.name = "Income Statement";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    let currentRow = 1;
+                    
+                    // ========== ROW 1-2: PARAMETERS ==========
+                    const titleCell = sheet.getRange("A1");
+                    titleCell.values = [["📊 Income Statement - " + currentYear]];
+                    await context.sync();
+                    
+                    try {
+                        titleCell.format.font.bold = true;
+                        titleCell.format.font.size = 16;
+                        titleCell.format.font.color = "#09235C";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Parameters row
+                    sheet.getRange("E2").values = [["YEAR"]];
+                    sheet.getRange("F2").values = [[currentYear]];
+                    sheet.getRange("H2").values = [["Subsidiary"]];
+                    sheet.getRange("I2").values = [[defaultSubsidiary]];
+                    await context.sync();
+                    
+                    // Style parameter inputs
+                    try {
+                        const yearInput = sheet.getRange("F2");
+                        yearInput.format.fill.color = "#0AE2C1";
+                        yearInput.format.font.bold = true;
+                        yearInput.format.font.color = "#09235C";
+                        
+                        const subInput = sheet.getRange("I2");
+                        subInput.format.fill.color = "#0AE2C1";
+                        subInput.format.font.bold = true;
+                        subInput.format.font.color = "#09235C";
+                        
+                        sheet.getRange("E2").format.font.bold = true;
+                        sheet.getRange("E2").format.font.color = "#09235C";
+                        sheet.getRange("H2").format.font.bold = true;
+                        sheet.getRange("H2").format.font.color = "#09235C";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ========== ROW 4: COLUMN HEADERS ==========
+                    const headerRow = 4;
+                    sheet.getRange("A4").values = [["Account #"]];
+                    sheet.getRange("B4").values = [["Account Name"]];
+                    
+                    // Month headers with formula
+                    for (let m = 0; m < 12; m++) {
+                        const colLetter = String.fromCharCode(67 + m); // C=67
+                        const cell = sheet.getRange(`${colLetter}4`);
+                        cell.formulas = [[`=DATE($F$2,${m + 1},1)`]];
+                    }
+                    
+                    // YTD column
+                    sheet.getRange("O4").values = [["YTD Total"]];
+                    await context.sync();
+                    
+                    // Format headers
+                    try {
+                        const headerRange = sheet.getRange("A4:O4");
+                        headerRange.format.font.bold = true;
+                        headerRange.format.font.color = "#FFFFFF";
+                        headerRange.format.fill.color = "#09235C";
+                        
+                        const monthRange = sheet.getRange("C4:N4");
+                        monthRange.numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    currentRow = 5;
+                    
+                    // Helper to write section header
+                    const writeSectionHeader = async (text, row) => {
+                        const cell = sheet.getRange(`A${row}`);
+                        cell.values = [[text]];
+                        await context.sync();
+                        try {
+                            const range = sheet.getRange(`A${row}:O${row}`);
+                            range.format.font.bold = true;
+                            range.format.font.color = "#09235C";
+                            range.format.fill.color = "#E8EBF0";
+                            await context.sync();
+                        } catch (e) {}
+                    };
+                    
+                    // Helper to write account row
+                    const writeAccountRow = async (acct, row) => {
+                        sheet.getRange(`A${row}`).values = [[acct.number]];
+                        sheet.getRange(`B${row}`).values = [[acct.name]];
+                        
+                        // Balance formulas for each month
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(67 + m);
+                            const cell = sheet.getRange(`${colLetter}${row}`);
+                            cell.formulas = [[`=XAVI.BALANCE($A${row},TEXT(${colLetter}$4,"mmm yyyy"),TEXT(${colLetter}$4,"mmm yyyy"),$I$2)`]];
+                        }
+                        
+                        // YTD formula
+                        sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
+                    };
+                    
+                    // Helper to write subtotal row
+                    const writeSubtotalRow = async (text, startRow, endRow, row, isBold = true) => {
+                        sheet.getRange(`B${row}`).values = [[text]];
+                        
+                        // Sum formulas for each column
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(67 + m);
+                            sheet.getRange(`${colLetter}${row}`).formulas = [[`=SUM(${colLetter}${startRow}:${colLetter}${endRow})`]];
+                        }
+                        sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
+                        
+                        await context.sync();
+                        
+                        if (isBold) {
+                            try {
+                                const range = sheet.getRange(`A${row}:O${row}`);
+                                range.format.font.bold = true;
+                                // Add top border
+                                range.format.borders.getItem('EdgeTop').style = 'Continuous';
+                                await context.sync();
+                            } catch (e) {}
+                        }
+                    };
+                    
+                    // Track row positions for calculations
+                    let revenueStartRow, revenueEndRow, revenueTotalRow;
+                    let cogsStartRow, cogsEndRow, cogsTotalRow;
+                    let grossProfitRow;
+                    let expenseStartRow, expenseEndRow, expenseTotalRow;
+                    let operatingIncomeRow;
+                    let othIncomeStartRow, othIncomeEndRow, othIncomeTotalRow;
+                    let othExpenseStartRow, othExpenseEndRow, othExpenseTotalRow;
+                    let netIncomeRow;
+                    
+                    updateProgress(50, '📝 Step 4 of 5: Writing Data', 'Adding Revenue accounts...');
+                    
+                    // ========== REVENUE SECTION ==========
+                    if (categories.income.length > 0) {
+                        await writeSectionHeader('REVENUE', currentRow);
+                        currentRow++;
+                        revenueStartRow = currentRow;
+                        
+                        for (const acct of categories.income) {
+                            await writeAccountRow(acct, currentRow);
+                            currentRow++;
+                        }
+                        revenueEndRow = currentRow - 1;
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Revenue', revenueStartRow, revenueEndRow, currentRow);
+                        revenueTotalRow = currentRow;
+                        currentRow += 2; // Blank row after
+                    }
+                    
+                    updateProgress(60, '📝 Step 4 of 5: Writing Data', 'Adding Cost of Sales...');
+                    
+                    // ========== COST OF SALES SECTION ==========
+                    if (categories.cogs.length > 0) {
+                        await writeSectionHeader('COST OF SALES', currentRow);
+                        currentRow++;
+                        cogsStartRow = currentRow;
+                        
+                        for (const acct of categories.cogs) {
+                            await writeAccountRow(acct, currentRow);
+                            currentRow++;
+                        }
+                        cogsEndRow = currentRow - 1;
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Cost of Sales', cogsStartRow, cogsEndRow, currentRow);
+                        cogsTotalRow = currentRow;
+                        currentRow += 2;
+                    }
+                    
+                    // ========== GROSS PROFIT ROW ==========
+                    if (revenueTotalRow && cogsTotalRow) {
+                        sheet.getRange(`B${currentRow}`).values = [['GROSS PROFIT']];
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(67 + m);
+                            sheet.getRange(`${colLetter}${currentRow}`).formulas = [[`=${colLetter}${revenueTotalRow}-${colLetter}${cogsTotalRow}`]];
+                        }
+                        sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                        await context.sync();
+                        
+                        try {
+                            const gpRange = sheet.getRange(`A${currentRow}:O${currentRow}`);
+                            gpRange.format.font.bold = true;
+                            gpRange.format.fill.color = "#D4E6F1";
+                            gpRange.format.borders.getItem('EdgeTop').style = 'Double';
+                            gpRange.format.borders.getItem('EdgeBottom').style = 'Continuous';
+                            await context.sync();
+                        } catch (e) {}
+                        
+                        grossProfitRow = currentRow;
+                        currentRow += 2;
+                    }
+                    
+                    updateProgress(70, '📝 Step 4 of 5: Writing Data', 'Adding Operating Expenses...');
+                    
+                    // ========== OPERATING EXPENSES SECTION ==========
+                    if (categories.expense.length > 0) {
+                        await writeSectionHeader('OPERATING EXPENSES', currentRow);
+                        currentRow++;
+                        expenseStartRow = currentRow;
+                        
+                        for (const acct of categories.expense) {
+                            await writeAccountRow(acct, currentRow);
+                            currentRow++;
+                        }
+                        expenseEndRow = currentRow - 1;
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Operating Expenses', expenseStartRow, expenseEndRow, currentRow);
+                        expenseTotalRow = currentRow;
+                        currentRow += 2;
+                    }
+                    
+                    // ========== OPERATING INCOME ROW ==========
+                    if (grossProfitRow && expenseTotalRow) {
+                        sheet.getRange(`B${currentRow}`).values = [['OPERATING INCOME']];
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(67 + m);
+                            sheet.getRange(`${colLetter}${currentRow}`).formulas = [[`=${colLetter}${grossProfitRow}-${colLetter}${expenseTotalRow}`]];
+                        }
+                        sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                        await context.sync();
+                        
+                        try {
+                            const oiRange = sheet.getRange(`A${currentRow}:O${currentRow}`);
+                            oiRange.format.font.bold = true;
+                            oiRange.format.fill.color = "#D5F5E3";
+                            oiRange.format.borders.getItem('EdgeTop').style = 'Continuous';
+                            await context.sync();
+                        } catch (e) {}
+                        
+                        operatingIncomeRow = currentRow;
+                        currentRow += 2;
+                    }
+                    
+                    updateProgress(80, '📝 Step 4 of 5: Writing Data', 'Adding Other Income/Expense...');
+                    
+                    // ========== OTHER INCOME SECTION ==========
+                    if (categories.othIncome.length > 0) {
+                        await writeSectionHeader('OTHER INCOME', currentRow);
+                        currentRow++;
+                        othIncomeStartRow = currentRow;
+                        
+                        for (const acct of categories.othIncome) {
+                            await writeAccountRow(acct, currentRow);
+                            currentRow++;
+                        }
+                        othIncomeEndRow = currentRow - 1;
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Other Income', othIncomeStartRow, othIncomeEndRow, currentRow);
+                        othIncomeTotalRow = currentRow;
+                        currentRow += 2;
+                    }
+                    
+                    // ========== OTHER EXPENSE SECTION ==========
+                    if (categories.othExpense.length > 0) {
+                        await writeSectionHeader('OTHER EXPENSE', currentRow);
+                        currentRow++;
+                        othExpenseStartRow = currentRow;
+                        
+                        for (const acct of categories.othExpense) {
+                            await writeAccountRow(acct, currentRow);
+                            currentRow++;
+                        }
+                        othExpenseEndRow = currentRow - 1;
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Other Expense', othExpenseStartRow, othExpenseEndRow, currentRow);
+                        othExpenseTotalRow = currentRow;
+                        currentRow += 2;
+                    }
+                    
+                    updateProgress(90, '📝 Step 4 of 5: Writing Data', 'Calculating Net Income...');
+                    
+                    // ========== NET INCOME ROW ==========
+                    sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
+                    
+                    // Build NET INCOME formula: Operating Income + Other Income - Other Expense
+                    for (let m = 0; m < 12; m++) {
+                        const colLetter = String.fromCharCode(67 + m);
+                        let formula = '=';
+                        if (operatingIncomeRow) formula += `${colLetter}${operatingIncomeRow}`;
+                        else if (grossProfitRow) formula += `${colLetter}${grossProfitRow}`;
+                        else if (revenueTotalRow) formula += `${colLetter}${revenueTotalRow}`;
+                        else formula += '0';
+                        
+                        if (othIncomeTotalRow) formula += `+${colLetter}${othIncomeTotalRow}`;
+                        if (othExpenseTotalRow) formula += `-${colLetter}${othExpenseTotalRow}`;
+                        
+                        sheet.getRange(`${colLetter}${currentRow}`).formulas = [[formula]];
+                    }
+                    sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                    await context.sync();
+                    
+                    try {
+                        const niRange = sheet.getRange(`A${currentRow}:O${currentRow}`);
+                        niRange.format.font.bold = true;
+                        niRange.format.font.size = 12;
+                        niRange.format.fill.color = "#09235C";
+                        niRange.format.font.color = "#FFFFFF";
+                        niRange.format.borders.getItem('EdgeTop').style = 'Double';
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    netIncomeRow = currentRow;
+                    
+                    updateProgress(95, '🎨 Step 5 of 5: Formatting', 'Applying number formats...');
+                    
+                    // Format all number cells as currency
+                    try {
+                        const dataRange = sheet.getRange(`C5:O${netIncomeRow}`);
+                        const rows = netIncomeRow - 4;
+                        const cols = 13; // C through O
+                        const formatArray = Array(rows).fill(null).map(() => Array(cols).fill('"$"#,##0'));
+                        dataRange.numberFormat = formatArray;
+                        await context.sync();
+                    } catch (e) {
+                        console.warn('Format warning:', e.message);
+                    }
+                    
+                    // Freeze header rows
+                    try {
+                        sheet.freezePanes.freezeRows(4);
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Auto-fit columns
+                    try {
+                        sheet.getRange("A:O").format.autofitColumns();
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    updateProgress(100, '✅ Complete!', 'Your Income Statement is ready!');
+                });
+                
+                // Cleanup
+                clearInterval(tipInterval);
+                overlay.remove();
+                
+                // Success message
+                const totalAccounts = categories.income.length + categories.othIncome.length + 
+                                     categories.cogs.length + categories.expense.length + categories.othExpense.length;
+                
+                progress.style.display = 'block';
+                progress.innerHTML = `✅ <strong>Income Statement Generated!</strong><br><br>
+                    Created with <strong>${totalAccounts} accounts</strong> organized into sections:<br>
+                    • Revenue: ${categories.income.length} accounts<br>
+                    • Cost of Sales: ${categories.cogs.length} accounts<br>
+                    • Operating Expenses: ${categories.expense.length} accounts<br>
+                    • Other Income/Expense: ${categories.othIncome.length + categories.othExpense.length} accounts<br><br>
+                    <div style="background: rgba(255, 193, 7, 0.2); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid #FFC107;">
+                        ⚠️ <strong>Please verify:</strong> This is auto-generated from your NetSuite data. 
+                        Review account classifications and totals before using for official reporting.
+                    </div>
+                    <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--anenome);">
+                        💡 <strong>Tip:</strong> Change the <strong>YEAR</strong> (F2) or <strong>Subsidiary</strong> (I2) to refresh all data!
+                    </div>`;
+                progress.style.lineHeight = '1.6';
+                
+            } catch (error) {
+                console.error('Income Statement error:', error);
+                clearInterval(tipInterval);
+                if (document.getElementById('incomeStatementOverlay')) {
+                    document.getElementById('incomeStatementOverlay').remove();
+                }
+                progress.style.display = 'block';
+                progress.textContent = `❌ Error: ${error.message}`;
             }
         }
 
