@@ -3461,6 +3461,14 @@
                         console.log('Guide Me: Sheet rename skipped');
                     }
                     
+                    // Remove gridlines for cleaner look
+                    try {
+                        sheet.showGridlines = false;
+                        await context.sync();
+                    } catch (e) {
+                        console.warn('Could not hide gridlines');
+                    }
+                    
                     // ========================================
                     // ROW 1-2: PARAMETER SECTION
                     // ========================================
@@ -3599,9 +3607,9 @@
                     try {
                         const monthHeaderRange = sheet.getRange("D4:O4");
                         monthHeaderRange.numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
-                        monthHeaderRange.format.font.bold = true;
-                        monthHeaderRange.format.font.color = "#FFFFFF";
-                        monthHeaderRange.format.fill.color = "#09235C";
+                    monthHeaderRange.format.font.bold = true;
+                    monthHeaderRange.format.font.color = "#FFFFFF";
+                    monthHeaderRange.format.fill.color = "#09235C";
                         await context.sync();
                         console.log('Guide Me: Month header formatting applied');
                     } catch (monthFormatErr) {
@@ -3646,38 +3654,38 @@
                         }
                         
                         try {
-                            // Column B: Account NUMBER (always populated)
-                            const numCell = sheet.getRange(`B${rowNum}`);
+                        // Column B: Account NUMBER (always populated)
+                        const numCell = sheet.getRange(`B${rowNum}`);
                             const acctNum = String(acct.number);
                             numCell.values = [[acctNum]];
+                        
+                        // Only add formulas for first 25 rows
+                        if (i < formulaRows) {
+                            // Column A: Account TYPE formula
+                            const typeCell = sheet.getRange(`A${rowNum}`);
+                            typeCell.formulas = [[`=XAVI.TYPE(B${rowNum})`]];
                             
-                            // Only add formulas for first 25 rows
-                            if (i < formulaRows) {
-                                // Column A: Account TYPE formula
-                                const typeCell = sheet.getRange(`A${rowNum}`);
-                                typeCell.formulas = [[`=XAVI.TYPE(B${rowNum})`]];
-                                
-                                // Column C: Account NAME formula
-                                const nameCell = sheet.getRange(`C${rowNum}`);
-                                nameCell.formulas = [[`=XAVI.NAME(B${rowNum})`]];
-                                
+                            // Column C: Account NAME formula
+                            const nameCell = sheet.getRange(`C${rowNum}`);
+                            nameCell.formulas = [[`=XAVI.NAME(B${rowNum})`]];
+                            
                                 // Columns D-O: BALANCE formulas with SUBSIDIARY parameter
                                 // Formula: =XAVI.BALANCE($B5, TEXT(D$4,"mmm yyyy"), TEXT(D$4,"mmm yyyy"), $I$2)
-                                for (let m = 0; m < 12; m++) {
-                                    const colLetter = String.fromCharCode(68 + m);
-                                    const cell = sheet.getRange(`${colLetter}${rowNum}`);
+                            for (let m = 0; m < 12; m++) {
+                                const colLetter = String.fromCharCode(68 + m);
+                                const cell = sheet.getRange(`${colLetter}${rowNum}`);
                                     cell.formulas = [[`=XAVI.BALANCE($B${rowNum},TEXT(${colLetter}$4,"mmm yyyy"),TEXT(${colLetter}$4,"mmm yyyy"),$I$2)`]];
-                                }
-                                
-                                // Column P: YTD Total formula
-                                const totalCell = sheet.getRange(`P${rowNum}`);
-                                totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
                             }
                             
+                            // Column P: YTD Total formula
+                            const totalCell = sheet.getRange(`P${rowNum}`);
+                            totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
+                        }
+                        
                             // Alternating row colors
-                            if (i % 2 === 0) {
-                                const rowRange = sheet.getRange(`A${rowNum}:P${rowNum}`);
-                                rowRange.format.fill.color = "#F5F7FA";
+                        if (i % 2 === 0) {
+                            const rowRange = sheet.getRange(`A${rowNum}:P${rowNum}`);
+                            rowRange.format.fill.color = "#F5F7FA";
                             }
                         } catch (rowError) {
                             console.error(`Guide Me: Error writing row ${rowNum}:`, rowError.message);
@@ -3978,6 +3986,14 @@
                         sheet.name = "Income Statement";
                         await context.sync();
                     } catch (e) {}
+                    
+                    // Remove gridlines for cleaner look
+                    try {
+                        sheet.showGridlines = false;
+                        await context.sync();
+                    } catch (e) {
+                        console.warn('Could not hide gridlines');
+                    }
                     
                     let currentRow = 1;
                     
@@ -5415,22 +5431,22 @@
                 console.log('Restart request sent (connection dropped as expected)');
             }
             
-            statusEl.innerHTML = '<span class="status-dot checking"></span> Waiting for restart...';
+                statusEl.innerHTML = '<span class="status-dot checking"></span> Waiting for restart...';
             updateToast(toastId, { message: 'Waiting for server to come back online...' });
-            
-            // Keep checking until server is back
-            let attempts = 0;
-            const checkInterval = setInterval(async () => {
-                attempts++;
-                try {
-                    const healthResponse = await fetch(`${SERVER_URL}/health`, { 
-                        method: 'GET',
-                        signal: AbortSignal.timeout(3000)
-                    });
-                    if (healthResponse.ok) {
-                        clearInterval(checkInterval);
-                        statusEl.className = 'status-indicator connected';
-                        statusEl.innerHTML = '<span class="status-dot connected"></span> Restarted ✓';
+                
+                // Keep checking until server is back
+                let attempts = 0;
+                const checkInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const healthResponse = await fetch(`${SERVER_URL}/health`, { 
+                            method: 'GET',
+                            signal: AbortSignal.timeout(3000)
+                        });
+                        if (healthResponse.ok) {
+                            clearInterval(checkInterval);
+                            statusEl.className = 'status-indicator connected';
+                            statusEl.innerHTML = '<span class="status-dot connected"></span> Restarted ✓';
                         
                         // Fetch and display tunnel URL
                         try {
@@ -5457,12 +5473,12 @@
                             });
                             setTimeout(() => removeToast(toastId), 5000);
                         }
-                    }
-                } catch (e) {
-                    if (attempts > 10) {
-                        clearInterval(checkInterval);
-                        statusEl.className = 'status-indicator error';
-                        statusEl.innerHTML = '<span class="status-dot error"></span> Restart failed - check terminal';
+                        }
+                    } catch (e) {
+                        if (attempts > 10) {
+                            clearInterval(checkInterval);
+                            statusEl.className = 'status-indicator error';
+                            statusEl.innerHTML = '<span class="status-dot error"></span> Restart failed - check terminal';
                         
                         updateToast(toastId, {
                             title: 'Restart Failed',
@@ -5470,9 +5486,9 @@
                             type: 'error'
                         });
                         setTimeout(() => removeToast(toastId), 8000);
+                        }
                     }
-                }
-            }, 2000);
+                }, 2000);
         }
 
         function copyTunnelCommand() {
@@ -6105,12 +6121,12 @@ export default {
                                 
                                 // BALANCE formulas - refresh first
                                 if (upperFormula.includes('XAVI.BALANCE')) {
-                                    cellsToUpdate.push({ row, col, formula });
-                                    
-                                    // Try to extract account from formula
-                                    const accountMatch = formula.match(/XAVI\.BALANCE\s*\(\s*["']?(\d+)["']?/i);
-                                    if (accountMatch) {
-                                        detectedAccounts.add(accountMatch[1]);
+                                cellsToUpdate.push({ row, col, formula });
+                                
+                                // Try to extract account from formula
+                                const accountMatch = formula.match(/XAVI\.BALANCE\s*\(\s*["']?(\d+)["']?/i);
+                                if (accountMatch) {
+                                    detectedAccounts.add(accountMatch[1]);
                                     }
                                 }
                                 
@@ -6387,25 +6403,25 @@ export default {
                     try {
                         // Use the EFFICIENT batch_bs_periods endpoint
                         const response = await fetch(`${SERVER_URL}/batch/bs_periods`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
                                 periods: allPeriods,
-                                subsidiary: '',
-                                department: '',
-                                location: '',
-                                class: ''
-                            })
-                        });
-                        
-                        if (response.ok) {
-                            const data = await response.json();
-                            // Merge BS balances into allBalances
-                            for (const [acct, periods] of Object.entries(data.balances || {})) {
-                                if (!allBalances[acct]) allBalances[acct] = {};
-                                Object.assign(allBalances[acct], periods);
-                            }
-                            totalAccountsLoaded += Object.keys(data.balances || {}).length;
+                                    subsidiary: '',
+                                    department: '',
+                                    location: '',
+                                    class: ''
+                                })
+                            });
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                // Merge BS balances into allBalances
+                                for (const [acct, periods] of Object.entries(data.balances || {})) {
+                                    if (!allBalances[acct]) allBalances[acct] = {};
+                                    Object.assign(allBalances[acct], periods);
+                                }
+                                totalAccountsLoaded += Object.keys(data.balances || {}).length;
                             console.log(`✅ BS: ${Object.keys(data.balances || {}).length} accounts loaded in ${data.query_time?.toFixed(1) || '?'}s`);
                             updateLoading('BS data loaded!', 85, 
                                 `${Object.keys(data.balances || {}).length} BS accounts in ${data.query_time?.toFixed(1) || '?'}s`);
@@ -6419,7 +6435,7 @@ export default {
                         } else {
                             console.error(`❌ BS fetch error: ${response.status}`);
                             showToast({ type: 'error', title: 'BS Fetch Error', message: `Error ${response.status} loading Balance Sheet data.`, duration: 8000 });
-                        }
+                            }
                     } catch (e) {
                         console.error(`Error fetching BS data:`, e);
                         showToast({ type: 'error', title: 'BS Fetch Error', message: `Error loading Balance Sheet: ${e.message}. Check connection.`, duration: 8000 });
@@ -6610,8 +6626,8 @@ export default {
                 if (refreshCancelled) {
                     // Cancelled - already handled
                 } else {
-                    updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
-                    await new Promise(resolve => setTimeout(resolve, 800));
+                updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
+                await new Promise(resolve => setTimeout(resolve, 800));
                 }
                 
                 hideLoading();
@@ -6650,18 +6666,18 @@ export default {
                     let specialNote = '';
                     if (hasSpecialFormulas) {
                         specialNote = `<br><span style="color: #92400e; font-style: italic;">📊 ${specialFormulas.length} RE/NI/CTA formula(s) detected. Use "Recalculate RE/NI/CTA" button to refresh them.</span>`;
-                    }
-                    
-                    statusEl.innerHTML = `
-                        <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
+                }
+                
+                statusEl.innerHTML = `
+                    <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px; animation: fadeIn 0.3s;">
                             <strong style="color: #059669; font-size: 14px;">✓ Account Balances Refreshed!</strong><br>
-                            <span style="font-size: 12px; color: #047857;">
-                                ${summaryParts.join(' • ')}<br>
+                        <span style="font-size: 12px; color: #047857;">
+                            ${summaryParts.join(' • ')}<br>
                                 ${totalAccountsLoaded} accounts loaded • ${formulasRefreshed} BALANCE formulas refreshed in ${elapsed}s
                                 ${specialNote}
-                            </span>
-                        </div>
-                    `;
+                        </span>
+                    </div>
+                `;
                 }
                 
                 setTimeout(() => { statusEl.textContent = ''; }, 15000);
