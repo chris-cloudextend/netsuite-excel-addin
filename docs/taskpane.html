@@ -1988,32 +1988,44 @@
                 <span id="connectionText">Checking connection...</span>
             </div>
 
-            <!-- GUIDE ME WIZARD -->
-            <div class="guide-me-card" id="guideMeCard">
-                <button class="guide-me-dismiss" onclick="dismissGuideMe()" title="Dismiss">×</button>
-                <h3>🚀 Build a Report</h3>
-                <p>Choose what type of report to generate:</p>
-                
-                <!-- Option 1: Sample Report -->
-                <div class="guide-choice" onclick="runGuideMe()" style="margin-bottom: 12px;">
-                    <div class="guide-choice-icon">📝</div>
-                    <div class="guide-choice-content">
-                        <div class="guide-choice-title">Sample Report (Learn)</div>
-                        <div class="guide-choice-desc">35 accounts with formulas you can study and extend</div>
+            <!-- QUICK START - Accordion Section -->
+            <details class="collapsible-section help-section" id="quickStartSection" open>
+                <summary class="collapsible-header" style="background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);">
+                    <h3 style="color: white;"><span class="icon">🚀</span> Quick Start</h3>
+                    <svg class="chevron" style="fill: white;" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
+                </summary>
+                <div class="collapsible-content" style="background: linear-gradient(135deg, rgba(9, 35, 92, 0.05) 0%, rgba(0, 79, 182, 0.05) 100%);">
+                    <p style="font-size: 12px; line-height: 1.6; color: var(--bottlenose); margin-bottom: 16px;">
+                        The best way to learn how to use the <strong>Financial Reporting Engine (FRE)</strong> is to see it in action. 
+                        Choose <strong>Sample Report</strong> below and we'll pull in 35 of your P&L accounts and build formulas for each month. 
+                        We'll leave the last 10 rows empty so you can see how easy it is to drag and drop your formulas—that's the beauty of using Excel formulas for financial data!
+                    </p>
+                    <p style="font-size: 12px; line-height: 1.6; color: var(--bottlenose); margin-bottom: 16px;">
+                        If you want to see all of your accounts, choose <strong>Full Income Statement</strong> and we'll examine your NetSuite account to create a beautifully formatted income statement with filters for year and subsidiary. 
+                        Since every NetSuite account is different, <strong>we highly recommend you verify our work</strong> against your NetSuite reports at least once.
+                    </p>
+                    
+                    <!-- Option 1: Sample Report -->
+                    <div class="guide-choice" onclick="runGuideMe()" style="margin-bottom: 12px; background: rgba(255,255,255,0.8); border: 2px solid var(--deep-dive);">
+                        <div class="guide-choice-icon">📝</div>
+                        <div class="guide-choice-content">
+                            <div class="guide-choice-title" style="color: var(--deep-dive);">Sample Report (Learn)</div>
+                            <div class="guide-choice-desc" style="color: var(--bottlenose);">35 accounts with formulas you can study and extend</div>
+                        </div>
                     </div>
-                </div>
-                
-                <!-- Option 2: Full Income Statement -->
-                <div class="guide-choice" onclick="generateFullIncomeStatement()">
-                    <div class="guide-choice-icon">📊</div>
-                    <div class="guide-choice-content">
-                        <div class="guide-choice-title">Full Income Statement</div>
-                        <div class="guide-choice-desc">Complete P&L with all accounts, sections, and totals</div>
+                    
+                    <!-- Option 2: Full Income Statement -->
+                    <div class="guide-choice" onclick="generateFullIncomeStatement()" style="background: rgba(255,255,255,0.8); border: 2px solid var(--deep-dive);">
+                        <div class="guide-choice-icon">📊</div>
+                        <div class="guide-choice-content">
+                            <div class="guide-choice-title" style="color: var(--deep-dive);">Full Income Statement</div>
+                            <div class="guide-choice-desc" style="color: var(--bottlenose);">Complete P&L with all accounts, sections, and totals</div>
+                        </div>
                     </div>
+                    
+                    <div class="guide-me-progress" id="guideMeProgress" style="display: none; margin-top: 12px;"></div>
                 </div>
-                
-                <div class="guide-me-progress" id="guideMeProgress" style="display: none;"></div>
-            </div>
+            </details>
 
             <!-- GETTING STARTED HELP SECTION -->
             <details class="collapsible-section help-section" id="helpSection">
@@ -4374,8 +4386,14 @@
                         ⚠️ <strong>Please verify:</strong> This is auto-generated from your NetSuite data. 
                         Review account classifications and totals before using for official reporting.
                     </div>
+                    <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--anenome);">
+                        📅 <strong>Change Year:</strong> Edit cell <strong>F2</strong> to a different year. The structure will automatically sync with accounts for that year.
+                    </div>
                     <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--anenome);">
-                        💡 <strong>Tip:</strong> Change the <strong>YEAR</strong> (F2) or <strong>Subsidiary</strong> (I2) to refresh all data!
+                        🏢 <strong>Change Subsidiary:</strong> Navigate to cell <strong>I2</strong>, then use the <strong>Filters</strong> section in the task pane to select a different subsidiary.<br>
+                        <span style="font-size: 11px; color: #6B7280; margin-top: 4px; display: block;">
+                            💡 The XAVI.BALANCE formula also supports <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> filters—add these manually to customize your formulas.
+                        </span>
                     </div>`;
                 progress.style.lineHeight = '1.6';
                 
@@ -5934,7 +5952,422 @@ export default {
             // CRITICAL: Preload ALL account titles to prevent 429 rate limit errors
             // This makes ONE query instead of 150+ concurrent queries
             preloadAccountTitles();
+            
+            // Handle Quick Start accordion for first-time users
+            initializeQuickStart();
+            
+            // Set up worksheet change listener for auto-sync
+            setupAutoSyncListener();
         });
+        
+        // Initialize Quick Start section - expanded for first-time users, collapsed for returning users
+        function initializeQuickStart() {
+            const quickStartSection = document.getElementById('quickStartSection');
+            const isReturningUser = localStorage.getItem('xavi_returning_user') === 'true';
+            
+            if (isReturningUser) {
+                // Returning user - collapse the Quick Start section
+                quickStartSection.removeAttribute('open');
+                console.log('Returning user - Quick Start collapsed');
+            } else {
+                // First time user - keep it open (already open by default)
+                console.log('First-time user - Quick Start expanded');
+                // Mark as returning user for next time
+                localStorage.setItem('xavi_returning_user', 'true');
+            }
+        }
+        
+        // Set up listener to auto-sync Income Statement when YEAR changes
+        async function setupAutoSyncListener() {
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Register for changes on the worksheet
+                    sheet.onChanged.add(async (event) => {
+                        // Check if the changed cell is F2 (YEAR parameter)
+                        if (event.address === 'F2' || event.address === '$F$2') {
+                            console.log('📊 YEAR cell (F2) changed - checking for auto-sync...');
+                            await handleYearChange();
+                        }
+                    });
+                    
+                    await context.sync();
+                    console.log('✅ Auto-sync listener registered for worksheet changes');
+                });
+            } catch (e) {
+                console.warn('Could not set up auto-sync listener:', e.message);
+            }
+        }
+        
+        // Handle automatic structure sync when YEAR changes
+        async function handleYearChange() {
+            try {
+                let shouldSync = false;
+                let newYear = null;
+                let subsidiary = '';
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Check for sync marker
+                    const markerCell = sheet.getRange("A3");
+                    markerCell.load("values");
+                    const syncCell = sheet.getRange("B3");
+                    syncCell.load("values");
+                    const yearCell = sheet.getRange("F2");
+                    yearCell.load("values");
+                    const subCell = sheet.getRange("I2");
+                    subCell.load("values");
+                    
+                    await context.sync();
+                    
+                    const marker = String(markerCell.values[0][0] || '').toLowerCase();
+                    const sync = String(syncCell.values[0][0] || '').toUpperCase();
+                    
+                    if ((marker.includes('structure sync') || marker.includes('🔄')) &&
+                        (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                        shouldSync = true;
+                        newYear = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
+                        subsidiary = subCell.values[0][0] || '';
+                    }
+                });
+                
+                if (shouldSync && newYear) {
+                    console.log(`🔄 Auto-syncing structure for year ${newYear}...`);
+                    
+                    // Show a brief notification
+                    const statusEl = document.getElementById('refreshStatus');
+                    if (statusEl) {
+                        statusEl.innerHTML = `<div style="background: #dbeafe; padding: 10px; border-radius: 6px; border-left: 4px solid #3b82f6;">
+                            <strong style="color: #1e40af;">🔄 Syncing for ${newYear}...</strong><br>
+                            <small style="color: #1e3a8a;">Rebuilding structure with accounts for ${newYear}</small>
+                        </div>`;
+                    }
+                    
+                    // Trigger the sync by calling the same logic as Refresh Accounts
+                    await performStructureSync(newYear, subsidiary);
+                }
+            } catch (e) {
+                console.warn('Auto-sync error:', e.message);
+            }
+        }
+        
+        // Perform the structure sync (extracted for reuse)
+        async function performStructureSync(targetYear, currentSubsidiary) {
+            const statusEl = document.getElementById('refreshStatus');
+            
+            try {
+                // Fetch accounts for the target year
+                const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: targetYear,
+                        subsidiary: '',
+                        department: '',
+                        location: '',
+                        class: ''
+                    })
+                });
+                
+                if (!refreshResponse.ok) {
+                    throw new Error(`Failed to load data: ${refreshResponse.status}`);
+                }
+                
+                const refreshData = await refreshResponse.json();
+                const allBalances = refreshData.balances || {};
+                const accountTypes = refreshData.account_types || {};
+                const accountNames = refreshData.account_names || {};
+                
+                // Categorize accounts
+                const categories = {
+                    income: [], othIncome: [], cogs: [], expense: [], othExpense: []
+                };
+                
+                for (const acctNum in allBalances) {
+                    const monthData = allBalances[acctNum];
+                    const hasData = Object.values(monthData).some(val => val !== 0 && val !== null);
+                    
+                    if (hasData) {
+                        const acctInfo = {
+                            number: acctNum,
+                            name: accountNames[acctNum] || `Account ${acctNum}`,
+                            type: accountTypes[acctNum] || 'Unknown'
+                        };
+                        
+                        const acctType = (accountTypes[acctNum] || '').toLowerCase();
+                        if (acctType === 'income') categories.income.push(acctInfo);
+                        else if (acctType === 'othincome') categories.othIncome.push(acctInfo);
+                        else if (acctType === 'cogs' || acctType === 'cost of goods sold') categories.cogs.push(acctInfo);
+                        else if (acctType === 'expense') categories.expense.push(acctInfo);
+                        else if (acctType === 'othexpense') categories.othExpense.push(acctInfo);
+                    }
+                }
+                
+                // Sort categories
+                for (const cat in categories) {
+                    categories[cat].sort((a, b) => a.number.localeCompare(b.number, undefined, {numeric: true}));
+                }
+                
+                const totalAccounts = categories.income.length + categories.othIncome.length + 
+                                     categories.cogs.length + categories.expense.length + categories.othExpense.length;
+                
+                // Rebuild the sheet
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.clear();
+                    await context.sync();
+                    
+                    try { sheet.showGridlines = false; await context.sync(); } catch (e) {}
+                    
+                    // ROW 1: TITLE
+                    sheet.getRange("A1").formulas = [['="Income Statement For: "&F2']];
+                    await context.sync();
+                    try {
+                        sheet.getRange("A1").format.font.bold = true;
+                        sheet.getRange("A1").format.font.size = 18;
+                        sheet.getRange("A1").format.font.color = "#09235C";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ROW 2: PARAMETERS
+                    sheet.getRange("E2").values = [["YEAR"]];
+                    sheet.getRange("F2").values = [[targetYear]];
+                    sheet.getRange("H2").values = [["Subsidiary"]];
+                    sheet.getRange("I2").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
+                    await context.sync();
+                    
+                    try {
+                        sheet.getRange("F2").format.fill.color = "#0AE2C1";
+                        sheet.getRange("F2").format.font.bold = true;
+                        sheet.getRange("I2").format.fill.color = "#0AE2C1";
+                        sheet.getRange("I2").format.font.bold = true;
+                        sheet.getRange("E2").format.font.bold = true;
+                        sheet.getRange("H2").format.font.bold = true;
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ROW 3: SYNC FLAG
+                    sheet.getRange("A3").values = [["🔄 Structure Sync:"]];
+                    sheet.getRange("B3").values = [["TRUE"]];
+                    sheet.getRange("C3").values = [["← Change to FALSE if you customize this sheet"]];
+                    await context.sync();
+                    
+                    try {
+                        sheet.getRange("A3").format.font.bold = true;
+                        sheet.getRange("B3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("B3").format.font.bold = true;
+                        sheet.getRange("C3").format.font.italic = true;
+                        sheet.getRange("C3").format.font.color = "#6B7280";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ROW 5: HEADERS
+                    sheet.getRange("A5").values = [["Account #"]];
+                    sheet.getRange("B5").values = [["Account Name"]];
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        sheet.getRange(`${col}5`).formulas = [[`=DATE($F$2,${m + 1},1)`]];
+                    }
+                    sheet.getRange("O5").values = [["YTD Total"]];
+                    await context.sync();
+                    
+                    try {
+                        sheet.getRange("A5:O5").format.font.bold = true;
+                        sheet.getRange("A5:O5").format.font.color = "#FFFFFF";
+                        sheet.getRange("A5:O5").format.fill.color = "#09235C";
+                        sheet.getRange("C5:N5").numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    let currentRow = 6;
+                    
+                    const writeSectionHeader = async (text, row) => {
+                        sheet.getRange(`A${row}`).values = [[text]];
+                        await context.sync();
+                        try {
+                            sheet.getRange(`A${row}:O${row}`).format.font.bold = true;
+                            sheet.getRange(`A${row}:O${row}`).format.fill.color = "#E8EBF0";
+                            await context.sync();
+                        } catch (e) {}
+                    };
+                    
+                    const writeAccountRow = (acct, row) => {
+                        sheet.getRange(`A${row}`).values = [[acct.number]];
+                        sheet.getRange(`B${row}`).values = [[acct.name]];
+                        for (let m = 0; m < 12; m++) {
+                            const col = String.fromCharCode(67 + m);
+                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$I$2)`]];
+                        }
+                        sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
+                    };
+                    
+                    const writeSubtotalRow = async (text, startRow, endRow, row) => {
+                        sheet.getRange(`B${row}`).values = [[text]];
+                        for (let m = 0; m < 12; m++) {
+                            const col = String.fromCharCode(67 + m);
+                            sheet.getRange(`${col}${row}`).formulas = [[`=SUM(${col}${startRow}:${col}${endRow})`]];
+                        }
+                        sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
+                        await context.sync();
+                        try {
+                            sheet.getRange(`A${row}:O${row}`).format.font.bold = true;
+                            sheet.getRange(`A${row}:O${row}`).format.borders.getItem('EdgeTop').style = 'Continuous';
+                            await context.sync();
+                        } catch (e) {}
+                    };
+                    
+                    let revenueTotalRow, cogsTotalRow, grossProfitRow, expenseTotalRow, operatingIncomeRow;
+                    let othIncomeTotalRow, othExpenseTotalRow, netIncomeRow;
+                    
+                    if (categories.income.length > 0) {
+                        await writeSectionHeader('REVENUE', currentRow++);
+                        const startRow = currentRow;
+                        for (const acct of categories.income) writeAccountRow(acct, currentRow++);
+                        await context.sync();
+                        await writeSubtotalRow('Total Revenue', startRow, currentRow - 1, currentRow);
+                        revenueTotalRow = currentRow++;
+                        currentRow++;
+                    }
+                    
+                    if (categories.cogs.length > 0) {
+                        await writeSectionHeader('COST OF SALES', currentRow++);
+                        const startRow = currentRow;
+                        for (const acct of categories.cogs) writeAccountRow(acct, currentRow++);
+                        await context.sync();
+                        await writeSubtotalRow('Total Cost of Sales', startRow, currentRow - 1, currentRow);
+                        cogsTotalRow = currentRow++;
+                        currentRow++;
+                    }
+                    
+                    if (revenueTotalRow && cogsTotalRow) {
+                        sheet.getRange(`B${currentRow}`).values = [['GROSS PROFIT']];
+                        for (let m = 0; m < 12; m++) {
+                            const col = String.fromCharCode(67 + m);
+                            sheet.getRange(`${col}${currentRow}`).formulas = [[`=${col}${revenueTotalRow}-${col}${cogsTotalRow}`]];
+                        }
+                        sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                        await context.sync();
+                        try {
+                            sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.bold = true;
+                            sheet.getRange(`A${currentRow}:O${currentRow}`).format.fill.color = "#D4E6F1";
+                            await context.sync();
+                        } catch (e) {}
+                        grossProfitRow = currentRow++;
+                        currentRow++;
+                    }
+                    
+                    if (categories.expense.length > 0) {
+                        await writeSectionHeader('OPERATING EXPENSES', currentRow++);
+                        const startRow = currentRow;
+                        for (const acct of categories.expense) writeAccountRow(acct, currentRow++);
+                        await context.sync();
+                        await writeSubtotalRow('Total Operating Expenses', startRow, currentRow - 1, currentRow);
+                        expenseTotalRow = currentRow++;
+                        currentRow++;
+                    }
+                    
+                    if (grossProfitRow && expenseTotalRow) {
+                        sheet.getRange(`B${currentRow}`).values = [['OPERATING INCOME']];
+                        for (let m = 0; m < 12; m++) {
+                            const col = String.fromCharCode(67 + m);
+                            sheet.getRange(`${col}${currentRow}`).formulas = [[`=${col}${grossProfitRow}-${col}${expenseTotalRow}`]];
+                        }
+                        sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                        await context.sync();
+                        try {
+                            sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.bold = true;
+                            sheet.getRange(`A${currentRow}:O${currentRow}`).format.fill.color = "#D5F5E3";
+                            await context.sync();
+                        } catch (e) {}
+                        operatingIncomeRow = currentRow++;
+                        currentRow++;
+                    }
+                    
+                    if (categories.othIncome.length > 0) {
+                        await writeSectionHeader('OTHER INCOME', currentRow++);
+                        const startRow = currentRow;
+                        for (const acct of categories.othIncome) writeAccountRow(acct, currentRow++);
+                        await context.sync();
+                        await writeSubtotalRow('Total Other Income', startRow, currentRow - 1, currentRow);
+                        othIncomeTotalRow = currentRow++;
+                        currentRow++;
+                    }
+                    
+                    if (categories.othExpense.length > 0) {
+                        await writeSectionHeader('OTHER EXPENSE', currentRow++);
+                        const startRow = currentRow;
+                        for (const acct of categories.othExpense) writeAccountRow(acct, currentRow++);
+                        await context.sync();
+                        await writeSubtotalRow('Total Other Expense', startRow, currentRow - 1, currentRow);
+                        othExpenseTotalRow = currentRow++;
+                        currentRow++;
+                    }
+                    
+                    sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        let formula = '=';
+                        if (operatingIncomeRow) formula += `${col}${operatingIncomeRow}`;
+                        else if (grossProfitRow) formula += `${col}${grossProfitRow}`;
+                        else if (revenueTotalRow) formula += `${col}${revenueTotalRow}`;
+                        else formula += '0';
+                        if (othIncomeTotalRow) formula += `+${col}${othIncomeTotalRow}`;
+                        if (othExpenseTotalRow) formula += `-${col}${othExpenseTotalRow}`;
+                        sheet.getRange(`${col}${currentRow}`).formulas = [[formula]];
+                    }
+                    sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
+                    await context.sync();
+                    
+                    try {
+                        sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.bold = true;
+                        sheet.getRange(`A${currentRow}:O${currentRow}`).format.fill.color = "#09235C";
+                        sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.color = "#FFFFFF";
+                        await context.sync();
+                    } catch (e) {}
+                    netIncomeRow = currentRow;
+                    
+                    try {
+                        const rows = netIncomeRow - 5;
+                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill('"$"#,##0'));
+                        sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    try { sheet.freezePanes.freezeRows(5); await context.sync(); } catch (e) {}
+                });
+                
+                // Success message
+                if (statusEl) {
+                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px;">
+                        <strong style="color: #065f46;">✓ Structure Synced for ${targetYear}</strong><br>
+                        <span style="font-size: 12px; color: #047857;">
+                            Rebuilt with ${totalAccounts} accounts. Formulas will resolve shortly.
+                        </span>
+                        <div style="margin-top: 10px; padding: 10px; background: rgba(10, 226, 193, 0.15); border-radius: 6px; border-left: 3px solid #0AE2C1;">
+                            <strong style="font-size: 11px; color: #09235C;">💡 Filtering Tips:</strong>
+                            <ul style="margin: 6px 0 0 16px; font-size: 11px; color: #374151; line-height: 1.5;">
+                                <li><strong>Subsidiary:</strong> Navigate to cell <strong>I2</strong>, then use the <strong>Filters</strong> section in the task pane to select a different subsidiary.</li>
+                                <li><strong>More filters:</strong> The XAVI.BALANCE formula also supports <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> parameters—you can add these manually to your formulas.</li>
+                            </ul>
+                        </div>
+                    </div>`;
+                }
+                
+                console.log(`✅ Auto-sync complete for ${targetYear}`);
+                
+            } catch (error) {
+                console.error('Structure sync error:', error);
+                if (statusEl) {
+                    statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px;">
+                        <strong style="color: #dc2626;">Sync Error:</strong> ${error.message}
+                    </div>`;
+                }
+            }
+        }
         
         async function preloadAccountTitles() {
             try {
