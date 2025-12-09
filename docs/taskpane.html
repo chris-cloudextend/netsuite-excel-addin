@@ -2698,7 +2698,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.43.0';
+        const ADDIN_VERSION = '1.5.44.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -3492,41 +3492,34 @@
                         await context.sync();
                     } catch (e) {}
                     
-                    // Row 2: Parameter labels and values
-                    // YEAR parameter
-                    const yearLabel = sheet.getRange("E2");
-                    yearLabel.values = [["YEAR"]];
-                    
-                    const yearValue = sheet.getRange("F2");
-                    yearValue.values = [[currentYear]];
-                    
-                    // Subsidiary parameter  
-                    const subLabel = sheet.getRange("H2");
-                    subLabel.values = [["Subsidiary"]];
-                    
-                    const subValue = sheet.getRange("I2");
-                    subValue.values = [[defaultSubsidiary]];
-                    
+                    // ========== ROW 2: PARAMETER LABELS (above values) ==========
+                    sheet.getRange("E2").values = [["YEAR"]];
+                    sheet.getRange("G2").values = [["Subsidiary"]];
                     await context.sync();
-                    console.log('Guide Me: Parameter values written');
+                    console.log('Guide Me: Parameter labels written');
                     
-                    // Style parameter labels (dark blue text, bold)
+                    // Style parameter labels
                     try {
-                        const labelRange = sheet.getRange("E2");
-                        labelRange.format.font.bold = true;
-                        labelRange.format.font.color = "#09235C";
-                        
-                        const subLabelRange = sheet.getRange("H2");
-                        subLabelRange.format.font.bold = true;
-                        subLabelRange.format.font.color = "#09235C";
+                        sheet.getRange("E2").format.font.bold = true;
+                        sheet.getRange("E2").format.font.color = "#09235C";
+                        sheet.getRange("E2").format.font.size = 10;
+                        sheet.getRange("G2").format.font.bold = true;
+                        sheet.getRange("G2").format.font.color = "#09235C";
+                        sheet.getRange("G2").format.font.size = 10;
                         await context.sync();
                     } catch (e) {}
                     
-                    // Style parameter INPUT cells (brand teal background, white text, border)
+                    // ========== ROW 3: PARAMETER VALUES (below labels) ==========
+                    sheet.getRange("E3").values = [[currentYear]];
+                    sheet.getRange("G3").values = [[defaultSubsidiary]];
+                    await context.sync();
+                    console.log('Guide Me: Parameter values written');
+                    
+                    // Style parameter INPUT cells (teal background)
                     try {
-                        // Year input cell - teal/anenome color
-                        const yearInput = sheet.getRange("F2");
-                        yearInput.format.fill.color = "#0AE2C1"; // Anenome teal
+                        // Year input cell
+                        const yearInput = sheet.getRange("E3");
+                        yearInput.format.fill.color = "#0AE2C1";
                         yearInput.format.font.bold = true;
                         yearInput.format.font.color = "#09235C";
                         yearInput.format.borders.getItem('EdgeTop').style = 'Continuous';
@@ -3538,9 +3531,9 @@
                         yearInput.format.borders.getItem('EdgeLeft').color = '#09235C';
                         yearInput.format.borders.getItem('EdgeRight').color = '#09235C';
                         
-                        // Subsidiary input cell - teal/anenome color
-                        const subInput = sheet.getRange("I2");
-                        subInput.format.fill.color = "#0AE2C1"; // Anenome teal
+                        // Subsidiary input cell
+                        const subInput = sheet.getRange("G3");
+                        subInput.format.fill.color = "#0AE2C1";
                         subInput.format.font.bold = true;
                         subInput.format.font.color = "#09235C";
                         subInput.format.borders.getItem('EdgeTop').style = 'Continuous';
@@ -3596,14 +3589,14 @@
                     console.log('Guide Me: Writing date headers with dynamic year formula...');
                     
                     // Write date headers (D4:O4) using DATE formula that references the YEAR parameter
-                    // Formula: =DATE($F$2, COLUMN()-COLUMN($C$4)+1, 1)
+                    // Formula: =DATE($E$3, COLUMN()-COLUMN($C$4)+1, 1)
                     // D4 = month 1, E4 = month 2, etc.
                     for (let m = 0; m < 12; m++) {
                         const colLetter = String.fromCharCode(68 + m); // D=68
                         const cell = sheet.getRange(`${colLetter}4`);
                         // COLUMN(D4)=4, COLUMN($C$4)=3, so 4-3+1=2... we need 4-3=1 for Jan
                         // Actually: COLUMN()-COLUMN($C$4) gives D=4-3=1, E=5-3=2, etc. Perfect!
-                        cell.formulas = [[`=DATE($F$2,COLUMN()-COLUMN($C$4),1)`]];
+                        cell.formulas = [[`=DATE($E$3,COLUMN()-COLUMN($C$4),1)`]];
                     }
                     
                     await context.sync();
@@ -3641,6 +3634,17 @@
                         console.warn('Guide Me: YTD format warning:', ytdFormatErr.message);
                     }
                     
+                    // Set column widths to prevent parameter text from affecting month columns
+                    try {
+                        sheet.getRange("A:A").format.columnWidth = 60;  // Type
+                        sheet.getRange("B:B").format.columnWidth = 80;  // Account #
+                        sheet.getRange("C:C").format.columnWidth = 180; // Account Name
+                        sheet.getRange("D:O").format.columnWidth = 85;  // Month columns (fixed width)
+                        sheet.getRange("P:P").format.columnWidth = 90;  // YTD Total
+                        await context.sync();
+                        console.log('Guide Me: Column widths set');
+                    } catch (e) {}
+                    
                     // ========================================
                     // ROW 5+: DATA ROWS
                     // ========================================
@@ -3676,11 +3680,11 @@
                             nameCell.formulas = [[`=XAVI.NAME(B${rowNum})`]];
                             
                                 // Columns D-O: BALANCE formulas with SUBSIDIARY parameter
-                                // Formula: =XAVI.BALANCE($B5, TEXT(D$4,"mmm yyyy"), TEXT(D$4,"mmm yyyy"), $I$2)
+                                // Formula: =XAVI.BALANCE($B5, TEXT(D$4,"mmm yyyy"), TEXT(D$4,"mmm yyyy"), $G$3)
                             for (let m = 0; m < 12; m++) {
                                 const colLetter = String.fromCharCode(68 + m);
                                 const cell = sheet.getRange(`${colLetter}${rowNum}`);
-                                    cell.formulas = [[`=XAVI.BALANCE($B${rowNum},TEXT(${colLetter}$4,"mmm yyyy"),TEXT(${colLetter}$4,"mmm yyyy"),$I$2)`]];
+                                    cell.formulas = [[`=XAVI.BALANCE($B${rowNum},TEXT(${colLetter}$4,"mmm yyyy"),TEXT(${colLetter}$4,"mmm yyyy"),$G$3)`]];
                             }
                             
                             // Column P: YTD Total formula
@@ -3787,7 +3791,7 @@
                     <strong>Formula Reference:</strong><br>
                     • <code>=XAVI.TYPE(B5)</code> → Account Type<br>
                     • <code>=XAVI.NAME(B5)</code> → Account Name<br>
-                    • <code>=XAVI.BALANCE($B5,TEXT(D$4,"mmm yyyy"),TEXT(D$4,"mmm yyyy"),$I$2)</code> → Balance with Subsidiary`;
+                    • <code>=XAVI.BALANCE($B5,TEXT(D$4,"mmm yyyy"),TEXT(D$4,"mmm yyyy"),$G$3)</code> → Balance with Subsidiary`;
                 progress.style.lineHeight = '1.6';
                 btnText.textContent = '✓ Report Created!';
                 btn.style.background = '#4CAF50';
@@ -4020,54 +4024,43 @@
                         await context.sync();
                     } catch (e) {}
                     
-                    // Parameters row
-                    sheet.getRange("E2").values = [["YEAR"]];
-                    sheet.getRange("F2").values = [[currentYear]];
-                    sheet.getRange("H2").values = [["Subsidiary"]];
-                    sheet.getRange("I2").values = [[defaultSubsidiary]];
+                    // ========== ROW 2: PARAMETER LABELS (above values) ==========
+                    sheet.getRange("P2").values = [["YEAR"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("R2").values = [["Structure Sync"]];
                     await context.sync();
                     
-                    // Style parameter inputs
+                    // Style parameter labels
                     try {
-                        const yearInput = sheet.getRange("F2");
-                        yearInput.format.fill.color = "#0AE2C1";
-                        yearInput.format.font.bold = true;
-                        yearInput.format.font.color = "#09235C";
-                        
-                        const subInput = sheet.getRange("I2");
-                        subInput.format.fill.color = "#0AE2C1";
-                        subInput.format.font.bold = true;
-                        subInput.format.font.color = "#09235C";
-                        
-                        sheet.getRange("E2").format.font.bold = true;
-                        sheet.getRange("E2").format.font.color = "#09235C";
-                        sheet.getRange("H2").format.font.bold = true;
-                        sheet.getRange("H2").format.font.color = "#09235C";
+                        sheet.getRange("P2").format.font.bold = true;
+                        sheet.getRange("P2").format.font.color = "#09235C";
+                        sheet.getRange("P2").format.font.size = 10;
+                        sheet.getRange("Q2").format.font.bold = true;
+                        sheet.getRange("Q2").format.font.color = "#09235C";
+                        sheet.getRange("Q2").format.font.size = 10;
+                        sheet.getRange("R2").format.font.bold = true;
+                        sheet.getRange("R2").format.font.color = "#09235C";
+                        sheet.getRange("R2").format.font.size = 10;
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ROW 3: SYNC FLAG (Auto-generated marker) ==========
-                    sheet.getRange("A3").values = [["🔄 Structure Sync:"]];
-                    sheet.getRange("B3").values = [["TRUE"]];
-                    sheet.getRange("C3").values = [["← Change to FALSE if you customize this sheet"]];
+                    // ========== ROW 3: PARAMETER VALUES (below labels) ==========
+                    sheet.getRange("P3").values = [[currentYear]];
+                    sheet.getRange("Q3").values = [[defaultSubsidiary]];
+                    sheet.getRange("R3").values = [["TRUE"]];
                     await context.sync();
                     
-                    // Style sync flag
+                    // Style parameter value cells
                     try {
-                        sheet.getRange("A3").format.font.bold = true;
-                        sheet.getRange("A3").format.font.color = "#09235C";
-                        sheet.getRange("A3").format.font.size = 10;
-                        
-                        // Sync value cell - teal like other inputs
-                        const syncInput = sheet.getRange("B3");
-                        syncInput.format.fill.color = "#0AE2C1";
-                        syncInput.format.font.bold = true;
-                        syncInput.format.font.color = "#09235C";
-                        
-                        // Help text - italic gray
-                        sheet.getRange("C3").format.font.italic = true;
-                        sheet.getRange("C3").format.font.color = "#6B7280";
-                        sheet.getRange("C3").format.font.size = 9;
+                        sheet.getRange("P3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("P3").format.font.bold = true;
+                        sheet.getRange("P3").format.font.color = "#09235C";
+                        sheet.getRange("Q3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("Q3").format.font.bold = true;
+                        sheet.getRange("Q3").format.font.color = "#09235C";
+                        sheet.getRange("R3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("R3").format.font.bold = true;
+                        sheet.getRange("R3").format.font.color = "#09235C";
                         await context.sync();
                     } catch (e) {}
                     
@@ -4080,7 +4073,7 @@
                     for (let m = 0; m < 12; m++) {
                         const colLetter = String.fromCharCode(67 + m); // C=67
                         const cell = sheet.getRange(`${colLetter}5`);
-                        cell.formulas = [[`=DATE($F$2,${m + 1},1)`]];
+                        cell.formulas = [[`=DATE($P$3,${m + 1},1)`]];
                     }
                     
                     // YTD column
@@ -4124,7 +4117,7 @@
                         for (let m = 0; m < 12; m++) {
                             const colLetter = String.fromCharCode(67 + m);
                             const cell = sheet.getRange(`${colLetter}${row}`);
-                            cell.formulas = [[`=XAVI.BALANCE($A${row},TEXT(${colLetter}$5,"mmm yyyy"),TEXT(${colLetter}$5,"mmm yyyy"),$I$2)`]];
+                            cell.formulas = [[`=XAVI.BALANCE($A${row},TEXT(${colLetter}$5,"mmm yyyy"),TEXT(${colLetter}$5,"mmm yyyy"),$Q$3)`]];
                         }
                         
                         // YTD formula
@@ -4435,20 +4428,20 @@
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Read A3 to check for sync marker
-                    const markerCell = sheet.getRange("A3");
+                    // Read R2 to check for sync marker label
+                    const markerCell = sheet.getRange("R2");
                     markerCell.load("values");
                     
-                    // Read B3 for sync flag value
-                    const syncCell = sheet.getRange("B3");
+                    // Read R3 for sync flag value
+                    const syncCell = sheet.getRange("R3");
                     syncCell.load("values");
                     
-                    // Read F2 for year
-                    const yearCell = sheet.getRange("F2");
+                    // Read P3 for year
+                    const yearCell = sheet.getRange("P3");
                     yearCell.load("values");
                     
-                    // Read I2 for subsidiary
-                    const subCell = sheet.getRange("I2");
+                    // Read Q3 for subsidiary
+                    const subCell = sheet.getRange("Q3");
                     subCell.load("values");
                     
                     await context.sync();
@@ -4613,35 +4606,42 @@
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ROW 2: PARAMETERS ==========
-                    sheet.getRange("E2").values = [["YEAR"]];
-                    sheet.getRange("F2").values = [[targetYear]];
-                    sheet.getRange("H2").values = [["Subsidiary"]];
-                    sheet.getRange("I2").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
+                    // ========== ROW 2: PARAMETER LABELS (above values) ==========
+                    sheet.getRange("P2").values = [["YEAR"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("R2").values = [["Structure Sync"]];
                     await context.sync();
                     
                     try {
-                        sheet.getRange("F2").format.fill.color = "#0AE2C1";
-                        sheet.getRange("F2").format.font.bold = true;
-                        sheet.getRange("I2").format.fill.color = "#0AE2C1";
-                        sheet.getRange("I2").format.font.bold = true;
-                        sheet.getRange("E2").format.font.bold = true;
-                        sheet.getRange("H2").format.font.bold = true;
+                        sheet.getRange("P2").format.font.bold = true;
+                        sheet.getRange("P2").format.font.color = "#09235C";
+                        sheet.getRange("P2").format.font.size = 10;
+                        sheet.getRange("Q2").format.font.bold = true;
+                        sheet.getRange("Q2").format.font.color = "#09235C";
+                        sheet.getRange("Q2").format.font.size = 10;
+                        sheet.getRange("R2").format.font.bold = true;
+                        sheet.getRange("R2").format.font.color = "#09235C";
+                        sheet.getRange("R2").format.font.size = 10;
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ROW 3: SYNC FLAG ==========
-                    sheet.getRange("A3").values = [["🔄 Structure Sync:"]];
-                    sheet.getRange("B3").values = [["TRUE"]];
-                    sheet.getRange("C3").values = [["← Change to FALSE if you customize this sheet"]];
+                    // ========== ROW 3: PARAMETER VALUES (below labels) ==========
+                    sheet.getRange("P3").values = [[targetYear]];
+                    sheet.getRange("Q3").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
+                    sheet.getRange("R3").values = [["TRUE"]];
                     await context.sync();
                     
                     try {
-                        sheet.getRange("A3").format.font.bold = true;
-                        sheet.getRange("B3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("B3").format.font.bold = true;
-                        sheet.getRange("C3").format.font.italic = true;
-                        sheet.getRange("C3").format.font.color = "#6B7280";
+                        // Style input cells with teal background
+                        sheet.getRange("P3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("P3").format.font.bold = true;
+                        sheet.getRange("P3").format.font.color = "#09235C";
+                        sheet.getRange("Q3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("Q3").format.font.bold = true;
+                        sheet.getRange("Q3").format.font.color = "#09235C";
+                        sheet.getRange("R3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("R3").format.font.bold = true;
+                        sheet.getRange("R3").format.font.color = "#09235C";
                         await context.sync();
                     } catch (e) {}
                     
@@ -4650,7 +4650,7 @@
                     sheet.getRange("B5").values = [["Account Name"]];
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
-                        sheet.getRange(`${col}5`).formulas = [[`=DATE($F$2,${m + 1},1)`]];
+                        sheet.getRange(`${col}5`).formulas = [[`=DATE($P$3,${m + 1},1)`]];
                     }
                     sheet.getRange("O5").values = [["YTD Total"]];
                     await context.sync();
@@ -4660,6 +4660,15 @@
                         sheet.getRange("A5:O5").format.font.color = "#FFFFFF";
                         sheet.getRange("A5:O5").format.fill.color = "#09235C";
                         sheet.getRange("C5:N5").numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Set column widths to prevent parameter text from affecting month columns
+                    try {
+                        sheet.getRange("A:A").format.columnWidth = 80;  // Account #
+                        sheet.getRange("B:B").format.columnWidth = 180; // Account Name
+                        sheet.getRange("C:N").format.columnWidth = 85;  // Month columns (fixed width)
+                        sheet.getRange("O:O").format.columnWidth = 90;  // YTD Total
                         await context.sync();
                     } catch (e) {}
                     
@@ -4681,7 +4690,7 @@
                         sheet.getRange(`B${row}`).values = [[acct.name]];
                         for (let m = 0; m < 12; m++) {
                             const col = String.fromCharCode(67 + m);
-                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$I$2)`]];
+                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];
                         }
                         sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                     };
@@ -5995,9 +6004,9 @@ export default {
                     
                     // Register for changes on the worksheet
                     sheet.onChanged.add(async (event) => {
-                        // Check if the changed cell is F2 (YEAR parameter)
-                        if (event.address === 'F2' || event.address === '$F$2') {
-                            console.log('📊 YEAR cell (F2) changed - checking for auto-sync...');
+                        // Check if the changed cell is P3 (YEAR parameter)
+                        if (event.address === 'P3' || event.address === '$P$3') {
+                            console.log('📊 YEAR cell (P3) changed - checking for auto-sync...');
                             await handleYearChange();
                         }
                     });
@@ -6030,14 +6039,14 @@ export default {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Check for sync marker
-                    const markerCell = sheet.getRange("A3");
+                    // Check for sync marker (R2 = label, R3 = value)
+                    const markerCell = sheet.getRange("R2");
                     markerCell.load("values");
-                    const syncCell = sheet.getRange("B3");
+                    const syncCell = sheet.getRange("R3");
                     syncCell.load("values");
-                    const yearCell = sheet.getRange("F2");
+                    const yearCell = sheet.getRange("P3");
                     yearCell.load("values");
-                    const subCell = sheet.getRange("I2");
+                    const subCell = sheet.getRange("Q3");
                     subCell.load("values");
                     
                     await context.sync();
@@ -6165,35 +6174,41 @@ export default {
                         await context.sync();
                     } catch (e) {}
                     
-                    // ROW 2: PARAMETERS
-                    sheet.getRange("E2").values = [["YEAR"]];
-                    sheet.getRange("F2").values = [[targetYear]];
-                    sheet.getRange("H2").values = [["Subsidiary"]];
-                    sheet.getRange("I2").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
+                    // ROW 2: PARAMETER LABELS (above values)
+                    sheet.getRange("P2").values = [["YEAR"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("R2").values = [["Structure Sync"]];
                     await context.sync();
                     
                     try {
-                        sheet.getRange("F2").format.fill.color = "#0AE2C1";
-                        sheet.getRange("F2").format.font.bold = true;
-                        sheet.getRange("I2").format.fill.color = "#0AE2C1";
-                        sheet.getRange("I2").format.font.bold = true;
-                        sheet.getRange("E2").format.font.bold = true;
-                        sheet.getRange("H2").format.font.bold = true;
+                        sheet.getRange("P2").format.font.bold = true;
+                        sheet.getRange("P2").format.font.color = "#09235C";
+                        sheet.getRange("P2").format.font.size = 10;
+                        sheet.getRange("Q2").format.font.bold = true;
+                        sheet.getRange("Q2").format.font.color = "#09235C";
+                        sheet.getRange("Q2").format.font.size = 10;
+                        sheet.getRange("R2").format.font.bold = true;
+                        sheet.getRange("R2").format.font.color = "#09235C";
+                        sheet.getRange("R2").format.font.size = 10;
                         await context.sync();
                     } catch (e) {}
                     
-                    // ROW 3: SYNC FLAG
-                    sheet.getRange("A3").values = [["🔄 Structure Sync:"]];
-                    sheet.getRange("B3").values = [["TRUE"]];
-                    sheet.getRange("C3").values = [["← Change to FALSE if you customize this sheet"]];
+                    // ROW 3: PARAMETER VALUES (below labels)
+                    sheet.getRange("P3").values = [[targetYear]];
+                    sheet.getRange("Q3").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
+                    sheet.getRange("R3").values = [["TRUE"]];
                     await context.sync();
                     
                     try {
-                        sheet.getRange("A3").format.font.bold = true;
-                        sheet.getRange("B3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("B3").format.font.bold = true;
-                        sheet.getRange("C3").format.font.italic = true;
-                        sheet.getRange("C3").format.font.color = "#6B7280";
+                        sheet.getRange("P3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("P3").format.font.bold = true;
+                        sheet.getRange("P3").format.font.color = "#09235C";
+                        sheet.getRange("Q3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("Q3").format.font.bold = true;
+                        sheet.getRange("Q3").format.font.color = "#09235C";
+                        sheet.getRange("R3").format.fill.color = "#0AE2C1";
+                        sheet.getRange("R3").format.font.bold = true;
+                        sheet.getRange("R3").format.font.color = "#09235C";
                         await context.sync();
                     } catch (e) {}
                     
@@ -6202,7 +6217,7 @@ export default {
                     sheet.getRange("B5").values = [["Account Name"]];
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
-                        sheet.getRange(`${col}5`).formulas = [[`=DATE($F$2,${m + 1},1)`]];
+                        sheet.getRange(`${col}5`).formulas = [[`=DATE($P$3,${m + 1},1)`]];
                     }
                     sheet.getRange("O5").values = [["YTD Total"]];
                     await context.sync();
@@ -6212,6 +6227,15 @@ export default {
                         sheet.getRange("A5:O5").format.font.color = "#FFFFFF";
                         sheet.getRange("A5:O5").format.fill.color = "#09235C";
                         sheet.getRange("C5:N5").numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Set column widths to prevent parameter text from affecting month columns
+                    try {
+                        sheet.getRange("A:A").format.columnWidth = 80;  // Account #
+                        sheet.getRange("B:B").format.columnWidth = 180; // Account Name
+                        sheet.getRange("C:N").format.columnWidth = 85;  // Month columns (fixed width)
+                        sheet.getRange("O:O").format.columnWidth = 90;  // YTD Total
                         await context.sync();
                     } catch (e) {}
                     
@@ -6232,7 +6256,7 @@ export default {
                         sheet.getRange(`B${row}`).values = [[acct.name]];
                         for (let m = 0; m < 12; m++) {
                             const col = String.fromCharCode(67 + m);
-                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$I$2)`]];
+                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];
                         }
                         sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                     };
@@ -6553,19 +6577,19 @@ export default {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Check A3 for sync marker
-                    const markerCell = sheet.getRange("A3");
+                    // Check R2 for sync marker label
+                    const markerCell = sheet.getRange("R2");
                     markerCell.load("values");
                     
-                    // Check B3 for sync flag
-                    const syncCell = sheet.getRange("B3");
+                    // Check R3 for sync flag value
+                    const syncCell = sheet.getRange("R3");
                     syncCell.load("values");
                     
                     // Get year and subsidiary if this is an auto-generated sheet
-                    const yearCell = sheet.getRange("F2");
+                    const yearCell = sheet.getRange("P3");
                     yearCell.load("values");
                     
-                    const subCell = sheet.getRange("I2");
+                    const subCell = sheet.getRange("Q3");
                     subCell.load("values");
                     
                     await context.sync();
@@ -6671,35 +6695,41 @@ export default {
                                 await context.sync();
                             } catch (e) {}
                             
-                            // ===== ROW 2: PARAMETERS =====
-                            sheet.getRange("E2").values = [["YEAR"]];
-                            sheet.getRange("F2").values = [[syncYear]];
-                            sheet.getRange("H2").values = [["Subsidiary"]];
-                            sheet.getRange("I2").values = [[syncSubsidiary || 'Celigo Inc. (Consolidated)']];
+                            // ===== ROW 2: PARAMETER LABELS =====
+                            sheet.getRange("P2").values = [["YEAR"]];
+                            sheet.getRange("Q2").values = [["Subsidiary"]];
+                            sheet.getRange("R2").values = [["Structure Sync"]];
                             await context.sync();
                             
                             try {
-                                sheet.getRange("F2").format.fill.color = "#0AE2C1";
-                                sheet.getRange("F2").format.font.bold = true;
-                                sheet.getRange("I2").format.fill.color = "#0AE2C1";
-                                sheet.getRange("I2").format.font.bold = true;
-                                sheet.getRange("E2").format.font.bold = true;
-                                sheet.getRange("H2").format.font.bold = true;
+                                sheet.getRange("P2").format.font.bold = true;
+                                sheet.getRange("P2").format.font.color = "#09235C";
+                                sheet.getRange("P2").format.font.size = 10;
+                                sheet.getRange("Q2").format.font.bold = true;
+                                sheet.getRange("Q2").format.font.color = "#09235C";
+                                sheet.getRange("Q2").format.font.size = 10;
+                                sheet.getRange("R2").format.font.bold = true;
+                                sheet.getRange("R2").format.font.color = "#09235C";
+                                sheet.getRange("R2").format.font.size = 10;
                                 await context.sync();
                             } catch (e) {}
                             
-                            // ===== ROW 3: SYNC FLAG =====
-                            sheet.getRange("A3").values = [["🔄 Structure Sync:"]];
-                            sheet.getRange("B3").values = [["TRUE"]];
-                            sheet.getRange("C3").values = [["← Change to FALSE if you customize this sheet"]];
+                            // ===== ROW 3: PARAMETER VALUES =====
+                            sheet.getRange("P3").values = [[syncYear]];
+                            sheet.getRange("Q3").values = [[syncSubsidiary || 'Celigo Inc. (Consolidated)']];
+                            sheet.getRange("R3").values = [["TRUE"]];
                             await context.sync();
                             
                             try {
-                                sheet.getRange("A3").format.font.bold = true;
-                                sheet.getRange("B3").format.fill.color = "#0AE2C1";
-                                sheet.getRange("B3").format.font.bold = true;
-                                sheet.getRange("C3").format.font.italic = true;
-                                sheet.getRange("C3").format.font.color = "#6B7280";
+                                sheet.getRange("P3").format.fill.color = "#0AE2C1";
+                                sheet.getRange("P3").format.font.bold = true;
+                                sheet.getRange("P3").format.font.color = "#09235C";
+                                sheet.getRange("Q3").format.fill.color = "#0AE2C1";
+                                sheet.getRange("Q3").format.font.bold = true;
+                                sheet.getRange("Q3").format.font.color = "#09235C";
+                                sheet.getRange("R3").format.fill.color = "#0AE2C1";
+                                sheet.getRange("R3").format.font.bold = true;
+                                sheet.getRange("R3").format.font.color = "#09235C";
                                 await context.sync();
                             } catch (e) {}
                             
@@ -6708,7 +6738,7 @@ export default {
                             sheet.getRange("B5").values = [["Account Name"]];
                             for (let m = 0; m < 12; m++) {
                                 const col = String.fromCharCode(67 + m);
-                                sheet.getRange(`${col}5`).formulas = [[`=DATE($F$2,${m + 1},1)`]];
+                                sheet.getRange(`${col}5`).formulas = [[`=DATE($P$3,${m + 1},1)`]];
                             }
                             sheet.getRange("O5").values = [["YTD Total"]];
                             await context.sync();
@@ -6718,6 +6748,15 @@ export default {
                                 sheet.getRange("A5:O5").format.font.color = "#FFFFFF";
                                 sheet.getRange("A5:O5").format.fill.color = "#09235C";
                                 sheet.getRange("C5:N5").numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
+                                await context.sync();
+                            } catch (e) {}
+                            
+                            // Set column widths to prevent parameter text from affecting month columns
+                            try {
+                                sheet.getRange("A:A").format.columnWidth = 80;  // Account #
+                                sheet.getRange("B:B").format.columnWidth = 180; // Account Name
+                                sheet.getRange("C:N").format.columnWidth = 85;  // Month columns (fixed width)
+                                sheet.getRange("O:O").format.columnWidth = 90;  // YTD Total
                                 await context.sync();
                             } catch (e) {}
                             
@@ -6739,7 +6778,7 @@ export default {
                                 sheet.getRange(`B${row}`).values = [[acct.name]];
                                 for (let m = 0; m < 12; m++) {
                                     const col = String.fromCharCode(67 + m);
-                                    sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$I$2)`]];
+                                    sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];
                                 }
                                 sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                             };
