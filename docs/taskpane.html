@@ -2629,7 +2629,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.39.0';
+        const ADDIN_VERSION = '1.5.40.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -3366,39 +3366,147 @@
                 // Step 3: Build the Excel template
                 updateProgress(60, '📊 Step 3 of 4: Building Template', 'Creating headers and formatting...');
                 
+                // Get the default/parent subsidiary for the parameter cell
+                let defaultSubsidiary = 'Celigo Inc. (Consolidated)'; // Will be fetched
+                try {
+                    const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
+                    if (lookupsResponse.ok) {
+                        const lookups = await lookupsResponse.json();
+                        // Find the first consolidated/parent subsidiary
+                        if (lookups.subsidiaries && lookups.subsidiaries.length > 0) {
+                            // Look for one with "(Consolidated)" or the first one
+                            const consolidated = lookups.subsidiaries.find(s => 
+                                s.name.toLowerCase().includes('consolidated') || 
+                                s.name.toLowerCase().includes('parent')
+                            );
+                            defaultSubsidiary = consolidated ? consolidated.name : lookups.subsidiaries[0].name;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Guide Me: Could not fetch subsidiary, using default');
+                }
+                
                 await Excel.run(async (context) => {
                     console.log('Guide Me: Starting Excel.run');
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
                     // Try to rename sheet (may fail if name exists)
                     try {
-                        sheet.name = "Financial Report";
+                        sheet.name = "Income Statement";
                         await context.sync();
                     } catch (e) {
                         console.log('Guide Me: Sheet rename skipped');
                     }
                     
-                    // Skip gridlines - can cause issues on Mac
-                    // sheet.showGridlines = false;
+                    // ========================================
+                    // ROW 1-2: PARAMETER SECTION
+                    // ========================================
+                    console.log('Guide Me: Creating parameter section...');
                     
-                    console.log('Guide Me: Writing text headers...');
+                    // Row 1: Title/spacing
+                    const titleCell = sheet.getRange("A1");
+                    titleCell.values = [["📊 Income Statement Parameters"]];
+                    await context.sync();
                     
-                    // Write text headers (A1:C1) - one at a time for Mac compatibility
-                    const cellA1 = sheet.getRange("A1");
-                    cellA1.values = [["Type"]];
+                    try {
+                        titleCell.format.font.bold = true;
+                        titleCell.format.font.size = 14;
+                        titleCell.format.font.color = "#09235C";
+                        await context.sync();
+                    } catch (e) {}
                     
-                    const cellB1 = sheet.getRange("B1");
-                    cellB1.values = [["Account #"]];
+                    // Row 2: Parameter labels and values
+                    // YEAR parameter
+                    const yearLabel = sheet.getRange("E2");
+                    yearLabel.values = [["YEAR"]];
                     
-                    const cellC1 = sheet.getRange("C1");
-                    cellC1.values = [["Account Name"]];
+                    const yearValue = sheet.getRange("F2");
+                    yearValue.values = [[currentYear]];
+                    
+                    // Subsidiary parameter  
+                    const subLabel = sheet.getRange("H2");
+                    subLabel.values = [["Subsidiary"]];
+                    
+                    const subValue = sheet.getRange("I2");
+                    subValue.values = [[defaultSubsidiary]];
+                    
+                    await context.sync();
+                    console.log('Guide Me: Parameter values written');
+                    
+                    // Style parameter labels (dark blue text, bold)
+                    try {
+                        const labelRange = sheet.getRange("E2");
+                        labelRange.format.font.bold = true;
+                        labelRange.format.font.color = "#09235C";
+                        
+                        const subLabelRange = sheet.getRange("H2");
+                        subLabelRange.format.font.bold = true;
+                        subLabelRange.format.font.color = "#09235C";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Style parameter INPUT cells (brand teal background, white text, border)
+                    try {
+                        // Year input cell - teal/anenome color
+                        const yearInput = sheet.getRange("F2");
+                        yearInput.format.fill.color = "#0AE2C1"; // Anenome teal
+                        yearInput.format.font.bold = true;
+                        yearInput.format.font.color = "#09235C";
+                        yearInput.format.borders.getItem('EdgeTop').style = 'Continuous';
+                        yearInput.format.borders.getItem('EdgeBottom').style = 'Continuous';
+                        yearInput.format.borders.getItem('EdgeLeft').style = 'Continuous';
+                        yearInput.format.borders.getItem('EdgeRight').style = 'Continuous';
+                        yearInput.format.borders.getItem('EdgeTop').color = '#09235C';
+                        yearInput.format.borders.getItem('EdgeBottom').color = '#09235C';
+                        yearInput.format.borders.getItem('EdgeLeft').color = '#09235C';
+                        yearInput.format.borders.getItem('EdgeRight').color = '#09235C';
+                        
+                        // Subsidiary input cell - teal/anenome color
+                        const subInput = sheet.getRange("I2");
+                        subInput.format.fill.color = "#0AE2C1"; // Anenome teal
+                        subInput.format.font.bold = true;
+                        subInput.format.font.color = "#09235C";
+                        subInput.format.borders.getItem('EdgeTop').style = 'Continuous';
+                        subInput.format.borders.getItem('EdgeBottom').style = 'Continuous';
+                        subInput.format.borders.getItem('EdgeLeft').style = 'Continuous';
+                        subInput.format.borders.getItem('EdgeRight').style = 'Continuous';
+                        subInput.format.borders.getItem('EdgeTop').color = '#09235C';
+                        subInput.format.borders.getItem('EdgeBottom').color = '#09235C';
+                        subInput.format.borders.getItem('EdgeLeft').color = '#09235C';
+                        subInput.format.borders.getItem('EdgeRight').color = '#09235C';
+                        
+                        await context.sync();
+                        console.log('Guide Me: Parameter styling applied');
+                    } catch (styleErr) {
+                        console.warn('Guide Me: Parameter style warning:', styleErr.message);
+                    }
+                    
+                    // ========================================
+                    // ROW 3: Blank separator
+                    // ========================================
+                    
+                    // ========================================
+                    // ROW 4: COLUMN HEADERS
+                    // ========================================
+                    const headerRow = 4;
+                    console.log('Guide Me: Writing column headers...');
+                    
+                    // Write text headers (A4:C4)
+                    const cellA4 = sheet.getRange("A4");
+                    cellA4.values = [["Type"]];
+                    
+                    const cellB4 = sheet.getRange("B4");
+                    cellB4.values = [["Account #"]];
+                    
+                    const cellC4 = sheet.getRange("C4");
+                    cellC4.values = [["Account Name"]];
                     
                     await context.sync();
                     console.log('Guide Me: Text header values written');
                     
-                    // Format header row - separate from values
+                    // Format header row
                     try {
-                        const headerRange = sheet.getRange("A1:C1");
+                        const headerRange = sheet.getRange("A4:C4");
                         headerRange.format.font.bold = true;
                         headerRange.format.font.color = "#FFFFFF";
                         headerRange.format.fill.color = "#09235C";
@@ -3408,21 +3516,25 @@
                         console.warn('Guide Me: Header format warning:', formatErr.message);
                     }
                     
-                    console.log('Guide Me: Writing date headers...');
+                    console.log('Guide Me: Writing date headers with dynamic year formula...');
                     
-                    // Write date headers (D1:O1) using DATE formula - one at a time
+                    // Write date headers (D4:O4) using DATE formula that references the YEAR parameter
+                    // Formula: =DATE($F$2, COLUMN()-COLUMN($C$4)+1, 1)
+                    // D4 = month 1, E4 = month 2, etc.
                     for (let m = 0; m < 12; m++) {
                         const colLetter = String.fromCharCode(68 + m); // D=68
-                        const cell = sheet.getRange(`${colLetter}1`);
-                        cell.formulas = [[`=DATE(${currentYear},${m + 1},1)`]];
+                        const cell = sheet.getRange(`${colLetter}4`);
+                        // COLUMN(D4)=4, COLUMN($C$4)=3, so 4-3+1=2... we need 4-3=1 for Jan
+                        // Actually: COLUMN()-COLUMN($C$4) gives D=4-3=1, E=5-3=2, etc. Perfect!
+                        cell.formulas = [[`=DATE($F$2,COLUMN()-COLUMN($C$4),1)`]];
                     }
                     
                     await context.sync();
                     console.log('Guide Me: Date formulas written');
                     
-                    // Format month headers - separate step
+                    // Format month headers
                     try {
-                        const monthHeaderRange = sheet.getRange("D1:O1");
+                        const monthHeaderRange = sheet.getRange("D4:O4");
                         monthHeaderRange.numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
                         monthHeaderRange.format.font.bold = true;
                         monthHeaderRange.format.font.color = "#FFFFFF";
@@ -3433,16 +3545,16 @@
                         console.warn('Guide Me: Month format warning:', monthFormatErr.message);
                     }
                     
-                    // Write YTD Total header (P1)
-                    const totalHeaderRange = sheet.getRange("P1");
+                    // Write YTD Total header (P4)
+                    const totalHeaderRange = sheet.getRange("P4");
                     totalHeaderRange.values = [['YTD Total']];
                     
                     await context.sync();
                     console.log('Guide Me: YTD header written');
                     
-                    // Format YTD header - separate step
+                    // Format YTD header
                     try {
-                        const ytdRange = sheet.getRange("P1");
+                        const ytdRange = sheet.getRange("P4");
                         ytdRange.format.font.bold = true;
                         ytdRange.format.font.color = "#FFFFFF";
                         ytdRange.format.fill.color = "#09235C";
@@ -3452,12 +3564,17 @@
                         console.warn('Guide Me: YTD format warning:', ytdFormatErr.message);
                     }
                     
+                    // ========================================
+                    // ROW 5+: DATA ROWS
+                    // ========================================
                     updateProgress(70, '📝 Step 4 of 4: Adding Formulas', `Writing ${allAccounts.length} accounts...`);
+                    
+                    const dataStartRow = 5; // Data starts at row 5
                     
                     // Write ALL 35 rows of account numbers, but only first 25 get formulas
                     for (let i = 0; i < allAccounts.length; i++) {
                         const acct = allAccounts[i];
-                        const rowNum = i + 2;
+                        const rowNum = dataStartRow + i; // Row 5, 6, 7, ...
                         
                         // Validate account number
                         if (!acct || !acct.number) {
@@ -3468,7 +3585,6 @@
                         try {
                             // Column B: Account NUMBER (always populated)
                             const numCell = sheet.getRange(`B${rowNum}`);
-                            // Ensure account number is a string for consistent Excel handling
                             const acctNum = String(acct.number);
                             numCell.values = [[acctNum]];
                             
@@ -3482,11 +3598,12 @@
                                 const nameCell = sheet.getRange(`C${rowNum}`);
                                 nameCell.formulas = [[`=XAVI.NAME(B${rowNum})`]];
                                 
-                                // Columns D-O: BALANCE formulas
+                                // Columns D-O: BALANCE formulas with SUBSIDIARY parameter
+                                // Formula: =XAVI.BALANCE($B5, TEXT(D$4,"mmm yyyy"), TEXT(D$4,"mmm yyyy"), $I$2)
                                 for (let m = 0; m < 12; m++) {
                                     const colLetter = String.fromCharCode(68 + m);
                                     const cell = sheet.getRange(`${colLetter}${rowNum}`);
-                                    cell.formulas = [[`=XAVI.BALANCE($B${rowNum},TEXT(${colLetter}$1,"mmm yyyy"),TEXT(${colLetter}$1,"mmm yyyy"))`]];
+                                    cell.formulas = [[`=XAVI.BALANCE($B${rowNum},TEXT(${colLetter}$4,"mmm yyyy"),TEXT(${colLetter}$4,"mmm yyyy"),$I$2)`]];
                                 }
                                 
                                 // Column P: YTD Total formula
@@ -3494,14 +3611,13 @@
                                 totalCell.formulas = [[`=SUM(D${rowNum}:O${rowNum})`]];
                             }
                             
-                            // Alternating row colors for all 35 rows
+                            // Alternating row colors
                             if (i % 2 === 0) {
                                 const rowRange = sheet.getRange(`A${rowNum}:P${rowNum}`);
                                 rowRange.format.fill.color = "#F5F7FA";
                             }
                         } catch (rowError) {
                             console.error(`Guide Me: Error writing row ${rowNum}:`, rowError.message);
-                            // Continue with next row
                         }
                         
                         // Update progress every 5 rows
@@ -3519,44 +3635,41 @@
                     
                     // Format number columns as CURRENCY with no decimals
                     try {
-                        const lastDataRow = Math.min(allAccounts.length + 1, 36); // Safety limit
-                        const numRange = sheet.getRange(`D2:P${lastDataRow}`);
-                        // Use 2D array for numberFormat to ensure compatibility across platforms
-                        const formatRows = lastDataRow - 1; // rows 2 through lastDataRow
+                        const lastDataRow = dataStartRow + Math.min(allAccounts.length, 35) - 1;
+                        const numRange = sheet.getRange(`D${dataStartRow}:P${lastDataRow}`);
+                        const formatRows = lastDataRow - dataStartRow + 1;
                         const formatCols = 13; // columns D through P
                         const numberFormatArray = Array(formatRows).fill(null).map(() => 
                             Array(formatCols).fill('"$"#,##0')
                         );
                         numRange.numberFormat = numberFormatArray;
-                        console.log(`Guide Me: Applied number format to D2:P${lastDataRow}`);
+                        console.log(`Guide Me: Applied number format to D${dataStartRow}:P${lastDataRow}`);
                     } catch (formatError) {
                         console.warn('Guide Me: Number format warning:', formatError.message);
-                        // Continue anyway - formatting is not critical
                     }
                     
                     await context.sync();
                     
-                    // Add LEFT BORDER to YTD Total column (P) to separate it visually
+                    // Add LEFT BORDER to YTD Total column (P)
                     try {
-                        const lastDataRow = Math.min(allAccounts.length + 1, 36);
-                        const totalColumn = sheet.getRange(`P1:P${lastDataRow}`);
+                        const lastDataRow = dataStartRow + Math.min(allAccounts.length, 35) - 1;
+                        const totalColumn = sheet.getRange(`P4:P${lastDataRow}`);
                         const leftBorder = totalColumn.format.borders.getItem('EdgeLeft');
                         leftBorder.style = 'Continuous';
                         leftBorder.weight = 'Medium';
                         leftBorder.color = '#09235C';
-                        console.log(`Guide Me: Applied border to P1:P${lastDataRow}`);
+                        console.log(`Guide Me: Applied border to P4:P${lastDataRow}`);
                     } catch (borderError) {
                         console.warn('Guide Me: Border formatting warning:', borderError.message);
-                        // Continue anyway - formatting is not critical
                     }
                     
                     await context.sync();
                     
                     updateProgress(96, '🎨 Finishing Up', 'Finalizing layout...');
                     
-                    // Freeze header row
+                    // Freeze rows 1-4 (parameters + header)
                     try {
-                        sheet.freezePanes.freezeRows(1);
+                        sheet.freezePanes.freezeRows(4);
                         console.log('Guide Me: Froze header row');
                     } catch (freezeError) {
                         console.warn('Guide Me: Freeze panes warning:', freezeError.message);
@@ -3575,6 +3688,8 @@
                 
                 // Calculate how many rows need formulas extended
                 const extraRows = Math.min(10, allAccounts.length - formulaRows);
+                const lastFormulaRow = 4 + formulaRows; // Row 29 (4 header rows + 25 formula rows)
+                const lastDataRow = 4 + allAccounts.length; // Row 39 (4 header rows + 35 data rows)
                 
                 // Success message
                 progress.style.display = 'block';
@@ -3582,17 +3697,20 @@
                     We loaded <strong>${allAccounts.length} accounts</strong> with data for ${currentYear}. 
                     The first <strong>${formulaRows} rows have formulas</strong>—the remaining ${extraRows} rows have account numbers ready for you to extend.<br><br>
                     <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--anenome);">
-                        ⏳ <strong>Note:</strong> You may see <code>#BUSY</code> in cells for a few seconds as the Financial Reporting Engine finishes loading the data. This is normal!
+                        📊 <strong>Parameters:</strong> Change the <strong>YEAR</strong> (F2) or <strong>Subsidiary</strong> (I2) to refresh all formulas automatically!
                     </div>
-                    <strong>To extend formulas to rows 27-36:</strong><br>
-                    1. Select cells <strong>A26:C26</strong> (Type, Account#, Name)<br>
-                    2. Drag the fill handle down to row 36<br>
-                    3. Then select <strong>D26:P26</strong> (Jan through YTD Total)<br>
-                    4. Drag down to row 36<br><br>
+                    <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--anenome);">
+                        ⏳ <strong>Note:</strong> You may see <code>#BUSY</code> in cells for a few seconds as data loads. This is normal!
+                    </div>
+                    <strong>To extend formulas to rows ${lastFormulaRow + 1}-${lastDataRow}:</strong><br>
+                    1. Select cells <strong>A${lastFormulaRow}:C${lastFormulaRow}</strong> (Type, Account#, Name)<br>
+                    2. Drag the fill handle down to row ${lastDataRow}<br>
+                    3. Then select <strong>D${lastFormulaRow}:P${lastFormulaRow}</strong> (Jan through YTD Total)<br>
+                    4. Drag down to row ${lastDataRow}<br><br>
                     <strong>Formula Reference:</strong><br>
-                    • <code>=XAVI.TYPE(B2)</code> → Account Type<br>
-                    • <code>=XAVI.NAME(B2)</code> → Account Name<br>
-                    • <code>=XAVI.BALANCE($B2, ...)</code> → Monthly Balance`;
+                    • <code>=XAVI.TYPE(B5)</code> → Account Type<br>
+                    • <code>=XAVI.NAME(B5)</code> → Account Name<br>
+                    • <code>=XAVI.BALANCE($B5,TEXT(D$4,"mmm yyyy"),TEXT(D$4,"mmm yyyy"),$I$2)</code> → Balance with Subsidiary`;
                 progress.style.lineHeight = '1.6';
                 btnText.textContent = '✓ Report Created!';
                 btn.style.background = '#4CAF50';
