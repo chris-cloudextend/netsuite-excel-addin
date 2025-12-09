@@ -2124,25 +2124,25 @@
                         </div>
                         
                         <div class="action-grid">
-                            <button class="action-btn primary" onclick="refreshCurrentSheet()" title="Refreshes all BALANCE formulas on this sheet. Auto-detects P&L and Balance Sheet accounts. P&L loads quickly (~30s/year), Balance Sheet takes 2-3 minutes.">
+                            <button class="action-btn primary" onclick="refreshCurrentSheet()">
                                 <span class="action-icon">⚡</span>
                                 <span class="action-text">Refresh Accounts</span>
                                 <span class="help-icon small" data-tip="Refreshes all BALANCE formulas on this sheet. Auto-detects P&L and Balance Sheet accounts. P&L loads quickly (~30s/year), Balance Sheet takes 2-3 minutes.">?</span>
                             </button>
                             
-                            <button class="action-btn secondary" onclick="refreshSelected()" title="Re-calculates only the cells you've selected. Faster than Refresh Accounts for quick updates.">
+                            <button class="action-btn secondary" onclick="refreshSelected()">
                                 <span class="action-icon">🎯</span>
                                 <span class="action-text">Refresh Selected</span>
                                 <span class="help-icon small" data-tip="Re-calculates only the cells you've selected. Faster than Refresh Accounts for quick updates.">?</span>
                             </button>
                             
-                            <button class="action-btn warning" onclick="recalculateSpecialFormulas()" title="Retained Earnings, Net Income, and Cumulative Translation Adjustment (CTA) require scanning your entire transaction history and applying currency consolidation. This can take up to 5 minutes. When to recalculate: After posting journal entries, after period close, or when values seem stale. You can continue working in your sheet while recalculating.">
+                            <button class="action-btn warning" onclick="recalculateSpecialFormulas()">
                                 <span class="action-icon">📊</span>
                                 <span class="action-text">Recalculate Retained Earnings</span>
                                 <span class="help-icon small" data-tip="Retained Earnings, Net Income, and Cumulative Translation Adjustment (CTA) require scanning your entire transaction history and applying currency consolidation. This can take up to 5 minutes. When to recalculate: After posting journal entries, after period close, or when values seem stale. You can continue working in your sheet while recalculating.">?</span>
                             </button>
                             
-                            <button class="action-btn danger" onclick="clearCache()" title="Erases all cached data. Forces formulas to re-query NetSuite on next calculation.">
+                            <button class="action-btn danger" onclick="clearCache()">
                                 <span class="action-icon">🗑️</span>
                                 <span class="action-text">Clear Cache</span>
                                 <span class="help-icon small" data-tip="Erases all cached data. Forces formulas to re-query NetSuite on next calculation.">?</span>
@@ -2627,7 +2627,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.35.0';
+        const ADDIN_VERSION = '1.5.36.0';
         
         // ============================================
         // REFRESH CANCELLATION
