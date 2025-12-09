@@ -1078,7 +1078,7 @@
             font-size: 9px;
         }
         
-        /* Modern tooltip - shows BELOW icon, constrained to taskpane */
+        /* Lightweight tooltip - smaller, lighter background, left-aligned */
         .help-icon[data-tip] {
             position: relative;
         }
@@ -1091,23 +1091,25 @@
             right: 16px;
             width: auto;
             max-width: calc(100vw - 32px);
-            background: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
-            color: white;
-            padding: 12px 14px;
-            border-radius: 10px;
-            font-size: 12px;
+            background: #f0f4f8;
+            color: #1a365d;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 11px;
             font-weight: 400;
             white-space: normal;
-            line-height: 1.5;
+            line-height: 1.4;
+            text-align: left;
             z-index: 10000;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15);
-            animation: tooltipFadeIn 0.2s ease-out;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            animation: tooltipFadeIn 0.15s ease-out;
             pointer-events: none;
+            border: 1px solid #e2e8f0;
         }
         
         /* Position tooltip near the bottom of viewport for visibility */
         .help-icon[data-tip]:hover::after {
-            bottom: 80px;
+            bottom: 60px;
         }
         
         /* Arrow pointing up from tooltip */
@@ -1118,7 +1120,7 @@
         @keyframes tooltipFadeIn {
             from {
                 opacity: 0;
-                transform: translateY(8px);
+                transform: translateY(4px);
             }
             to {
                 opacity: 1;
@@ -2627,7 +2629,7 @@
         // ========================================================================
         // VERSION - Single source of truth (update here when version changes)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.36.0';
+        const ADDIN_VERSION = '1.5.37.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -5147,11 +5149,16 @@ export default {
                 
                 console.log(`📦 Preparing to save: ${accountsLoaded} accounts, ${periodsLoaded} period values`);
                 
-                // CRITICAL: Check if allBalances has data - if not, this is a major error
+                // Log the data status (not an error if there are simply no accounts on the sheet)
                 if (accountsLoaded === 0) {
-                    console.error('❌ CRITICAL: No balance data loaded! allBalances is empty.');
-                    showToast({ type: 'error', title: 'No Data Loaded', 
-                        message: 'Failed to load any balance data from the server. Check tunnel connection.', duration: 15000 });
+                    // Only show error if we had accounts to fetch but got nothing back
+                    // This is NOT an error if the sheet simply has no BALANCE formulas
+                    if (cellsToUpdate.length > 0) {
+                        console.warn('⚠️ No balance data loaded but BALANCE formulas exist on sheet');
+                        // Don't show error toast - formulas will individually resolve via cache misses
+                    } else {
+                        console.log('📊 No BALANCE formulas detected on sheet - nothing to cache');
+                    }
                 } else {
                     console.log(`📊 Sample data: ${JSON.stringify(Object.entries(allBalances).slice(0,2))}`);
                 }
@@ -5163,14 +5170,15 @@ export default {
                     localStorage.setItem('netsuite_balance_cache', cacheJson);
                     localStorage.setItem('netsuite_balance_cache_timestamp', cacheTimestamp);
                     
-                    // CRITICAL: Verify the save was successful
+                    // Verify the save was successful - but don't show error for empty cache
                     const verifyData = localStorage.getItem('netsuite_balance_cache');
                     const verifyTimestamp = localStorage.getItem('netsuite_balance_cache_timestamp');
                     
-                    if (!verifyData || verifyData.length < 10) {
-                        console.error('❌ localStorage save FAILED - verification failed');
+                    if (!verifyData) {
+                        // Only show error if localStorage actually failed (not just empty data)
+                        console.error('❌ localStorage save FAILED - could not write to storage');
                         showToast({ type: 'error', title: 'Cache Save Failed', 
-                            message: 'Failed to save balance data to cache. Formulas may not resolve correctly.', duration: 10000 });
+                            message: 'Failed to save balance data to cache. Check browser storage settings.', duration: 10000 });
                     } else {
                         console.log(`✅ localStorage save VERIFIED: ${verifyData.length} chars, timestamp=${verifyTimestamp}`);
                     }
