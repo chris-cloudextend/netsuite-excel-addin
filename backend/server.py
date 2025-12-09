@@ -4859,6 +4859,11 @@ def calculate_cta():
         # Build consolidation SQL - Use TARGET PERIOD ID for proper exchange rate translation
         # OLD (WRONG): t.postingperiod - translated at each transaction's posting period rate
         # NEW (CORRECT): target_period_id - translated at report period-end rate
+        # 
+        # IMPORTANT: Do NOT use COALESCE with tal.amount fallback!
+        # BUILTIN.CONSOLIDATE returns NULL for transactions that shouldn't consolidate to target_sub
+        # Using COALESCE would mix currencies (USD + INR + EUR = garbage)
+        # Trust CONSOLIDATE to handle subsidiary hierarchy and currency translation
         if target_sub:
             cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {target_period_id}, 'DEFAULT'))"""
         else:
@@ -4871,7 +4876,11 @@ def calculate_cta():
         # ═══════════════════════════════════════════════════════════════════════
         print(f"   Running 6 queries in PARALLEL for faster results...")
         
-        # Define all queries - ALL include subsidiary filter
+        # IMPORTANT: Do NOT filter by t.subsidiary when using BUILTIN.CONSOLIDATE!
+        # BUILTIN.CONSOLIDATE handles subsidiary filtering internally based on target_sub parameter
+        # 
+        # CRITICAL: Must include ap.isyear = 'F' AND ap.isquarter = 'F' to exclude
+        # summary periods (quarterly/yearly roll-ups) which would cause duplication
         queries = {
             'total_assets': f"""
                 SELECT SUM({cons_amount}) AS value
@@ -4883,8 +4892,9 @@ def calculate_cta():
                   AND tal.posting = 'T'
                   AND a.accttype IN ({asset_types})
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                  AND ap.isyear = 'F'
+                  AND ap.isquarter = 'F'
                   AND tal.accountingbook = {accountingbook}
-                  AND t.subsidiary IN ({sub_filter})
             """,
             'total_liabilities': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4896,8 +4906,9 @@ def calculate_cta():
                   AND tal.posting = 'T'
                   AND a.accttype IN ({liability_types})
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                  AND ap.isyear = 'F'
+                  AND ap.isquarter = 'F'
                   AND tal.accountingbook = {accountingbook}
-                  AND t.subsidiary IN ({sub_filter})
             """,
             'posted_equity': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4910,8 +4921,9 @@ def calculate_cta():
                   AND a.accttype = 'Equity'
                   AND LOWER(a.fullname) NOT LIKE '%retained earnings%'
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                  AND ap.isyear = 'F'
+                  AND ap.isquarter = 'F'
                   AND tal.accountingbook = {accountingbook}
-                  AND t.subsidiary IN ({sub_filter})
             """,
             'prior_pl': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4923,8 +4935,9 @@ def calculate_cta():
                   AND tal.posting = 'T'
                   AND a.accttype IN ({PL_TYPES_SQL})
                   AND ap.enddate < TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+                  AND ap.isyear = 'F'
+                  AND ap.isquarter = 'F'
                   AND tal.accountingbook = {accountingbook}
-                  AND t.subsidiary IN ({sub_filter})
             """,
             'posted_re': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4936,8 +4949,9 @@ def calculate_cta():
                   AND tal.posting = 'T'
                   AND (a.accttype = 'RetainedEarnings' OR LOWER(a.fullname) LIKE '%retained earnings%')
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                  AND ap.isyear = 'F'
+                  AND ap.isquarter = 'F'
                   AND tal.accountingbook = {accountingbook}
-                  AND t.subsidiary IN ({sub_filter})
             """,
             'net_income': f"""
                 SELECT SUM({cons_amount} * -1) AS value
@@ -4950,8 +4964,9 @@ def calculate_cta():
                   AND a.accttype IN ({PL_TYPES_SQL})
                   AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
                   AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
+                  AND ap.isyear = 'F'
+                  AND ap.isquarter = 'F'
                   AND tal.accountingbook = {accountingbook}
-                  AND t.subsidiary IN ({sub_filter})
             """
         }
         
@@ -4963,6 +4978,9 @@ def calculate_cta():
         
         def query_with_retry(name, sql, max_retries=3):
             """Execute query with retry logic for rate limiting"""
+            # DEBUG: Log the FULL SQL being sent
+            print(f"\n   📜 {name} FULL SQL:")
+            print(f"   {sql.strip()}")
             for attempt in range(max_retries):
                 result = query_netsuite(sql, 120)
                 if isinstance(result, dict) and 'error' in result:

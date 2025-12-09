@@ -9,6 +9,22 @@ Using constants instead of "magic strings" provides:
 
 IMPORTANT: NetSuite uses BOTH 'COGS' and 'Cost of Goods Sold' in different contexts.
 Always include both when filtering for Cost of Goods Sold accounts.
+
+================================================================================
+CRITICAL: EXACT SPELLING REQUIRED FOR ACCOUNT TYPES
+================================================================================
+NetSuite SuiteQL requires EXACT spellings. Common mistakes that cause silent
+failures (accounts are excluded from queries with no error):
+
+  WRONG              CORRECT
+  ---------------    ---------------
+  DeferExpens    →   DeferExpense     (Deferred Expense)
+  DeferRevenu    →   DeferRevenue     (Deferred Revenue)
+  CreditCard     →   CredCard         (Credit Card)
+  
+These typos caused a $60M+ discrepancy in CTA calculations (Dec 2024 bug).
+Always use the constants defined below, never hardcode strings.
+================================================================================
 """
 
 
@@ -26,7 +42,7 @@ class AccountType:
     OTHER_CURR_ASSET = 'OthCurrAsset'  # Other Current Asset
     FIXED_ASSET = 'FixedAsset'       # Fixed Asset
     OTHER_ASSET = 'OthAsset'         # Other Asset
-    DEFERRED_EXPENSE = 'DeferExpens'  # Deferred Expense (prepaid) - NOTE: NetSuite truncates to 'DeferExpens'
+    DEFERRED_EXPENSE = 'DeferExpense'  # Deferred Expense (prepaid)
     UNBILLED_REC = 'UnbilledRec'     # Unbilled Receivable
     
     # =========================================================================
@@ -36,7 +52,7 @@ class AccountType:
     CRED_CARD = 'CredCard'           # Credit Card (NOT 'CreditCard')
     OTHER_CURR_LIAB = 'OthCurrLiab'  # Other Current Liability
     LONG_TERM_LIAB = 'LongTermLiab'  # Long Term Liability
-    DEFERRED_REVENUE = 'DeferRevenu'  # Deferred Revenue (unearned) - NOTE: NetSuite truncates to 'DeferRevenu'
+    DEFERRED_REVENUE = 'DeferRevenue'  # Deferred Revenue (unearned)
     
     # =========================================================================
     # BALANCE SHEET - EQUITY (Credit balance, stored negative, FLIP × -1)
@@ -167,7 +183,7 @@ class AccountType:
 PL_TYPES_SQL = "'" + "', '".join(sorted(AccountType.PL_TYPES)) + "'"
 
 # Sign flip types for CASE WHEN a.accttype IN (...)
-# Result: 'AcctPay', 'CredCard', 'DeferRevenu', 'Equity', 'LongTermLiab', 'OthCurrLiab', 'RetainedEarnings'
+# Result: 'AcctPay', 'CredCard', 'DeferRevenue', 'Equity', 'LongTermLiab', 'OthCurrLiab', 'RetainedEarnings'
 SIGN_FLIP_TYPES_SQL = "'" + "', '".join(sorted(AccountType.SIGN_FLIP_TYPES)) + "'"
 
 # Income types for P&L sign flip (revenue is stored negative, flip to positive)
@@ -175,11 +191,11 @@ SIGN_FLIP_TYPES_SQL = "'" + "', '".join(sorted(AccountType.SIGN_FLIP_TYPES)) + "
 INCOME_TYPES_SQL = "'Income', 'OthIncome'"
 
 # Asset types for Balance Sheet (debit balance, no sign flip)
-# Result: 'AcctRec', 'Bank', 'DeferExpens', 'FixedAsset', 'OthAsset', 'OthCurrAsset', 'UnbilledRec'
+# Result: 'AcctRec', 'Bank', 'DeferExpense', 'FixedAsset', 'OthAsset', 'OthCurrAsset', 'UnbilledRec'
 BS_ASSET_TYPES_SQL = "'" + "', '".join(sorted(AccountType.BS_ASSET_TYPES)) + "'"
 
 # Liability types for Balance Sheet (credit balance, needs sign flip)
-# Result: 'AcctPay', 'CredCard', 'DeferRevenu', 'LongTermLiab', 'OthCurrLiab'
+# Result: 'AcctPay', 'CredCard', 'DeferRevenue', 'LongTermLiab', 'OthCurrLiab'
 BS_LIABILITY_TYPES_SQL = "'" + "', '".join(sorted(AccountType.BS_LIABILITY_TYPES)) + "'"
 
 # Equity types for Balance Sheet (credit balance, needs sign flip)

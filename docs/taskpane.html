@@ -4919,11 +4919,11 @@ export default {
                         if (typeResponse.ok) {
                             const typeData = await typeResponse.json();
                             // All Balance Sheet account types in NetSuite
-                            // Assets: Bank, AcctRec, OthCurrAsset, FixedAsset, OthAsset, DeferExpens (Prepaid), UnbilledRec
-                            // Liabilities: AcctPay, CredCard (NOT CreditCard!), OthCurrLiab, LongTermLiab, DeferRevenu
+                            // Assets: Bank, AcctRec, OthCurrAsset, FixedAsset, OthAsset, DeferExpense (Prepaid), UnbilledRec
+                            // Liabilities: AcctPay, CredCard (NOT CreditCard!), OthCurrLiab, LongTermLiab, DeferRevenue
                             // Equity: Equity, RetainedEarnings
-                            const bsTypes = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpens',
-                                           'AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenu',
+                            const bsTypes = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense',
+                                           'AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue',
                                            'Equity', 'RetainedEarnings', 'UnbilledRec'];
                             
                             // Log which types we received for debugging
