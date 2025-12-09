@@ -502,6 +502,32 @@ WHERE ...
   AND a.accttype IN ('Bank', 'AcctRec', 'AcctPay', ...)
 ```
 
+## Segment Filters (Class, Department, Location)
+
+**CRITICAL:** Class, Department, and Location fields are on `TransactionLine`, NOT `TransactionAccountingLine`!
+
+```sql
+-- WRONG (will fail with "Field 'class' not found"):
+WHERE tal.class = 85
+
+-- CORRECT (join to TransactionLine):
+FROM TransactionAccountingLine tal
+  JOIN Transaction t ON t.id = tal.transaction
+  JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+WHERE tl.class = 85
+```
+
+| Field | Correct Table | Alias |
+|-------|---------------|-------|
+| `class` | TransactionLine | `tl.class` |
+| `department` | TransactionLine | `tl.department` |
+| `location` | TransactionLine | `tl.location` |
+| `subsidiary` | Transaction | `t.subsidiary` |
+| `account` | TransactionAccountingLine | `tal.account` |
+| `amount` | TransactionAccountingLine | `tal.amount` |
+
+When filtering by class/department/location, always add the TransactionLine join.
+
 ---
 
 # BUILTIN.CONSOLIDATE Explained
@@ -944,13 +970,15 @@ Backend prints detailed query information:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.5.37.0 | Dec 2025 | Fix tooltips (lighter style), remove unnecessary error messages |
 | 1.5.36.0 | Dec 2025 | Remove duplicate tooltips |
 | 1.5.35.0 | Dec 2025 | TYPE formula batching for drag operations |
-| 1.5.34.0 | Dec 2025 | Improved Recalculate Retained Earnings UX |
+| 1.5.34.0 | Dec 2025 | Fix class/dept/location filters (use TransactionLine not TransactionAccountingLine) |
 | 1.5.33.0 | Dec 2025 | Separate Refresh Accounts from RE/NI/CTA |
 | 1.5.32.0 | Dec 2025 | Fix account type spellings (DeferExpense, DeferRevenue) |
+| 1.5.31.0 | Dec 2025 | Fix Department/Class/Location lookups (direct table queries) |
 
 ---
 
-*Document Version: 2.0*
+*Document Version: 2.1*
 *Last Updated: December 2025*

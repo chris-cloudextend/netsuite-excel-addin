@@ -1,25 +1,47 @@
-# NetSuite Excel Add-in
+# XAVI for NetSuite - Excel Add-in Files
 
-This folder contains the NetSuite Excel Custom Functions add-in files, hosted via GitHub Pages.
+This folder contains the Excel Add-in files hosted via GitHub Pages.
 
 ## Files
 
-- `functions.js` - Custom functions implementation
-- `functions.json` - Functions metadata
-- `functions.html` - Functions page
-- `taskpane.html` - Task pane UI
-- `index.html` - Landing page
-- Icon files for the add-in
+| File | Purpose |
+|------|---------|
+| `functions.js` | Custom function implementations + caching |
+| `functions.json` | Function metadata for Excel |
+| `functions.html` | Functions runtime page |
+| `taskpane.html` | Task pane UI + refresh logic |
+| `commands.html` | Ribbon commands page |
+| `commands.js` | Command implementations |
+| `index.html` | Landing page |
+| `icon-*.png` | Add-in icons (16, 32, 64, 80px) |
 
 ## Custom Functions
 
-- `NS.GLATITLE(account)` - Get account title
-- `NS.GLABAL(account, fromPeriod, toPeriod, ...)` - Get account balance
-- `NS.GLABUD(account, fromPeriod, toPeriod, ...)` - Get budget amount
+| Function | Description |
+|----------|-------------|
+| `XAVI.BALANCE` | Get GL account balance |
+| `XAVI.BUDGET` | Get budget amount |
+| `XAVI.NAME` | Get account name |
+| `XAVI.TYPE` | Get account type |
+| `XAVI.PARENT` | Get parent account |
+| `XAVI.RETAINEDEARNINGS` | Calculate Retained Earnings |
+| `XAVI.NETINCOME` | Calculate Net Income |
+| `XAVI.CTA` | Calculate CTA (multi-currency) |
 
-## Backend
+## Backend Connection
 
-These functions connect to a Flask backend server running locally that handles NetSuite authentication and SuiteQL queries.
+Functions connect to a Flask backend via Cloudflare tunnel. The backend handles:
+- NetSuite OAuth 1.0 authentication
+- SuiteQL query execution
+- Multi-currency consolidation via `BUILTIN.CONSOLIDATE`
 
-The backend must be running on `http://localhost:5002` for the formulas to work.
+## Deployment
 
+Files are served from GitHub Pages. After pushing changes:
+1. Wait ~1 minute for GitHub Pages to deploy
+2. Bump manifest version for cache-busting
+3. Reload the add-in in Excel
+
+---
+
+*Current Version: 1.5.37.0*
