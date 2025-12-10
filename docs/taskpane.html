@@ -7130,51 +7130,111 @@ export default {
                     
                     const formulas = usedRange.formulas;
                     const cellsToFormat = [];
+                    const cellRefsToResolve = new Set();  // Unique cell references to evaluate
                     
-                    // Parse each cell for XAVI.BALANCE formulas
+                    // First pass: Find all BALANCE formulas and collect cell references
+                    const pendingCells = [];
                     for (let row = 0; row < usedRange.rowCount; row++) {
                         for (let col = 0; col < usedRange.columnCount; col++) {
                             const formula = formulas[row][col];
                             if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
-                                // Extract subsidiary parameter (4th parameter, index 3)
-                                // Formula: =XAVI.BALANCE(account, fromPeriod, toPeriod, subsidiary, ...)
                                 const subsidiaryParam = extractFormulaParam(formula, 3);
+                                pendingCells.push({ row, col, subsidiaryParam });
                                 
-                                // Resolve subsidiary to ID (could be name, ID, or cell reference)
-                                let subId = '';
-                                if (subsidiaryParam) {
-                                    // If it's a number, use directly
-                                    if (/^\d+$/.test(subsidiaryParam)) {
-                                        subId = subsidiaryParam;
-                                    } else if (subsidiaryParam.startsWith('"') || subsidiaryParam.startsWith("'")) {
-                                        // It's a string - could be name or ID
-                                        const cleaned = subsidiaryParam.replace(/['"]/g, '').trim();
-                                        if (/^\d+$/.test(cleaned)) {
-                                            subId = cleaned;
-                                        } else {
-                                            // It's a name - we'd need to look it up
-                                            // For now, skip cell references and complex names
-                                            subId = '';
-                                        }
-                                    }
-                                    // Note: Cell references would need special handling
+                                // If it looks like a cell reference (contains $ or letter+number pattern)
+                                if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
+                                    // It's likely a cell reference like $Q$3, F2, etc.
+                                    cellRefsToResolve.add(subsidiaryParam);
                                 }
-                                
-                                // Determine currency symbol and format
-                                const symbol = subId && currencies[subId] ? currencies[subId] : defaultSymbol;
-                                const format = formats[symbol] || defaultFormat;
-                                
-                                cellsToFormat.push({
-                                    row: row,
-                                    col: col,
-                                    format: format,
-                                    symbol: symbol
-                                });
                             }
                         }
                     }
                     
-                    console.log(`   Found ${cellsToFormat.length} XAVI.BALANCE cells to format`);
+                    console.log(`   Found ${pendingCells.length} XAVI.BALANCE cells`);
+                    console.log(`   Cell references to resolve: ${[...cellRefsToResolve].join(', ') || 'none'}`);
+                    
+                    // Second pass: Resolve cell references to their values
+                    const resolvedRefs = {};  // cellRef → subsidiary name/ID
+                    if (cellRefsToResolve.size > 0) {
+                        updateLoading('Resolving subsidiary references...', 40);
+                        
+                        for (const cellRef of cellRefsToResolve) {
+                            try {
+                                const refRange = sheet.getRange(cellRef);
+                                refRange.load('values');
+                                await context.sync();
+                                const value = refRange.values[0][0];
+                                resolvedRefs[cellRef] = String(value || '').trim();
+                                console.log(`   Resolved ${cellRef} → "${resolvedRefs[cellRef]}"`);
+                            } catch (e) {
+                                console.warn(`   Could not resolve ${cellRef}:`, e.message);
+                                resolvedRefs[cellRef] = '';
+                            }
+                        }
+                    }
+                    
+                    // Build name→ID lookup from the subsidiary list in currencies
+                    // We need to match subsidiary names to IDs
+                    let subsidiaryNameToId = {};
+                    try {
+                        const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
+                        if (lookupsResponse.ok) {
+                            const lookups = await lookupsResponse.json();
+                            for (const sub of (lookups.subsidiaries || [])) {
+                                // Map both name and ID
+                                subsidiaryNameToId[sub.name.toLowerCase()] = sub.id;
+                                subsidiaryNameToId[sub.id] = sub.id;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('   Could not load subsidiary lookup:', e.message);
+                    }
+                    
+                    updateLoading('Determining currencies...', 50);
+                    
+                    // Third pass: Determine currency for each cell
+                    for (const { row, col, subsidiaryParam } of pendingCells) {
+                        let subId = '';
+                        
+                        if (subsidiaryParam) {
+                            // If it's a number, use directly
+                            if (/^\d+$/.test(subsidiaryParam)) {
+                                subId = subsidiaryParam;
+                            } else if (subsidiaryParam.startsWith('"') || subsidiaryParam.startsWith("'")) {
+                                // It's a quoted string - could be name or ID
+                                const cleaned = subsidiaryParam.replace(/['"]/g, '').trim();
+                                if (/^\d+$/.test(cleaned)) {
+                                    subId = cleaned;
+                                } else {
+                                    // Look up name to ID
+                                    subId = subsidiaryNameToId[cleaned.toLowerCase()] || '';
+                                }
+                            } else if (resolvedRefs[subsidiaryParam] !== undefined) {
+                                // It's a cell reference we resolved
+                                const resolvedValue = resolvedRefs[subsidiaryParam];
+                                if (/^\d+$/.test(resolvedValue)) {
+                                    subId = resolvedValue;
+                                } else {
+                                    // Look up the resolved name to ID
+                                    subId = subsidiaryNameToId[resolvedValue.toLowerCase()] || '';
+                                }
+                            }
+                        }
+                        
+                        // Determine currency symbol and format
+                        const symbol = subId && currencies[subId] ? currencies[subId] : defaultSymbol;
+                        const format = formats[symbol] || defaultFormat;
+                        
+                        cellsToFormat.push({
+                            row: row,
+                            col: col,
+                            format: format,
+                            symbol: symbol,
+                            subId: subId
+                        });
+                    }
+                    
+                    console.log(`   Prepared ${cellsToFormat.length} cells for formatting`);
                     
                     if (cellsToFormat.length === 0) {
                         hideLoading();
@@ -7183,7 +7243,7 @@ export default {
                         return;
                     }
                     
-                    updateLoading(`Formatting ${cellsToFormat.length} cells...`, 60);
+                    updateLoading(`Applying currency formats to ${cellsToFormat.length} cells...`, 60);
                     
                     // Step 3: Apply formatting in batches to avoid API limits
                     const batchSize = 100;
