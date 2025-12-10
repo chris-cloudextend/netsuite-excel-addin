@@ -3816,24 +3816,41 @@
                 // Step 3: Build the Excel template
                 updateProgress(60, '📊 Step 3 of 4: Building Template', 'Creating headers and formatting...');
                 
-                // Get the default/parent subsidiary for the parameter cell
-                let defaultSubsidiary = 'Celigo Inc. (Consolidated)'; // Will be fetched
+                // Get the default/parent subsidiary (root subsidiary from backend)
+                let defaultSubsidiary = '';
+                let defaultSubsidiaryId = '1';
                 try {
+                    // Get parent subsidiary ID from currencies endpoint (backend knows the root)
+                    const currencyResponse = await fetch(`${SERVER_URL}/lookups/currencies`);
+                    if (currencyResponse.ok) {
+                        const currencyData = await currencyResponse.json();
+                        defaultSubsidiaryId = currencyData.default_subsidiary || '1';
+                    }
+                    
+                    // Get the subsidiary name
                     const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
                     if (lookupsResponse.ok) {
                         const lookups = await lookupsResponse.json();
-                        // Find the first consolidated/parent subsidiary
                         if (lookups.subsidiaries && lookups.subsidiaries.length > 0) {
-                            // Look for one with "(Consolidated)" or the first one
-                            const consolidated = lookups.subsidiaries.find(s => 
-                                s.name.toLowerCase().includes('consolidated') || 
-                                s.name.toLowerCase().includes('parent')
-                            );
-                            defaultSubsidiary = consolidated ? consolidated.name : lookups.subsidiaries[0].name;
+                            const parentSub = lookups.subsidiaries.find(s => s.id === defaultSubsidiaryId);
+                            if (parentSub) {
+                                defaultSubsidiary = parentSub.name + ' (Consolidated)';
+                            } else {
+                                const consolidated = lookups.subsidiaries.find(s => 
+                                    s.name.toLowerCase().includes('consolidated')
+                                );
+                                defaultSubsidiary = consolidated ? consolidated.name : lookups.subsidiaries[0].name;
+                            }
                         }
                     }
+                    
+                    if (!defaultSubsidiary) {
+                        defaultSubsidiary = 'Parent Company (Consolidated)';
+                    }
+                    console.log(`🏢 Guide Me default subsidiary: ${defaultSubsidiary}`);
                 } catch (e) {
                     console.warn('Guide Me: Could not fetch subsidiary, using default');
+                    defaultSubsidiary = 'Parent Company (Consolidated)';
                 }
                 
                 await Excel.run(async (context) => {
@@ -4355,35 +4372,49 @@
                 
                 console.log(`Income Statement: Revenue=${categories.income.length}, OthIncome=${categories.othIncome.length}, COGS=${categories.cogs.length}, Expense=${categories.expense.length}, OthExpense=${categories.othExpense.length}`);
                 
-                // Get default subsidiary and its currency format
-                let defaultSubsidiary = 'Celigo Inc. (Consolidated)';
+                // Get default subsidiary (parent/root) and its currency format
+                // Use the currencies endpoint which correctly identifies the parent via backend
+                let defaultSubsidiary = '';
                 let defaultSubsidiaryId = '1';
                 let currencyFormat = '$#,##0.00';  // Default to USD
                 try {
+                    // First get the correct parent subsidiary from currencies endpoint
+                    const currencyResponse = await fetch(`${SERVER_URL}/lookups/currencies`);
+                    if (currencyResponse.ok) {
+                        const currencyData = await currencyResponse.json();
+                        defaultSubsidiaryId = currencyData.default_subsidiary || '1';
+                        const symbol = currencyData.currencies[defaultSubsidiaryId] || '$';
+                        currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
+                        console.log(`💱 Default subsidiary ID: ${defaultSubsidiaryId}, Currency: ${symbol}`);
+                    }
+                    
+                    // Now get the subsidiary name
                     const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
                     if (lookupsResponse.ok) {
                         const lookups = await lookupsResponse.json();
                         if (lookups.subsidiaries && lookups.subsidiaries.length > 0) {
-                            const consolidated = lookups.subsidiaries.find(s => 
-                                s.name.toLowerCase().includes('consolidated') || 
-                                s.name.toLowerCase().includes('parent')
-                            );
-                            const selectedSub = consolidated || lookups.subsidiaries[0];
-                            defaultSubsidiary = selectedSub.name;
-                            defaultSubsidiaryId = selectedSub.id;
+                            // Find the parent subsidiary by ID (not by name keywords)
+                            const parentSub = lookups.subsidiaries.find(s => s.id === defaultSubsidiaryId);
+                            if (parentSub) {
+                                // Add "(Consolidated)" suffix for clarity
+                                defaultSubsidiary = parentSub.name + ' (Consolidated)';
+                            } else {
+                                // Fallback: look for one with "(Consolidated)" already in name
+                                const consolidated = lookups.subsidiaries.find(s => 
+                                    s.name.toLowerCase().includes('consolidated')
+                                );
+                                defaultSubsidiary = consolidated ? consolidated.name : lookups.subsidiaries[0].name;
+                            }
                         }
                     }
                     
-                    // Fetch currency format for the selected subsidiary
-                    const currencyResponse = await fetch(`${SERVER_URL}/lookups/currencies`);
-                    if (currencyResponse.ok) {
-                        const currencyData = await currencyResponse.json();
-                        const symbol = currencyData.currencies[defaultSubsidiaryId] || '$';
-                        currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
-                        console.log(`💱 Currency for subsidiary ${defaultSubsidiaryId}: ${symbol} → ${currencyFormat}`);
+                    if (!defaultSubsidiary) {
+                        defaultSubsidiary = 'Parent Company (Consolidated)';
                     }
+                    console.log(`🏢 Default subsidiary: ${defaultSubsidiary} (ID: ${defaultSubsidiaryId})`);
                 } catch (e) {
-                    console.warn('Currency lookup failed, using default USD format:', e.message);
+                    console.warn('Subsidiary lookup failed, using defaults:', e.message);
+                    defaultSubsidiary = 'Parent Company (Consolidated)';
                 }
                 
                 // Step 3: Build Excel structure
@@ -6551,7 +6582,7 @@ export default {
             }
         }
         
-        // Set up listener to auto-sync Income Statement when YEAR changes
+        // Set up listener to auto-sync Income Statement when YEAR or SUBSIDIARY changes
         async function setupAutoSyncListener() {
             try {
                 await Excel.run(async (context) => {
@@ -6564,13 +6595,37 @@ export default {
                             console.log('📊 YEAR cell (P3) changed - checking for auto-sync...');
                             await handleYearChange();
                         }
+                        
+                        // Check if the changed cell is Q3 (SUBSIDIARY parameter)
+                        // When subsidiary changes, re-apply currency formatting
+                        if (event.address === 'Q3' || event.address === '$Q$3') {
+                            console.log('💱 SUBSIDIARY cell (Q3) changed - updating currency format...');
+                            await handleSubsidiaryChange();
+                        }
                     });
                     
                     await context.sync();
-                    console.log('✅ Auto-sync listener registered for worksheet changes');
+                    console.log('✅ Auto-sync listener registered for worksheet changes (YEAR + SUBSIDIARY)');
                 });
             } catch (e) {
                 console.warn('Could not set up auto-sync listener:', e.message);
+            }
+        }
+        
+        // Handle automatic currency format update when SUBSIDIARY changes
+        async function handleSubsidiaryChange() {
+            try {
+                console.log('💱 Subsidiary changed - applying new currency format...');
+                
+                // Small delay to let the cell value settle
+                await new Promise(r => setTimeout(r, 300));
+                
+                // Re-apply currency formatting (uses cached data)
+                await autoFormatCurrencies();
+                
+                console.log('💱 Currency format updated for new subsidiary');
+            } catch (e) {
+                console.warn('Currency format update failed:', e.message);
             }
         }
         
