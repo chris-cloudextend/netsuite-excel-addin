@@ -6681,13 +6681,47 @@ export default {
             try {
                 console.log('💱 Running smart currency format update...');
                 
+                // ============================================
+                // CRITICAL: Clear ALL caches when subsidiary changes!
+                // The localStorage cache is NOT keyed by subsidiary, so 
+                // changing subsidiary would return wrong cached values.
+                // ============================================
+                console.log('🧹 Clearing all caches due to subsidiary change...');
+                
+                // Clear in-memory caches
+                if (typeof window.clearAllCaches === 'function') {
+                    window.clearAllCaches();
+                    console.log('   ✓ Cleared in-memory caches');
+                }
+                
+                // Clear localStorage cache (functions.js also uses this)
+                try {
+                    localStorage.removeItem('netsuite_balance_cache');
+                    localStorage.removeItem('netsuite_balance_cache_timestamp');
+                    console.log('   ✓ Cleared localStorage balance cache');
+                } catch (e) {
+                    console.warn('   ⚠️ localStorage clear failed:', e.message);
+                }
+                
                 // Re-scan for subsidiary cells (in case new formulas were added)
                 await scanForSubsidiaryCells();
                 
                 // Re-apply currency formatting (uses cached data, very fast)
                 await autoFormatCurrencies();
                 
-                console.log('💱 Currency formats updated');
+                console.log('💱 Currency formats updated - formulas will now refetch data with new subsidiary');
+                
+                // Show user feedback
+                try {
+                    const statusEl = document.getElementById('filterStatus');
+                    if (statusEl) {
+                        statusEl.innerHTML = `<div style="background: #dbeafe; padding: 8px; border-radius: 4px; font-size: 11px;">
+                            <strong style="color: #1e40af;">🔄 Subsidiary changed</strong> - Data refreshing with new filters...
+                        </div>`;
+                        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                    }
+                } catch (e) {}
+                
             } catch (e) {
                 console.warn('Smart currency format update failed:', e.message);
             }
