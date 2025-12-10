@@ -2121,52 +2121,28 @@
                     </p>
                 </div>
 
-                <!-- Tunnel Status -->
+                <!-- Backend Status (Dynamic based on config.js) -->
                 <div class="settings-section">
-                    <h3>🔗 Cloudflare Tunnel</h3>
+                    <h3 id="backendStatusTitle">☁️ Backend</h3>
                     <div id="tunnelStatus" class="status-indicator checking">
                         <span class="status-dot checking"></span>
                         Checking...
                     </div>
                     
                     <div style="margin-top: 12px; padding: 12px; background: linear-gradient(135deg, rgba(10, 226, 193, 0.1) 0%, rgba(0, 121, 255, 0.05) 100%); border-radius: 8px; border: 1px solid var(--anenome);">
-                        <p style="font-size: 11px; color: var(--deep-dive); margin-bottom: 8px; font-weight: 600;">
-                            ⚠️ Tunnel cannot be auto-restarted from add-in
+                        <p style="font-size: 11px; color: var(--deep-dive); margin-bottom: 8px; font-weight: 600;" id="backendDescription">
+                            ✅ Loading configuration...
                         </p>
-                        <p style="font-size: 11px; color: var(--bottlenose); margin-bottom: 10px;">
-                            To restart tunnel, run in Terminal:
+                        <p style="font-size: 11px; color: var(--bottlenose); margin-bottom: 10px;" id="backendMode">
+                            Mode: Loading...
                         </p>
-                        <div style="background: var(--deep-dive); padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 10px; color: var(--anenome); margin-bottom: 10px;">
-                            pkill cloudflared; cloudflared tunnel --url http://localhost:5002
+                        <div style="background: var(--deep-dive); padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 10px; color: var(--anenome); margin-bottom: 10px; word-break: break-all;" id="backendUrl">
+                            Loading...
                         </div>
-                        <button class="settings-btn-action" onclick="copyTunnelCommand()" style="font-size: 11px; padding: 6px 12px; width: 100%;">
-                            📋 Copy Command
-                        </button>
+                        <a href="#" target="_blank" id="backendPortalLink" class="settings-btn-action" style="font-size: 11px; padding: 6px 12px; width: 100%; text-align: center; display: block; text-decoration: none;">
+                            🌐 Open Portal
+                        </a>
                     </div>
-                    
-                    <details style="margin-top: 12px;">
-                        <summary style="font-size: 12px; color: var(--tidal-wave); cursor: pointer; font-weight: 500;">
-                            📝 Update Worker with new tunnel URL
-                        </summary>
-                        <div style="margin-top: 10px; padding: 12px; background: var(--barnacle); border-radius: 8px;">
-                            <p style="font-size: 11px; color: var(--deep-dive); margin-bottom: 8px;">
-                                After restarting tunnel, copy the new URL (shown in terminal) and update Cloudflare Worker:
-                            </p>
-                            <ol style="font-size: 11px; color: var(--bottlenose); padding-left: 20px; line-height: 1.8;">
-                                <li>Copy the new <code>https://xxx.trycloudflare.com</code> URL from terminal</li>
-                                <li>Go to <a href="https://dash.cloudflare.com" target="_blank" style="color: var(--tidal-wave);">Cloudflare Dashboard</a></li>
-                                <li>Workers & Pages → <strong>netsuite-proxy</strong></li>
-                                <li>Edit code → Update <code>TUNNEL_URL</code></li>
-                                <li>Save and Deploy</li>
-                            </ol>
-                            <input type="text" id="newTunnelUrl" class="settings-input" 
-                                   placeholder="Paste new tunnel URL here" 
-                                   style="font-size: 11px; margin-top: 8px;"/>
-                            <button class="settings-btn-action" onclick="copyWorkerCode()" style="font-size: 11px; padding: 6px 12px; margin-top: 8px; width: 100%;">
-                                📋 Copy Worker Code with New URL
-                            </button>
-                        </div>
-                    </details>
                 </div>
 
                 <!-- Cache Info -->
@@ -2183,7 +2159,8 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
+                        <p style="margin-top: 4px;">Mode: <code id="settingsMode" style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">loading...</code></p>
+                        <p style="margin-top: 4px;">API: <code id="settingsApiUrl" style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; word-break: break-all;">loading...</code></p>
                     </div>
                 </div>
             </div>
@@ -2980,13 +2957,15 @@
     </style>
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <script src="config.js"></script>
     <script>
-        const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
+        // Use CONFIG from config.js - change DEPLOYMENT_MODE there to switch environments
+        const SERVER_URL = (typeof CONFIG !== 'undefined') ? CONFIG.serverUrl : 'https://netsuite-excel-func.azurewebsites.net';
         
         // ========================================================================
-        // VERSION - Single source of truth (update here when version changes)
+        // VERSION - Single source of truth (from config.js)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.50.0';
+        const ADDIN_VERSION = (typeof CONFIG !== 'undefined') ? CONFIG.version : '2.0.0.0';
         
         // ============================================
         // REFRESH CANCELLATION
@@ -3056,16 +3035,56 @@
         }
         
         // ============================================
-        // Set version in all UI elements
+        // Set version and config info in all UI elements
         function initializeVersion() {
             const versionBadge = document.getElementById('versionBadge');
             const settingsVersion = document.getElementById('settingsVersion');
             if (versionBadge) versionBadge.textContent = 'v' + ADDIN_VERSION;
             if (settingsVersion) settingsVersion.textContent = ADDIN_VERSION;
+            
+            // Initialize config-based UI elements
+            initializeConfigUI();
+        }
+        
+        function initializeConfigUI() {
+            if (typeof CONFIG === 'undefined') {
+                console.warn('CONFIG not loaded - using defaults');
+                return;
+            }
+            
+            // Update backend status section
+            const backendTitle = document.getElementById('backendStatusTitle');
+            const backendDesc = document.getElementById('backendDescription');
+            const backendMode = document.getElementById('backendMode');
+            const backendUrl = document.getElementById('backendUrl');
+            const backendPortalLink = document.getElementById('backendPortalLink');
+            
+            if (backendTitle) backendTitle.textContent = `${CONFIG.icon} ${CONFIG.statusLabel}`;
+            if (backendDesc) backendDesc.textContent = `✅ ${CONFIG.description}`;
+            if (backendMode) backendMode.textContent = `Mode: ${CONFIG.mode.toUpperCase()}`;
+            if (backendUrl) backendUrl.textContent = CONFIG.serverUrl;
+            if (backendPortalLink) {
+                if (CONFIG.portalUrl) {
+                    backendPortalLink.href = CONFIG.portalUrl;
+                    backendPortalLink.textContent = `🌐 Open ${CONFIG.name} Portal`;
+                    backendPortalLink.style.display = 'block';
+                } else {
+                    backendPortalLink.style.display = 'none';
+                }
+            }
+            
+            // Update version info section
+            const settingsMode = document.getElementById('settingsMode');
+            const settingsApiUrl = document.getElementById('settingsApiUrl');
+            
+            if (settingsMode) settingsMode.textContent = CONFIG.mode.toUpperCase();
+            if (settingsApiUrl) settingsApiUrl.textContent = CONFIG.serverUrl.replace('https://', '');
+            
+            console.log(`✅ Config UI initialized: ${CONFIG.name} (${CONFIG.mode})`);
         }
 
         // ========================================================================
-        // CONNECTION STATUS - Check if backend/tunnel is reachable
+        // CONNECTION STATUS - Check if Azure Functions backend is reachable
         // ========================================================================
         let lastConnectionCheck = null;
         let connectionCheckInterval = null;
@@ -3097,17 +3116,17 @@
                     statusText.textContent = `Connected (${data.account || 'NetSuite'})`;
                     lastConnectionCheck = { status: 'connected', time: Date.now() };
                     if (!silent) {
-                        showToast({ type: 'success', title: 'Connection OK', message: 'Backend and tunnel are working.', duration: 3000 });
+                        showToast({ type: 'success', title: 'Connection OK', message: 'Azure Functions backend is working.', duration: 3000 });
                     }
                     return true;
                 } else if (response.status === 502 || response.status === 524 || response.status === 522) {
-                    // Tunnel/proxy error
+                    // Server error
                     statusBadge.className = 'status-badge disconnected';
-                    statusText.textContent = 'Tunnel Down';
+                    statusText.textContent = 'Server Error';
                     lastConnectionCheck = { status: 'disconnected', time: Date.now(), error: `HTTP ${response.status}` };
                     if (!silent) {
-                        showToast({ type: 'error', title: 'Tunnel Disconnected', 
-                            message: `Error ${response.status}: The Cloudflare tunnel may have expired. Check the terminal for a new tunnel URL and update the Worker.`, duration: 10000 });
+                        showToast({ type: 'error', title: 'Server Error', 
+                            message: `Error ${response.status}: Azure Functions may be starting up or experiencing issues. Check Azure Portal for details.`, duration: 10000 });
                     }
                     return false;
                 } else {
@@ -3123,7 +3142,7 @@
                     lastConnectionCheck = { status: 'timeout', time: Date.now() };
                     if (!silent) {
                         showToast({ type: 'error', title: 'Connection Timeout', 
-                            message: 'Could not reach the backend. The tunnel may have expired.', duration: 8000 });
+                            message: 'Could not reach the Azure Functions backend. It may be cold starting.', duration: 8000 });
                     }
                 } else {
                     statusText.textContent = 'Disconnected';
@@ -3459,7 +3478,7 @@
         function openSettings() {
             document.getElementById('settingsModal').classList.add('active');
             checkServerStatus();
-            checkTunnelStatus();
+            checkAzureStatus();
             checkCacheStatus();
         }
 
@@ -5533,7 +5552,7 @@
                 updateProgress(5, '📥 Loading Data', `Fetching ${periodCount} periods for all accounts...`);
                 
                 // Use full_year_refresh for each year (same as formulas - works within timeout!)
-                // This is more reliable than periods_refresh which can timeout on Cloudflare
+                // This is more reliable than periods_refresh which can timeout
                 const yearsList = Array.from(selectedYears).sort();
                 let yearProgress = 5;
                 const progressPerYear = Math.floor(75 / yearsList.length);
@@ -5756,7 +5775,7 @@
                 } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
                     errorMessage = 'Could not reach server';
                     helpTip = `<div style="font-size: 11px; margin-top: 8px; color: #666;">
-                        Check that the server is running and the tunnel URL is correct in your settings.
+                        Check Azure Functions status in the settings panel.
                     </div>`;
                 } else if (error.message.includes('No valid dates')) {
                     helpTip = `<div style="font-size: 11px; margin-top: 8px; color: #666;">
@@ -5934,7 +5953,7 @@
                             statusEl.className = 'status-indicator connected';
                             statusEl.innerHTML = '<span class="status-dot connected"></span> Restarted ✓';
                         
-                        // Fetch and display tunnel URL
+                        // Fetch and display server info
                         try {
                             const infoResponse = await fetch(`${SERVER_URL}/`, { 
                                 method: 'GET',
@@ -5945,7 +5964,7 @@
                                 // Update toast with success and show server info
                                 updateToast(toastId, {
                                     title: 'Server Restarted',
-                                    message: `Server is back online!<br><br><strong>Local:</strong> http://localhost:5002<br><strong>Note:</strong> Cloudflare tunnel URL may have changed. Check terminal or run tunnel command.`,
+                                    message: `Server is back online!<br><br><strong>Azure Functions:</strong> ${SERVER_URL}`,
                                     type: 'success'
                                 });
                                 // Auto-dismiss after 8 seconds
@@ -5977,73 +5996,12 @@
                 }, 2000);
         }
 
-        function copyTunnelCommand() {
-            const command = 'pkill cloudflared; cloudflared tunnel --url http://localhost:5002';
-            navigator.clipboard.writeText(command).then(() => {
-                alert('Command copied! Paste in Terminal to restart tunnel.');
+        function copyAzureUrl() {
+            const url = 'https://netsuite-excel-func.azurewebsites.net';
+            navigator.clipboard.writeText(url).then(() => {
+                alert('Azure Functions URL copied!');
             }).catch(err => {
-                prompt('Copy this command:', command);
-            });
-        }
-
-        function copyWorkerCode() {
-            const newUrl = document.getElementById('newTunnelUrl').value.trim();
-            if (!newUrl || !newUrl.includes('trycloudflare.com')) {
-                alert('Please paste the new tunnel URL first (e.g., https://xxx.trycloudflare.com)');
-                return;
-            }
-            
-            const workerCode = `// Cloudflare Worker - NetSuite Proxy
-// Updated: ${new Date().toISOString()}
-const TUNNEL_URL = '${newUrl}';
-
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const targetUrl = TUNNEL_URL + url.pathname + url.search;
-    
-    // Handle CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-          'Access-Control-Max-Age': '86400',
-        },
-      });
-    }
-    
-    try {
-      const response = await fetch(targetUrl, {
-        method: request.method,
-        headers: request.headers,
-        body: request.method !== 'GET' ? await request.text() : undefined,
-      });
-      
-      const newResponse = new Response(response.body, response);
-      newResponse.headers.set('Access-Control-Allow-Origin', '*');
-      return newResponse;
-    } catch (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      });
-    }
-  },
-};`;
-            
-            navigator.clipboard.writeText(workerCode).then(() => {
-                alert('Worker code copied with new tunnel URL!\\n\\nGo to Cloudflare Dashboard → Workers → netsuite-proxy → Edit Code → Paste → Deploy');
-            }).catch(err => {
-                // Fallback for browsers that don't support clipboard
-                const textarea = document.createElement('textarea');
-                textarea.value = workerCode;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-                alert('Worker code copied!');
+                prompt('Copy this URL:', url);
             });
         }
 
@@ -6063,31 +6021,31 @@ export default {
             }
         }
 
-        async function checkTunnelStatus() {
+        async function checkAzureStatus() {
             const statusEl = document.getElementById('tunnelStatus');
             statusEl.className = 'status-indicator checking';
             statusEl.innerHTML = '<span class="status-dot checking"></span> Checking...';
 
+            const timeout = (typeof CONFIG !== 'undefined') ? CONFIG.healthCheckTimeout : 15000;
+            const statusLabel = (typeof CONFIG !== 'undefined') ? CONFIG.statusLabel : 'Backend';
+
             try {
-                // The health check goes through the worker → tunnel → server
-                // If it works, tunnel is working
                 const response = await fetch(`${SERVER_URL}/health`, { 
                     method: 'GET',
-                    signal: AbortSignal.timeout(10000)
+                    signal: AbortSignal.timeout(timeout)
                 });
-                
+
                 if (response.ok) {
                     statusEl.className = 'status-indicator connected';
-                    statusEl.innerHTML = '<span class="status-dot connected"></span> Tunnel Active ✓';
-                } else if (response.status === 530) {
-                    throw new Error('Tunnel offline (530)');
+                    statusEl.innerHTML = `<span class="status-dot connected"></span> ${statusLabel} Active ✓`;
                 } else {
                     throw new Error(`Status: ${response.status}`);
                 }
             } catch (error) {
                 statusEl.className = 'status-indicator error';
-                if (error.message.includes('530')) {
-                    statusEl.innerHTML = '<span class="status-dot error"></span> Tunnel Offline - needs restart';
+                if (error.name === 'TimeoutError') {
+                    const timeoutMsg = (typeof CONFIG !== 'undefined') ? CONFIG.getTimeoutErrorMessage() : 'Connection timeout';
+                    statusEl.innerHTML = `<span class="status-dot error"></span> ${timeoutMsg}`;
                 } else {
                     statusEl.innerHTML = `<span class="status-dot error"></span> ${error.message}`;
                 }
@@ -6124,21 +6082,8 @@ export default {
             }
         }
 
-        function copyTunnelInstructions() {
-            const urlInput = document.getElementById('newTunnelUrl');
-            const url = urlInput.value.trim();
-            
-            if (!url) {
-                alert('Please enter the new tunnel URL first');
-                return;
-            }
-            
-            const workerCode = `const TUNNEL_URL = '${url}';`;
-            navigator.clipboard.writeText(workerCode).then(() => {
-                alert('Copied! Paste this in the Cloudflare Worker to update the tunnel URL.');
-            }).catch(() => {
-                prompt('Copy this line to update the Worker:', workerCode);
-            });
+        function openAzurePortal() {
+            window.open('https://portal.azure.com', '_blank');
         }
 
         // Load NetSuite lookups into dropdowns
@@ -7093,13 +7038,12 @@ export default {
                     btn.innerHTML = '<span class="action-icon">⚡</span>Refresh Accounts';
                     
                     showToast({ type: 'error', title: 'Connection Failed', 
-                        message: 'Cannot reach the backend server. The Cloudflare tunnel may have expired. ' +
-                        'Check the terminal for a new tunnel URL and update the Cloudflare Worker.', duration: 15000 });
+                        message: 'Cannot reach the Azure Functions backend. It may be cold starting or check Azure Portal for issues.', duration: 15000 });
                     
                     if (statusEl) {
                         statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px; border-left: 4px solid #dc2626;">
                             <strong style="color: #dc2626;">⚠️ Connection Failed</strong><br>
-                            <small style="color: #7f1d1d;">The tunnel may have expired. Check terminal for new URL.</small>
+                            <small style="color: #7f1d1d;">Azure Functions may be cold starting. Try again in a moment.</small>
                         </div>`;
                     }
                     return;
@@ -7805,10 +7749,10 @@ export default {
                                 totalAccountsLoaded += Object.keys(data.balances || {}).length;
                                 console.log(`✅ Year ${year}: ${Object.keys(data.balances || {}).length} P&L accounts`);
                             } else if (response.status === 502 || response.status === 524 || response.status === 522) {
-                                // Tunnel/proxy error - this is critical
-                                console.error(`❌ P&L fetch FAILED: Tunnel error ${response.status}`);
+                                // Server error
+                                console.error(`❌ P&L fetch FAILED: Server error ${response.status}`);
                                 showToast({ type: 'error', title: 'Connection Lost', 
-                                    message: `Tunnel error (${response.status}) while fetching P&L data. The tunnel may have expired.`, duration: 10000 });
+                                    message: `Server error (${response.status}) while fetching P&L data. Azure Functions may be restarting.`, duration: 10000 });
                                 // Update connection status
                                 await checkConnectionStatus(true);
                             } else {
@@ -7889,10 +7833,10 @@ export default {
                             updateLoading('BS data loaded!', 85, 
                                 `${Object.keys(data.balances || {}).length} BS accounts in ${data.query_time?.toFixed(1) || '?'}s`);
                         } else if (response.status === 524 || response.status === 522 || response.status === 504) {
-                            // Tunnel timeout - show warning
+                            // Server timeout - show warning
                             console.error(`⚠️ BS fetch TIMEOUT (${response.status})`);
                             updateLoading(`BS fetch timed out`, 85, 
-                                `Tunnel timeout (${response.status}). BS formulas may show stale data.`);
+                                `Server timeout (${response.status}). BS formulas may show stale data.`);
                             showToast({ type: 'warning', title: 'Balance Sheet Timeout', 
                                 message: `BS query timed out (${response.status}). Use "Refresh Selected" on individual cells.`, duration: 10000 });
                         } else {
@@ -8118,13 +8062,12 @@ export default {
                             <strong style="color: #b45309; font-size: 14px;">⚠️ Refresh Complete - No Data Loaded!</strong><br>
                             <span style="font-size: 12px; color: #92400e;">
                                 Formulas were refreshed but no account data was retrieved.<br>
-                                This usually means the tunnel is down or expired.<br>
-                                Check the connection status and try again.
+                                Check the Azure Functions connection status and try again.
                             </span>
                         </div>
                     `;
                     showToast({ type: 'warning', title: 'No Data Retrieved', 
-                        message: 'Formulas refreshed but no account data was loaded. The tunnel may have issues.', duration: 10000 });
+                        message: 'Formulas refreshed but no account data was loaded. Check Azure Functions connection.', duration: 10000 });
                 } else {
                     let specialNote = '';
                     if (hasSpecialFormulas) {

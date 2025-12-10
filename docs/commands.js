@@ -1,12 +1,15 @@
 /**
  * Commands.js - Handles ribbon and context menu actions
  * This file is loaded separately from the task pane
+ * 
+ * Configuration is loaded from config.js - change DEPLOYMENT_MODE there to switch environments.
  */
 
-// Backend server URL
-const SERVER_URL = 'https://pull-themes-friendly-mentor.trycloudflare.com';
+// Use CONFIG from config.js (loaded before this file)
+const SERVER_URL = (typeof CONFIG !== 'undefined') ? CONFIG.serverUrl : 'https://netsuite-excel-func.azurewebsites.net';
 
 console.log('✅ commands.js loaded');
+console.log(`   Using server: ${SERVER_URL}`);
 
 /**
  * Drill down from context menu (right-click)

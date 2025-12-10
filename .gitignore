@@ -41,3 +41,12 @@ key.pem
 
 # SSL certificates (never commit private keys)
 *.pem
+
+# Azure deployment artifacts
+deploy.zip
+deploy-package.zip
+.deploy/
+.deploy-frontend/
+.python_packages/
+local.settings.json
+*.squashfs

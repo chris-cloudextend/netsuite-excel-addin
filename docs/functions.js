@@ -7,10 +7,13 @@
  * 3. Single cell updates = individual API call (fast)
  * 4. Bulk updates (drag/insert row) = smart batching
  * 5. Deduplication - never make same request twice
+ * 
+ * Configuration is loaded from config.js - change DEPLOYMENT_MODE there to switch environments.
  */
 
-const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
-const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
+// Use CONFIG from config.js (loaded before this file)
+const SERVER_URL = (typeof CONFIG !== 'undefined') ? CONFIG.serverUrl : 'https://netsuite-excel-func.azurewebsites.net';
+const REQUEST_TIMEOUT = (typeof CONFIG !== 'undefined') ? CONFIG.requestTimeout : 30000;
 
 // ============================================================================
 // STATUS BROADCAST - Communicate progress to taskpane via localStorage
@@ -3565,7 +3568,7 @@ async function CTA(period, subsidiary, accountingBook) {
                         // All retries exhausted - return #TIMEOUT#
                         if (toastId) {
                             updateBroadcastToast(toastId, 'CTA Timed Out', 
-                                `Tunnel timeout after ${maxRetries} attempts. Cell shows #TIMEOUT#. Refresh single cell to retry, or delete formula for SUM to work.`, 'error');
+                                `Request timeout after ${maxRetries} attempts. Cell shows #TIMEOUT#. Refresh single cell to retry, or delete formula for SUM to work.`, 'error');
                             setTimeout(() => removeBroadcastToast(toastId), 8000);
                         }
                         return '#TIMEOUT#';
