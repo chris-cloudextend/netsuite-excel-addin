@@ -388,10 +388,17 @@ def load_lookup_cache():
         if isinstance(sub_result, list):
             for row in sub_result:
                 sub_id = str(row['id'])
-                # Use hierarchy (full path) if available, otherwise just name
-                sub_name = row.get('hierarchy', row['name']).lower()
-                lookup_cache['subsidiaries'][sub_name] = sub_id
-            print(f"✓ Loaded {len(lookup_cache['subsidiaries'])} subsidiaries with hierarchy")
+                short_name = row['name'].lower()
+                hierarchy_name = row.get('hierarchy', row['name']).lower()
+                
+                # Add BOTH the short name AND the full hierarchy path
+                # This allows users to enter either:
+                #   "Celigo Australia Pty Ltd" (short)
+                #   "Celigo Inc. : Celigo Australia Pty Ltd" (hierarchy)
+                lookup_cache['subsidiaries'][short_name] = sub_id
+                if hierarchy_name != short_name:
+                    lookup_cache['subsidiaries'][hierarchy_name] = sub_id
+            print(f"✓ Loaded {len(lookup_cache['subsidiaries'])} subsidiaries (short + hierarchy names)")
     except Exception as e:
         print(f"✗ Subsidiary lookup error: {e}")
         # Fallback to known values
