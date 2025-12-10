@@ -2922,9 +2922,28 @@ def batch_balance():
         accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
         where_clauses.append(f"a.acctnumber IN ({accounts_in})")
         
-        # IMPORTANT: Do NOT filter by t.subsidiary here!
-        # For consolidation, we let BUILTIN.CONSOLIDATE handle subsidiary filtering
-        # The target_sub parameter tells CONSOLIDATE which subsidiary hierarchy to use
+        # ========================================================================
+        # SUBSIDIARY FILTERING - Critical for correct subsidiary-level reporting
+        # ========================================================================
+        # BUILTIN.CONSOLIDATE only handles CURRENCY CONVERSION, not filtering!
+        # We must explicitly filter t.subsidiary to include only transactions from
+        # the target subsidiary and its children (the "hierarchy").
+        #
+        # For consolidated (parent) view: include all subsidiaries in hierarchy
+        # For single subsidiary: include only that subsidiary (+ its children if any)
+        # ========================================================================
+        if subsidiary and subsidiary != '':
+            # User specified a subsidiary - get its hierarchy (includes children)
+            hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
+            sub_filter = ', '.join(hierarchy_subs)
+            where_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            print(f"DEBUG - Subsidiary filter: {len(hierarchy_subs)} subsidiaries in hierarchy for sub {subsidiary}", file=sys.stderr)
+        else:
+            # No subsidiary specified - use default (parent) and include all subsidiaries
+            hierarchy_subs = get_subsidiaries_in_hierarchy(default_subsidiary_id or '1')
+            sub_filter = ', '.join(hierarchy_subs)
+            where_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            print(f"DEBUG - No subsidiary specified, using parent hierarchy: {len(hierarchy_subs)} subsidiaries", file=sys.stderr)
         
         # Need TransactionLine join if filtering by department, class, or location
         needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
