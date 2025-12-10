@@ -3532,8 +3532,8 @@
         }
 
         async function runGuideMe() {
+            // Note: Button may not have an ID (called via onclick on div)
             const btn = document.getElementById('guideMeBtn');
-            const btnText = document.getElementById('guideMeBtnText');
             const progress = document.getElementById('guideMeProgress');
             const currentYear = new Date().getFullYear();
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
@@ -3649,7 +3649,7 @@
                 if (descEl) descEl.textContent = desc;
             };
             
-            btn.disabled = true;
+            if (btn) btn.disabled = true;
             
             try {
                 // Step 1: Fetch ALL account data via full_year_refresh (preloads cache!)
@@ -4190,9 +4190,7 @@
                     • <code>=XAVI.TYPE(B5)</code> → Account Type<br>
                     • <code>=XAVI.NAME(B5)</code> → Account Name<br>
                     • <code>=XAVI.BALANCE($B5,TEXT(D$4,"mmm yyyy"),TEXT(D$4,"mmm yyyy"),$G$3)</code> → Balance with Subsidiary`;
-                progress.style.lineHeight = '1.6';
-                btnText.textContent = '✓ Report Created!';
-                btn.style.background = '#4CAF50';
+                if (progress) progress.style.lineHeight = '1.6';
                 
             } catch (error) {
                 console.error('Guide Me error:', error);
@@ -4200,11 +4198,14 @@
                 if (document.getElementById('guideMeOverlay')) {
                     document.getElementById('guideMeOverlay').remove();
                 }
-                progress.style.display = 'block';
-                progress.textContent = `❌ Error: ${error.message}`;
-                btnText.textContent = 'Try Again';
-                btn.disabled = false;
-                btn.style.background = '';
+                if (progress) {
+                    progress.style.display = 'block';
+                    progress.textContent = `❌ Error: ${error.message}`;
+                }
+                if (btn) {
+                    btn.disabled = false;
+                    btn.style.background = '';
+                }
             }
         }
 
