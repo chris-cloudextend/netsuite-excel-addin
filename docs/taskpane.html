@@ -2984,9 +2984,10 @@
         const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
         
         // ========================================================================
-        // VERSION - Single source of truth (update here when version changes)
+        // VERSION - Read from manifest URL parameter (?v=x.x.x.x)
         // ========================================================================
-        const ADDIN_VERSION = '1.5.50.0';
+        const urlParams = new URLSearchParams(window.location.search);
+        const ADDIN_VERSION = urlParams.get('v') || '0.0.0.0';
         
         // ============================================
         // REFRESH CANCELLATION
