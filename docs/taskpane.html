@@ -2990,6 +2990,47 @@
         const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
         
         // ========================================================================
+        // CURRENCY CACHE - Fetched once, reused until page reload
+        // ========================================================================
+        let currencyCache = null;  // { currencies: {...}, formats: {...}, default_subsidiary: "1" }
+        let subsidiaryLookupCache = null;  // { name.toLowerCase() → id }
+        
+        async function getCurrencyData() {
+            if (currencyCache) {
+                console.log('💱 Using cached currency data');
+                return currencyCache;
+            }
+            
+            console.log('💱 Fetching currency data...');
+            const response = await fetch(`${SERVER_URL}/lookups/currencies`);
+            if (response.ok) {
+                currencyCache = await response.json();
+                console.log('💱 Currency data cached:', Object.keys(currencyCache.currencies).length, 'subsidiaries');
+            }
+            return currencyCache;
+        }
+        
+        async function getSubsidiaryLookup() {
+            if (subsidiaryLookupCache) {
+                console.log('🏢 Using cached subsidiary lookup');
+                return subsidiaryLookupCache;
+            }
+            
+            console.log('🏢 Fetching subsidiary lookup...');
+            subsidiaryLookupCache = {};
+            const response = await fetch(`${SERVER_URL}/lookups/all`);
+            if (response.ok) {
+                const lookups = await response.json();
+                for (const sub of (lookups.subsidiaries || [])) {
+                    subsidiaryLookupCache[sub.name.toLowerCase()] = sub.id;
+                    subsidiaryLookupCache[sub.id] = sub.id;
+                }
+                console.log('🏢 Subsidiary lookup cached:', Object.keys(subsidiaryLookupCache).length, 'entries');
+            }
+            return subsidiaryLookupCache;
+        }
+        
+        // ========================================================================
         // VERSION - Read from manifest URL parameter (?v=x.x.x.x)
         // ========================================================================
         const urlParams = new URLSearchParams(window.location.search);
@@ -7089,7 +7130,103 @@ export default {
         }
         
         // ============================================
-        // FORMAT CURRENCIES - Apply currency symbols to BALANCE cells
+        // AUTO-FORMAT CURRENCIES - Silent version for after refresh
+        // Uses cached data for performance
+        // ============================================
+        async function autoFormatCurrencies() {
+            console.log('💱 AUTO-FORMAT: Starting currency formatting...');
+            
+            // Get cached currency data (should already be cached from previous calls)
+            const currencyData = await getCurrencyData();
+            if (!currencyData) {
+                console.warn('💱 AUTO-FORMAT: No currency data available');
+                return;
+            }
+            
+            const currencies = currencyData.currencies;
+            const formats = currencyData.formats;
+            const defaultSub = currencyData.default_subsidiary;
+            const defaultSymbol = currencies[defaultSub] || '$';
+            const defaultFormat = formats[defaultSymbol] || '$#,##0.00';
+            
+            await Excel.run(async (context) => {
+                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                const usedRange = sheet.getUsedRange();
+                usedRange.load(['formulas', 'rowCount', 'columnCount']);
+                await context.sync();
+                
+                const formulas = usedRange.formulas;
+                const cellRefsToResolve = new Set();
+                const pendingCells = [];
+                
+                // First pass: Collect cell references
+                for (let row = 0; row < usedRange.rowCount; row++) {
+                    for (let col = 0; col < usedRange.columnCount; col++) {
+                        const formula = formulas[row][col];
+                        if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
+                            const subsidiaryParam = extractFormulaParam(formula, 3);
+                            pendingCells.push({ row, col, subsidiaryParam });
+                            
+                            if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
+                                cellRefsToResolve.add(subsidiaryParam);
+                            }
+                        }
+                    }
+                }
+                
+                if (pendingCells.length === 0) {
+                    console.log('💱 AUTO-FORMAT: No BALANCE formulas found');
+                    return;
+                }
+                
+                // Resolve cell references
+                const resolvedRefs = {};
+                for (const cellRef of cellRefsToResolve) {
+                    try {
+                        const refRange = sheet.getRange(cellRef);
+                        refRange.load('values');
+                        await context.sync();
+                        resolvedRefs[cellRef] = String(refRange.values[0][0] || '').trim();
+                    } catch (e) {
+                        resolvedRefs[cellRef] = '';
+                    }
+                }
+                
+                // Get subsidiary lookup (cached)
+                const subsidiaryNameToId = await getSubsidiaryLookup();
+                
+                // Apply formats
+                let formatted = 0;
+                for (const { row, col, subsidiaryParam } of pendingCells) {
+                    let subId = '';
+                    
+                    if (subsidiaryParam) {
+                        if (/^\d+$/.test(subsidiaryParam)) {
+                            subId = subsidiaryParam;
+                        } else if (subsidiaryParam.startsWith('"') || subsidiaryParam.startsWith("'")) {
+                            const cleaned = subsidiaryParam.replace(/['"]/g, '').trim();
+                            subId = /^\d+$/.test(cleaned) ? cleaned : (subsidiaryNameToId[cleaned.toLowerCase()] || '');
+                        } else if (resolvedRefs[subsidiaryParam] !== undefined) {
+                            const resolvedValue = resolvedRefs[subsidiaryParam];
+                            subId = /^\d+$/.test(resolvedValue) ? resolvedValue : (subsidiaryNameToId[resolvedValue.toLowerCase()] || '');
+                        }
+                    }
+                    
+                    const symbol = subId && currencies[subId] ? currencies[subId] : defaultSymbol;
+                    const format = formats[symbol] || defaultFormat;
+                    
+                    const range = usedRange.getCell(row, col);
+                    range.numberFormat = [[format]];
+                    formatted++;
+                }
+                
+                await context.sync();
+                console.log(`💱 AUTO-FORMAT: Applied currency format to ${formatted} cells`);
+            });
+        }
+        
+        // ============================================
+        // FORMAT CURRENCIES - Apply currency symbols to BALANCE cells (with UI)
         // ============================================
         async function formatCurrencies() {
             const statusEl = document.getElementById('refreshStatus');
@@ -7100,24 +7237,23 @@ export default {
                 const originalText = btn.querySelector('.action-text').textContent;
                 btn.querySelector('.action-text').textContent = 'Formatting...';
                 
-                showLoading('Format Currencies', 'Fetching currency data...', 10);
+                showLoading('Format Currencies', 'Loading currency data...', 10);
                 
-                // Step 1: Fetch currency mappings from backend
-                console.log('💱 FORMAT CURRENCIES: Fetching currency data...');
-                const response = await fetch(`${SERVER_URL}/lookups/currencies`);
+                // Step 1: Get currency mappings (uses cache if available)
+                console.log('💱 FORMAT CURRENCIES: Getting currency data...');
+                const currencyData = await getCurrencyData();
                 
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch currencies: ${response.status}`);
+                if (!currencyData) {
+                    throw new Error('Failed to fetch currency data');
                 }
                 
-                const currencyData = await response.json();
                 const currencies = currencyData.currencies;     // { "1": "$", "3": "A$", ... }
                 const formats = currencyData.formats;           // { "$": "$#,##0.00", ... }
                 const defaultSub = currencyData.default_subsidiary;
                 const defaultSymbol = currencies[defaultSub] || '$';
                 const defaultFormat = formats[defaultSymbol] || '$#,##0.00';
                 
-                console.log('   Currency data:', currencyData);
+                console.log('   Using currency data:', Object.keys(currencies).length, 'subsidiaries');
                 
                 updateLoading('Scanning sheet for XAVI.BALANCE formulas...', 30);
                 
@@ -7173,22 +7309,8 @@ export default {
                         }
                     }
                     
-                    // Build name→ID lookup from the subsidiary list in currencies
-                    // We need to match subsidiary names to IDs
-                    let subsidiaryNameToId = {};
-                    try {
-                        const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
-                        if (lookupsResponse.ok) {
-                            const lookups = await lookupsResponse.json();
-                            for (const sub of (lookups.subsidiaries || [])) {
-                                // Map both name and ID
-                                subsidiaryNameToId[sub.name.toLowerCase()] = sub.id;
-                                subsidiaryNameToId[sub.id] = sub.id;
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('   Could not load subsidiary lookup:', e.message);
-                    }
+                    // Get name→ID lookup (uses cache if available)
+                    const subsidiaryNameToId = await getSubsidiaryLookup();
                     
                     updateLoading('Determining currencies...', 50);
                     
@@ -8380,8 +8502,20 @@ export default {
                 if (refreshCancelled) {
                     // Cancelled - already handled
                 } else {
-                updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
-                await new Promise(resolve => setTimeout(resolve, 800));
+                    updateLoading('Complete!', 100, `${formulasRefreshed} formulas refreshed`);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // ============================================
+                    // AUTO-FORMAT: Apply currency formatting to all BALANCE cells
+                    // Uses cached currency data for performance
+                    // ============================================
+                    try {
+                        updateLoading('Applying currency formats...', 100);
+                        await autoFormatCurrencies();
+                        console.log('💱 Auto-format currencies complete');
+                    } catch (formatError) {
+                        console.warn('Currency formatting failed (non-critical):', formatError.message);
+                    }
                 }
                 
                 hideLoading();
