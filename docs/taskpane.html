@@ -2473,6 +2473,12 @@
                                 <span class="action-text">Clear Cache</span>
                                 <span class="help-icon small" data-tip="Erases all cached data. Forces formulas to re-query NetSuite on next calculation.">?</span>
                             </button>
+                            
+                            <button class="action-btn" onclick="formatCurrencies()" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);">
+                                <span class="action-icon">💱</span>
+                                <span class="action-text">Format Currencies</span>
+                                <span class="help-icon small" data-tip="Applies currency formatting to XAVI.BALANCE cells based on each formula's subsidiary. Automatically detects USD, EUR, GBP, AUD, INR, etc.">?</span>
+                            </button>
                         </div>
                     
                     <div class="refresh-status" id="refreshStatus"></div>
@@ -4308,8 +4314,10 @@
                 
                 console.log(`Income Statement: Revenue=${categories.income.length}, OthIncome=${categories.othIncome.length}, COGS=${categories.cogs.length}, Expense=${categories.expense.length}, OthExpense=${categories.othExpense.length}`);
                 
-                // Get default subsidiary
+                // Get default subsidiary and its currency format
                 let defaultSubsidiary = 'Celigo Inc. (Consolidated)';
+                let defaultSubsidiaryId = '1';
+                let currencyFormat = '$#,##0.00';  // Default to USD
                 try {
                     const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
                     if (lookupsResponse.ok) {
@@ -4319,10 +4327,23 @@
                                 s.name.toLowerCase().includes('consolidated') || 
                                 s.name.toLowerCase().includes('parent')
                             );
-                            defaultSubsidiary = consolidated ? consolidated.name : lookups.subsidiaries[0].name;
+                            const selectedSub = consolidated || lookups.subsidiaries[0];
+                            defaultSubsidiary = selectedSub.name;
+                            defaultSubsidiaryId = selectedSub.id;
                         }
                     }
-                } catch (e) {}
+                    
+                    // Fetch currency format for the selected subsidiary
+                    const currencyResponse = await fetch(`${SERVER_URL}/lookups/currencies`);
+                    if (currencyResponse.ok) {
+                        const currencyData = await currencyResponse.json();
+                        const symbol = currencyData.currencies[defaultSubsidiaryId] || '$';
+                        currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
+                        console.log(`💱 Currency for subsidiary ${defaultSubsidiaryId}: ${symbol} → ${currencyFormat}`);
+                    }
+                } catch (e) {
+                    console.warn('Currency lookup failed, using default USD format:', e.message);
+                }
                 
                 // Step 3: Build Excel structure
                 updateProgress(45, '📊 Step 3 of 5: Building Structure', 'Creating sections and headers...');
@@ -4515,7 +4536,7 @@
                     // Helper to write account row
                     const writeAccountRow = async (acct, row) => {
                         sheet.getRange(`A${row}`).values = [[acct.number]];
-                        sheet.getRange(`B${row}`).values = [[acct.name]];
+                        sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                         
                         // Balance formulas for each month (header row is now 5)
                         for (let m = 0; m < 12; m++) {
@@ -4739,16 +4760,18 @@
                     
                     netIncomeRow = currentRow;
                     
-                    updateProgress(95, '🎨 Step 5 of 5: Formatting', 'Applying number formats...');
+                    updateProgress(95, '🎨 Step 5 of 5: Formatting', 'Applying currency formats...');
                     
-                    // Format all number cells as currency (data starts at row 6)
+                    // Format all number cells with the correct currency symbol (data starts at row 6)
                     try {
                         const dataRange = sheet.getRange(`C6:O${netIncomeRow}`);
                         const rows = netIncomeRow - 5;
                         const cols = 13; // C through O
-                        const formatArray = Array(rows).fill(null).map(() => Array(cols).fill('#,##0'));
+                        // Use the currency format determined from subsidiary
+                        const formatArray = Array(rows).fill(null).map(() => Array(cols).fill(currencyFormat));
                         dataRange.numberFormat = formatArray;
                         await context.sync();
+                        console.log(`💱 Applied currency format: ${currencyFormat} to ${rows * cols} cells`);
                     } catch (e) {
                         console.warn('Format warning:', e.message);
                     }
@@ -5143,7 +5166,7 @@
                     
                     const writeAccountRow = (acct, row) => {
                         sheet.getRange(`A${row}`).values = [[acct.number]];
-                        sheet.getRange(`B${row}`).values = [[acct.name]];
+                        sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                         for (let m = 0; m < 12; m++) {
                             const col = String.fromCharCode(67 + m);
                             sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];
@@ -6796,7 +6819,7 @@ export default {
                     
                     const writeAccountRow = (acct, row) => {
                         sheet.getRange(`A${row}`).values = [[acct.number]];
-                        sheet.getRange(`B${row}`).values = [[acct.name]];
+                        sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                         for (let m = 0; m < 12; m++) {
                             const col = String.fromCharCode(67 + m);
                             sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];
@@ -7062,6 +7085,213 @@ export default {
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Clear Cache';
+            }
+        }
+        
+        // ============================================
+        // FORMAT CURRENCIES - Apply currency symbols to BALANCE cells
+        // ============================================
+        async function formatCurrencies() {
+            const statusEl = document.getElementById('refreshStatus');
+            const btn = event.target.closest('button');
+            
+            try {
+                btn.disabled = true;
+                const originalText = btn.querySelector('.action-text').textContent;
+                btn.querySelector('.action-text').textContent = 'Formatting...';
+                
+                showLoading('Format Currencies', 'Fetching currency data...', 10);
+                
+                // Step 1: Fetch currency mappings from backend
+                console.log('💱 FORMAT CURRENCIES: Fetching currency data...');
+                const response = await fetch(`${SERVER_URL}/lookups/currencies`);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch currencies: ${response.status}`);
+                }
+                
+                const currencyData = await response.json();
+                const currencies = currencyData.currencies;     // { "1": "$", "3": "A$", ... }
+                const formats = currencyData.formats;           // { "$": "$#,##0.00", ... }
+                const defaultSub = currencyData.default_subsidiary;
+                const defaultSymbol = currencies[defaultSub] || '$';
+                const defaultFormat = formats[defaultSymbol] || '$#,##0.00';
+                
+                console.log('   Currency data:', currencyData);
+                
+                updateLoading('Scanning sheet for XAVI.BALANCE formulas...', 30);
+                
+                // Step 2: Find all cells with XAVI.BALANCE formulas
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load(['formulas', 'address', 'rowCount', 'columnCount']);
+                    await context.sync();
+                    
+                    const formulas = usedRange.formulas;
+                    const cellsToFormat = [];
+                    
+                    // Parse each cell for XAVI.BALANCE formulas
+                    for (let row = 0; row < usedRange.rowCount; row++) {
+                        for (let col = 0; col < usedRange.columnCount; col++) {
+                            const formula = formulas[row][col];
+                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
+                                // Extract subsidiary parameter (4th parameter, index 3)
+                                // Formula: =XAVI.BALANCE(account, fromPeriod, toPeriod, subsidiary, ...)
+                                const subsidiaryParam = extractFormulaParam(formula, 3);
+                                
+                                // Resolve subsidiary to ID (could be name, ID, or cell reference)
+                                let subId = '';
+                                if (subsidiaryParam) {
+                                    // If it's a number, use directly
+                                    if (/^\d+$/.test(subsidiaryParam)) {
+                                        subId = subsidiaryParam;
+                                    } else if (subsidiaryParam.startsWith('"') || subsidiaryParam.startsWith("'")) {
+                                        // It's a string - could be name or ID
+                                        const cleaned = subsidiaryParam.replace(/['"]/g, '').trim();
+                                        if (/^\d+$/.test(cleaned)) {
+                                            subId = cleaned;
+                                        } else {
+                                            // It's a name - we'd need to look it up
+                                            // For now, skip cell references and complex names
+                                            subId = '';
+                                        }
+                                    }
+                                    // Note: Cell references would need special handling
+                                }
+                                
+                                // Determine currency symbol and format
+                                const symbol = subId && currencies[subId] ? currencies[subId] : defaultSymbol;
+                                const format = formats[symbol] || defaultFormat;
+                                
+                                cellsToFormat.push({
+                                    row: row,
+                                    col: col,
+                                    format: format,
+                                    symbol: symbol
+                                });
+                            }
+                        }
+                    }
+                    
+                    console.log(`   Found ${cellsToFormat.length} XAVI.BALANCE cells to format`);
+                    
+                    if (cellsToFormat.length === 0) {
+                        hideLoading();
+                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">ℹ️ No XAVI.BALANCE formulas found</strong><br><span style="font-size: 11px;">Add some balance formulas first!</span></div>`;
+                        setTimeout(() => statusEl.textContent = '', 5000);
+                        return;
+                    }
+                    
+                    updateLoading(`Formatting ${cellsToFormat.length} cells...`, 60);
+                    
+                    // Step 3: Apply formatting in batches to avoid API limits
+                    const batchSize = 100;
+                    let formatted = 0;
+                    
+                    for (let i = 0; i < cellsToFormat.length; i += batchSize) {
+                        const batch = cellsToFormat.slice(i, i + batchSize);
+                        
+                        for (const cell of batch) {
+                            const range = usedRange.getCell(cell.row, cell.col);
+                            range.numberFormat = [[cell.format]];
+                        }
+                        
+                        await context.sync();
+                        formatted += batch.length;
+                        
+                        const progress = 60 + (formatted / cellsToFormat.length) * 35;
+                        updateLoading(`Formatted ${formatted}/${cellsToFormat.length} cells...`, progress);
+                    }
+                    
+                    // Count unique currencies used
+                    const symbolCounts = {};
+                    for (const cell of cellsToFormat) {
+                        symbolCounts[cell.symbol] = (symbolCounts[cell.symbol] || 0) + 1;
+                    }
+                    
+                    const symbolSummary = Object.entries(symbolCounts)
+                        .map(([sym, count]) => `${sym} (${count})`)
+                        .join(', ');
+                    
+                    console.log(`✅ Formatted ${cellsToFormat.length} cells: ${symbolSummary}`);
+                    
+                    updateLoading('Done!', 100);
+                    await new Promise(r => setTimeout(r, 500));
+                    hideLoading();
+                    
+                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Formatted ${cellsToFormat.length} cells</strong><br><span style="font-size: 11px;">Currencies: ${symbolSummary}</span></div>`;
+                    setTimeout(() => statusEl.textContent = '', 5000);
+                });
+                
+            } catch (error) {
+                console.error('Error formatting currencies:', error);
+                hideLoading();
+                
+                statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px;"><strong style="color: #dc2626;">✗ Error:</strong> ${error.message}</div>`;
+                setTimeout(() => statusEl.textContent = '', 5000);
+            } finally {
+                btn.disabled = false;
+                btn.querySelector('.action-text').textContent = 'Format Currencies';
+            }
+        }
+        
+        // Helper: Extract parameter from formula string by index (0-based)
+        function extractFormulaParam(formula, paramIndex) {
+            try {
+                // Find the opening parenthesis
+                const start = formula.indexOf('(');
+                if (start === -1) return '';
+                
+                // Extract everything between the parentheses
+                let depth = 1;
+                let end = start + 1;
+                while (end < formula.length && depth > 0) {
+                    if (formula[end] === '(') depth++;
+                    if (formula[end] === ')') depth--;
+                    end++;
+                }
+                
+                const paramsStr = formula.substring(start + 1, end - 1);
+                
+                // Split by comma, but respect nested parentheses and quotes
+                const params = [];
+                let current = '';
+                let inQuotes = false;
+                let quoteChar = '';
+                let parenDepth = 0;
+                
+                for (let i = 0; i < paramsStr.length; i++) {
+                    const char = paramsStr[i];
+                    
+                    if ((char === '"' || char === "'") && !inQuotes) {
+                        inQuotes = true;
+                        quoteChar = char;
+                        current += char;
+                    } else if (char === quoteChar && inQuotes) {
+                        inQuotes = false;
+                        current += char;
+                    } else if (char === '(' && !inQuotes) {
+                        parenDepth++;
+                        current += char;
+                    } else if (char === ')' && !inQuotes) {
+                        parenDepth--;
+                        current += char;
+                    } else if (char === ',' && !inQuotes && parenDepth === 0) {
+                        params.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                if (current.trim()) {
+                    params.push(current.trim());
+                }
+                
+                return params[paramIndex] || '';
+            } catch (e) {
+                console.error('Error parsing formula:', e);
+                return '';
             }
         }
 
@@ -7370,7 +7600,7 @@ export default {
                             
                             const writeAccountRow = (acct, row) => {
                                 sheet.getRange(`A${row}`).values = [[acct.number]];
-                                sheet.getRange(`B${row}`).values = [[acct.name]];
+                                sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                                 for (let m = 0; m < 12; m++) {
                                     const col = String.fromCharCode(67 + m);
                                     sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];

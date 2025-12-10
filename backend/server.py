@@ -29,7 +29,8 @@ lookup_cache = {
     'departments': {},   # name → id
     'classes': {},       # name → id
     'locations': {},     # name → id
-    'periods': {}        # period name → id (for date range performance)
+    'periods': {},       # period name → id (for date range performance)
+    'currencies': {}     # subsidiary_id → currency_symbol (for cell formatting)
 }
 cache_loaded = False
 
@@ -373,14 +374,18 @@ def load_lookup_cache():
         print(f"✗ Location lookup error: {e}")
     
     # Subsidiaries - now we have access to the Subsidiary table!
+    # Also load currency for each subsidiary for formatting
     try:
         sub_query = """
             SELECT 
                 s.id,
                 s.name,
-                s.fullName AS hierarchy
+                s.fullName AS hierarchy,
+                s.currency,
+                c.symbol AS currency_symbol
             FROM 
                 Subsidiary s
+                LEFT JOIN Currency c ON c.id = s.currency
             ORDER BY 
                 s.fullName
         """
@@ -390,6 +395,7 @@ def load_lookup_cache():
                 sub_id = str(row['id'])
                 short_name = row['name'].lower()
                 hierarchy_name = row.get('hierarchy', row['name']).lower()
+                currency_symbol = row.get('currency_symbol', '$')  # Default to $ if not found
                 
                 # Add BOTH the short name AND the full hierarchy path
                 # This allows users to enter either:
@@ -398,7 +404,11 @@ def load_lookup_cache():
                 lookup_cache['subsidiaries'][short_name] = sub_id
                 if hierarchy_name != short_name:
                     lookup_cache['subsidiaries'][hierarchy_name] = sub_id
-            print(f"✓ Loaded {len(lookup_cache['subsidiaries'])} subsidiaries (short + hierarchy names)")
+                
+                # Store currency symbol for each subsidiary (by ID)
+                lookup_cache['currencies'][sub_id] = currency_symbol or '$'
+                
+            print(f"✓ Loaded {len(lookup_cache['subsidiaries'])} subsidiaries with currencies")
     except Exception as e:
         print(f"✗ Subsidiary lookup error: {e}")
         # Fallback to known values
@@ -4323,6 +4333,140 @@ def get_all_lookups():
             })
         
         return jsonify(lookups)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/lookups/currencies')
+def get_currencies():
+    """
+    Get currency symbols for each subsidiary.
+    Used by Excel frontend to format cells with the correct currency symbol.
+    
+    Returns: {
+        "currencies": {
+            "1": "$",      // Subsidiary ID 1 uses USD
+            "2": "₹",      // Subsidiary ID 2 uses INR
+            "3": "A$",     // Subsidiary ID 3 uses AUD
+            ...
+        },
+        "default_subsidiary": "1",
+        "formats": {
+            "$": "$#,##0.00",
+            "€": "€#,##0.00",
+            "£": "£#,##0.00",
+            ...
+        }
+    }
+    """
+    try:
+        # Load cache if not already loaded
+        if not cache_loaded:
+            load_lookup_cache()
+        
+        # Map ISO currency codes to display symbols
+        # NetSuite returns codes like "USD", we want symbols like "$"
+        code_to_symbol = {
+            'USD': '$',
+            'EUR': '€',
+            'GBP': '£',
+            'JPY': '¥',
+            'CNY': '¥',
+            'INR': '₹',
+            'AUD': 'A$',
+            'CAD': 'C$',
+            'HKD': 'HK$',
+            'SGD': 'S$',
+            'NZD': 'NZ$',
+            'CHF': 'CHF',
+            'SEK': 'kr',
+            'NOK': 'kr',
+            'DKK': 'kr',
+            'BRL': 'R$',
+            'ZAR': 'R',
+            'KRW': '₩',
+            'MXN': '$',
+            'PLN': 'zł',
+            'CZK': 'Kč',
+            'HUF': 'Ft',
+            'RON': 'lei',
+            'THB': '฿',
+            'PHP': '₱',
+            'MYR': 'RM',
+            'IDR': 'Rp',
+            'VND': '₫',
+            'TWD': 'NT$',
+            'ILS': '₪',
+            'TRY': '₺',
+            'RUB': '₽',
+            'AED': 'د.إ',
+            'SAR': '﷼',
+        }
+        
+        # Excel number formats for currency symbols
+        symbol_formats = {
+            '$': '$#,##0.00',
+            '€': '€#,##0.00',
+            '£': '£#,##0.00',
+            '¥': '¥#,##0',
+            '₹': '[$₹-en-IN]#,##0.00',
+            'A$': '[$$-en-AU]#,##0.00',
+            'C$': '[$$-en-CA]#,##0.00',
+            'HK$': '[$$-zh-HK]#,##0.00',
+            'S$': '[$$-en-SG]#,##0.00',
+            'NZ$': '[$$-en-NZ]#,##0.00',
+            'CHF': '[$CHF-de-CH] #,##0.00',
+            'kr': '[$kr-sv-SE] #,##0.00',
+            'R$': '[$R$-pt-BR] #,##0.00',
+            'R': '[$R-en-ZA] #,##0.00',
+            '₩': '[$₩-ko-KR]#,##0',
+            'zł': '#,##0.00 [$zł-pl-PL]',
+            'Kč': '#,##0.00 [$Kč-cs-CZ]',
+            'Ft': '#,##0 [$Ft-hu-HU]',
+            'lei': '#,##0.00 [$lei-ro-RO]',
+            '฿': '[$฿-th-TH]#,##0.00',
+            '₱': '[$₱-en-PH]#,##0.00',
+            'RM': '[$RM-ms-MY] #,##0.00',
+            'Rp': '[$Rp-id-ID] #,##0',
+            '₫': '#,##0 [$₫-vi-VN]',
+            'NT$': '[$NT$-zh-TW]#,##0',
+            '₪': '[$₪-he-IL]#,##0.00',
+            '₺': '[$₺-tr-TR]#,##0.00',
+            '₽': '#,##0.00 [$₽-ru-RU]',
+            'د.إ': '[$د.إ-ar-AE] #,##0.00',
+            '﷼': '[$﷼-ar-SA] #,##0.00',
+        }
+        
+        def get_symbol(code):
+            """Convert currency code to symbol"""
+            return code_to_symbol.get(code, code)  # Return code if no mapping
+        
+        def get_format_for_symbol(symbol):
+            """Get Excel format for currency symbol"""
+            if symbol in symbol_formats:
+                return symbol_formats[symbol]
+            # Default format: symbol prefix with quotes
+            return f'[${symbol}] #,##0.00'
+        
+        # Convert currency codes to symbols in the response
+        currencies_with_symbols = {}
+        for sub_id, code in lookup_cache.get('currencies', {}).items():
+            currencies_with_symbols[sub_id] = get_symbol(code)
+        
+        # Build response with currencies and their formats
+        response = {
+            'currencies': currencies_with_symbols,
+            'default_subsidiary': default_subsidiary_id or '1',
+            'formats': {}
+        }
+        
+        # Add format for each unique currency symbol
+        for sub_id, symbol in currencies_with_symbols.items():
+            if symbol not in response['formats']:
+                response['formats'][symbol] = get_format_for_symbol(symbol)
+        
+        return jsonify(response)
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
