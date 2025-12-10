@@ -6648,6 +6648,19 @@ export default {
                 // Do an initial scan to populate knownSubsidiaryCells
                 await scanForSubsidiaryCells();
                 
+                // Also listen for worksheet activation to re-register listener on new sheets
+                context.workbook.worksheets.onActivated.add(async (event) => {
+                    console.log('📋 Worksheet activated - re-registering listeners...');
+                    // Reset formula count for new sheet
+                    lastFormulaCount = 0;
+                    knownSubsidiaryCells.clear();
+                    
+                    // Re-scan the new sheet
+                    await scanForSubsidiaryCells();
+                });
+                await context.sync();
+                console.log('✅ Worksheet activation listener registered');
+                
             } catch (e) {
                 console.warn('Could not set up auto-sync listener:', e.message);
             }
