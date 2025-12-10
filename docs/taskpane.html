@@ -6588,9 +6588,12 @@ export default {
         // ============================================
         let knownSubsidiaryCells = new Set();  // Cells that are referenced as subsidiary params
         let currencyFormatDebounceTimer = null;
+        let formulaDetectionTimer = null;  // Timer for detecting new XAVI formulas
+        let lastFormulaCount = 0;  // Track formula count to detect new additions
         
         // Set up listener to auto-sync Income Statement when YEAR changes
         // AND smart currency format updates when subsidiary cells change
+        // AND detect new XAVI formulas being added
         async function setupAutoSyncListener() {
             try {
                 await Excel.run(async (context) => {
@@ -6605,23 +6608,36 @@ export default {
                         }
                         
                         // ============================================
+                        // DETECT NEW XAVI FORMULAS
+                        // When user adds/pastes/drags formulas, we need to:
+                        // 1. Re-scan for subsidiary cells
+                        // 2. Re-apply currency formatting
+                        // ============================================
+                        if (formulaDetectionTimer) {
+                            clearTimeout(formulaDetectionTimer);
+                        }
+                        formulaDetectionTimer = setTimeout(async () => {
+                            await checkForNewFormulas();
+                        }, 2000); // 2 second debounce after typing stops
+                        
+                        // ============================================
                         // SMART CURRENCY FORMAT UPDATE
                         // Check if changed cell is a known subsidiary reference
-                        // Debounce to avoid excessive updates during typing
                         // ============================================
                         const normalizedAddress = event.address.replace(/\$/g, '').toUpperCase();
                         
-                        if (knownSubsidiaryCells.has(normalizedAddress) || knownSubsidiaryCells.has('$' + normalizedAddress) || 
-                            knownSubsidiaryCells.has(event.address) || knownSubsidiaryCells.size === 0) {
+                        if (knownSubsidiaryCells.has(normalizedAddress) || 
+                            knownSubsidiaryCells.has('$' + normalizedAddress) || 
+                            knownSubsidiaryCells.has(event.address)) {
                             // Debounce - wait for user to stop making changes
                             if (currencyFormatDebounceTimer) {
                                 clearTimeout(currencyFormatDebounceTimer);
                             }
                             
                             currencyFormatDebounceTimer = setTimeout(async () => {
-                                console.log(`💱 Detected change in potential subsidiary cell: ${event.address}`);
+                                console.log(`💱 Detected change in subsidiary cell: ${event.address}`);
                                 await smartCurrencyFormatUpdate();
-                            }, 1500); // 1.5 second debounce - user has stopped changing
+                            }, 1500); // 1.5 second debounce
                         }
                     });
                     
@@ -6637,6 +6653,47 @@ export default {
             }
         }
         
+        // Check if new XAVI formulas were added and apply formatting
+        async function checkForNewFormulas() {
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load('formulas');
+                    await context.sync();
+                    
+                    // Count XAVI.BALANCE formulas
+                    let formulaCount = 0;
+                    const formulas = usedRange.formulas;
+                    for (let row = 0; row < formulas.length; row++) {
+                        for (let col = 0; col < formulas[row].length; col++) {
+                            const formula = formulas[row][col];
+                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
+                                formulaCount++;
+                            }
+                        }
+                    }
+                    
+                    // If formula count changed, we have new formulas - rescan and format
+                    if (formulaCount !== lastFormulaCount) {
+                        console.log(`📊 Formula count changed: ${lastFormulaCount} → ${formulaCount}`);
+                        lastFormulaCount = formulaCount;
+                        
+                        if (formulaCount > 0) {
+                            // Re-scan for subsidiary cells
+                            await scanForSubsidiaryCells();
+                            
+                            // Auto-apply currency formatting to new formulas
+                            console.log('💱 Applying currency formatting to new formulas...');
+                            await autoFormatCurrencies();
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn('Formula detection check failed:', e.message);
+            }
+        }
+        
         // Scan sheet to find all cells referenced as subsidiary parameters
         async function scanForSubsidiaryCells() {
             try {
@@ -6648,11 +6705,13 @@ export default {
                     
                     knownSubsidiaryCells.clear();
                     const formulas = usedRange.formulas;
+                    let formulaCount = 0;
                     
                     for (let row = 0; row < formulas.length; row++) {
                         for (let col = 0; col < formulas[row].length; col++) {
                             const formula = formulas[row][col];
                             if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
+                                formulaCount++;
                                 const subsidiaryParam = extractFormulaParam(formula, 3);
                                 // If it's a cell reference (not a number or quoted string)
                                 if (subsidiaryParam && 
@@ -6667,9 +6726,13 @@ export default {
                         }
                     }
                     
+                    // Update formula count for change detection
+                    lastFormulaCount = formulaCount;
+                    
                     if (knownSubsidiaryCells.size > 0) {
                         console.log(`📍 Tracking ${knownSubsidiaryCells.size} subsidiary reference cells:`, [...knownSubsidiaryCells]);
                     }
+                    console.log(`📊 Initial formula count: ${formulaCount}`);
                 });
             } catch (e) {
                 console.warn('Could not scan for subsidiary cells:', e.message);
