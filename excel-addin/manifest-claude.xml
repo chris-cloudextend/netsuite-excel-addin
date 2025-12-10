@@ -56,8 +56,8 @@
 
         <!-- Desktop UI (Ribbon + Context Menu) -->
         <DesktopFormFactor>
-          <!-- FunctionFile for ExecuteFunction actions (context menu) -->
-          <FunctionFile resid="Commands.Url"/>
+          <!-- FunctionFile uses Taskpane for shared runtime (no separate window) -->
+          <FunctionFile resid="Taskpane.Url"/>
 
           <!-- Ribbon Button on DATA Tab -->
           <ExtensionPoint xsi:type="PrimaryCommandSurface">
