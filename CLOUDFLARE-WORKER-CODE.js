@@ -9,7 +9,7 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://witness-victor-swaziland-hotels.trycloudflare.com
+// CURRENT TUNNEL URL: https://counter-gibraltar-conclude-believe.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
 // Last Updated: Dec 10, 2025
 // ════════════════════════════════════════════════════════════════════
@@ -17,7 +17,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://witness-victor-swaziland-hotels.trycloudflare.com';
+    const TUNNEL_URL = 'https://counter-gibraltar-conclude-believe.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {

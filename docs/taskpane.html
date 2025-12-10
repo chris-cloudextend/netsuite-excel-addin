@@ -9548,6 +9548,26 @@ export default {
                     
                     const cleaned = cleanParam(ref);
                     
+                    // Check if it's a TEXT() formula - extract the cell reference from it
+                    const textMatch = cleaned.match(/^TEXT\s*\(\s*([\$]?[A-Z]+[\$]?\d+)\s*,/i);
+                    if (textMatch) {
+                        const cellRef = textMatch[1];
+                        console.log(`  Detected TEXT formula, extracting cell ref: ${cellRef}`);
+                        try {
+                            const sheet = context.workbook.worksheets.getActiveWorksheet();
+                            const refRange = sheet.getRange(cellRef);
+                            refRange.load('values');
+                            await context.sync();
+                            
+                            const value = refRange.values[0][0];
+                            console.log(`  Resolved ${cellRef} to:`, value);
+                            return String(value || '');
+                        } catch (e) {
+                            console.warn(`Could not resolve TEXT formula cell reference ${cellRef}:`, e);
+                            return '';
+                        }
+                    }
+                    
                     // If it's a cell reference, get the value from that cell
                     if (isCellRef(cleaned)) {
                         try {
