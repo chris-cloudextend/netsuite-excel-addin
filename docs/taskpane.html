@@ -6582,7 +6582,14 @@ export default {
             }
         }
         
-        // Set up listener to auto-sync Income Statement when YEAR or SUBSIDIARY changes
+        // ============================================
+        // SUBSIDIARY CELL TRACKING - For smart currency format updates
+        // ============================================
+        let knownSubsidiaryCells = new Set();  // Cells that are referenced as subsidiary params
+        let currencyFormatDebounceTimer = null;
+        
+        // Set up listener to auto-sync Income Statement when YEAR changes
+        // AND smart currency format updates when subsidiary cells change
         async function setupAutoSyncListener() {
             try {
                 await Excel.run(async (context) => {
@@ -6590,42 +6597,98 @@ export default {
                     
                     // Register for changes on the worksheet
                     sheet.onChanged.add(async (event) => {
-                        // Check if the changed cell is P3 (YEAR parameter)
+                        // Check if the changed cell is P3 (YEAR parameter for auto-sync)
                         if (event.address === 'P3' || event.address === '$P$3') {
                             console.log('📊 YEAR cell (P3) changed - checking for auto-sync...');
                             await handleYearChange();
                         }
                         
-                        // Check if the changed cell is Q3 (SUBSIDIARY parameter)
-                        // When subsidiary changes, re-apply currency formatting
-                        if (event.address === 'Q3' || event.address === '$Q$3') {
-                            console.log('💱 SUBSIDIARY cell (Q3) changed - updating currency format...');
-                            await handleSubsidiaryChange();
+                        // ============================================
+                        // SMART CURRENCY FORMAT UPDATE
+                        // Check if changed cell is a known subsidiary reference
+                        // Debounce to avoid excessive updates during typing
+                        // ============================================
+                        const normalizedAddress = event.address.replace(/\$/g, '').toUpperCase();
+                        
+                        if (knownSubsidiaryCells.has(normalizedAddress) || knownSubsidiaryCells.has('$' + normalizedAddress) || 
+                            knownSubsidiaryCells.has(event.address) || knownSubsidiaryCells.size === 0) {
+                            // Debounce - wait for user to stop making changes
+                            if (currencyFormatDebounceTimer) {
+                                clearTimeout(currencyFormatDebounceTimer);
+                            }
+                            
+                            currencyFormatDebounceTimer = setTimeout(async () => {
+                                console.log(`💱 Detected change in potential subsidiary cell: ${event.address}`);
+                                await smartCurrencyFormatUpdate();
+                            }, 1500); // 1.5 second debounce - user has stopped changing
                         }
                     });
                     
                     await context.sync();
-                    console.log('✅ Auto-sync listener registered for worksheet changes (YEAR + SUBSIDIARY)');
+                    console.log('✅ Auto-sync listener registered for worksheet changes');
                 });
+                
+                // Do an initial scan to populate knownSubsidiaryCells
+                await scanForSubsidiaryCells();
+                
             } catch (e) {
                 console.warn('Could not set up auto-sync listener:', e.message);
             }
         }
         
-        // Handle automatic currency format update when SUBSIDIARY changes
-        async function handleSubsidiaryChange() {
+        // Scan sheet to find all cells referenced as subsidiary parameters
+        async function scanForSubsidiaryCells() {
             try {
-                console.log('💱 Subsidiary changed - applying new currency format...');
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load('formulas');
+                    await context.sync();
+                    
+                    knownSubsidiaryCells.clear();
+                    const formulas = usedRange.formulas;
+                    
+                    for (let row = 0; row < formulas.length; row++) {
+                        for (let col = 0; col < formulas[row].length; col++) {
+                            const formula = formulas[row][col];
+                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
+                                const subsidiaryParam = extractFormulaParam(formula, 3);
+                                // If it's a cell reference (not a number or quoted string)
+                                if (subsidiaryParam && 
+                                    !subsidiaryParam.startsWith('"') && 
+                                    !subsidiaryParam.startsWith("'") && 
+                                    !/^\d+$/.test(subsidiaryParam)) {
+                                    // Normalize and add to known cells
+                                    const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
+                                    knownSubsidiaryCells.add(normalized);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (knownSubsidiaryCells.size > 0) {
+                        console.log(`📍 Tracking ${knownSubsidiaryCells.size} subsidiary reference cells:`, [...knownSubsidiaryCells]);
+                    }
+                });
+            } catch (e) {
+                console.warn('Could not scan for subsidiary cells:', e.message);
+            }
+        }
+        
+        // Smart currency format update - only runs if a subsidiary cell changed
+        async function smartCurrencyFormatUpdate() {
+            try {
+                console.log('💱 Running smart currency format update...');
                 
-                // Small delay to let the cell value settle
-                await new Promise(r => setTimeout(r, 300));
+                // Re-scan for subsidiary cells (in case new formulas were added)
+                await scanForSubsidiaryCells();
                 
-                // Re-apply currency formatting (uses cached data)
+                // Re-apply currency formatting (uses cached data, very fast)
                 await autoFormatCurrencies();
                 
-                console.log('💱 Currency format updated for new subsidiary');
+                console.log('💱 Currency formats updated');
             } catch (e) {
-                console.warn('Currency format update failed:', e.message);
+                console.warn('Smart currency format update failed:', e.message);
             }
         }
         
@@ -7187,6 +7250,7 @@ export default {
         // ============================================
         // AUTO-FORMAT CURRENCIES - Silent version for after refresh
         // Uses cached data for performance
+        // Also updates knownSubsidiaryCells for smart change detection
         // ============================================
         async function autoFormatCurrencies() {
             console.log('💱 AUTO-FORMAT: Starting currency formatting...');
@@ -7214,6 +7278,9 @@ export default {
                 const cellRefsToResolve = new Set();
                 const pendingCells = [];
                 
+                // Clear and rebuild known subsidiary cells
+                knownSubsidiaryCells.clear();
+                
                 // First pass: Collect cell references
                 for (let row = 0; row < usedRange.rowCount; row++) {
                     for (let col = 0; col < usedRange.columnCount; col++) {
@@ -7224,6 +7291,9 @@ export default {
                             
                             if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
                                 cellRefsToResolve.add(subsidiaryParam);
+                                // Track this cell reference for change detection
+                                const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
+                                knownSubsidiaryCells.add(normalized);
                             }
                         }
                     }
@@ -7233,6 +7303,8 @@ export default {
                     console.log('💱 AUTO-FORMAT: No BALANCE formulas found');
                     return;
                 }
+                
+                console.log(`💱 AUTO-FORMAT: Tracking ${knownSubsidiaryCells.size} subsidiary cells:`, [...knownSubsidiaryCells]);
                 
                 // Resolve cell references
                 const resolvedRefs = {};
