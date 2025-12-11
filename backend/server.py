@@ -3756,11 +3756,11 @@ def get_balance():
     Returns: Balance amount (number)
     """
     try:
-        # Get parameters
+        # Get parameters (accept both 'from'/'to' and 'from_period'/'to_period')
         account = request.args.get('account', '')
         subsidiary = request.args.get('subsidiary', '')
-        from_period = request.args.get('from_period', '')
-        to_period = request.args.get('to_period', '')
+        from_period = request.args.get('from_period', '') or request.args.get('from', '')
+        to_period = request.args.get('to_period', '') or request.args.get('to', '')
         class_id = request.args.get('class', '')
         department = request.args.get('department', '')
         location = request.args.get('location', '')
@@ -3774,11 +3774,15 @@ def get_balance():
         if not account:
             return jsonify({'error': 'Account number required'}), 400
         
+        # Get accounting book parameter (default to Primary Book = 1)
+        accounting_book = request.args.get('accountingBook', '') or request.args.get('accountingbook', '') or '1'
+        
         # Build WHERE clause
         where_clauses = [
             "t.posting = 'T'",
             "tal.posting = 'T'",
-            f"a.acctnumber = '{escape_sql(account)}'"
+            f"a.acctnumber = '{escape_sql(account)}'",
+            f"tal.accountingbook = {accounting_book}"  # Always filter to specific accounting book
         ]
         
         # Add optional filters
