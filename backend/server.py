@@ -3996,6 +3996,10 @@ def get_all_budgets():
         if not year:
             return jsonify({'error': 'year parameter is required'}), 400
         
+        # Convert subsidiary name to ID if needed
+        subsidiary = convert_name_to_id('subsidiary', subsidiary)
+        print(f"Budget/all: year={year}, category={category}, subsidiary={subsidiary}", file=sys.stderr)
+        
         # Get period IDs for the year
         period_query = f"""
             SELECT id, periodname, startdate
