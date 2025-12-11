@@ -705,13 +705,11 @@ async function runBuildModeBatch() {
     
     if (pending.length === 0) return;
     
-    console.log(`🔨 BUILD MODE BATCH: ${pending.length} formulas (started at ${new Date().toLocaleTimeString()})`);
+    console.log(`🔄 Processing ${pending.length} formulas...`);
     broadcastStatus(`Processing ${pending.length} formulas...`, 5, 'info');
     
-    // STEP 1: Group pending formulas by their filter combination
-    // This handles cases where formulas have different subsidiaries, etc.
-    const filterGroups = new Map(); // filterKey -> array of pending items
-    
+    // Group pending formulas by their filter combination
+    const filterGroups = new Map();
     for (const item of pending) {
         const filterKey = getFilterKey(item.params);
         if (!filterGroups.has(filterKey)) {
@@ -721,19 +719,15 @@ async function runBuildModeBatch() {
     }
     
     const groupCount = filterGroups.size;
-    if (groupCount > 1) {
-        console.log(`   📋 Detected ${groupCount} different filter combinations - processing each separately`);
-    }
     
-    // Collect ALL unique accounts to detect types (shared across all filter groups)
+    // Collect ALL unique accounts to detect types
     const allAccountsSet = new Set();
     for (const item of pending) {
         allAccountsSet.add(item.params.account);
     }
     const allAccountsArray = Array.from(allAccountsSet);
     
-    // STEP 2: Detect account types ONCE (account types don't depend on filters)
-    console.log(`   🔍 Detecting account types for ${allAccountsArray.length} accounts...`);
+    // Detect account types ONCE
     broadcastStatus(`Detecting account types...`, 5, 'info');
     const accountTypes = await batchGetAccountTypes(allAccountsArray);
     
@@ -745,11 +739,6 @@ async function runBuildModeBatch() {
     for (const [filterKey, groupItems] of filterGroups) {
         groupIndex++;
         const filters = parseFilterKey(filterKey);
-        
-        if (groupCount > 1) {
-            console.log(`\n   📦 Processing filter group ${groupIndex}/${groupCount}: ${groupItems.length} formulas`);
-            console.log(`      Filters: sub="${filters.subsidiary}", dept="${filters.department}", loc="${filters.location}", class="${filters.classId}"`);
-        }
         
         // Collect unique accounts and periods for THIS filter group
         const accounts = new Set();
@@ -772,9 +761,6 @@ async function runBuildModeBatch() {
         const periodsArray = Array.from(periods).filter(p => p && p !== '');
         const accountsArray = Array.from(accounts);
         
-        console.log(`   Accounts: ${accountsArray.join(', ')}`);
-        console.log(`   Periods (${periodsArray.length}): ${periodsArray.join(', ')}`);
-        
         const allBalances = {};
         let hasError = false;
         
@@ -782,7 +768,7 @@ async function runBuildModeBatch() {
         const years = new Set(periodsArray.filter(p => p && p.includes(' ')).map(p => p.split(' ')[1]));
         const yearsArray = Array.from(years).filter(y => y && !isNaN(parseInt(y)));
         
-        // Classify accounts for this group
+        // Classify accounts
         const plAccounts = [];
         const bsAccounts = [];
         for (const acct of accountsArray) {
@@ -792,16 +778,13 @@ async function runBuildModeBatch() {
                 plAccounts.push(acct);
             }
         }
-        console.log(`   📊 Account split: ${plAccounts.length} P&L, ${bsAccounts.length} Balance Sheet`);
         
         const usePLFullYear = yearsArray.length > 0 && plAccounts.length >= 5;
         
         // STEP 4: Fetch Balance Sheet accounts for this filter group
         if (bsAccounts.length > 0 && periodsArray.length > 0) {
-            // SMART PERIOD EXPANSION: Include adjacent months for better cache coverage
-            // This ensures that when user drags Jan→Feb, we also fetch Dec for them
+            // Expand period range for better cache coverage
             const expandedBSPeriods = expandPeriodRange(periodsArray, 1, 1);
-            console.log(`   📅 BS periods expanded: ${periodsArray.length} → ${expandedBSPeriods.length}`);
             
             // CHECK CACHE FIRST (using EXPANDED periods)
             let allBSInCache = true;
@@ -831,7 +814,6 @@ async function runBuildModeBatch() {
             }
             
             if (allBSInCache) {
-                console.log(`   ✅ BS CACHE HIT: All ${bsAccounts.length} accounts × ${expandedBSPeriods.length} periods found in cache!`);
                 broadcastStatus(`Using cached Balance Sheet data`, 20, 'info');
                 
                 for (const acct of bsAccounts) {
@@ -927,7 +909,6 @@ async function runBuildModeBatch() {
             }
             
             if (allPLInCache) {
-                console.log(`   ✅ P&L CACHE HIT: All ${plAccounts.length} accounts × ${periodsArray.length} periods found in cache!`);
                 broadcastStatus(`Using cached P&L data`, 70, 'info');
                 
                 for (const acct of plAccounts) {
@@ -1336,119 +1317,50 @@ window.setAccountNameCache = function(accountNames) {
     return true;
 };
 
-// Check localStorage for cached data - THIS WORKS!
+// Check localStorage for cached data
 // Structure: { "4220": { "Apr 2024": 123.45, ... }, ... }
 function checkLocalStorageCache(account, period, toPeriod = null, subsidiary = '') {
     try {
-        // CRITICAL: localStorage cache is NOT subsidiary-aware!
-        // If a subsidiary filter is specified, skip localStorage and force fresh fetch
-        // This prevents returning wrong values when user changes subsidiary
-        if (subsidiary && subsidiary !== '') {
-            console.log(`🔍 localStorage SKIP for ${account}/${period || toPeriod} (subsidiary filter: ${subsidiary})`);
-            return null;  // Force fresh fetch from server
-        }
-        
-        // DIAGNOSTIC: Log every localStorage check to debug cache issues
-        console.log(`🔍 localStorage CHECK for ${account}/${period || toPeriod}`);
+        // Skip localStorage when subsidiary filter is specified (not subsidiary-aware)
+        if (subsidiary && subsidiary !== '') return null;
         
         const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
-        if (!timestamp) {
-            console.log(`   ⚠️ No timestamp in localStorage (key: ${STORAGE_TIMESTAMP_KEY})`);
-            return null;
-        }
+        if (!timestamp) return null;
         
         const cacheAge = Date.now() - parseInt(timestamp);
-        const cacheAgeSeconds = Math.round(cacheAge / 1000);
-        console.log(`   📅 Cache age: ${cacheAgeSeconds}s (TTL: ${STORAGE_TTL/1000}s)`);
-        
-        if (cacheAge > STORAGE_TTL) {
-            console.log(`   ⏰ Cache EXPIRED (${cacheAgeSeconds}s > ${STORAGE_TTL/1000}s)`);
-            return null;
-        }
+        if (cacheAge > STORAGE_TTL) return null;
         
         const cached = localStorage.getItem(STORAGE_KEY);
-        if (!cached) {
-            console.log(`   ⚠️ No cached data in localStorage (key: ${STORAGE_KEY})`);
-            return null;
-        }
+        if (!cached) return null;
         
         const balances = JSON.parse(cached);
-        const accountCount = Object.keys(balances).length;
-        console.log(`   📊 Found ${accountCount} accounts in cache`);
-        
-        // For cumulative queries (empty fromPeriod), use toPeriod for lookup
         const lookupPeriod = (period && period !== '') ? period : toPeriod;
         
-        // Debug: Log what we're looking for vs what's available
-        console.log(`   🔍 Looking for: account=${account}, period="${lookupPeriod}"`);
-        if (balances[account]) {
-            const availablePeriods = Object.keys(balances[account]);
-            console.log(`   Available periods for ${account}: ${availablePeriods.join(', ')}`);
-        } else {
-            console.log(`   ⚠️ Account ${account} NOT found in cache. Sample accounts: ${Object.keys(balances).slice(0, 5).join(', ')}`);
-        }
-        
-        // ONLY return if we have an explicit value for this account+period
-        // Don't assume $0 for missing periods - the query may have been truncated!
         if (lookupPeriod && balances[account] && balances[account][lookupPeriod] !== undefined) {
-            console.log(`   ✅ HIT: ${balances[account][lookupPeriod]}`);
             return balances[account][lookupPeriod];
         }
-        
-        console.log(`   ❌ MISS: period "${lookupPeriod}" not found for account ${account}`);
-        // Period not found - return null to trigger batch processing
-        // (Could be missing due to 1000 row limit, not because it's truly $0)
         return null;
-        
     } catch (e) {
-        console.error('localStorage read error:', e);
         return null;
     }
 }
 
-// Check in-memory cache (backup for Shared Runtime)
+// Check in-memory full year cache (backup for Shared Runtime)
 function checkFullYearCache(account, period, subsidiary = '') {
-    // CRITICAL: fullYearCache is NOT subsidiary-aware!
-    // If a subsidiary filter is specified, skip this cache to avoid returning wrong values
-    if (subsidiary && subsidiary !== '') {
-        console.log(`🔍 fullYearCache SKIP for ${account}/${period} (subsidiary filter: ${subsidiary})`);
-        return null;  // Force fresh fetch from server
-    }
-    
-    console.log(`🔍 fullYearCache CHECK for ${account}/${period}`);
-    
-    if (!fullYearCache || !fullYearCacheTimestamp) {
-        console.log(`   ⚠️ fullYearCache not set (cache=${!!fullYearCache}, timestamp=${!!fullYearCacheTimestamp})`);
-        return null;
-    }
-    
-    const cacheAge = Date.now() - fullYearCacheTimestamp;
-    console.log(`   📅 fullYearCache age: ${Math.round(cacheAge/1000)}s`);
+    // Skip when subsidiary filter is specified (not subsidiary-aware)
+    if (subsidiary && subsidiary !== '') return null;
+    if (!fullYearCache || !fullYearCacheTimestamp) return null;
     
     // Cache expires after 5 minutes
-    if (cacheAge > 300000) {
-        console.log(`   ⏰ fullYearCache EXPIRED`);
+    if (Date.now() - fullYearCacheTimestamp > 300000) {
         fullYearCache = null;
         fullYearCacheTimestamp = null;
         return null;
     }
     
-    const accountCount = Object.keys(fullYearCache).length;
-    console.log(`   📊 fullYearCache has ${accountCount} accounts`);
-    
-    // ONLY return if we have an explicit value for this account+period
     if (fullYearCache[account] && fullYearCache[account][period] !== undefined) {
-        console.log(`   ✅ fullYearCache HIT: ${fullYearCache[account][period]}`);
         return fullYearCache[account][period];
     }
-    
-    if (!fullYearCache[account]) {
-        console.log(`   ⚠️ Account ${account} NOT in fullYearCache. Sample: ${Object.keys(fullYearCache).slice(0,5).join(', ')}`);
-    } else {
-        console.log(`   ⚠️ Period ${period} NOT in fullYearCache[${account}]. Available: ${Object.keys(fullYearCache[account]).join(', ')}`);
-    }
-    
-    // Not found - return null to trigger batch processing
     return null;
 }
 
@@ -2002,43 +1914,26 @@ async function PARENT(accountNumber, invocation) {
  * @requiresAddress
  */
 async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook) {
-    // ================================================================
-    // DEBUG: Log every BALANCE call to understand what's happening
-    // ================================================================
-    console.log(`📥 BALANCE called: account="${account}", fromPeriod="${fromPeriod}", subsidiary="${subsidiary}"`);
     
-    // ================================================================
-    // CROSS-CONTEXT CACHE INVALIDATION
-    // The taskpane runs in a separate JS context and can't directly clear
-    // our in-memory cache. It sets a localStorage signal instead.
-    // We check this signal FIRST, before any cache lookups.
-    // ================================================================
+    // Cross-context cache invalidation - taskpane signals via localStorage
     try {
         const clearSignal = localStorage.getItem('netsuite_cache_clear_signal');
         if (clearSignal) {
             const { timestamp, reason } = JSON.parse(clearSignal);
-            // Only honor signals from last 10 seconds
             if (Date.now() - timestamp < 10000) {
-                console.log(`🚨 CACHE CLEAR SIGNAL RECEIVED (reason: ${reason})`);
-                console.log(`   Before clear: ${cache.balance.size} balance entries`);
+                console.log(`🔄 Cache cleared (${reason})`);
                 cache.balance.clear();
                 cache.budget.clear();
-                // Also clear fullYearCache
                 if (typeof fullYearCache === 'object' && fullYearCache) {
                     Object.keys(fullYearCache).forEach(k => delete fullYearCache[k]);
                 }
                 fullYearCacheTimestamp = null;
-                console.log(`   ✓ Cleared in-memory caches (balance, budget, fullYear)`);
-                // Remove the signal so we don't clear again
                 localStorage.removeItem('netsuite_cache_clear_signal');
             } else {
-                // Stale signal - remove it
                 localStorage.removeItem('netsuite_cache_clear_signal');
             }
         }
-    } catch (e) {
-        // Ignore signal check errors
-    }
+    } catch (e) { /* ignore */ }
     
     try {
         // ================================================================
@@ -2048,10 +1943,8 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         // Returns: Number of items cleared
         // ================================================================
         const rawAccount = String(account || '').trim();
-        console.log(`   rawAccount="${rawAccount}", is __CLEARCACHE__: ${rawAccount === '__CLEARCACHE__'}`);
         
         if (rawAccount === '__CLEARCACHE__') {
-            console.log('🔧 __CLEARCACHE__ MATCHED! Starting cache clear...');
             const itemsStr = String(fromPeriod || '').trim();
             console.log('🔧 __CLEARCACHE__ command received:', itemsStr || 'ALL');
             
@@ -2215,12 +2108,8 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         // Multi-Book Accounting support - default to empty (uses Primary Book on backend)
         accountingBook = String(accountingBook || '').trim();
         
-        // CRITICAL DEBUG: Log all params to diagnose subsidiary-change issues
-        console.log(`📋 BALANCE PARAMS: acct=${account}, from=${fromPeriod}, to=${toPeriod}, sub="${subsidiary}"`);
-        
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook };
         const cacheKey = getCacheKey('balance', params);
-        console.log(`🔑 Cache key: ${cacheKey.substring(0, 80)}...`);
         
         // ================================================================
         // PRELOAD COORDINATION: If Prep Data is running, wait for it
@@ -2334,25 +2223,10 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         // CACHE CHECKS (same priority order as before)
         // ================================================================
         
-        // Check in-memory cache FIRST - return immediately if found
+        // Check in-memory cache FIRST
         if (cache.balance.has(cacheKey)) {
-            const cachedValue = cache.balance.get(cacheKey);
-            console.log(`✅ CACHE HIT: ${account}/${fromPeriod || toPeriod} sub="${subsidiary}" → ${cachedValue}`);
             cacheStats.hits++;
-            return cachedValue;
-        }
-        console.log(`❌ CACHE MISS: ${account}/${fromPeriod || toPeriod} sub="${subsidiary}" → queuing for fetch`);
-        
-        // DEBUG: Log cache miss details to help diagnose caching issues
-        console.log(`📭 CACHE MISS: ${account}/${fromPeriod || toPeriod}`);
-        console.log(`   Key: ${cacheKey.substring(0, 100)}...`);
-        console.log(`   Cache size: ${cache.balance.size}`);
-        // Show a sample of what IS in cache for comparison
-        if (cache.balance.size > 0 && cache.balance.size <= 10) {
-            console.log(`   Sample cached keys:`);
-            for (const k of cache.balance.keys()) {
-                console.log(`     ${k.substring(0, 100)}...`);
-            }
+            return cache.balance.get(cacheKey);
         }
         
         // Check localStorage cache (BUT NOT for subsidiary-filtered queries!)
