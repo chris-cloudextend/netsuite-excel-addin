@@ -407,6 +407,12 @@ def load_lookup_cache():
                 if hierarchy_name != short_name:
                     lookup_cache['subsidiaries'][hierarchy_name] = sub_id
                 
+                # Also add version without trailing punctuation (. or ,)
+                # This handles "Celigo Inc" vs "Celigo Inc."
+                short_name_clean = short_name.rstrip('.,')
+                if short_name_clean != short_name:
+                    lookup_cache['subsidiaries'][short_name_clean] = sub_id
+                
                 # Store currency symbol for each subsidiary (by ID)
                 lookup_cache['currencies'][sub_id] = currency_symbol or '$'
                 
