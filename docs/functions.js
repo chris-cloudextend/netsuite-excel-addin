@@ -2307,7 +2307,7 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
 }
 
 // ============================================================================
-// BUDGET - Get Budget Amount (NON-STREAMING WITH BATCHING)
+// BUDGET - Get Budget Amount from NetSuite BudgetsMachine table
 // ============================================================================
 /**
  * @customfunction BUDGET
@@ -2319,10 +2319,11 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
  * @param {any} location Location filter (use "" for all)
  * @param {any} classId Class filter (use "" for all)
  * @param {any} accountingBook Accounting Book ID (use "" for Primary Book)
- * @returns {Promise<number>} Budget amount
+ * @param {any} budgetCategory Budget Category name or ID (e.g., "FY 2024 Budget")
+ * @returns {Promise<number>} Budget amount for the specified period(s)
  * @requiresAddress
  */
-async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook) {
+async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook, budgetCategory) {
     try {
         // Normalize inputs
         account = normalizeAccountNumber(account);
@@ -2340,22 +2341,20 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
         department = String(department || '').trim();
         location = String(location || '').trim();
         classId = String(classId || '').trim();
-        
-        // Multi-Book Accounting support - default to empty (uses Primary Book on backend)
         accountingBook = String(accountingBook || '').trim();
+        budgetCategory = String(budgetCategory || '').trim();
         
-        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook };
+        const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook, budgetCategory };
         const cacheKey = getCacheKey('budget', params);
         
-        // Check cache FIRST - return immediately if found (NO @ SYMBOL!)
+        // Check cache FIRST
         if (cache.budget.has(cacheKey)) {
             cacheStats.hits++;
             return cache.budget.get(cacheKey);
         }
         
-        // Cache miss - use individual fetch (budget endpoint doesn't support batching)
+        // Cache miss - fetch from server
         cacheStats.misses++;
-        console.log(`📥 CACHE MISS [budget]: ${account} (${fromPeriod} to ${toPeriod})`);
         
         try {
             const url = new URL(`${SERVER_URL}/budget`);
@@ -2367,6 +2366,7 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
             if (location) url.searchParams.append('location', location);
             if (classId) url.searchParams.append('class', classId);
             if (accountingBook) url.searchParams.append('accountingbook', accountingBook);
+            if (budgetCategory) url.searchParams.append('budget_category', budgetCategory);
             
             const response = await fetch(url.toString());
             if (!response.ok) {
@@ -2381,7 +2381,6 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
             
             // Cache the result
             cache.budget.set(cacheKey, finalValue);
-            console.log(`💾 Cached budget: ${account} → ${finalValue}`);
             
             return finalValue;
             

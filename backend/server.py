@@ -217,8 +217,10 @@ def get_months_between_periods(from_period, to_period):
     """Calculate the number of months between two periods
     Returns number of months, or 0 if calculation fails"""
     try:
-        from_start, _ = get_period_dates_from_name(from_period)
-        _, to_end = get_period_dates_from_name(to_period)
+        from_dates = get_period_dates_from_name(from_period)
+        to_dates = get_period_dates_from_name(to_period)
+        from_start = from_dates[0] if from_dates else None
+        to_end = to_dates[1] if to_dates else None
         
         if not from_start or not to_end:
             return 0
@@ -645,6 +647,71 @@ def home():
 def health():
     """Health check"""
     return jsonify({'status': 'healthy', 'account': account_id})
+
+
+@app.route('/debug/budget-schema')
+def debug_budget_schema():
+    """
+    Debug endpoint to explore Budget table structure.
+    Returns sample budget data with all available columns.
+    """
+    try:
+        # Query to get budget table structure with sample data
+        query = """
+            SELECT TOP 10 
+                b.*
+            FROM Budget b
+        """
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({
+                'error': result.get('error'),
+                'message': 'Budget table query failed - feature may not be enabled'
+            }), 400
+        
+        # Get column names from first result
+        columns = list(result[0].keys()) if result and len(result) > 0 else []
+        
+        return jsonify({
+            'columns': columns,
+            'sample_data': result[:5] if result else [],
+            'total_rows': len(result) if result else 0
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/debug/budget-categories')
+def debug_budget_categories():
+    """
+    Debug endpoint to list available budget categories.
+    """
+    try:
+        # Try to find budget category table/field
+        query = """
+            SELECT DISTINCT 
+                b.category,
+                bc.name as category_name
+            FROM Budget b
+            LEFT JOIN BudgetCategory bc ON b.category = bc.id
+            WHERE ROWNUM <= 100
+        """
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            # Try simpler query without join
+            query2 = "SELECT DISTINCT category FROM Budget WHERE ROWNUM <= 50"
+            result = query_netsuite(query2)
+        
+        return jsonify({
+            'categories': result if result else [],
+            'count': len(result) if result else 0
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/check-permissions')
@@ -3765,146 +3832,146 @@ def get_balance():
 @app.route('/budget')
 def get_budget():
     """
-    Get budget amount with filters
-    Used by: NS.GLABUD(subsidiary, budgetCategory, account, fromPeriod, toPeriod, class, dept, location)
+    Get budget amount from NetSuite using BudgetsMachine table for period-level data.
+    
+    Uses BudgetsMachine table which contains period-by-period budget amounts,
+    joined with Budgets (header) and Account tables.
     
     Query params:
         - account: Account number (required)
-        - subsidiary: Subsidiary ID (optional)
-        - budget_category: Budget category name (optional - not currently filtered)
-        - from_period: Starting period name (optional)
-        - to_period: Ending period name (optional)
-        - class: Class ID (optional)
-        - department: Department ID (optional)
-        - location: Location ID (optional)
+        - from_period: Starting period name like "Jan 2011" (required for period query)
+        - to_period: Ending period name (optional, defaults to from_period for single month)
+        - subsidiary: Subsidiary name or ID (optional)
+        - budget_category: Budget category name or ID (optional)
+        - department: Department name or ID (optional)
+        - class: Class name or ID (optional)
+        - location: Location name or ID (optional)
+        - accountingbook: Accounting book ID (optional, defaults to 1)
     
-    Returns: Budget amount (number)
+    Returns: Budget amount for the specified period(s)
     """
     try:
         # Get parameters
         account = request.args.get('account', '')
         subsidiary = request.args.get('subsidiary', '')
-        budget_category = request.args.get('budget_category', '')  # Future enhancement
+        budget_category = request.args.get('budget_category', '')
         from_period = request.args.get('from_period', '')
-        to_period = request.args.get('to_period', '')
-        class_id = request.args.get('class', '')
+        to_period = request.args.get('to_period', from_period)  # Default to same as from
         department = request.args.get('department', '')
+        class_id = request.args.get('class', '')
         location = request.args.get('location', '')
         
-        # Multi-Book Accounting support - default to Primary Book (ID 1)
+        # Multi-Book Accounting support
         accountingbook = request.args.get('accountingbook', str(DEFAULT_ACCOUNTING_BOOK))
         try:
             accountingbook = int(accountingbook) if accountingbook else DEFAULT_ACCOUNTING_BOOK
         except ValueError:
             accountingbook = DEFAULT_ACCOUNTING_BOOK
         
-        # Convert names to IDs (accepts names OR IDs)
+        # Convert names to IDs
         subsidiary = convert_name_to_id('subsidiary', subsidiary)
-        class_id = convert_name_to_id('class', class_id)
         department = convert_name_to_id('department', department)
+        class_id = convert_name_to_id('class', class_id)
         location = convert_name_to_id('location', location)
         
         if not account:
             return jsonify({'error': 'Account number required'}), 400
         
-        # Build WHERE clause
+        # Build WHERE clauses
         where_clauses = [
             f"a.acctnumber = '{escape_sql(account)}'"
         ]
         
-        # Add optional filters
+        # Period filter - use AccountingPeriod table for date range
+        if from_period and to_period:
+            # Get period date ranges
+            from_dates = get_period_dates_from_name(from_period)
+            to_dates = get_period_dates_from_name(to_period)
+            from_start = from_dates[0] if from_dates else None
+            to_end = to_dates[1] if to_dates else None
+            
+            if from_start and to_end:
+                where_clauses.append(f"ap.startdate >= '{from_start}'")
+                where_clauses.append(f"ap.enddate <= '{to_end}'")
+            else:
+                # Fallback to period name match
+                if from_period == to_period:
+                    where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
+                else:
+                    where_clauses.append(f"ap.periodname >= '{escape_sql(from_period)}'")
+                    where_clauses.append(f"ap.periodname <= '{escape_sql(to_period)}'")
+        
+        # Subsidiary filter
         if subsidiary and subsidiary != '':
             where_clauses.append(f"b.subsidiary = {subsidiary}")
         
-        # Handle period filters - support both period IDs and names
-        if from_period and to_period:
-            if from_period.isdigit() and to_period.isdigit():
-                where_clauses.append(f"b.accountingperiod >= {from_period}")
-                where_clauses.append(f"b.accountingperiod <= {to_period}")
+        # Budget category filter
+        if budget_category and budget_category != '':
+            if budget_category.isdigit():
+                where_clauses.append(f"b.category = {budget_category}")
             else:
-                # Convert period names to DATE ranges (same fix as balance query)
-                from_start, from_end = get_period_dates_from_name(from_period)
-                to_start, to_end = get_period_dates_from_name(to_period)
-                if from_start and to_end:
-                    # Use date strings directly (NetSuite returns dates as strings)
-                    where_clauses.append(f"ap.startdate >= '{from_start}'")
-                    where_clauses.append(f"ap.enddate <= '{to_end}'")
-                else:
-                    # Fallback to period name if conversion fails
-                    where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
-        elif from_period:
-            if from_period.isdigit():
-                where_clauses.append(f"b.accountingperiod = {from_period}")
-            else:
-                where_clauses.append(f"ap.periodname = '{escape_sql(from_period)}'")
+                cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(budget_category)}'"
+                cat_result = query_netsuite(cat_query)
+                if cat_result and len(cat_result) > 0:
+                    where_clauses.append(f"b.category = {cat_result[0].get('id')}")
         
-        if class_id and class_id != '':
-            where_clauses.append(f"b.class = {class_id}")
-        
+        # Department filter
         if department and department != '':
             where_clauses.append(f"b.department = {department}")
         
+        # Class filter
+        if class_id and class_id != '':
+            where_clauses.append(f"b.class = {class_id}")
+        
+        # Location filter
         if location and location != '':
             where_clauses.append(f"b.location = {location}")
         
-        # Add accountingbook filter (Multi-Book Accounting support)
-        # NetSuite Budget table has an accountingbook field
+        # Accounting book filter
         where_clauses.append(f"b.accountingbook = {accountingbook}")
         
         where_clause = " AND ".join(where_clauses)
         
         # Determine target subsidiary for consolidation
-        # Must use valid subsidiary ID (not NULL) for BUILTIN.CONSOLIDATE
         target_sub = subsidiary if subsidiary and subsidiary != '' else (default_subsidiary_id or '1')
         
-        # Build SuiteQL query - only join AccountingPeriod if using period names
-        # Note: Budget amounts also need BUILTIN.CONSOLIDATE for multi-currency
-        # Budgets are typically 'LEDGER' type (not INCOME)
-        if (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):
-            query = f"""
-                SELECT SUM(
-                    BUILTIN.CONSOLIDATE(
-                        b.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
-                        {target_sub}, b.accountingperiod, 'DEFAULT'
-                    )
+        # Query BudgetsMachine for period-level amounts with currency consolidation
+        query = f"""
+            SELECT 
+                SUM(
+                    TO_NUMBER(BUILTIN.CONSOLIDATE(
+                        bm.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, bm.period, 'DEFAULT'
+                    ))
                 ) AS budget_amount
-                FROM Budget b
-                INNER JOIN Account a ON b.account = a.id
-                INNER JOIN AccountingPeriod ap ON b.accountingperiod = ap.id
-                WHERE {where_clause}
-            """
-        else:
-            query = f"""
-                SELECT SUM(
-                    BUILTIN.CONSOLIDATE(
-                        b.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
-                        {target_sub}, b.accountingperiod, 'DEFAULT'
-                    )
-                ) AS budget_amount
-                FROM Budget b
-                INNER JOIN Account a ON b.account = a.id
-                WHERE {where_clause}
-            """
+            FROM BudgetsMachine bm
+            INNER JOIN Budgets b ON bm.budget = b.id
+            INNER JOIN Account a ON b.account = a.id
+            INNER JOIN AccountingPeriod ap ON bm.period = ap.id
+            WHERE {where_clause}
+        """
         
+        print(f"Budget query (BudgetsMachine): {query[:500]}...", file=sys.stderr)
         result = query_netsuite(query)
         
-        # Check for errors - Budget table may not exist or have no data in test accounts
+        # Check for errors
         if isinstance(result, dict) and 'error' in result:
-            # Return 0 if budget table doesn't exist (common in test accounts)
-            print(f"Budget query failed (this is normal for test accounts): {result.get('error')}", file=sys.stderr)
+            print(f"Budget query failed: {result.get('error')}", file=sys.stderr)
             return '0'
         
-        # Return budget amount (default to 0 if no data)
+        # Return budget amount
         if result and len(result) > 0:
-            budget = result[0].get('budget_amount')
-            if budget is None:
+            amount = result[0].get('budget_amount')
+            if amount is None:
                 return '0'
-            return str(float(budget))
+            return str(float(amount))
         else:
             return '0'
             
     except Exception as e:
         print(f"Error in get_budget: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
