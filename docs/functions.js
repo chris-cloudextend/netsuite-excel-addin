@@ -181,7 +181,6 @@ function expandPeriodRange(periods, expandBefore = 1, expandAfter = 1) {
         }
     }
     
-    console.log(`   📅 Period expansion: [${periods.join(', ')}] → [${expanded.join(', ')}]`);
     return expanded;
 }
 
@@ -1056,7 +1055,6 @@ async function runBuildModeBatch() {
             if (!allBalances[acct]) allBalances[acct] = {};
             for (const period of periodsArray) {
                 if (allBalances[acct][period] === undefined) {
-                    console.log(`   💰 BS account ${acct} period ${period} = $0 (not in response)`);
                     allBalances[acct][period] = 0;
                     
                     // Cache $0 with the normalized key (fromPeriod = period, toPeriod = period)
@@ -1098,7 +1096,6 @@ async function runBuildModeBatch() {
             
             if (allBalances[account] && allBalances[account][lookupPeriod] !== undefined) {
                 const value = allBalances[account][lookupPeriod];
-                console.log(`   ✅ ${account}/${lookupPeriod} = ${value}`);
                 
                 // Cache with the ORIGINAL request's cacheKey (includes its own filters)
                 cache.balance.set(cacheKey, value);
@@ -1106,11 +1103,9 @@ async function runBuildModeBatch() {
                 resolve(value);
                 totalResolved++;
             } else if (hasError && !successfulPeriods.has(lookupPeriod)) {
-                console.log(`   ❌ ${account}/${lookupPeriod} = "" (request failed)`);
                 resolve('');
                 totalZeros++;
             } else {
-                console.log(`   💰 ${account}/${lookupPeriod} = 0 (no transactions)`);
                 cache.balance.set(cacheKey, 0);
                 resolve(0);
                 totalZeros++;
@@ -1426,7 +1421,6 @@ window.populateFrontendCache = function(balances, filters = {}) {
             value = balances[account][fromPeriod];
         }
         
-        console.log(`   ✅ Resolving: ${account} = ${value}`);
         try {
             request.resolve(value);
             pendingRequests.balance.delete(cacheKey);
@@ -1713,7 +1707,6 @@ async function processTypeBatchQueue() {
                 const cacheKey = getCacheKey('type', { account });
                 if (!cache.type) cache.type = new Map();
                 cache.type.set(cacheKey, type);
-                console.log(`   ✓ ${account} → ${type}`);
                 resolve(type);
             } else {
                 console.log(`   ✗ ${account} → #N/A (not found)`);
