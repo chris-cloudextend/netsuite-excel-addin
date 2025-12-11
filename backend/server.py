@@ -3918,8 +3918,13 @@ def get_budget():
             else:
                 cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(budget_category)}'"
                 cat_result = query_netsuite(cat_query)
-                if cat_result and len(cat_result) > 0:
+                # Check that cat_result is a list (not an error dict) and has results
+                if isinstance(cat_result, list) and len(cat_result) > 0:
                     where_clauses.append(f"b.category = {cat_result[0].get('id')}")
+                elif isinstance(cat_result, dict) and 'error' in cat_result:
+                    # Rate limited or other error - return error response
+                    print(f"Budget category lookup failed: {cat_result.get('error')}")
+                    return jsonify({'error': 'Rate limited by NetSuite', 'details': cat_result.get('details', '')}), 429
         
         # Department filter
         if department and department != '':
@@ -3975,10 +3980,208 @@ def get_budget():
             return '0'
             
     except Exception as e:
-        print(f"Error in get_budget: {str(e)}", file=sys.stderr)
+        error_msg = str(e) if str(e) else f"{type(e).__name__}: (no message)"
+        print(f"Error in get_budget: {error_msg}", file=sys.stderr)
+        print(f"   Exception type: {type(e).__name__}", file=sys.stderr)
+        print(f"   Exception args: {e.args}", file=sys.stderr)
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_msg, 'type': type(e).__name__}), 500
+
+
+@app.route('/batch/budget', methods=['POST'])
+def batch_budget():
+    """
+    BATCH ENDPOINT - Get budget amounts for MULTIPLE accounts and periods in ONE query.
+    Much more efficient than individual /budget calls!
+    
+    POST JSON:
+    {
+        "accounts": ["60010", "60020", "60030"],
+        "periods": ["Jan 2024", "Feb 2024", "Mar 2024"],
+        "subsidiary": "Celigo Inc.",
+        "budget_category": "FY 2024 Budget",
+        "department": "",
+        "class": "",
+        "location": ""
+    }
+    
+    Returns:
+    {
+        "budgets": {
+            "60010": {
+                "Jan 2024": 50000,
+                "Feb 2024": 52000,
+                "Mar 2024": 54000
+            },
+            "60020": {
+                "Jan 2024": 75000,
+                ...
+            }
+        },
+        "query_time": 1.2
+    }
+    """
+    from datetime import datetime
+    start_time = datetime.now()
+    
+    try:
+        data = request.get_json() or {}
+        
+        accounts = data.get('accounts', [])
+        periods = data.get('periods', [])
+        subsidiary = data.get('subsidiary', '')
+        budget_category = data.get('budget_category', '')
+        department = data.get('department', '')
+        class_id = data.get('class', '')
+        location = data.get('location', '')
+        accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
+        
+        if not accounts or not periods:
+            return jsonify({'error': 'accounts and periods arrays are required'}), 400
+        
+        print(f"\n{'='*80}", flush=True)
+        print(f"📊 BATCH BUDGET REQUEST", flush=True)
+        print(f"   Accounts ({len(accounts)}): {accounts[:5]}{'...' if len(accounts) > 5 else ''}", flush=True)
+        print(f"   Periods ({len(periods)}): {periods[:5]}{'...' if len(periods) > 5 else ''}", flush=True)
+        print(f"   Subsidiary: {subsidiary}", flush=True)
+        print(f"   Budget Category: {budget_category}", flush=True)
+        print(f"{'='*80}\n", flush=True)
+        
+        # Convert names to IDs
+        subsidiary = convert_name_to_id('subsidiary', subsidiary)
+        department = convert_name_to_id('department', department)
+        class_id = convert_name_to_id('class', class_id)
+        location = convert_name_to_id('location', location)
+        
+        # Handle accounting book
+        if isinstance(accountingbook, str) and accountingbook.strip():
+            try:
+                accountingbook = int(accountingbook)
+            except ValueError:
+                accountingbook = DEFAULT_ACCOUNTING_BOOK
+        elif not accountingbook:
+            accountingbook = DEFAULT_ACCOUNTING_BOOK
+        
+        # Build WHERE clauses for filters
+        where_clauses = []
+        
+        # Account filter - use IN clause for efficiency
+        escaped_accounts = [escape_sql(acc) for acc in accounts]
+        accounts_in = ", ".join([f"'{acc}'" for acc in escaped_accounts])
+        where_clauses.append(f"a.acctnumber IN ({accounts_in})")
+        
+        # Period filter - use IN clause
+        escaped_periods = [escape_sql(p) for p in periods]
+        periods_in = ", ".join([f"'{p}'" for p in escaped_periods])
+        where_clauses.append(f"ap.periodname IN ({periods_in})")
+        
+        # Subsidiary filter
+        if subsidiary and subsidiary != '':
+            where_clauses.append(f"b.subsidiary = {subsidiary}")
+        
+        # Budget category filter
+        if budget_category and budget_category != '':
+            if str(budget_category).isdigit():
+                where_clauses.append(f"b.category = {budget_category}")
+            else:
+                # Look up category ID by name
+                cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(budget_category)}'"
+                cat_result = query_netsuite(cat_query)
+                if isinstance(cat_result, list) and len(cat_result) > 0:
+                    where_clauses.append(f"b.category = {cat_result[0].get('id')}")
+                elif isinstance(cat_result, dict) and 'error' in cat_result:
+                    print(f"Budget category lookup failed: {cat_result.get('error')}", flush=True)
+                    return jsonify({'error': 'Rate limited by NetSuite', 'details': cat_result.get('details', '')}), 429
+        
+        # Department filter
+        if department and department != '':
+            where_clauses.append(f"b.department = {department}")
+        
+        # Class filter
+        if class_id and class_id != '':
+            where_clauses.append(f"b.class = {class_id}")
+        
+        # Location filter
+        if location and location != '':
+            where_clauses.append(f"b.location = {location}")
+        
+        # Accounting book filter
+        where_clauses.append(f"b.accountingbook = {accountingbook}")
+        
+        where_clause = " AND ".join(where_clauses)
+        
+        # Determine target subsidiary for consolidation
+        target_sub = subsidiary if subsidiary and subsidiary != '' else (default_subsidiary_id or '1')
+        
+        # Build the efficient batch query - one query fetches ALL account/period combinations
+        query = f"""
+            SELECT 
+                a.acctnumber,
+                ap.periodname,
+                SUM(
+                    TO_NUMBER(BUILTIN.CONSOLIDATE(
+                        bm.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, bm.period, 'DEFAULT'
+                    ))
+                ) AS budget_amount
+            FROM BudgetsMachine bm
+            INNER JOIN Budgets b ON bm.budget = b.id
+            INNER JOIN Account a ON b.account = a.id
+            INNER JOIN AccountingPeriod ap ON bm.period = ap.id
+            WHERE {where_clause}
+            GROUP BY a.acctnumber, ap.periodname
+        """
+        
+        print(f"   Running batch budget query...", flush=True)
+        result = query_netsuite(query, timeout=60)
+        
+        # Check for errors
+        if isinstance(result, dict) and 'error' in result:
+            print(f"❌ Batch budget query failed: {result.get('error')}", flush=True)
+            error_details = result.get('details', '')
+            if 'CONCURRENCY_LIMIT_EXCEEDED' in str(error_details) or '429' in str(error_details):
+                return jsonify({'error': 'Rate limited by NetSuite', 'details': error_details}), 429
+            return jsonify({'error': result.get('error'), 'details': error_details}), 500
+        
+        # Parse results into nested structure
+        budgets = {}
+        for row in result:
+            account = row.get('acctnumber')
+            period = row.get('periodname')
+            amount = row.get('budget_amount')
+            
+            if account not in budgets:
+                budgets[account] = {}
+            
+            # Convert to float, default to 0 if null
+            budgets[account][period] = float(amount) if amount is not None else 0
+        
+        # Fill in zeros for any missing account/period combinations
+        for account in accounts:
+            if account not in budgets:
+                budgets[account] = {}
+            for period in periods:
+                if period not in budgets[account]:
+                    budgets[account][period] = 0
+        
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print(f"   ✅ Batch budget complete: {len(result)} results in {elapsed:.2f}s", flush=True)
+        print(f"   📊 Accounts with data: {len([a for a in budgets if any(v != 0 for v in budgets[a].values())])}", flush=True)
+        
+        return jsonify({
+            'budgets': budgets,
+            'query_time': elapsed,
+            'accounts_requested': len(accounts),
+            'periods_requested': len(periods)
+        })
+        
+    except Exception as e:
+        error_msg = str(e) if str(e) else f"{type(e).__name__}: (no message)"
+        print(f"❌ Error in batch_budget: {error_msg}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': error_msg}), 500
 
 
 @app.route('/budget/all', methods=['GET'])

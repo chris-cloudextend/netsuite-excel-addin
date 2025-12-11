@@ -1447,7 +1447,9 @@ const pendingRequests = {
 
 let batchTimer = null;  // Timer reference for BALANCE batching
 let typeBatchTimer = null;  // Timer reference for TYPE batching
+let budgetBatchTimer = null;  // Timer reference for BUDGET batching
 const BATCH_DELAY = 500;           // Wait 500ms to collect multiple requests (matches build mode settle)
+const BUDGET_BATCH_DELAY = 300;    // Faster batch delay for BUDGET (simpler queries)
 const TYPE_BATCH_DELAY = 150;      // Faster batch delay for TYPE (lightweight queries)
 const CHUNK_SIZE = 50;             // Max 50 accounts per batch (balances NetSuite limits)
 const MAX_PERIODS_PER_BATCH = 3;   // Max 3 periods per batch (prevents backend timeout for high-volume accounts)
@@ -2353,9 +2355,31 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
             return cache.budget.get(cacheKey);
         }
         
-        // Cache miss - fetch from server
+        // Cache miss - queue for batch processing
         cacheStats.misses++;
         
+        // For single-period requests (fromPeriod === toPeriod), use batching
+        // For date ranges, fall back to individual calls
+        const isSinglePeriod = !toPeriod || fromPeriod === toPeriod;
+        
+        if (isSinglePeriod) {
+            // Queue for batch processing
+            return new Promise((resolve, reject) => {
+                pendingRequests.budget.set(cacheKey, {
+                    params,
+                    resolve,
+                    reject
+                });
+                
+                // Reset/start batch timer
+                if (budgetBatchTimer) {
+                    clearTimeout(budgetBatchTimer);
+                }
+                budgetBatchTimer = setTimeout(processBudgetBatchQueue, BUDGET_BATCH_DELAY);
+            });
+        }
+        
+        // Fall back to individual request for date ranges
         try {
             const url = new URL(`${SERVER_URL}/budget`);
             url.searchParams.append('account', account);
@@ -2393,6 +2417,119 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
         console.error('BUDGET error:', error);
         return 0;
     }
+}
+
+// ============================================================================
+// BUDGET BATCH PROCESSOR - Collects budget requests and sends in one query
+// ============================================================================
+async function processBudgetBatchQueue() {
+    budgetBatchTimer = null;  // Reset timer reference
+    
+    if (pendingRequests.budget.size === 0) {
+        return;
+    }
+    
+    const requestCount = pendingRequests.budget.size;
+    console.log('========================================');
+    console.log(`📊 BUDGET BATCH: Processing ${requestCount} requests`);
+    console.log('========================================');
+    
+    // Extract requests and clear queue
+    const requests = Array.from(pendingRequests.budget.entries());
+    pendingRequests.budget.clear();
+    
+    // Group by filters (subsidiary, department, location, class, accountingBook, budgetCategory)
+    // This allows us to batch requests with the same filters together
+    const groups = new Map();
+    
+    for (const [cacheKey, request] of requests) {
+        const { subsidiary, department, location, classId, accountingBook, budgetCategory } = request.params;
+        const filterKey = `${subsidiary}|${department}|${location}|${classId}|${accountingBook}|${budgetCategory}`;
+        
+        if (!groups.has(filterKey)) {
+            groups.set(filterKey, {
+                filters: { subsidiary, department, location, classId, accountingBook, budgetCategory },
+                accounts: new Set(),
+                periods: new Set(),
+                requests: []
+            });
+        }
+        
+        const group = groups.get(filterKey);
+        group.accounts.add(request.params.account);
+        group.periods.add(request.params.fromPeriod);  // Use fromPeriod (same as toPeriod for batched requests)
+        group.requests.push({ cacheKey, request });
+    }
+    
+    console.log(`   Grouped into ${groups.size} filter combination(s)`);
+    
+    // Process each group with a batch API call
+    for (const [filterKey, group] of groups) {
+        const accounts = Array.from(group.accounts);
+        const periods = Array.from(group.periods);
+        const { filters, requests: groupRequests } = group;
+        
+        console.log(`   📤 Batch: ${accounts.length} accounts × ${periods.length} periods`);
+        console.log(`      Filters: sub=${filters.subsidiary || 'all'}, cat=${filters.budgetCategory || 'all'}`);
+        
+        try {
+            const response = await fetch(`${SERVER_URL}/batch/budget`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    accounts,
+                    periods,
+                    subsidiary: filters.subsidiary || '',
+                    department: filters.department || '',
+                    location: filters.location || '',
+                    class: filters.classId || '',
+                    accountingbook: filters.accountingBook || '',
+                    budget_category: filters.budgetCategory || ''
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`   ❌ Batch budget API error: ${response.status}`, errorText);
+                
+                // Resolve all with 0 on error (graceful degradation)
+                for (const { cacheKey, request } of groupRequests) {
+                    cache.budget.set(cacheKey, 0);
+                    request.resolve(0);
+                }
+                continue;
+            }
+            
+            const data = await response.json();
+            const budgets = data.budgets || {};
+            
+            console.log(`   ✅ Received data in ${data.query_time?.toFixed(2) || '?'}s`);
+            
+            // Resolve promises and cache results
+            for (const { cacheKey, request } of groupRequests) {
+                const { account, fromPeriod } = request.params;
+                let value = 0;
+                
+                if (budgets[account] && budgets[account][fromPeriod] !== undefined) {
+                    value = budgets[account][fromPeriod];
+                }
+                
+                cache.budget.set(cacheKey, value);
+                request.resolve(value);
+            }
+            
+        } catch (error) {
+            console.error(`   ❌ Batch budget error:`, error);
+            
+            // Resolve all with 0 on error
+            for (const { cacheKey, request } of groupRequests) {
+                cache.budget.set(cacheKey, 0);
+                request.resolve(0);
+            }
+        }
+    }
+    
+    console.log('========================================');
 }
 
 // ============================================================================
