@@ -2178,6 +2178,34 @@
                     </div>
                 </div>
 
+                <!-- NetSuite Permissions Check -->
+                <div class="settings-section">
+                    <h3>🔐 NetSuite Permissions</h3>
+                    <p style="font-size: 11px; color: var(--bottlenose); margin-bottom: 12px;">
+                        Verify your NetSuite user role has the required permissions for XAVI.
+                    </p>
+                    <button class="settings-btn-action" onclick="checkNetSuitePermissions()" id="checkPermissionsBtn">
+                        🔍 Check Permissions
+                    </button>
+                    
+                    <div id="permissionsResults" style="display: none; margin-top: 16px;">
+                        <!-- Status banner -->
+                        <div id="permissionsStatus" style="padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; font-weight: 600;">
+                        </div>
+                        
+                        <!-- Permissions list -->
+                        <div id="permissionsList" style="font-size: 11px;">
+                        </div>
+                        
+                        <!-- Legend -->
+                        <div style="margin-top: 12px; padding: 10px; background: #f9fafb; border-radius: 6px; font-size: 10px; color: #6b7280;">
+                            <div style="margin-bottom: 4px;"><span style="color: #10b981;">✅</span> = Access verified</div>
+                            <div style="margin-bottom: 4px;"><span style="color: #ef4444;">❌</span> = Access denied or feature not enabled</div>
+                            <div><span style="color: #f59e0b;">⚠️</span> = Required permission missing</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Version Info -->
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
@@ -6219,6 +6247,191 @@ export default {
                 document.getElementById('localStorageStatus').textContent = 'Error';
                 document.getElementById('cachedAccountsCount').textContent = '-';
             }
+        }
+
+        // Permission descriptions for help tooltips
+        const PERMISSION_HELP = {
+            'Account': {
+                description: 'Chart of Accounts access',
+                impact: 'Required to retrieve account numbers, names, and types. Without this, XAVI cannot function.',
+                required: true
+            },
+            'TransactionAccountingLine': {
+                description: 'Transaction GL Lines access',
+                impact: 'Required to calculate account balances from posted transactions. Without this, XAVI.BALANCE will not work.',
+                required: true
+            },
+            'Transaction': {
+                description: 'Transaction records access',
+                impact: 'Required for drill-through to see transaction details. Without this, drilling into balances will show no data.',
+                required: true
+            },
+            'AccountingPeriod': {
+                description: 'Accounting Periods access',
+                impact: 'Required to determine period dates and fiscal year boundaries. Without this, period-based queries will fail.',
+                required: true
+            },
+            'Subsidiary': {
+                description: 'Subsidiaries (OneWorld)',
+                impact: 'Required for multi-subsidiary filtering. If disabled, subsidiary parameter in formulas will be ignored. Non-OneWorld accounts will show this as unavailable.',
+                required: false
+            },
+            'Department': {
+                description: 'Departments',
+                impact: 'Required for department-based filtering. If disabled, you cannot filter balances by department.',
+                required: false
+            },
+            'Classification': {
+                description: 'Classes',
+                impact: 'Required for class-based filtering. If disabled, you cannot filter balances by class.',
+                required: false
+            },
+            'Location': {
+                description: 'Locations',
+                impact: 'Required for location-based filtering. If disabled, you cannot filter balances by location.',
+                required: false
+            },
+            'Budget': {
+                description: 'Budget records',
+                impact: 'Required for XAVI.BUDGET function. If disabled or budgets not set up, budget queries will return errors.',
+                required: false
+            },
+            'ConsolidatedExchangeRate': {
+                description: 'Currency Exchange Rates',
+                impact: 'Required for currency consolidation in multi-currency reports. If disabled, consolidated amounts may be incorrect.',
+                required: false
+            },
+            'AccountingBook': {
+                description: 'Accounting Books (Multi-Book)',
+                impact: 'Required if using Multi-Book Accounting. If disabled, the accounting book parameter will be ignored.',
+                required: false
+            }
+        };
+
+        async function checkNetSuitePermissions() {
+            const btn = document.getElementById('checkPermissionsBtn');
+            const resultsDiv = document.getElementById('permissionsResults');
+            const statusDiv = document.getElementById('permissionsStatus');
+            const listDiv = document.getElementById('permissionsList');
+            
+            // Show loading state
+            btn.disabled = true;
+            btn.textContent = '⏳ Checking...';
+            resultsDiv.style.display = 'block';
+            statusDiv.style.background = '#f3f4f6';
+            statusDiv.style.color = '#4b5563';
+            statusDiv.textContent = 'Checking NetSuite permissions...';
+            listDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #9ca3af;">Running permission checks...</div>';
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/check-permissions`, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(60000)  // 60 second timeout for all checks
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Update status banner
+                if (data.status === 'success') {
+                    statusDiv.style.background = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)';
+                    statusDiv.style.color = '#065f46';
+                    statusDiv.innerHTML = `✅ ${data.message}`;
+                } else if (data.status === 'warning') {
+                    statusDiv.style.background = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+                    statusDiv.style.color = '#92400e';
+                    statusDiv.innerHTML = `⚠️ ${data.message}`;
+                } else {
+                    statusDiv.style.background = 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)';
+                    statusDiv.style.color = '#991b1b';
+                    statusDiv.innerHTML = `❌ ${data.message}`;
+                }
+                
+                // Build permissions list
+                let listHTML = '';
+                for (const check of data.checks) {
+                    const help = PERMISSION_HELP[check.table] || { 
+                        description: check.name, 
+                        impact: 'Permission details not available.',
+                        required: check.required 
+                    };
+                    
+                    let statusIcon, statusColor, statusText;
+                    if (check.accessible === true) {
+                        statusIcon = '✅';
+                        statusColor = '#10b981';
+                        statusText = 'OK';
+                    } else if (check.accessible === null) {
+                        statusIcon = '➖';
+                        statusColor = '#9ca3af';
+                        statusText = 'N/A';
+                    } else {
+                        statusIcon = check.required ? '⚠️' : '❌';
+                        statusColor = check.required ? '#f59e0b' : '#ef4444';
+                        statusText = 'Failed';
+                    }
+                    
+                    listHTML += `
+                        <div style="display: flex; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #f3f4f6;">
+                            <span style="font-size: 14px; margin-right: 8px;">${statusIcon}</span>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: #1f2937;">
+                                    ${check.name}
+                                    ${check.required ? '<span style="color: #ef4444; font-weight: normal; font-size: 10px;"> (Required)</span>' : ''}
+                                </div>
+                                <div style="color: ${statusColor}; font-size: 10px; margin-top: 2px;">
+                                    ${check.accessible === true ? 'Access verified' : 
+                                      check.accessible === null ? 'Feature not available' :
+                                      (check.error || 'Access denied')}
+                                </div>
+                            </div>
+                            <div class="help-icon small" style="cursor: help; margin-left: 8px;" 
+                                 title="${help.impact.replace(/"/g, '&quot;')}">?</div>
+                        </div>
+                    `;
+                }
+                
+                listDiv.innerHTML = listHTML;
+                
+                // Add account ID info
+                if (data.account_id) {
+                    listDiv.innerHTML += `
+                        <div style="margin-top: 12px; padding: 8px; background: #f9fafb; border-radius: 6px; font-size: 10px; color: #6b7280;">
+                            NetSuite Account: <strong>${data.account_id}</strong>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                statusDiv.style.background = 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)';
+                statusDiv.style.color = '#991b1b';
+                
+                if (error.name === 'TimeoutError') {
+                    statusDiv.innerHTML = '❌ Permission check timed out. Server may be slow or SuiteQL access may be denied.';
+                } else if (error.message.includes('Failed to fetch')) {
+                    statusDiv.innerHTML = '❌ Cannot connect to server. Check that the backend is running.';
+                } else {
+                    statusDiv.innerHTML = `❌ Error: ${error.message}`;
+                }
+                
+                listDiv.innerHTML = `
+                    <div style="padding: 16px; background: #fef2f2; border-radius: 8px; color: #991b1b; font-size: 11px;">
+                        <p style="font-weight: 600; margin-bottom: 8px;">Troubleshooting:</p>
+                        <ul style="padding-left: 16px; line-height: 1.8;">
+                            <li>Ensure the backend server is running</li>
+                            <li>Check that Cloudflare tunnel is active</li>
+                            <li>Verify your NetSuite role has SuiteAnalytics Workbook permission</li>
+                            <li>Confirm the Integration Record has SuiteQL scope enabled</li>
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            btn.disabled = false;
+            btn.textContent = '🔍 Check Permissions';
         }
 
         function copyTunnelInstructions() {

@@ -647,6 +647,149 @@ def health():
     return jsonify({'status': 'healthy', 'account': account_id})
 
 
+@app.route('/check-permissions')
+def check_permissions():
+    """
+    Check if the connected NetSuite user has proper permissions for XAVI.
+    Tests access to each required table with a simple query.
+    Returns a detailed report of what's accessible and what's missing.
+    """
+    results = {
+        'suiteql_access': False,
+        'account_id': account_id,
+        'checks': [],
+        'summary': {
+            'passed': 0,
+            'failed': 0,
+            'required_passed': 0,
+            'required_failed': 0
+        }
+    }
+    
+    # Define tables to check with their requirements
+    # (table_name, display_name, required, test_query)
+    checks = [
+        ('Account', 'Chart of Accounts', True, 
+         "SELECT TOP 1 id, acctnumber, accountsearchdisplaynamecopy FROM Account WHERE isinactive = 'F'"),
+        
+        ('TransactionAccountingLine', 'Transaction Lines (GL Data)', True,
+         "SELECT tal.account, tal.amount FROM TransactionAccountingLine tal WHERE ROWNUM <= 1"),
+        
+        ('Transaction', 'Transactions', True,
+         "SELECT TOP 1 id, trandate, postingperiod FROM Transaction"),
+        
+        ('AccountingPeriod', 'Accounting Periods', True,
+         "SELECT TOP 1 id, periodname, startdate, enddate FROM AccountingPeriod"),
+        
+        ('Subsidiary', 'Subsidiaries (OneWorld)', False,
+         "SELECT TOP 1 id, name, currency FROM Subsidiary WHERE isinactive = 'F'"),
+        
+        ('Department', 'Departments', False,
+         "SELECT TOP 1 id, name FROM Department WHERE isinactive = 'F'"),
+        
+        ('Classification', 'Classes', False,
+         "SELECT TOP 1 id, name FROM Classification WHERE isinactive = 'F'"),
+        
+        ('Location', 'Locations', False,
+         "SELECT TOP 1 id, name FROM Location WHERE isinactive = 'F'"),
+        
+        ('Budget', 'Budgets', False,
+         "SELECT TOP 1 b.account FROM Budget b"),
+        
+        ('ConsolidatedExchangeRate', 'Exchange Rates', False,
+         "SELECT TOP 1 id, fromcurrency, tocurrency FROM ConsolidatedExchangeRate"),
+        
+        ('AccountingBook', 'Accounting Books (Multi-Book)', False,
+         "SELECT TOP 1 id, name FROM AccountingBook WHERE isinactive = 'F'"),
+    ]
+    
+    for table_name, display_name, required, test_query in checks:
+        check_result = {
+            'table': table_name,
+            'name': display_name,
+            'required': required,
+            'accessible': False,
+            'error': None,
+            'sample_data': None
+        }
+        
+        try:
+            response = requests.post(
+                suiteql_url,
+                auth=auth,
+                headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
+                json={'q': test_query},
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                items = data.get('items', [])
+                check_result['accessible'] = True
+                check_result['row_count'] = len(items)
+                results['suiteql_access'] = True  # If any query works, SuiteQL is enabled
+                
+                if items:
+                    # Include sample data (first row) for debugging
+                    check_result['sample_data'] = items[0]
+                
+                results['summary']['passed'] += 1
+                if required:
+                    results['summary']['required_passed'] += 1
+                    
+            elif response.status_code == 400:
+                # Table might not exist (non-OneWorld, no budgets, etc.)
+                error_data = response.json() if response.text else {}
+                error_msg = error_data.get('o:errorDetails', [{}])[0].get('detail', 'Unknown error')
+                
+                if 'invalid table' in error_msg.lower() or 'does not exist' in error_msg.lower():
+                    check_result['error'] = 'Table not available (feature may not be enabled)'
+                    check_result['accessible'] = None  # N/A, not a permission issue
+                else:
+                    check_result['error'] = error_msg
+                    results['summary']['failed'] += 1
+                    if required:
+                        results['summary']['required_failed'] += 1
+                        
+            elif response.status_code == 403:
+                check_result['error'] = 'Permission denied - user role lacks access'
+                results['summary']['failed'] += 1
+                if required:
+                    results['summary']['required_failed'] += 1
+                    
+            else:
+                check_result['error'] = f'HTTP {response.status_code}: {response.text[:200]}'
+                results['summary']['failed'] += 1
+                if required:
+                    results['summary']['required_failed'] += 1
+                    
+        except requests.exceptions.Timeout:
+            check_result['error'] = 'Query timed out'
+            results['summary']['failed'] += 1
+            if required:
+                results['summary']['required_failed'] += 1
+        except Exception as e:
+            check_result['error'] = str(e)
+            results['summary']['failed'] += 1
+            if required:
+                results['summary']['required_failed'] += 1
+        
+        results['checks'].append(check_result)
+    
+    # Generate overall status
+    if not results['suiteql_access']:
+        results['status'] = 'error'
+        results['message'] = 'SuiteQL access denied. Ensure the user role has SuiteAnalytics Workbook permission and the Integration Record has SuiteQL scope enabled.'
+    elif results['summary']['required_failed'] > 0:
+        results['status'] = 'warning'
+        results['message'] = f"Some required permissions are missing. {results['summary']['required_failed']} required table(s) not accessible."
+    else:
+        results['status'] = 'success'
+        results['message'] = f"All required permissions verified. {results['summary']['passed']} table(s) accessible."
+    
+    return jsonify(results)
+
+
 @app.route('/admin/restart', methods=['POST'])
 def admin_restart():
     """
