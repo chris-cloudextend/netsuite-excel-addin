@@ -1040,15 +1040,15 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
     # For non-OneWorld, it simply returns the original amount unchanged
     amount_calc = f"""TO_NUMBER(
-                        BUILTIN.CONSOLIDATE(
-                            tal.amount,
-                            'LEDGER',
-                            'DEFAULT',
-                            'DEFAULT',
+                                BUILTIN.CONSOLIDATE(
+                                    tal.amount,
+                                    'LEDGER',
+                                    'DEFAULT',
+                                    'DEFAULT',
                             {target_sub or 1},
-                            t.postingperiod,
-                            'DEFAULT'
-                        )
+                                    t.postingperiod,
+                                    'DEFAULT'
+                                )
                     )"""
     
     if needs_line_join:
@@ -1143,15 +1143,15 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
     # For BS, we use the target period_id for exchange rate (not posting period)
     if period_id:
         amount_calc = f"""TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER',
-                                'DEFAULT',
-                                'DEFAULT',
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
                                 {target_sub or 1},
-                                {period_id},
-                                'DEFAULT'
-                            )
+                                        {period_id},
+                                        'DEFAULT'
+                                    )
                         )"""
     else:
         # Fallback for periods not in NetSuite's AccountingPeriod table
@@ -1249,15 +1249,15 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         # For BS, we use the period_id for exchange rate (not posting period)
         amount_calc = f"""TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER',
-                                'DEFAULT',
-                                'DEFAULT',
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
                                 {target_sub or 1},
-                                {period_id},
-                                'DEFAULT'
-                            )
+                                        {period_id},
+                                        'DEFAULT'
+                                    )
                         )"""
         
         # Query for THIS period only
@@ -1751,17 +1751,17 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
       SELECT
         tal.account,
         t.postingperiod,
-        TO_NUMBER(
-          BUILTIN.CONSOLIDATE(
-            tal.amount,
-            'LEDGER',
-            'DEFAULT',
-            'DEFAULT',
+            TO_NUMBER(
+              BUILTIN.CONSOLIDATE(
+                tal.amount,
+                'LEDGER',
+                'DEFAULT',
+                'DEFAULT',
             {target_sub or 1},
-            t.postingperiod,
-            'DEFAULT'
-          )
-        )
+                t.postingperiod,
+                'DEFAULT'
+              )
+            )
         * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
       FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
@@ -2387,17 +2387,17 @@ def batch_periods_refresh():
           SELECT
             tal.account AS account_id,
             t.postingperiod AS period_id,
-            TO_NUMBER(
-              BUILTIN.CONSOLIDATE(
-                tal.amount,
-                'LEDGER',
-                'DEFAULT',
-                'DEFAULT',
-                {target_sub},
-                t.postingperiod,
-                'DEFAULT'
-              )
-            )
+                TO_NUMBER(
+                  BUILTIN.CONSOLIDATE(
+                    tal.amount,
+                    'LEDGER',
+                    'DEFAULT',
+                    'DEFAULT',
+                    {target_sub},
+                    t.postingperiod,
+                    'DEFAULT'
+                  )
+                )
             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
             AS cons_amt
           FROM TransactionAccountingLine tal
@@ -2481,16 +2481,16 @@ def batch_periods_refresh():
           SELECT
             tal.account AS account_id,
             t.postingperiod AS period_id,
-            TO_NUMBER(
-              BUILTIN.CONSOLIDATE(
-                tal.amount,
-                'LEDGER',
-                'DEFAULT',
-                'DEFAULT',
-                {target_sub},
-                t.postingperiod,
-                'DEFAULT'
-              )
+                TO_NUMBER(
+                  BUILTIN.CONSOLIDATE(
+                    tal.amount,
+                    'LEDGER',
+                    'DEFAULT',
+                    'DEFAULT',
+                    {target_sub},
+                    t.postingperiod,
+                    'DEFAULT'
+                  )
             ) AS cons_amt
           FROM TransactionAccountingLine tal
           JOIN Transaction t ON t.id = tal.transaction
@@ -2566,17 +2566,17 @@ def batch_periods_refresh():
                 SELECT 
                     a.acctnumber AS acctnumber,
                     SUM(
-                        TO_NUMBER(
-                            BUILTIN.CONSOLIDATE(
-                                tal.amount,
-                                'LEDGER',
-                                'DEFAULT',
-                                'DEFAULT',
-                                {target_sub},
-                                t.postingperiod,
-                                'DEFAULT'
-                            )
-                        )
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        t.postingperiod,
+                                        'DEFAULT'
+                                    )
+                                )
                     ) AS balance
                 FROM TransactionAccountingLine tal
                 JOIN Transaction t ON t.id = tal.transaction
@@ -3715,17 +3715,17 @@ def get_balance():
                     SELECT SUM(x.cons_amt) AS balance
                     FROM (
                         SELECT
-                            TO_NUMBER(
-                                BUILTIN.CONSOLIDATE(
-                                    tal.amount,
-                                    'LEDGER',
-                                    'DEFAULT',
-                                    'DEFAULT',
-                                    {target_sub},
-                                    t.postingperiod,
-                                    'DEFAULT'
-                                )
-                            )
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
@@ -3740,17 +3740,17 @@ def get_balance():
                     SELECT SUM(x.cons_amt) AS balance
                     FROM (
                         SELECT
-                            TO_NUMBER(
-                                BUILTIN.CONSOLIDATE(
-                                    tal.amount,
-                                    'LEDGER',
-                                    'DEFAULT',
-                                    'DEFAULT',
-                                    {target_sub},
-                                    t.postingperiod,
-                                    'DEFAULT'
-                                )
-                            )
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
@@ -3765,17 +3765,17 @@ def get_balance():
                     SELECT SUM(x.cons_amt) AS balance
                     FROM (
                         SELECT
-                            TO_NUMBER(
-                                BUILTIN.CONSOLIDATE(
-                                    tal.amount,
-                                    'LEDGER',
-                                    'DEFAULT',
-                                    'DEFAULT',
-                                    {target_sub},
-                                    t.postingperiod,
-                                    'DEFAULT'
-                                )
-                            )
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
@@ -3789,17 +3789,17 @@ def get_balance():
                     SELECT SUM(x.cons_amt) AS balance
                     FROM (
                         SELECT
-                            TO_NUMBER(
-                                BUILTIN.CONSOLIDATE(
-                                    tal.amount,
-                                    'LEDGER',
-                                    'DEFAULT',
-                                    'DEFAULT',
-                                    {target_sub},
-                                    t.postingperiod,
-                                    'DEFAULT'
-                                )
-                            )
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
@@ -4452,10 +4452,78 @@ def get_all_lookups():
                 'isPrimary': True
             })
         
+        # Fetch budget categories
+        lookups['budgetCategories'] = []
+        try:
+            cat_query = """
+                SELECT id, name
+                FROM BudgetCategory
+                ORDER BY name
+            """
+            cat_result = query_netsuite(cat_query)
+            
+            if isinstance(cat_result, list):
+                for row in cat_result:
+                    lookups['budgetCategories'].append({
+                        'id': str(row.get('id', '')),
+                        'name': row.get('name', '')
+                    })
+        except Exception as e:
+            print(f"Error loading budget categories: {e}", file=sys.stderr)
+            # Budget categories may not exist in all accounts
+        
         return jsonify(lookups)
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/lookups/budget-categories')
+def get_budget_categories():
+    """
+    Get available budget categories from NetSuite.
+    Budget categories are used to organize different budget versions
+    (e.g., "FY 2024 Budget", "FY 2024 Forecast", "Legacy").
+    
+    Returns: {
+        "categories": [
+            {"id": "2", "name": "FY 2024 Budget"},
+            {"id": "1", "name": "Legacy"}
+        ]
+    }
+    """
+    try:
+        query = """
+            SELECT id, name
+            FROM BudgetCategory
+            ORDER BY name
+        """
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({
+                'categories': [],
+                'error': 'Budget categories not available (feature may not be enabled)'
+            })
+        
+        categories = []
+        if isinstance(result, list):
+            for row in result:
+                categories.append({
+                    'id': str(row.get('id', '')),
+                    'name': row.get('name', '')
+                })
+        
+        return jsonify({
+            'categories': categories,
+            'count': len(categories)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'categories': [],
+            'error': str(e)
+        }), 500
 
 
 @app.route('/lookups/currencies')

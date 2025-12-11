@@ -2574,6 +2574,14 @@
                         <button class="btn-filter" onclick="insertLookupValue('accountingBook')">Insert</button>
                     </div>
                     
+                    <div class="filter-group">
+                        <label class="filter-label">Budget Category <span style="font-size:10px;color:#888;">(for XAVI.BUDGET)</span></label>
+                        <select id="budgetCategorySelect" class="filter-select">
+                            <option value="">All Categories</option>
+                        </select>
+                        <button class="btn-filter" onclick="insertLookupValue('budgetCategory')">Insert</button>
+                    </div>
+                    
                     <div class="refresh-status" id="lookupStatus"></div>
                 </div>
             </details>
@@ -6557,6 +6565,17 @@ export default {
                     bookSelect.appendChild(option);
                 });
                 
+                // Populate budget category dropdown - Show NAMES (backend accepts name or ID)
+                // Used with XAVI.BUDGET formula to filter by budget version
+                const budgetCatSelect = document.getElementById('budgetCategorySelect');
+                budgetCatSelect.innerHTML = '<option value="">-- All Categories --</option>';
+                (data.budgetCategories || []).forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.name;  // Use NAME as value (more user-friendly)
+                    option.textContent = item.name;
+                    budgetCatSelect.appendChild(option);
+                });
+                
                 statusEl.textContent = '✓ Lookup lists loaded!';
                 statusEl.style.color = '#059669';
                 
@@ -6592,6 +6611,9 @@ export default {
                 } else if (type === 'accountingBook') {
                     selectId = 'accountingBookSelect';
                     typeName = 'Accounting Book';
+                } else if (type === 'budgetCategory') {
+                    selectId = 'budgetCategorySelect';
+                    typeName = 'Budget Category';
                 }
                 
                 const select = document.getElementById(selectId);
