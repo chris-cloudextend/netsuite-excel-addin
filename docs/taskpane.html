@@ -6882,7 +6882,7 @@ export default {
                     statusDiv.innerHTML = `❌ ${data.message}`;
                 }
                 
-                // Build features cards
+                // Build features cards with actual query results
                 let featuresHTML = '<div style="display: grid; gap: 8px;">';
                 
                 // Find feature checks (OneWorld, Multibook, Budgets)
@@ -6894,15 +6894,37 @@ export default {
                     const enabled = check.enabled === true;
                     const bgColor = enabled ? '#ecfdf5' : '#f9fafb';
                     const borderColor = enabled ? '#10b981' : '#e5e7eb';
-                    const icon = enabled ? '✅' : '➖';
+                    
+                    // Format query result for display
+                    let resultDisplay = '';
+                    if (check.query_result) {
+                        if (Array.isArray(check.query_result)) {
+                            // Show array results (like accounting books)
+                            if (check.query_result.length > 0) {
+                                const items = check.query_result.slice(0, 5).map(r => 
+                                    r.name || r.id || JSON.stringify(r)
+                                ).join(', ');
+                                resultDisplay = `${check.query_result.length} found: ${items}${check.query_result.length > 5 ? '...' : ''}`;
+                            } else {
+                                resultDisplay = 'Query returned 0 rows';
+                            }
+                        } else if (check.query_result.count !== undefined) {
+                            resultDisplay = `Count: ${check.query_result.count}`;
+                        } else if (check.query_result.error) {
+                            resultDisplay = `Error: ${check.query_result.error}`;
+                        } else {
+                            resultDisplay = JSON.stringify(check.query_result);
+                        }
+                    } else if (check.details) {
+                        resultDisplay = check.details;
+                    } else if (check.error) {
+                        resultDisplay = `Error: ${check.error}`;
+                    }
                     
                     featuresHTML += `
                         <div style="padding: 10px 12px; background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 6px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-weight: 600; font-size: 12px; color: #374151;">${check.name}</span>
-                                <span>${icon}</span>
-                            </div>
-                            ${check.details ? `<div style="font-size: 10px; color: #6b7280; margin-top: 4px;">${check.details}</div>` : ''}
+                            <div style="font-weight: 600; font-size: 12px; color: #374151; margin-bottom: 4px;">${check.name}</div>
+                            <div style="font-size: 10px; color: #6b7280; font-family: monospace; word-break: break-all;">${resultDisplay}</div>
                         </div>
                     `;
                 }

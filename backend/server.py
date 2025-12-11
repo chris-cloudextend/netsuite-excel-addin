@@ -740,35 +740,6 @@ def debug_budget_categories():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/test-role')
-def test_role():
-    """Quick test to see if we can get current user/role info"""
-    tests = []
-    
-    # Test 1: Role table
-    try:
-        result = query_netsuite("SELECT TOP 5 id, name FROM Role WHERE isinactive = 'F' ORDER BY name")
-        tests.append({'query': 'Role table', 'success': isinstance(result, list), 'data': result if isinstance(result, list) else str(result)})
-    except Exception as e:
-        tests.append({'query': 'Role table', 'success': False, 'error': str(e)})
-    
-    # Test 2: Employee table (current user)
-    try:
-        result = query_netsuite("SELECT TOP 5 id, entityid, email FROM Employee WHERE isinactive = 'F'")
-        tests.append({'query': 'Employee table', 'success': isinstance(result, list), 'data': result if isinstance(result, list) else str(result)})
-    except Exception as e:
-        tests.append({'query': 'Employee table', 'success': False, 'error': str(e)})
-    
-    # Test 3: LoginAudit or similar
-    try:
-        result = query_netsuite("SELECT TOP 5 * FROM LoginAudit ORDER BY id DESC")
-        tests.append({'query': 'LoginAudit table', 'success': isinstance(result, list), 'data': result if isinstance(result, list) else str(result)})
-    except Exception as e:
-        tests.append({'query': 'LoginAudit table', 'success': False, 'error': str(result) if 'result' in dir() else str(e)})
-    
-    return jsonify({'tests': tests})
-
-
 @app.route('/check-permissions')
 def check_permissions():
     """
@@ -856,42 +827,36 @@ def check_permissions():
         pass  # Already handled in OneWorld check
     
     # =================================================================
-    # 3. Multi-Book Accounting - Check AccountingBook table
+    # 3. Multi-Book Accounting - Try CompanyFeatureSetup first, then AccountingBook
     # =================================================================
     multibook_result = {
         'name': 'Multi-Book Accounting',
-        'table': 'AccountingBook',
+        'table': 'CompanyFeatureSetup',
         'required': False,
         'accessible': False,
         'enabled': False,
-        'details': None
+        'details': None,
+        'query_result': None,
+        'query_used': None
     }
     
     try:
-        # Check if AccountingBook table has records (indicates multi-book is enabled)
-        mb_query = "SELECT id, name FROM AccountingBook WHERE isinactive = 'F' ORDER BY id"
+        # Try CompanyFeatureSetup first (user confirmed this works in NetSuite UI)
+        mb_query = "SELECT Name, IsAvailable, IsActive FROM CompanyFeatureSetup WHERE ID = 'MULTIBOOK'"
+        multibook_result['query_used'] = mb_query
         mb_response = query_netsuite(mb_query)
         
         if isinstance(mb_response, list):
             results['suiteql_access'] = True
             multibook_result['accessible'] = True
-            book_count = len(mb_response)
-            if book_count > 0:
-                multibook_result['enabled'] = True
-                book_names = [row.get('name', f"Book {row.get('id')}") for row in mb_response[:3]]
-                if book_count > 3:
-                    multibook_result['details'] = f"{book_count} books: {', '.join(book_names)}..."
-                else:
-                    multibook_result['details'] = f"{book_count} book(s): {', '.join(book_names)}"
-            else:
-                multibook_result['details'] = 'No accounting books found'
+            multibook_result['query_result'] = mb_response
+            if len(mb_response) > 0:
+                row = mb_response[0]
+                multibook_result['enabled'] = row.get('isactive') == 'T'
             results['summary']['passed'] += 1
-        elif isinstance(mb_response, dict) and 'error' in mb_response:
-            error_detail = str(mb_response.get('details', ''))
-            if 'not found' in error_detail.lower() or 'invalid' in error_detail.lower():
-                multibook_result['details'] = 'Feature not enabled'
-            else:
-                multibook_result['details'] = 'Table not accessible'
+        else:
+            # Show the actual error/response
+            multibook_result['query_result'] = mb_response
     except Exception as e:
         multibook_result['error'] = str(e)
     
@@ -907,7 +872,8 @@ def check_permissions():
         'required': False,
         'accessible': False,
         'enabled': False,
-        'details': None
+        'details': None,
+        'query_result': None
     }
     
     try:
@@ -920,14 +886,10 @@ def check_permissions():
             budget_result['accessible'] = True
             budget_count = int(budget_response[0].get('cnt', 0))
             budget_result['enabled'] = budget_count > 0
-            budget_result['details'] = f"{budget_count} budget(s) found"
+            budget_result['query_result'] = {'count': budget_count}
             results['summary']['passed'] += 1
-        elif isinstance(budget_response, dict) and 'error' in budget_response:
-            error_detail = str(budget_response.get('details', ''))
-            if 'not found' in error_detail.lower() or 'invalid' in error_detail.lower():
-                budget_result['details'] = 'Budgeting not enabled'
-            else:
-                budget_result['details'] = 'Table not accessible'
+        else:
+            budget_result['query_result'] = budget_response
     except Exception as e:
         budget_result['error'] = str(e)
     
