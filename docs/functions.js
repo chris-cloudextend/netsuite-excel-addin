@@ -1993,11 +1993,11 @@ async function PARENT(accountNumber, invocation) {
  * @param {any} account Account number
  * @param {any} fromPeriod Starting period (e.g., "Jan 2025" or 1/1/2025)
  * @param {any} toPeriod Ending period (e.g., "Mar 2025" or 3/1/2025)
- * @param {any} [subsidiary] Subsidiary filter (optional)
- * @param {any} [department] Department filter (optional)
- * @param {any} [location] Location filter (optional)
- * @param {any} [classId] Class filter (optional)
- * @param {any} [accountingBook] Accounting Book ID (optional, defaults to Primary Book). For Multi-Book Accounting.
+ * @param {any} subsidiary Subsidiary filter (use "" for all)
+ * @param {any} department Department filter (use "" for all)
+ * @param {any} location Location filter (use "" for all)
+ * @param {any} classId Class filter (use "" for all)
+ * @param {any} accountingBook Accounting Book ID (use "" for Primary Book)
  * @returns {Promise<number>} Account balance
  * @requiresAddress
  */
@@ -2005,7 +2005,7 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
     // ================================================================
     // DEBUG: Log every BALANCE call to understand what's happening
     // ================================================================
-    console.log(`📥 BALANCE called: account="${account}", fromPeriod="${fromPeriod}"`);
+    console.log(`📥 BALANCE called: account="${account}", fromPeriod="${fromPeriod}", subsidiary="${subsidiary}"`);
     
     try {
         // ================================================================
@@ -2407,11 +2407,11 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
  * @param {any} account Account number
  * @param {any} fromPeriod Starting period (e.g., "Jan 2025" or 1/1/2025)
  * @param {any} toPeriod Ending period (e.g., "Mar 2025" or 3/1/2025)
- * @param {any} [subsidiary] Subsidiary filter (optional)
- * @param {any} [department] Department filter (optional)
- * @param {any} [location] Location filter (optional)
- * @param {any} [classId] Class filter (optional)
- * @param {any} [accountingBook] Accounting Book ID (optional, defaults to Primary Book). For Multi-Book Accounting.
+ * @param {any} subsidiary Subsidiary filter (use "" for all)
+ * @param {any} department Department filter (use "" for all)
+ * @param {any} location Location filter (use "" for all)
+ * @param {any} classId Class filter (use "" for all)
+ * @param {any} accountingBook Accounting Book ID (use "" for Primary Book)
  * @returns {Promise<number>} Budget amount
  * @requiresAddress
  */
