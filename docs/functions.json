@@ -201,6 +201,13 @@
           "type": "any",
           "dimensionality": "scalar",
           "optional": true
+        },
+        {
+          "name": "budgetCategory",
+          "description": "Budget Category name or ID (e.g., \"FY 2024 Budget\"). Optional - omit to include all categories.",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
         }
       ],
       "options": {
