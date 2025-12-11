@@ -2007,6 +2007,39 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
     // ================================================================
     console.log(`📥 BALANCE called: account="${account}", fromPeriod="${fromPeriod}", subsidiary="${subsidiary}"`);
     
+    // ================================================================
+    // CROSS-CONTEXT CACHE INVALIDATION
+    // The taskpane runs in a separate JS context and can't directly clear
+    // our in-memory cache. It sets a localStorage signal instead.
+    // We check this signal FIRST, before any cache lookups.
+    // ================================================================
+    try {
+        const clearSignal = localStorage.getItem('netsuite_cache_clear_signal');
+        if (clearSignal) {
+            const { timestamp, reason } = JSON.parse(clearSignal);
+            // Only honor signals from last 10 seconds
+            if (Date.now() - timestamp < 10000) {
+                console.log(`🚨 CACHE CLEAR SIGNAL RECEIVED (reason: ${reason})`);
+                console.log(`   Before clear: ${cache.balance.size} balance entries`);
+                cache.balance.clear();
+                cache.budget.clear();
+                // Also clear fullYearCache
+                if (typeof fullYearCache === 'object' && fullYearCache) {
+                    Object.keys(fullYearCache).forEach(k => delete fullYearCache[k]);
+                }
+                fullYearCacheTimestamp = null;
+                console.log(`   ✓ Cleared in-memory caches (balance, budget, fullYear)`);
+                // Remove the signal so we don't clear again
+                localStorage.removeItem('netsuite_cache_clear_signal');
+            } else {
+                // Stale signal - remove it
+                localStorage.removeItem('netsuite_cache_clear_signal');
+            }
+        }
+    } catch (e) {
+        // Ignore signal check errors
+    }
+    
     try {
         // ================================================================
         // SPECIAL COMMAND: __CLEARCACHE__ - Clear caches from taskpane
