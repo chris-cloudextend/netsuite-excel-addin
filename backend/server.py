@@ -740,6 +740,35 @@ def debug_budget_categories():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/test-role')
+def test_role():
+    """Quick test to see if we can get current user/role info"""
+    tests = []
+    
+    # Test 1: Role table
+    try:
+        result = query_netsuite("SELECT TOP 5 id, name FROM Role WHERE isinactive = 'F' ORDER BY name")
+        tests.append({'query': 'Role table', 'success': isinstance(result, list), 'data': result if isinstance(result, list) else str(result)})
+    except Exception as e:
+        tests.append({'query': 'Role table', 'success': False, 'error': str(e)})
+    
+    # Test 2: Employee table (current user)
+    try:
+        result = query_netsuite("SELECT TOP 5 id, entityid, email FROM Employee WHERE isinactive = 'F'")
+        tests.append({'query': 'Employee table', 'success': isinstance(result, list), 'data': result if isinstance(result, list) else str(result)})
+    except Exception as e:
+        tests.append({'query': 'Employee table', 'success': False, 'error': str(e)})
+    
+    # Test 3: LoginAudit or similar
+    try:
+        result = query_netsuite("SELECT TOP 5 * FROM LoginAudit ORDER BY id DESC")
+        tests.append({'query': 'LoginAudit table', 'success': isinstance(result, list), 'data': result if isinstance(result, list) else str(result)})
+    except Exception as e:
+        tests.append({'query': 'LoginAudit table', 'success': False, 'error': str(result) if 'result' in dir() else str(e)})
+    
+    return jsonify({'tests': tests})
+
+
 @app.route('/check-permissions')
 def check_permissions():
     """

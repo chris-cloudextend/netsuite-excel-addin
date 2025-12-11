@@ -9,7 +9,7 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://moss-outlined-grad-ala.trycloudflare.com
+// CURRENT TUNNEL URL: https://specialty-assigned-thereby-essentially.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
 // Last Updated: Dec 11, 2025
 // ════════════════════════════════════════════════════════════════════
@@ -17,7 +17,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://moss-outlined-grad-ala.trycloudflare.com';
+    const TUNNEL_URL = 'https://specialty-assigned-thereby-essentially.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
