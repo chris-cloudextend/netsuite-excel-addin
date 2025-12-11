@@ -3975,6 +3975,179 @@ def get_budget():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/budget/all', methods=['GET'])
+def get_all_budgets():
+    """
+    Get all budget data for a given year and optional category.
+    Returns all accounts with budget amounts for each month.
+    
+    Query params:
+        - year: Budget year (required, e.g., "2011")
+        - category: Budget category name or ID (optional)
+        - subsidiary: Subsidiary ID (optional)
+    
+    Returns: JSON with accounts, monthly amounts, and metadata
+    """
+    try:
+        year = request.args.get('year')
+        category = request.args.get('category', '')
+        subsidiary = request.args.get('subsidiary', '')
+        
+        if not year:
+            return jsonify({'error': 'year parameter is required'}), 400
+        
+        # Get period IDs for the year
+        period_query = f"""
+            SELECT id, periodname, startdate
+            FROM AccountingPeriod
+            WHERE EXTRACT(YEAR FROM startdate) = {year}
+              AND isquarter = 'F'
+              AND isyear = 'F'
+              AND isadjust = 'F'
+            ORDER BY startdate
+        """
+        period_result = query_netsuite(period_query)
+        
+        if isinstance(period_result, dict) and 'error' in period_result:
+            return jsonify({'error': f"Failed to get periods: {period_result.get('error')}"}), 500
+        
+        if not period_result or len(period_result) == 0:
+            return jsonify({'error': f'No accounting periods found for year {year}'}), 404
+        
+        # Build period ID to month mapping
+        period_map = {}  # period_id -> month name (e.g., "Jan")
+        month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        for row in period_result:
+            period_id = str(row.get('id'))
+            # Extract month from startdate
+            startdate = row.get('startdate', '')
+            if startdate:
+                try:
+                    # startdate format: "1/1/2011" or "2011-01-01"
+                    if '/' in startdate:
+                        month_num = int(startdate.split('/')[0])
+                    else:
+                        month_num = int(startdate.split('-')[1])
+                    if 1 <= month_num <= 12:
+                        period_map[period_id] = month_names[month_num - 1]
+                except:
+                    pass
+        
+        period_ids = list(period_map.keys())
+        if not period_ids:
+            return jsonify({'error': f'Could not parse periods for year {year}'}), 500
+        
+        period_ids_str = ','.join(period_ids)
+        
+        # Build WHERE clauses
+        where_clauses = [f"bm.period IN ({period_ids_str})"]
+        
+        # Category filter
+        if category and category != '':
+            if category.isdigit():
+                where_clauses.append(f"b.category = {category}")
+            else:
+                cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(category)}'"
+                cat_result = query_netsuite(cat_query)
+                if isinstance(cat_result, list) and len(cat_result) > 0:
+                    cat_id = cat_result[0].get('id')
+                    where_clauses.append(f"b.category = {cat_id}")
+        
+        # Subsidiary filter
+        if subsidiary and subsidiary != '':
+            where_clauses.append(f"b.subsidiary = {subsidiary}")
+        
+        where_clause = " AND ".join(where_clauses)
+        
+        # Determine target subsidiary for consolidation
+        target_sub = subsidiary if subsidiary and subsidiary != '' else (default_subsidiary_id or '1')
+        
+        # Query all budget data grouped by account and period
+        query = f"""
+            SELECT 
+                a.acctnumber AS account_number,
+                a.accountsearchdisplaynamecopy AS account_name,
+                a.accttype AS account_type,
+                bm.period AS period_id,
+                SUM(
+                    TO_NUMBER(BUILTIN.CONSOLIDATE(
+                        bm.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
+                        {target_sub}, bm.period, 'DEFAULT'
+                    ))
+                ) AS amount
+            FROM BudgetsMachine bm
+            INNER JOIN Budgets b ON bm.budget = b.id
+            INNER JOIN Account a ON b.account = a.id
+            WHERE {where_clause}
+            GROUP BY a.acctnumber, a.accountsearchdisplaynamecopy, a.accttype, bm.period
+            ORDER BY a.acctnumber, bm.period
+        """
+        
+        print(f"Budget/all query: {query[:500]}...", file=sys.stderr)
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': f"Query failed: {result.get('error')}"}), 500
+        
+        # Process results into account-based structure
+        accounts = {}
+        account_names = {}
+        account_types = {}
+        
+        if isinstance(result, list):
+            for row in result:
+                acct_num = str(row.get('account_number', ''))
+                acct_name = row.get('account_name', '')
+                acct_type = row.get('account_type', '')
+                period_id = str(row.get('period_id', ''))
+                amount = row.get('amount', 0) or 0
+                
+                if acct_num not in accounts:
+                    accounts[acct_num] = {}
+                    account_names[acct_num] = acct_name
+                    account_types[acct_num] = acct_type
+                
+                # Map period ID to month name
+                month_name = period_map.get(period_id, '')
+                if month_name:
+                    key = f"{month_name} {year}"
+                    accounts[acct_num][key] = float(amount)
+        
+        # Get available budget categories for the year
+        cat_query = f"""
+            SELECT DISTINCT bc.id, bc.name
+            FROM Budgets b
+            INNER JOIN BudgetCategory bc ON b.category = bc.id
+            WHERE b.year IN (
+                SELECT id FROM AccountingPeriod 
+                WHERE isyear = 'T' AND EXTRACT(YEAR FROM startdate) = {year}
+            )
+            ORDER BY bc.name
+        """
+        cat_result = query_netsuite(cat_query)
+        categories = []
+        if isinstance(cat_result, list):
+            categories = [{'id': str(r.get('id')), 'name': r.get('name')} for r in cat_result]
+        
+        return jsonify({
+            'year': year,
+            'category': category,
+            'accounts': accounts,
+            'account_names': account_names,
+            'account_types': account_types,
+            'categories': categories,
+            'period_map': period_map,
+            'account_count': len(accounts)
+        })
+        
+    except Exception as e:
+        print(f"Error in get_all_budgets: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/transactions', methods=['GET'])
 def get_transactions():
     """

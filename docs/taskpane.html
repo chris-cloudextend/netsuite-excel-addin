@@ -2323,6 +2323,15 @@
                         </div>
                     </div>
                     
+                    <!-- Option 3: Budget Report -->
+                    <div class="guide-choice" onclick="generateBudgetReport()" style="margin-top: 12px; background: rgba(255,255,255,0.8); border: 2px solid #8B5CF6;">
+                        <div class="guide-choice-icon">💰</div>
+                        <div class="guide-choice-content">
+                            <div class="guide-choice-title" style="color: #8B5CF6;">Budget Report</div>
+                            <div class="guide-choice-desc" style="color: var(--bottlenose);">Load existing budget from NetSuite with all accounts</div>
+                        </div>
+                    </div>
+                    
                     <div class="guide-me-progress" id="guideMeProgress" style="display: none; margin-top: 12px;"></div>
                 </div>
             </details>
@@ -4943,6 +4952,510 @@
                 progress.textContent = `❌ Error: ${error.message}`;
                 
                 // Clear sync flag on error too
+                isSyncInProgress = false;
+            }
+        }
+
+        // ================================================================
+        // GENERATE BUDGET REPORT - Load existing budget from NetSuite
+        // ================================================================
+        
+        async function generateBudgetReport() {
+            const progress = document.getElementById('guideMeProgress');
+            const budgetYear = 2011;  // For testing - only year with budget data
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            
+            // Set flag to prevent auto-sync from triggering during generation
+            isSyncInProgress = true;
+            
+            // Create loading overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'guide-me-overlay';
+            overlay.id = 'budgetReportOverlay';
+            overlay.innerHTML = `
+                <div class="loading-spinner"></div>
+                <h2>Building Your Budget Report</h2>
+                <div class="loading-subtitle">
+                    ⏱️ Loading budget data from NetSuite...
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="budgetProgressBar"></div>
+                    </div>
+                    <div class="progress-text" id="budgetProgressText">0% complete</div>
+                </div>
+                
+                <div class="loading-step" id="budgetStep">Connecting to NetSuite...</div>
+                <div class="loading-step-desc" id="budgetStepDesc">Establishing secure connection</div>
+            `;
+            document.body.appendChild(overlay);
+            
+            const updateProgress = (percent, step, desc) => {
+                const bar = document.getElementById('budgetProgressBar');
+                const text = document.getElementById('budgetProgressText');
+                const stepEl = document.getElementById('budgetStep');
+                const descEl = document.getElementById('budgetStepDesc');
+                if (bar) bar.style.width = percent + '%';
+                if (text) text.textContent = percent + '% complete';
+                if (stepEl) stepEl.textContent = step;
+                if (descEl) descEl.textContent = desc;
+            };
+            
+            try {
+                // Step 1: Get default subsidiary and budget categories
+                updateProgress(5, '📥 Step 1 of 4: Loading Settings', 'Fetching subsidiary and budget categories...');
+                
+                let defaultSubsidiary = '';
+                let defaultSubsidiaryId = '1';
+                let currencyFormat = '$#,##0.00';
+                let budgetCategory = '';
+                let budgetCategoryId = '';
+                
+                try {
+                    // Get currencies and default subsidiary
+                    const currencyResponse = await fetch(`${SERVER_URL}/lookups/currencies`);
+                    if (currencyResponse.ok) {
+                        const currencyData = await currencyResponse.json();
+                        defaultSubsidiaryId = currencyData.default_subsidiary || '1';
+                        const symbol = currencyData.currencies[defaultSubsidiaryId] || '$';
+                        currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
+                    }
+                    
+                    // Get subsidiary name
+                    const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
+                    if (lookupsResponse.ok) {
+                        const lookups = await lookupsResponse.json();
+                        if (lookups.subsidiaries && lookups.subsidiaries.length > 0) {
+                            const parentSub = lookups.subsidiaries.find(s => s.id === defaultSubsidiaryId);
+                            if (parentSub) {
+                                defaultSubsidiary = parentSub.name + ' (Consolidated)';
+                            } else {
+                                defaultSubsidiary = lookups.subsidiaries[0].name;
+                            }
+                        }
+                        
+                        // Get most recent budget category
+                        if (lookups.budgetCategories && lookups.budgetCategories.length > 0) {
+                            // Use the last one (most recently created by ID)
+                            const sortedCats = [...lookups.budgetCategories].sort((a, b) => 
+                                parseInt(b.id) - parseInt(a.id)
+                            );
+                            budgetCategory = sortedCats[0].name;
+                            budgetCategoryId = sortedCats[0].id;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Settings lookup failed:', e.message);
+                    defaultSubsidiary = 'Parent Company (Consolidated)';
+                }
+                
+                // Step 2: Fetch all budget data
+                updateProgress(20, '📥 Step 2 of 4: Loading Budget Data', `Fetching budgets for ${budgetYear}...`);
+                
+                let artificialProgress = 20;
+                const progressInterval = setInterval(() => {
+                    if (artificialProgress < 50) {
+                        artificialProgress += 3;
+                        updateProgress(artificialProgress, '📥 Step 2 of 4: Loading Budget Data', 
+                            'Querying NetSuite budget records...');
+                    }
+                }, 2000);
+                
+                const budgetUrl = new URL(`${SERVER_URL}/budget/all`);
+                budgetUrl.searchParams.append('year', budgetYear);
+                if (budgetCategoryId) budgetUrl.searchParams.append('category', budgetCategoryId);
+                
+                const budgetResponse = await fetch(budgetUrl);
+                clearInterval(progressInterval);
+                
+                if (!budgetResponse.ok) {
+                    throw new Error(`Failed to load budget data: ${budgetResponse.status}`);
+                }
+                
+                const budgetData = await budgetResponse.json();
+                const allBudgets = budgetData.accounts || {};
+                const accountNames = budgetData.account_names || {};
+                const accountTypes = budgetData.account_types || {};
+                
+                console.log(`Budget Report: Loaded ${Object.keys(allBudgets).length} accounts with budget data`);
+                
+                if (Object.keys(allBudgets).length === 0) {
+                    throw new Error(`No budget data found for year ${budgetYear}. Check that budgets exist in NetSuite.`);
+                }
+                
+                // Step 3: Categorize accounts by type
+                updateProgress(55, '🔍 Step 3 of 4: Categorizing', 'Grouping accounts by type...');
+                
+                const categories = {
+                    income: [],
+                    othIncome: [],
+                    cogs: [],
+                    expense: [],
+                    othExpense: [],
+                    other: []  // For any non-P&L accounts with budgets
+                };
+                
+                for (const acctNum in allBudgets) {
+                    const monthData = allBudgets[acctNum];
+                    const hasData = Object.values(monthData).some(val => val !== 0 && val !== null);
+                    
+                    if (hasData) {
+                        const monthValues = monthNames.map(m => monthData[`${m} ${budgetYear}`] || 0);
+                        const acctInfo = {
+                            number: acctNum,
+                            name: accountNames[acctNum] || `Account ${acctNum}`,
+                            type: accountTypes[acctNum] || 'Unknown',
+                            monthValues: monthValues,
+                            total: monthValues.reduce((a, b) => a + b, 0)
+                        };
+                        
+                        const acctType = (accountTypes[acctNum] || '').toLowerCase();
+                        if (acctType === 'income') {
+                            categories.income.push(acctInfo);
+                        } else if (acctType === 'othincome') {
+                            categories.othIncome.push(acctInfo);
+                        } else if (acctType === 'cogs' || acctType === 'cost of goods sold') {
+                            categories.cogs.push(acctInfo);
+                        } else if (acctType === 'expense') {
+                            categories.expense.push(acctInfo);
+                        } else if (acctType === 'othexpense') {
+                            categories.othExpense.push(acctInfo);
+                        } else {
+                            categories.other.push(acctInfo);
+                        }
+                    }
+                }
+                
+                // Sort each category by account number
+                for (const cat in categories) {
+                    categories[cat].sort((a, b) => a.number.localeCompare(b.number, undefined, {numeric: true}));
+                }
+                
+                const totalAccounts = Object.values(categories).reduce((sum, arr) => sum + arr.length, 0);
+                console.log(`Budget Report: Income=${categories.income.length}, OthIncome=${categories.othIncome.length}, COGS=${categories.cogs.length}, Expense=${categories.expense.length}, OthExpense=${categories.othExpense.length}, Other=${categories.other.length}`);
+                
+                // Step 4: Build Excel structure
+                updateProgress(65, '📊 Step 4 of 4: Building Report', 'Creating budget worksheet...');
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    try {
+                        sheet.name = "Budget Report";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Remove gridlines
+                    try {
+                        sheet.showGridlines = false;
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    let currentRow = 1;
+                    
+                    // ========== ROW 1: TITLE ==========
+                    const titleCell = sheet.getRange("A1");
+                    titleCell.formulas = [['="Budget Report For: "&P3&" - "&R3']];
+                    await context.sync();
+                    
+                    try {
+                        titleCell.format.font.bold = true;
+                        titleCell.format.font.size = 18;
+                        titleCell.format.font.color = "#8B5CF6";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ========== ROW 2: PARAMETER LABELS ==========
+                    sheet.getRange("P2").values = [["YEAR"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("R2").values = [["Budget Category"]];
+                    sheet.getRange("S2").values = [["Department"]];
+                    sheet.getRange("T2").values = [["Class"]];
+                    sheet.getRange("U2").values = [["Location"]];
+                    await context.sync();
+                    
+                    // Style parameter labels
+                    try {
+                        const labelRange = sheet.getRange("P2:U2");
+                        labelRange.format.font.bold = true;
+                        labelRange.format.font.color = "#8B5CF6";
+                        labelRange.format.font.size = 10;
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ========== ROW 3: PARAMETER VALUES ==========
+                    sheet.getRange("P3").values = [[budgetYear]];
+                    sheet.getRange("Q3").values = [[defaultSubsidiary]];
+                    sheet.getRange("R3").values = [[budgetCategory || 'All Categories']];
+                    sheet.getRange("S3").values = [[""]];  // Department - empty by default
+                    sheet.getRange("T3").values = [[""]];  // Class - empty by default
+                    sheet.getRange("U3").values = [[""]];  // Location - empty by default
+                    await context.sync();
+                    
+                    // Style parameter value cells
+                    try {
+                        const valueRange = sheet.getRange("P3:U3");
+                        valueRange.format.fill.color = "#DDD6FE";  // Light purple
+                        valueRange.format.font.bold = true;
+                        valueRange.format.font.color = "#5B21B6";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ========== ROW 4: BLANK ==========
+                    currentRow = 4;
+                    
+                    // ========== ROW 5: COLUMN HEADERS ==========
+                    const headerRow = 5;
+                    sheet.getRange("A5").values = [["Account #"]];
+                    sheet.getRange("B5").values = [["Account Name"]];
+                    
+                    // Month headers with formula based on year
+                    for (let m = 0; m < 12; m++) {
+                        const colLetter = String.fromCharCode(67 + m); // C=67
+                        const cell = sheet.getRange(`${colLetter}5`);
+                        cell.formulas = [[`=DATE($P$3,${m + 1},1)`]];
+                    }
+                    
+                    // YTD column
+                    sheet.getRange("O5").values = [["YTD Total"]];
+                    await context.sync();
+                    
+                    // Format headers
+                    try {
+                        const headerRange = sheet.getRange("A5:O5");
+                        headerRange.format.font.bold = true;
+                        headerRange.format.font.color = "#FFFFFF";
+                        headerRange.format.fill.color = "#8B5CF6";  // Purple theme
+                        
+                        const monthRange = sheet.getRange("C5:N5");
+                        monthRange.numberFormat = [['mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 
+                                                   'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm', 'mmmm']];
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    currentRow = 6;
+                    
+                    // Helper to write section header
+                    const writeSectionHeader = async (text, row) => {
+                        const cell = sheet.getRange(`A${row}`);
+                        cell.values = [[text]];
+                        await context.sync();
+                        try {
+                            const range = sheet.getRange(`A${row}:O${row}`);
+                            range.format.font.bold = true;
+                            range.format.font.color = "#5B21B6";
+                            range.format.fill.color = "#EDE9FE";
+                            await context.sync();
+                        } catch (e) {}
+                    };
+                    
+                    // Helper to write account row with BUDGET formulas
+                    // Parameters: $Q$3=Subsidiary, $S$3=Department, $U$3=Location, $T$3=Class, $R$3=BudgetCategory
+                    const writeAccountRow = (acct, row) => {
+                        sheet.getRange(`A${row}`).values = [[acct.number]];
+                        sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];
+                        
+                        // BUDGET formulas for each month
+                        // =XAVI.BUDGET(account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook, budgetCategory)
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(67 + m);
+                            const cell = sheet.getRange(`${colLetter}${row}`);
+                            // Full formula with all parameters as cell references
+                            cell.formulas = [[`=XAVI.BUDGET($A${row},TEXT(${colLetter}$5,"mmm yyyy"),TEXT(${colLetter}$5,"mmm yyyy"),$Q$3,$S$3,$U$3,$T$3,"",$R$3)`]];
+                        }
+                        
+                        // YTD formula
+                        sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
+                    };
+                    
+                    // Helper to write subtotal row
+                    const writeSubtotalRow = async (text, startRow, endRow, row) => {
+                        sheet.getRange(`B${row}`).values = [[text]];
+                        
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(67 + m);
+                            sheet.getRange(`${colLetter}${row}`).formulas = [[`=SUM(${colLetter}${startRow}:${colLetter}${endRow})`]];
+                        }
+                        sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
+                        
+                        await context.sync();
+                        
+                        try {
+                            const range = sheet.getRange(`A${row}:O${row}`);
+                            range.format.font.bold = true;
+                            range.format.borders.getItem('EdgeTop').style = 'Continuous';
+                            await context.sync();
+                        } catch (e) {}
+                    };
+                    
+                    let accountsWritten = 0;
+                    
+                    // ========== REVENUE SECTION ==========
+                    updateProgress(70, '📝 Step 4 of 4: Writing Data', 'Adding Revenue budgets...');
+                    
+                    if (categories.income.length > 0) {
+                        await writeSectionHeader('REVENUE BUDGET', currentRow);
+                        currentRow++;
+                        const startRow = currentRow;
+                        
+                        for (const acct of categories.income) {
+                            writeAccountRow(acct, currentRow);
+                            currentRow++;
+                            accountsWritten++;
+                        }
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Revenue Budget', startRow, currentRow - 1, currentRow);
+                        currentRow += 2;
+                    }
+                    
+                    // ========== COST OF SALES SECTION ==========
+                    updateProgress(75, '📝 Step 4 of 4: Writing Data', 'Adding COGS budgets...');
+                    
+                    if (categories.cogs.length > 0) {
+                        await writeSectionHeader('COST OF SALES BUDGET', currentRow);
+                        currentRow++;
+                        const startRow = currentRow;
+                        
+                        for (const acct of categories.cogs) {
+                            writeAccountRow(acct, currentRow);
+                            currentRow++;
+                            accountsWritten++;
+                        }
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total COGS Budget', startRow, currentRow - 1, currentRow);
+                        currentRow += 2;
+                    }
+                    
+                    // ========== EXPENSE SECTION ==========
+                    updateProgress(80, '📝 Step 4 of 4: Writing Data', 'Adding Expense budgets...');
+                    
+                    if (categories.expense.length > 0) {
+                        await writeSectionHeader('OPERATING EXPENSES BUDGET', currentRow);
+                        currentRow++;
+                        const startRow = currentRow;
+                        
+                        for (const acct of categories.expense) {
+                            writeAccountRow(acct, currentRow);
+                            currentRow++;
+                            accountsWritten++;
+                        }
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Operating Expenses Budget', startRow, currentRow - 1, currentRow);
+                        currentRow += 2;
+                    }
+                    
+                    // ========== OTHER INCOME SECTION ==========
+                    updateProgress(85, '📝 Step 4 of 4: Writing Data', 'Adding Other Income budgets...');
+                    
+                    if (categories.othIncome.length > 0) {
+                        await writeSectionHeader('OTHER INCOME BUDGET', currentRow);
+                        currentRow++;
+                        const startRow = currentRow;
+                        
+                        for (const acct of categories.othIncome) {
+                            writeAccountRow(acct, currentRow);
+                            currentRow++;
+                            accountsWritten++;
+                        }
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Other Income Budget', startRow, currentRow - 1, currentRow);
+                        currentRow += 2;
+                    }
+                    
+                    // ========== OTHER EXPENSE SECTION ==========
+                    if (categories.othExpense.length > 0) {
+                        await writeSectionHeader('OTHER EXPENSES BUDGET', currentRow);
+                        currentRow++;
+                        const startRow = currentRow;
+                        
+                        for (const acct of categories.othExpense) {
+                            writeAccountRow(acct, currentRow);
+                            currentRow++;
+                            accountsWritten++;
+                        }
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Other Expenses Budget', startRow, currentRow - 1, currentRow);
+                        currentRow += 2;
+                    }
+                    
+                    // ========== OTHER ACCOUNTS SECTION (non-P&L) ==========
+                    if (categories.other.length > 0) {
+                        await writeSectionHeader('OTHER ACCOUNTS BUDGET', currentRow);
+                        currentRow++;
+                        const startRow = currentRow;
+                        
+                        for (const acct of categories.other) {
+                            writeAccountRow(acct, currentRow);
+                            currentRow++;
+                            accountsWritten++;
+                        }
+                        
+                        await context.sync();
+                        await writeSubtotalRow('Total Other Budget', startRow, currentRow - 1, currentRow);
+                        currentRow += 2;
+                    }
+                    
+                    updateProgress(90, '🎨 Finishing', 'Applying formatting...');
+                    
+                    // Set column widths
+                    try {
+                        sheet.getRange("A:A").format.columnWidth = 80;
+                        sheet.getRange("B:B").format.columnWidth = 200;
+                        for (let m = 0; m < 12; m++) {
+                            const colLetter = String.fromCharCode(67 + m);
+                            sheet.getRange(`${colLetter}:${colLetter}`).format.columnWidth = 100;
+                        }
+                        sheet.getRange("O:O").format.columnWidth = 100;
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Apply currency format to data cells
+                    try {
+                        const dataRange = sheet.getRange(`C6:O${currentRow}`);
+                        dataRange.numberFormat = [[currencyFormat]];
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    await context.sync();
+                    
+                    console.log(`Budget Report: Created with ${accountsWritten} accounts`);
+                });
+                
+                updateProgress(100, '✅ Complete!', `Budget report created with ${totalAccounts} accounts`);
+                
+                // Auto-format currencies
+                setTimeout(async () => {
+                    await autoFormatCurrencies();
+                }, 500);
+                
+                // Close overlay after short delay
+                setTimeout(() => {
+                    overlay.remove();
+                    showToast({
+                        title: 'Budget Report Created!',
+                        message: `Loaded ${totalAccounts} accounts with budget data for ${budgetYear}`,
+                        type: 'success',
+                        icon: '💰'
+                    });
+                }, 1500);
+                
+            } catch (error) {
+                console.error('Budget Report error:', error);
+                overlay.remove();
+                showToast({
+                    title: 'Budget Report Failed',
+                    message: error.message,
+                    type: 'error',
+                    icon: '❌'
+                });
+            } finally {
                 isSyncInProgress = false;
             }
         }
