@@ -827,7 +827,7 @@ def check_permissions():
         pass  # Already handled in OneWorld check
     
     # =================================================================
-    # 3. Multi-Book Accounting - CompanyFeatureSetup
+    # 3. Multi-Book Accounting - Check AccountingBook table
     # =================================================================
     multibook_result = {
         'name': 'Multi-Book Accounting',
@@ -839,20 +839,30 @@ def check_permissions():
     }
     
     try:
-        mb_query = "SELECT Name, IsAvailable, IsActive FROM CompanyFeatureSetup WHERE ID = 'MULTIBOOK'"
+        # Check if AccountingBook table has records (indicates multi-book is enabled)
+        mb_query = "SELECT id, name FROM AccountingBook WHERE isinactive = 'F' ORDER BY id"
         mb_response = query_netsuite(mb_query)
         
-        if isinstance(mb_response, list) and len(mb_response) > 0:
+        if isinstance(mb_response, list):
             results['suiteql_access'] = True
             multibook_result['accessible'] = True
-            row = mb_response[0]
-            is_available = row.get('isavailable') == 'T'
-            is_active = row.get('isactive') == 'T'
-            multibook_result['enabled'] = is_active
-            multibook_result['details'] = f"Available: {'Yes' if is_available else 'No'}, Active: {'Yes' if is_active else 'No'}"
+            book_count = len(mb_response)
+            if book_count > 0:
+                multibook_result['enabled'] = True
+                book_names = [row.get('name', f"Book {row.get('id')}") for row in mb_response[:3]]
+                if book_count > 3:
+                    multibook_result['details'] = f"{book_count} books: {', '.join(book_names)}..."
+                else:
+                    multibook_result['details'] = f"{book_count} book(s): {', '.join(book_names)}"
+            else:
+                multibook_result['details'] = 'No accounting books found'
             results['summary']['passed'] += 1
         elif isinstance(mb_response, dict) and 'error' in mb_response:
-            multibook_result['details'] = 'CompanyFeatureSetup not accessible'
+            error_detail = str(mb_response.get('details', ''))
+            if 'not found' in error_detail.lower() or 'invalid' in error_detail.lower():
+                multibook_result['details'] = 'Feature not enabled'
+            else:
+                multibook_result['details'] = 'Table not accessible'
     except Exception as e:
         multibook_result['error'] = str(e)
     
@@ -860,7 +870,7 @@ def check_permissions():
     results['features']['multibook'] = multibook_result.get('enabled', False)
     
     # =================================================================
-    # 4. Budgets - CompanyFeatureSetup for MULTIPLEBUDGETS
+    # 4. Budgets - Check Budgets table directly
     # =================================================================
     budget_result = {
         'name': 'Budgets',
@@ -872,26 +882,23 @@ def check_permissions():
     }
     
     try:
-        budget_query = "SELECT Name, ID, IsAvailable, IsActive FROM CompanyFeatureSetup WHERE ID = 'MULTIPLEBUDGETS'"
+        # Query Budgets table to check if budgets exist
+        budget_query = "SELECT COUNT(*) as cnt FROM Budgets"
         budget_response = query_netsuite(budget_query)
         
         if isinstance(budget_response, list) and len(budget_response) > 0:
             results['suiteql_access'] = True
             budget_result['accessible'] = True
-            row = budget_response[0]
-            is_available = row.get('isavailable') == 'T'
-            is_active = row.get('isactive') == 'T'
-            budget_result['enabled'] = is_active
-            budget_result['details'] = f"Available: {'Yes' if is_available else 'No'}, Active: {'Yes' if is_active else 'No'}"
+            budget_count = int(budget_response[0].get('cnt', 0))
+            budget_result['enabled'] = budget_count > 0
+            budget_result['details'] = f"{budget_count} budget(s) found"
             results['summary']['passed'] += 1
         elif isinstance(budget_response, dict) and 'error' in budget_response:
-            # Fallback: try querying Budgets table directly
-            fallback_query = "SELECT TOP 1 id FROM Budgets"
-            fallback_response = query_netsuite(fallback_query)
-            if isinstance(fallback_response, list):
-                budget_result['accessible'] = True
-                budget_result['enabled'] = len(fallback_response) > 0
-                budget_result['details'] = f"{len(fallback_response)} budget(s) found" if fallback_response else "No budgets"
+            error_detail = str(budget_response.get('details', ''))
+            if 'not found' in error_detail.lower() or 'invalid' in error_detail.lower():
+                budget_result['details'] = 'Budgeting not enabled'
+            else:
+                budget_result['details'] = 'Table not accessible'
     except Exception as e:
         budget_result['error'] = str(e)
     
@@ -4028,19 +4035,9 @@ def get_budget():
             if budget_category.isdigit():
                 where_clauses.append(f"b.category = {budget_category}")
             else:
-                # Use cached lookup (loaded at server startup)
                 cat_id = lookup_cache['budget_categories'].get(budget_category.lower())
                 if cat_id:
                     where_clauses.append(f"b.category = {cat_id}")
-                else:
-                    # Cache miss - fall back to query
-                    cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(budget_category)}'"
-                    cat_result = query_netsuite(cat_query)
-                    if isinstance(cat_result, list) and len(cat_result) > 0:
-                        where_clauses.append(f"b.category = {cat_result[0].get('id')}")
-                    elif isinstance(cat_result, dict) and 'error' in cat_result:
-                        print(f"Budget category lookup failed: {cat_result.get('error')}")
-                        return jsonify({'error': 'Rate limited by NetSuite', 'details': cat_result.get('details', '')}), 429
         
         # Department filter
         if department and department != '':

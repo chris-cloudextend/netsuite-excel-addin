@@ -2105,9 +2105,9 @@
                         <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #f9fafb; border-radius: 6px;">
                             <span style="font-size: 12px; color: #4b5563; font-weight: 500;">Backend Server</span>
                             <div id="serverStatus" class="status-indicator checking" style="margin: 0; padding: 4px 10px; font-size: 11px;">
-                                <span class="status-dot checking"></span>
-                                Checking...
-                            </div>
+                        <span class="status-dot checking"></span>
+                        Checking...
+                    </div>
                         </div>
                         <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #f9fafb; border-radius: 6px;">
                             <span style="font-size: 12px; color: #4b5563; font-weight: 500;">Cloudflare Tunnel</span>
@@ -2137,8 +2137,8 @@
                     <div id="permissionsResults" style="display: none;">
                         <!-- Status banner -->
                         <div id="permissionsStatus" style="padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; font-weight: 600;">
-                        </div>
-                        
+                    </div>
+                    
                         <!-- Features section -->
                         <div id="featuresSection" style="margin-bottom: 12px;">
                         </div>
@@ -2148,16 +2148,16 @@
                             <h4 style="font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 8px;">📋 Subsidiaries</h4>
                             <div id="subsidiariesList" style="max-height: 200px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 11px;">
                             </div>
-                        </div>
-                        
+                    </div>
+                    
                         <!-- Permissions list -->
                         <details style="margin-top: 8px;">
                             <summary style="font-size: 11px; color: var(--tidal-wave); cursor: pointer; font-weight: 500;">
                                 View Table Permissions
-                            </summary>
+                        </summary>
                             <div id="permissionsList" style="font-size: 11px; margin-top: 8px;">
-                            </div>
-                        </details>
+                        </div>
+                    </details>
                     </div>
                 </div>
 
@@ -6950,26 +6950,19 @@ export default {
                         continue;
                     }
                     
-                    let statusIcon, statusColor, statusMessage;
+                    let statusIcon;
                     if (check.accessible === true) {
                         statusIcon = '✅';
-                        statusColor = '#10b981';
-                        statusMessage = check.row_count !== undefined ? `${check.row_count} row(s)` : 'OK';
                     } else if (check.accessible === null) {
                         statusIcon = '➖';
-                        statusColor = '#9ca3af';
-                        statusMessage = 'N/A';
                     } else {
                         statusIcon = check.required ? '⚠️' : '❌';
-                        statusColor = check.required ? '#f59e0b' : '#ef4444';
-                        statusMessage = check.error || 'Failed';
                     }
                     
                     listHTML += `
                         <div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #f3f4f6;">
                             <span style="font-size: 12px; margin-right: 8px;">${statusIcon}</span>
                             <span style="flex: 1; color: #374151;">${check.name}</span>
-                            <span style="color: ${statusColor}; font-size: 10px;">${statusMessage}</span>
                         </div>
                     `;
                 }
