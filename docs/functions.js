@@ -2182,8 +2182,12 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         // Multi-Book Accounting support - default to empty (uses Primary Book on backend)
         accountingBook = String(accountingBook || '').trim();
         
+        // CRITICAL DEBUG: Log all params to diagnose subsidiary-change issues
+        console.log(`📋 BALANCE PARAMS: acct=${account}, from=${fromPeriod}, to=${toPeriod}, sub="${subsidiary}"`);
+        
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook };
         const cacheKey = getCacheKey('balance', params);
+        console.log(`🔑 Cache key: ${cacheKey.substring(0, 80)}...`);
         
         // ================================================================
         // PRELOAD COORDINATION: If Prep Data is running, wait for it
@@ -2299,9 +2303,12 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         
         // Check in-memory cache FIRST - return immediately if found
         if (cache.balance.has(cacheKey)) {
+            const cachedValue = cache.balance.get(cacheKey);
+            console.log(`✅ CACHE HIT: ${account}/${fromPeriod || toPeriod} sub="${subsidiary}" → ${cachedValue}`);
             cacheStats.hits++;
-            return cache.balance.get(cacheKey);
+            return cachedValue;
         }
+        console.log(`❌ CACHE MISS: ${account}/${fromPeriod || toPeriod} sub="${subsidiary}" → queuing for fetch`);
         
         // DEBUG: Log cache miss details to help diagnose caching issues
         console.log(`📭 CACHE MISS: ${account}/${fromPeriod || toPeriod}`);
