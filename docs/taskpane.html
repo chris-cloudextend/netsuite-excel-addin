@@ -894,39 +894,33 @@
             justify-content: center;
         }
 
-        /* Settings Modal */
-        .settings-modal {
+        /* Settings Panel (inline view, not modal) */
+        .settings-view {
             display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
+            flex-direction: column;
             height: 100%;
-            background: rgba(9, 35, 92, 0.7);
-            z-index: 1000;
-            animation: fadeIn 0.2s ease;
+            background: white;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        .settings-modal.active {
+        .settings-view.active {
             display: flex;
-            align-items: center;
-            justify-content: center;
+        }
+
+        .main-view {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .main-view.hidden {
+            display: none;
         }
 
         .settings-panel {
             background: white;
-            border-radius: 16px;
-            width: 90%;
-            max-width: 400px;
-            max-height: 80vh;
+            width: 100%;
+            height: 100%;
             overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(9, 35, 92, 0.4);
-            animation: slideUp 0.3s ease;
         }
 
         @keyframes slideUp {
@@ -937,33 +931,34 @@
         .settings-header {
             background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
             color: white;
-            padding: 20px;
+            padding: 16px 20px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            border-radius: 16px 16px 0 0;
+            gap: 12px;
         }
 
         .settings-header h2 {
             font-size: 18px;
             font-weight: 600;
+            flex: 1;
         }
 
-        .settings-close {
+        .settings-back {
             background: rgba(10, 226, 193, 0.3);
             border: none;
             color: white;
-            font-size: 24px;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
+            font-size: 18px;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: background 0.2s;
         }
 
-        .settings-close:hover {
+        .settings-back:hover {
             background: var(--anenome);
         }
 
@@ -1588,9 +1583,27 @@
         .footer {
             background: var(--deep-dive);
             color: var(--chrome);
-            padding: 16px;
-            text-align: center;
-            font-size: 12px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            position: relative;
+        }
+        
+        .footer-content {
+            flex: 1;
+        }
+        
+        .footer-content p {
+            margin: 0;
+            line-height: 1.4;
+        }
+        
+        .footer-version {
+            color: var(--anenome);
+            font-weight: 500;
+            margin-top: 2px !important;
         }
 
         .footer a {
@@ -1600,6 +1613,31 @@
 
         .footer a:hover {
             text-decoration: underline;
+        }
+        
+        .intercom-chat-btn {
+            background: linear-gradient(135deg, #0AE2C1 0%, #00C9A7 100%);
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(10, 226, 193, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .intercom-chat-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(10, 226, 193, 0.5);
+        }
+        
+        .intercom-chat-btn svg {
+            width: 24px;
+            height: 24px;
+            color: white;
         }
 
         .formula-card {
@@ -2090,12 +2128,14 @@
         </div>
     </div>
 
-    <!-- Settings Modal -->
-    <div class="settings-modal" id="settingsModal" onclick="if(event.target === this) closeSettings()">
+    <!-- Settings View (inline, replaces main content) -->
+    <div class="settings-view" id="settingsView">
         <div class="settings-panel">
             <div class="settings-header">
+                <button class="settings-back" onclick="closeSettings()" title="Back to main">
+                    ←
+                </button>
                 <h2>⚙️ Settings</h2>
-                <button class="settings-close" onclick="closeSettings()">×</button>
             </div>
             <div class="settings-content">
                 <!-- Connection Status -->
@@ -2175,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.3.3</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.4.0</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2187,6 +2227,11 @@
     <div class="accent-stripe"></div>
     
     <div class="container">
+        <!-- Settings View (inline, replaces main content when active) -->
+        <div class="settings-view" id="settingsViewInline"></div>
+        
+        <!-- Main View (hidden when settings is active) -->
+        <div class="main-view" id="mainView">
         <div class="header">
             <div class="header-top">
                 <svg class="header-menu" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" onclick="openSettings()">
@@ -2910,8 +2955,19 @@
         </div>
 
         <div class="footer">
-            <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine for NetSuite</p>
+            <div class="footer-content">
+                <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
+                <p class="footer-version">v<span id="footerVersion">3.0.4.0</span></p>
+            </div>
+            <!-- Fake Intercom chat button -->
+            <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.37 5.07L2 22l4.93-1.37C8.42 21.5 10.15 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.7 0-3.28-.46-4.65-1.25l-.35-.2-3.08.86.86-3.08-.2-.35C3.46 15.28 3 13.7 3 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9z"/>
+                    <path d="M17 11h-3V8c0-.55-.45-1-1-1s-1 .45-1 1v3H9c-.55 0-1 .45-1 1s.45 1 1 1h3v3c0 .55.45 1 1 1s1-.45 1-1v-3h3c.55 0 1-.45 1-1s-.45-1-1-1z"/>
+                </svg>
+            </button>
         </div>
+        </div><!-- end main-view -->
     </div>
     
     <!-- Centered Status Overlay -->
@@ -3118,8 +3174,10 @@
         function initializeVersion() {
             const versionBadge = document.getElementById('versionBadge');
             const settingsVersion = document.getElementById('settingsVersion');
+            const footerVersion = document.getElementById('footerVersion');
             if (versionBadge) versionBadge.textContent = 'v' + ADDIN_VERSION;
             if (settingsVersion) settingsVersion.textContent = ADDIN_VERSION;
+            if (footerVersion) footerVersion.textContent = ADDIN_VERSION;
         }
 
         // ========================================================================
@@ -3512,17 +3570,41 @@
         window.hideToast = hideToast;
 
         // ========================================================================
-        // SETTINGS MODAL
+        // SETTINGS VIEW (inline, not modal)
         // ========================================================================
         function openSettings() {
-            document.getElementById('settingsModal').classList.add('active');
+            // Move settings content into the inline container
+            const settingsContent = document.getElementById('settingsView');
+            const settingsInline = document.getElementById('settingsViewInline');
+            const mainView = document.getElementById('mainView');
+            
+            // Move settings panel content to inline view
+            if (settingsContent && settingsInline) {
+                settingsInline.innerHTML = settingsContent.innerHTML;
+            }
+            
+            // Hide main, show settings
+            mainView.classList.add('hidden');
+            settingsInline.classList.add('active');
+            
+            // Rebind the back button in the inline view
+            const backBtn = settingsInline.querySelector('.settings-back');
+            if (backBtn) {
+                backBtn.onclick = closeSettings;
+            }
+            
             checkServerStatus();
             checkTunnelStatus();
             checkCacheStatus();
         }
 
         function closeSettings() {
-            document.getElementById('settingsModal').classList.remove('active');
+            const settingsInline = document.getElementById('settingsViewInline');
+            const mainView = document.getElementById('mainView');
+            
+            // Hide settings, show main
+            settingsInline.classList.remove('active');
+            mainView.classList.remove('hidden');
         }
 
         // ================================================================
@@ -6912,7 +6994,7 @@ export default {
                                     r.name || r.id || JSON.stringify(r)
                                 ).join(', ');
                                 resultDisplay = `${check.query_result.length} found: ${items}${check.query_result.length > 5 ? '...' : ''}`;
-                            } else {
+                    } else {
                                 resultDisplay = 'Query returned 0 rows';
                             }
                         } else if (check.query_result.count !== undefined) {
@@ -6931,9 +7013,9 @@ export default {
                             <div style="display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; color: #374151; margin-bottom: 4px;">
                                 <span>${statusIcon}</span>
                                 <span>${check.name}</span>
-                            </div>
+                                </div>
                             <div style="font-size: 10px; color: #6b7280; font-family: monospace; word-break: break-all;">${resultDisplay}</div>
-                        </div>
+                                </div>
                     `;
                 }
                 
@@ -6952,7 +7034,7 @@ export default {
                     featuresHTML += `
                         <div style="margin-top: 8px; padding: 8px 12px; background: #f3f4f6; border-radius: 6px; font-size: 11px; color: #6b7280;">
                             Account ID: <strong>${data.account_id}</strong>
-                        </div>
+                            </div>
                     `;
                 }
                 
@@ -6979,9 +7061,9 @@ export default {
                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f3f4f6;">
                                 <span style="color: #374151;">${sub.name}${badge}</span>
                                 <span style="color: #9ca3af; font-size: 10px;">ID: ${sub.id}</span>
-                            </div>
-                        `;
-                    }
+                        </div>
+                    `;
+                }
                     subsHTML += '</div>';
                     
                     subsidiariesList.innerHTML = subsHTML;
