@@ -30,7 +30,8 @@ lookup_cache = {
     'classes': {},       # name → id
     'locations': {},     # name → id
     'periods': {},       # period name → id (for date range performance)
-    'currencies': {}     # subsidiary_id → currency_symbol (for cell formatting)
+    'currencies': {},    # subsidiary_id → currency_symbol (for cell formatting)
+    'budget_categories': {}  # name → id (prevents 429 errors on budget batches)
 }
 cache_loaded = False
 
@@ -421,6 +422,25 @@ def load_lookup_cache():
         print(f"✗ Subsidiary lookup error: {e}")
         # Fallback to known values
         lookup_cache['subsidiaries'] = {'parent company': '1'}
+    
+    # Load Budget Categories - critical for batch budget endpoint performance
+    # Without this, every batch budget call queries NetSuite for category ID → 429 errors
+    try:
+        cat_query = """
+            SELECT id, name
+            FROM BudgetCategory
+            WHERE isinactive = 'F'
+            ORDER BY name
+        """
+        cat_result = query_netsuite(cat_query)
+        if isinstance(cat_result, list):
+            for row in cat_result:
+                cat_id = str(row['id'])
+                cat_name = row['name'].lower()
+                lookup_cache['budget_categories'][cat_name] = cat_id
+            print(f"✓ Loaded {len(cat_result)} budget categories")
+    except Exception as e:
+        print(f"✗ Budget category lookup error: {e}")
     
     # Find top-level parent subsidiary (where parent IS NULL)
     # This is used as default when no subsidiary is specified
@@ -3911,20 +3931,24 @@ def get_budget():
         if subsidiary and subsidiary != '':
             where_clauses.append(f"b.subsidiary = {subsidiary}")
         
-        # Budget category filter
+        # Budget category filter - USE CACHE to avoid 429 errors!
         if budget_category and budget_category != '':
             if budget_category.isdigit():
                 where_clauses.append(f"b.category = {budget_category}")
             else:
-                cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(budget_category)}'"
-                cat_result = query_netsuite(cat_query)
-                # Check that cat_result is a list (not an error dict) and has results
-                if isinstance(cat_result, list) and len(cat_result) > 0:
-                    where_clauses.append(f"b.category = {cat_result[0].get('id')}")
-                elif isinstance(cat_result, dict) and 'error' in cat_result:
-                    # Rate limited or other error - return error response
-                    print(f"Budget category lookup failed: {cat_result.get('error')}")
-                    return jsonify({'error': 'Rate limited by NetSuite', 'details': cat_result.get('details', '')}), 429
+                # Use cached lookup (loaded at server startup)
+                cat_id = lookup_cache['budget_categories'].get(budget_category.lower())
+                if cat_id:
+                    where_clauses.append(f"b.category = {cat_id}")
+                else:
+                    # Cache miss - fall back to query
+                    cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(budget_category)}'"
+                    cat_result = query_netsuite(cat_query)
+                    if isinstance(cat_result, list) and len(cat_result) > 0:
+                        where_clauses.append(f"b.category = {cat_result[0].get('id')}")
+                    elif isinstance(cat_result, dict) and 'error' in cat_result:
+                        print(f"Budget category lookup failed: {cat_result.get('error')}")
+                        return jsonify({'error': 'Rate limited by NetSuite', 'details': cat_result.get('details', '')}), 429
         
         # Department filter
         if department and department != '':
@@ -4080,19 +4104,26 @@ def batch_budget():
         if subsidiary and subsidiary != '':
             where_clauses.append(f"b.subsidiary = {subsidiary}")
         
-        # Budget category filter
+        # Budget category filter - USE CACHE to avoid 429 errors!
         if budget_category and budget_category != '':
             if str(budget_category).isdigit():
                 where_clauses.append(f"b.category = {budget_category}")
             else:
-                # Look up category ID by name
-                cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(budget_category)}'"
-                cat_result = query_netsuite(cat_query)
-                if isinstance(cat_result, list) and len(cat_result) > 0:
-                    where_clauses.append(f"b.category = {cat_result[0].get('id')}")
-                elif isinstance(cat_result, dict) and 'error' in cat_result:
-                    print(f"Budget category lookup failed: {cat_result.get('error')}", flush=True)
-                    return jsonify({'error': 'Rate limited by NetSuite', 'details': cat_result.get('details', '')}), 429
+                # Use cached lookup (loaded at server startup)
+                cat_id = lookup_cache['budget_categories'].get(budget_category.lower())
+                if cat_id:
+                    where_clauses.append(f"b.category = {cat_id}")
+                    print(f"   Budget category '{budget_category}' → ID {cat_id} (from cache)", flush=True)
+                else:
+                    # Cache miss - fall back to query (shouldn't happen if cache loaded properly)
+                    print(f"   ⚠️ Budget category '{budget_category}' not in cache, querying...", flush=True)
+                    cat_query = f"SELECT id FROM BudgetCategory WHERE name = '{escape_sql(budget_category)}'"
+                    cat_result = query_netsuite(cat_query)
+                    if isinstance(cat_result, list) and len(cat_result) > 0:
+                        where_clauses.append(f"b.category = {cat_result[0].get('id')}")
+                    elif isinstance(cat_result, dict) and 'error' in cat_result:
+                        print(f"Budget category lookup failed: {cat_result.get('error')}", flush=True)
+                        return jsonify({'error': 'Rate limited by NetSuite', 'details': cat_result.get('details', '')}), 429
         
         # Department filter
         if department and department != '':
