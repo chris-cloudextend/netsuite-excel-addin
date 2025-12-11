@@ -17,7 +17,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://specialty-assigned-thereby-essentially.trycloudflare.com';
+    const TUNNEL_URL = 'https://cake-cat-pockets-enjoying.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {

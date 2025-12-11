@@ -1460,13 +1460,26 @@ const RETRY_DELAY = 2000;          // Wait 2s before retrying 429 errors
 // ============================================================================
 // UTILITY: Convert date or date serial to "Mon YYYY" format
 // ============================================================================
-function convertToMonthYear(value) {
+function convertToMonthYear(value, isFromPeriod = true) {
     // If empty, return empty string
     if (!value || value === '') return '';
     
     // If already in "Mon YYYY" format, return as-is
     if (typeof value === 'string' && /^[A-Za-z]{3}\s+\d{4}$/.test(value.trim())) {
         return value.trim();
+    }
+    
+    // YEAR-ONLY FORMAT: "2025" -> expand to "Jan 2025" or "Dec 2025"
+    // This avoids timezone bugs where new Date("2025") becomes Dec 31, 2024 in local time
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (/^\d{4}$/.test(trimmed)) {
+            const year = parseInt(trimmed, 10);
+            if (year >= 1900 && year <= 2100) {
+                // For fromPeriod, use Jan; for toPeriod, use Dec
+                return isFromPeriod ? `Jan ${year}` : `Dec ${year}`;
+            }
+        }
     }
     
     let date;
@@ -2091,8 +2104,9 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         }
         
         // Convert date values to "Mon YYYY" format (supports both dates and period strings)
-        fromPeriod = convertToMonthYear(fromPeriod);
-        toPeriod = convertToMonthYear(toPeriod);
+        // For year-only format ("2025"), expand to "Jan 2025" and "Dec 2025"
+        fromPeriod = convertToMonthYear(fromPeriod, true);   // true = isFromPeriod
+        toPeriod = convertToMonthYear(toPeriod, false);      // false = isToPeriod
         
         // Other parameters as strings
         subsidiary = String(subsidiary || '').trim();
@@ -2335,8 +2349,9 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
         }
         
         // Convert date values to "Mon YYYY" format (supports both dates and period strings)
-        fromPeriod = convertToMonthYear(fromPeriod);
-        toPeriod = convertToMonthYear(toPeriod);
+        // For year-only format ("2025"), expand to "Jan 2025" and "Dec 2025"
+        fromPeriod = convertToMonthYear(fromPeriod, true);   // true = isFromPeriod
+        toPeriod = convertToMonthYear(toPeriod, false);      // false = isToPeriod
         
         // Other parameters as strings
         subsidiary = String(subsidiary || '').trim();
