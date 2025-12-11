@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.4.0</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.0</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2774,10 +2774,10 @@
                         <span class="param-name">account</span> - Account number or ID
                     </div>
                     <div class="param-item">
-                        <span class="param-name">fromPeriod</span> - Starting period (e.g., "Jan 2025")
+                        <span class="param-name">fromPeriod</span> - Starting period (e.g., "Jan 2025" or just "2025" for full year)
                     </div>
                     <div class="param-item">
-                        <span class="param-name">toPeriod</span> - Ending period (e.g., "Dec 2025")
+                        <span class="param-name">toPeriod</span> - Ending period (e.g., "Dec 2025" or just "2025" for full year)
                     </div>
                     <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
                     <div class="param-item">
@@ -2796,6 +2796,7 @@
                 <div class="example">
                     <div class="example-title">Examples</div>
                     <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Dec 2025")</div>
+                    <div class="example-code">=XAVI.BALANCE("4010", "2025", "2025")  <span style="color:#6b7280;">← Year-only format</span></div>
                     <div class="example-code">=XAVI.BALANCE(A4, B1, C1)</div>
                     <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025", "", "13", "", "")</div>
         </div>
@@ -2816,10 +2817,10 @@
                         <span class="param-name">account</span> - Account number or ID
                     </div>
                     <div class="param-item">
-                        <span class="param-name">fromPeriod</span> - Starting period (e.g., "Jan 2025")
+                        <span class="param-name">fromPeriod</span> - Starting period (e.g., "Jan 2025" or "2025" for full year)
                     </div>
                     <div class="param-item">
-                        <span class="param-name">toPeriod</span> - Ending period (e.g., "Dec 2025")
+                        <span class="param-name">toPeriod</span> - Ending period (e.g., "Dec 2025" or "2025" for full year)
                     </div>
                     <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
                     <div class="param-item">
@@ -2957,7 +2958,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.4.0</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.0</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">

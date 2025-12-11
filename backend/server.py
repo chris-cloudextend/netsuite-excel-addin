@@ -181,10 +181,37 @@ def calculate_period_end_date(period_name):
         return None
 
 
+def is_year_only(period_str):
+    """Check if the period string is just a 4-digit year (e.g., '2025')"""
+    if period_str and len(period_str) == 4 and period_str.isdigit():
+        year = int(period_str)
+        return 1900 <= year <= 2100
+    return False
+
+
+def expand_year_to_periods(year_str):
+    """Expand a year-only string to (from_period, to_period) tuple
+    e.g., '2025' -> ('Jan 2025', 'Dec 2025')
+    """
+    return (f"Jan {year_str}", f"Dec {year_str}")
+
+
 def get_period_dates_from_name(period_name):
     """Convert period name (e.g., 'Mar 2025') to start/end dates for proper date range queries
-    Returns tuple: (startdate, enddate) or (None, None) if not found
-    Uses cache for performance (avoids repeated NetSuite queries)"""
+    Returns tuple: (startdate, enddate, id) or (None, None, None) if not found
+    Uses cache for performance (avoids repeated NetSuite queries)
+    
+    Also handles year-only format (e.g., '2025') by returning Jan 1 - Dec 31 of that year
+    """
+    
+    # Handle year-only format (e.g., "2025")
+    if is_year_only(period_name):
+        year = period_name
+        # Return Jan 1 to Dec 31 of the year
+        start_date = f"1/1/{year}"
+        end_date = f"12/31/{year}"
+        print(f"DEBUG: Year-only period '{period_name}' -> {start_date} to {end_date}", file=sys.stderr)
+        return (start_date, end_date, None)
     
     # Check cache first
     cache_key = f"{period_name}_dates"
@@ -3765,6 +3792,12 @@ def get_balance():
         department = request.args.get('department', '')
         location = request.args.get('location', '')
         
+        # Handle year-only format (e.g., "2025" -> "Jan 2025" to "Dec 2025")
+        if is_year_only(from_period):
+            from_period, _ = expand_year_to_periods(from_period)
+        if is_year_only(to_period):
+            _, to_period = expand_year_to_periods(to_period)
+        
         # Convert names to IDs (accepts names OR IDs)
         subsidiary = convert_name_to_id('subsidiary', subsidiary)
         class_id = convert_name_to_id('class', class_id)
@@ -3992,15 +4025,21 @@ def get_budget():
     Returns: Budget amount for the specified period(s)
     """
     try:
-        # Get parameters
+        # Get parameters (accept both 'from'/'to' and 'from_period'/'to_period')
         account = request.args.get('account', '')
         subsidiary = request.args.get('subsidiary', '')
         budget_category = request.args.get('budget_category', '')
-        from_period = request.args.get('from_period', '')
-        to_period = request.args.get('to_period', from_period)  # Default to same as from
+        from_period = request.args.get('from_period', '') or request.args.get('from', '')
+        to_period = request.args.get('to_period', '') or request.args.get('to', '') or from_period
         department = request.args.get('department', '')
         class_id = request.args.get('class', '')
         location = request.args.get('location', '')
+        
+        # Handle year-only format (e.g., "2025" -> "Jan 2025" to "Dec 2025")
+        if is_year_only(from_period):
+            from_period, _ = expand_year_to_periods(from_period)
+        if is_year_only(to_period):
+            _, to_period = expand_year_to_periods(to_period)
         
         # Multi-Book Accounting support
         accountingbook = request.args.get('accountingbook', str(DEFAULT_ACCOUNTING_BOOK))
