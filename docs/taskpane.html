@@ -6308,6 +6308,47 @@ export default {
             }
         };
 
+        // Convert technical error messages to user-friendly messages
+        function getFriendlyErrorMessage(error, tableName) {
+            if (!error) return 'Access denied';
+            
+            const errorLower = error.toLowerCase();
+            
+            // Feature not enabled in NetSuite account
+            if (errorLower.includes('invalid search type') || 
+                errorLower.includes('record') && errorLower.includes('was not found')) {
+                const featureNames = {
+                    'Budget': 'Budgeting',
+                    'AccountingBook': 'Multi-Book Accounting',
+                    'Subsidiary': 'OneWorld (Multi-Subsidiary)'
+                };
+                const featureName = featureNames[tableName] || tableName;
+                return `${featureName} feature not enabled in this NetSuite account`;
+            }
+            
+            // Permission denied
+            if (errorLower.includes('permission denied') || errorLower.includes('403')) {
+                return 'Permission denied - contact your NetSuite admin';
+            }
+            
+            // Timeout
+            if (errorLower.includes('timed out') || errorLower.includes('timeout')) {
+                return 'Query timed out - may indicate permission issue';
+            }
+            
+            // Table doesn't exist (non-OneWorld, etc.)
+            if (errorLower.includes('does not exist') || errorLower.includes('invalid table')) {
+                return 'Feature not available in this account type';
+            }
+            
+            // Generic fallback - but cleaner
+            if (error.length > 50) {
+                return 'Feature not accessible (check NetSuite role permissions)';
+            }
+            
+            return error;
+        }
+
         async function checkNetSuitePermissions() {
             const btn = document.getElementById('checkPermissionsBtn');
             const resultsDiv = document.getElementById('permissionsResults');
@@ -6359,19 +6400,20 @@ export default {
                         required: check.required 
                     };
                     
-                    let statusIcon, statusColor, statusText;
+                    let statusIcon, statusColor, statusText, statusMessage;
                     if (check.accessible === true) {
                         statusIcon = '✅';
                         statusColor = '#10b981';
-                        statusText = 'OK';
+                        statusMessage = 'Access verified';
                     } else if (check.accessible === null) {
                         statusIcon = '➖';
                         statusColor = '#9ca3af';
-                        statusText = 'N/A';
+                        statusMessage = 'Feature not available';
                     } else {
                         statusIcon = check.required ? '⚠️' : '❌';
                         statusColor = check.required ? '#f59e0b' : '#ef4444';
-                        statusText = 'Failed';
+                        // Convert technical errors to user-friendly messages
+                        statusMessage = getFriendlyErrorMessage(check.error, check.table);
                     }
                     
                     listHTML += `
@@ -6383,13 +6425,10 @@ export default {
                                     ${check.required ? '<span style="color: #ef4444; font-weight: normal; font-size: 10px;"> (Required)</span>' : ''}
                                 </div>
                                 <div style="color: ${statusColor}; font-size: 10px; margin-top: 2px;">
-                                    ${check.accessible === true ? 'Access verified' : 
-                                      check.accessible === null ? 'Feature not available' :
-                                      (check.error || 'Access denied')}
+                                    ${statusMessage}
                                 </div>
                             </div>
-                            <div class="help-icon small" style="cursor: help; margin-left: 8px;" 
-                                 title="${help.impact.replace(/"/g, '&quot;')}">?</div>
+                            <span class="help-icon small" data-tip="${help.impact}">?</span>
                         </div>
                     `;
                 }
