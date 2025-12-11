@@ -740,6 +740,18 @@ def debug_budget_categories():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/run-query', methods=['POST'])
+def run_query():
+    """Run an arbitrary SuiteQL query for testing"""
+    data = request.get_json() or {}
+    query = data.get('query', '')
+    if not query:
+        return jsonify({'error': 'query required'}), 400
+    
+    result = query_netsuite(query)
+    return jsonify({'query': query, 'result': result})
+
+
 @app.route('/check-permissions')
 def check_permissions():
     """
@@ -827,11 +839,13 @@ def check_permissions():
         pass  # Already handled in OneWorld check
     
     # =================================================================
-    # 3. Multi-Book Accounting - Try CompanyFeatureSetup first, then AccountingBook
+    # 3. Multi-Book Accounting - Try to query accountingbook table directly
+    # Note: accountingbook and CompanyFeatureSetup tables are often not accessible
+    # via REST API (Token-Based Auth) even though they work in SuiteQL Workbook
     # =================================================================
     multibook_result = {
         'name': 'Multi-Book Accounting',
-        'table': 'CompanyFeatureSetup',
+        'table': 'accountingbook',
         'required': False,
         'accessible': False,
         'enabled': False,
@@ -841,22 +855,29 @@ def check_permissions():
     }
     
     try:
-        # Try CompanyFeatureSetup first (user confirmed this works in NetSuite UI)
-        mb_query = "SELECT Name, IsAvailable, IsActive FROM CompanyFeatureSetup WHERE ID = 'MULTIBOOK'"
+        # Try to query accounting books directly
+        mb_query = "SELECT id, name, isprimary FROM accountingbook WHERE isinactive = 'F' ORDER BY isprimary DESC"
         multibook_result['query_used'] = mb_query
         mb_response = query_netsuite(mb_query)
         
-        if isinstance(mb_response, list):
+        if isinstance(mb_response, list) and len(mb_response) > 0:
             results['suiteql_access'] = True
             multibook_result['accessible'] = True
             multibook_result['query_result'] = mb_response
-            if len(mb_response) > 0:
-                row = mb_response[0]
-                multibook_result['enabled'] = row.get('isactive') == 'T'
+            # Multi-Book is enabled if there's more than 1 book, or any non-primary book
+            multibook_result['enabled'] = len(mb_response) > 1 or any(
+                row.get('isprimary', 'T') == 'F' for row in mb_response
+            )
+            multibook_result['details'] = f"{len(mb_response)} accounting book(s) found"
             results['summary']['passed'] += 1
         else:
-            # Show the actual error/response
-            multibook_result['query_result'] = mb_response
+            # Table not accessible via API - this is common for TBA integrations
+            multibook_result['accessible'] = False
+            multibook_result['details'] = 'accountingbook table not accessible via REST API (using Primary Book as default)'
+            if isinstance(mb_response, dict):
+                multibook_result['query_result'] = mb_response.get('error', 'Query failed')
+            else:
+                multibook_result['query_result'] = 'No data returned'
     except Exception as e:
         multibook_result['error'] = str(e)
     
@@ -4929,7 +4950,7 @@ def get_all_lookups():
             """
             books_result = query_netsuite(books_query)
             
-            if isinstance(books_result, list):
+            if isinstance(books_result, list) and len(books_result) > 0:
                 for row in books_result:
                     book_name = row.get('name', '')
                     is_primary = row.get('isprimary', 'F') == 'T'
@@ -4940,6 +4961,14 @@ def get_all_lookups():
                         'name': book_name,
                         'isPrimary': is_primary
                     })
+            else:
+                # Query failed or returned empty - default to Primary Book
+                print(f"Accounting books query returned: {books_result}", file=sys.stderr)
+                lookups['accountingBooks'].append({
+                    'id': '1',
+                    'name': 'Primary Book',
+                    'isPrimary': True
+                })
         except Exception as e:
             print(f"Error loading accounting books: {e}", file=sys.stderr)
             # Default to Primary Book (ID 1) if query fails
