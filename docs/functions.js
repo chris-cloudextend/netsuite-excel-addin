@@ -746,13 +746,17 @@ async function runBuildModeBatch() {
         for (const item of groupItems) {
             const p = item.params;
             accounts.add(p.account);
-            if (p.fromPeriod && p.fromPeriod !== '') {
+            
+            // If there's a date RANGE (fromPeriod !== toPeriod), expand to all months
+            if (p.fromPeriod && p.toPeriod && p.fromPeriod !== p.toPeriod) {
+                // Use the second expandPeriodRange function that takes (from, to) 
+                const expandedPeriods = expandPeriodRangeFromTo(p.fromPeriod, p.toPeriod);
+                for (const period of expandedPeriods) {
+                    periods.add(period);
+                }
+            } else if (p.fromPeriod && p.fromPeriod !== '') {
                 periods.add(p.fromPeriod);
-            }
-            if (p.toPeriod && p.toPeriod !== '' && p.toPeriod !== p.fromPeriod) {
-                periods.add(p.toPeriod);
-            }
-            if (!p.fromPeriod && p.toPeriod) {
+            } else if (p.toPeriod && p.toPeriod !== '') {
                 periods.add(p.toPeriod);
             }
         }
@@ -2667,7 +2671,7 @@ async function processFullRefresh() {
                     }
                 } else {
                     // Multiple periods - sum them
-                    const periodRange = expandPeriodRange(fromPeriod, toPeriod);
+                    const periodRange = expandPeriodRangeFromTo(fromPeriod, toPeriod);
                     for (const period of periodRange) {
                         if (balances[account] && balances[account][period] !== undefined) {
                             total += balances[account][period];
@@ -3101,7 +3105,7 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
 // ============================================================================
 // HELPER: Expand period range (e.g., "Jan 2025" to "Mar 2025" → all months)
 // ============================================================================
-function expandPeriodRange(fromPeriod, toPeriod) {
+function expandPeriodRangeFromTo(fromPeriod, toPeriod) {
     if (!fromPeriod) {
         return [];
     }
