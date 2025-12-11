@@ -873,7 +873,7 @@ def check_permissions():
         else:
             # Table not accessible via API - this is common for TBA integrations
             multibook_result['accessible'] = False
-            multibook_result['details'] = 'accountingbook table not accessible via REST API (using Primary Book as default)'
+            multibook_result['details'] = 'Using Primary Book as default'
             if isinstance(mb_response, dict):
                 multibook_result['query_result'] = mb_response.get('error', 'Query failed')
             else:

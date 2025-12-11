@@ -6882,25 +6882,17 @@ export default {
                     statusDiv.innerHTML = `❌ ${data.message}`;
                 }
                 
-                // Build features cards with actual query results
-                let featuresHTML = '<div style="display: grid; gap: 8px;">';
-                
-                // Find feature checks (OneWorld, Multibook, Budgets) - match both cases
-                const featureTables = ['Subsidiary', 'AccountingBook', 'accountingbook', 'Budgets'];
-                const featureChecks = data.checks.filter(c => featureTables.includes(c.table));
-                
-                for (const check of featureChecks) {
+                // Helper function to build a feature card
+                function buildFeatureCard(check) {
                     const enabled = check.enabled === true;
                     const accessible = check.accessible === true;
                     
-                    // Different styling based on status
                     let bgColor, borderColor, statusIcon;
                     if (enabled) {
                         bgColor = '#ecfdf5';
                         borderColor = '#10b981';
                         statusIcon = '✅';
                     } else if (!accessible) {
-                        // Not accessible via API - use info styling
                         bgColor = '#eff6ff';
                         borderColor = '#3b82f6';
                         statusIcon = 'ℹ️';
@@ -6910,14 +6902,11 @@ export default {
                         statusIcon = '➖';
                     }
                     
-                    // Format query result for display
                     let resultDisplay = '';
                     if (check.details) {
-                        // Prefer details if available (more user-friendly)
                         resultDisplay = check.details;
                     } else if (check.query_result) {
                         if (Array.isArray(check.query_result)) {
-                            // Show array results (like accounting books or subsidiaries)
                             if (check.query_result.length > 0) {
                                 const items = check.query_result.slice(0, 5).map(r => 
                                     r.name || r.id || JSON.stringify(r)
@@ -6937,7 +6926,7 @@ export default {
                         resultDisplay = `Error: ${check.error}`;
                     }
                     
-                    featuresHTML += `
+                    return `
                         <div style="padding: 10px 12px; background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 6px;">
                             <div style="display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; color: #374151; margin-bottom: 4px;">
                                 <span>${statusIcon}</span>
@@ -6946,6 +6935,15 @@ export default {
                             <div style="font-size: 10px; color: #6b7280; font-family: monospace; word-break: break-all;">${resultDisplay}</div>
                         </div>
                     `;
+                }
+                
+                // Build features cards - Multi-Book and Budgets only (Subsidiary shown with list below)
+                let featuresHTML = '<div style="display: grid; gap: 8px;">';
+                const nonSubsidiaryChecks = data.checks.filter(c => 
+                    ['AccountingBook', 'accountingbook', 'Budgets'].includes(c.table)
+                );
+                for (const check of nonSubsidiaryChecks) {
+                    featuresHTML += buildFeatureCard(check);
                 }
                 featuresHTML += '</div>';
                 
@@ -6960,11 +6958,20 @@ export default {
                 
                 featuresSection.innerHTML = featuresHTML;
                 
-                // Build subsidiaries list
+                // Build subsidiaries section with OneWorld card above the list
                 if (data.subsidiaries && data.subsidiaries.length > 0) {
                     subsidiariesSection.style.display = 'block';
-                    let subsHTML = '';
                     
+                    // Find the OneWorld/Subsidiary check and show it above the list
+                    const subsidiaryCheck = data.checks.find(c => c.table === 'Subsidiary');
+                    let subsHTML = '';
+                    if (subsidiaryCheck) {
+                        subsHTML += buildFeatureCard(subsidiaryCheck);
+                        subsHTML += '<div style="margin-top: 12px;"></div>';
+                    }
+                    
+                    // Add the subsidiaries list
+                    subsHTML += '<div style="border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">';
                     for (const sub of data.subsidiaries) {
                         const isElim = sub.isElimination;
                         const badge = isElim ? '<span style="font-size: 9px; background: #fef3c7; color: #92400e; padding: 1px 4px; border-radius: 3px; margin-left: 6px;">Elimination</span>' : '';
@@ -6975,6 +6982,7 @@ export default {
                             </div>
                         `;
                     }
+                    subsHTML += '</div>';
                     
                     subsidiariesList.innerHTML = subsHTML;
                 }
