@@ -1170,17 +1170,17 @@ window.resolvePendingRequests = function() {
     
     for (const [cacheKey, request] of Array.from(pendingRequests.balance.entries())) {
         const { params, resolve } = request;
-        const { account, fromPeriod, toPeriod } = params;
+        const { account, fromPeriod, toPeriod, subsidiary } = params;
         
         // For cumulative queries (empty fromPeriod), use toPeriod for lookup
         const lookupPeriod = (fromPeriod && fromPeriod !== '') ? fromPeriod : toPeriod;
         
-        // Try to get value from localStorage cache
-        let value = checkLocalStorageCache(account, fromPeriod, toPeriod);
+        // Try to get value from localStorage cache (skip if subsidiary filter)
+        let value = checkLocalStorageCache(account, fromPeriod, toPeriod, subsidiary);
         
-        // Fallback to fullYearCache
+        // Fallback to fullYearCache (skip if subsidiary filter)
         if (value === null) {
-            value = checkFullYearCache(account, lookupPeriod);
+            value = checkFullYearCache(account, lookupPeriod, subsidiary);
         }
         
         if (value !== null) {
@@ -1338,8 +1338,16 @@ window.setAccountNameCache = function(accountNames) {
 
 // Check localStorage for cached data - THIS WORKS!
 // Structure: { "4220": { "Apr 2024": 123.45, ... }, ... }
-function checkLocalStorageCache(account, period, toPeriod = null) {
+function checkLocalStorageCache(account, period, toPeriod = null, subsidiary = '') {
     try {
+        // CRITICAL: localStorage cache is NOT subsidiary-aware!
+        // If a subsidiary filter is specified, skip localStorage and force fresh fetch
+        // This prevents returning wrong values when user changes subsidiary
+        if (subsidiary && subsidiary !== '') {
+            console.log(`🔍 localStorage SKIP for ${account}/${period || toPeriod} (subsidiary filter: ${subsidiary})`);
+            return null;  // Force fresh fetch from server
+        }
+        
         // DIAGNOSTIC: Log every localStorage check to debug cache issues
         console.log(`🔍 localStorage CHECK for ${account}/${period || toPeriod}`);
         
@@ -1399,7 +1407,14 @@ function checkLocalStorageCache(account, period, toPeriod = null) {
 }
 
 // Check in-memory cache (backup for Shared Runtime)
-function checkFullYearCache(account, period) {
+function checkFullYearCache(account, period, subsidiary = '') {
+    // CRITICAL: fullYearCache is NOT subsidiary-aware!
+    // If a subsidiary filter is specified, skip this cache to avoid returning wrong values
+    if (subsidiary && subsidiary !== '') {
+        console.log(`🔍 fullYearCache SKIP for ${account}/${period} (subsidiary filter: ${subsidiary})`);
+        return null;  // Force fresh fetch from server
+    }
+    
     console.log(`🔍 fullYearCache CHECK for ${account}/${period}`);
     
     if (!fullYearCache || !fullYearCacheTimestamp) {
@@ -2187,8 +2202,8 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
                 return cache.balance.get(cacheKey);
             }
             
-            // Check localStorage cache
-            const localStorageValue = checkLocalStorageCache(account, fromPeriod, toPeriod);
+            // Check localStorage cache (skip if subsidiary filter - localStorage not subsidiary-aware)
+            const localStorageValue = checkLocalStorageCache(account, fromPeriod, toPeriod, subsidiary);
             if (localStorageValue !== null) {
                 console.log(`✅ Post-preload cache hit (localStorage): ${account}`);
                 cacheStats.hits++;
@@ -2196,8 +2211,8 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
                 return localStorageValue;
             }
             
-            // Check fullYearCache
-            const fyValue = checkFullYearCache(account, fromPeriod || toPeriod);
+            // Check fullYearCache (skip if subsidiary filter - fullYearCache not subsidiary-aware)
+            const fyValue = checkFullYearCache(account, fromPeriod || toPeriod, subsidiary);
             if (fyValue !== null) {
                 console.log(`✅ Post-preload cache hit (fullYearCache): ${account}`);
                 cacheStats.hits++;
@@ -2300,9 +2315,10 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
             }
         }
         
-        // Check localStorage cache (THIS WORKS - proven by user data!)
-        // Pass both fromPeriod and toPeriod - for cumulative queries, we lookup by toPeriod
-        const localStorageValue = checkLocalStorageCache(account, fromPeriod, toPeriod);
+        // Check localStorage cache (BUT NOT for subsidiary-filtered queries!)
+        // localStorage is keyed by account+period only, not subsidiary
+        // So we skip it when subsidiary is specified to avoid returning wrong values
+        const localStorageValue = checkLocalStorageCache(account, fromPeriod, toPeriod, subsidiary);
         if (localStorageValue !== null) {
             cacheStats.hits++;
             // Also save to in-memory cache for next time
@@ -2311,7 +2327,8 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         }
         
         // Check in-memory full year cache (backup for Shared Runtime)
-        const fullYearValue = checkFullYearCache(account, fromPeriod);
+        // BUT NOT for subsidiary-filtered queries - fullYearCache is not subsidiary-aware
+        const fullYearValue = checkFullYearCache(account, fromPeriod, subsidiary);
         if (fullYearValue !== null) {
             cacheStats.hits++;
             cache.balance.set(cacheKey, fullYearValue);
