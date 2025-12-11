@@ -798,6 +798,10 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     Build query for P&L accounts (Income Statement)
     P&L accounts show activity within the specific period only
     
+    BUILTIN.CONSOLIDATE is always used - it works universally:
+    - OneWorld: Performs currency consolidation to parent subsidiary
+    - Non-OneWorld: Passes through amount unchanged
+    
     Args:
         accountingbook: Accounting book ID (default: Primary Book / ID 1)
     """
@@ -816,21 +820,19 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     # Add accountingbook filter (Multi-Book Accounting support)
     where_clause += f" AND tal.accountingbook = {accountingbook}"
     
-    amount_calc = f"""CASE
-                        WHEN subs_count > 1 THEN
-                            TO_NUMBER(
-                                BUILTIN.CONSOLIDATE(
-                                    tal.amount,
-                                    'LEDGER',
-                                    'DEFAULT',
-                                    'DEFAULT',
-                                    {target_sub},
-                                    t.postingperiod,
-                                    'DEFAULT'
-                                )
-                            )
-                        ELSE tal.amount
-                    END""" if target_sub else "tal.amount"
+    # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
+    # For non-OneWorld, it simply returns the original amount unchanged
+    amount_calc = f"""TO_NUMBER(
+                        BUILTIN.CONSOLIDATE(
+                            tal.amount,
+                            'LEDGER',
+                            'DEFAULT',
+                            'DEFAULT',
+                            {target_sub or 1},
+                            t.postingperiod,
+                            'DEFAULT'
+                        )
+                    )"""
     
     if needs_line_join:
         return f"""
@@ -849,11 +851,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
                     JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
                     JOIN Account a ON a.id = tal.account
                     JOIN AccountingPeriod apf ON apf.id = t.postingperiod
-                    CROSS JOIN (
-                        SELECT COUNT(*) AS subs_count
-                        FROM Subsidiary
-                        WHERE isinactive = 'F'
-                    ) subs_cte
                 WHERE {where_clause}
             ) x
             JOIN Account a ON a.id = x.account
@@ -877,11 +874,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN Account a ON a.id = tal.account
                     JOIN AccountingPeriod apf ON apf.id = t.postingperiod
-                    CROSS JOIN (
-                        SELECT COUNT(*) AS subs_count
-                        FROM Subsidiary
-                        WHERE isinactive = 'F'
-                    ) subs_cte
                 WHERE {where_clause}
             ) x
             JOIN Account a ON a.id = x.account
@@ -897,6 +889,10 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
     Balance Sheet = CUMULATIVE balance from inception through period end
     
     Returns one row per account with the cumulative balance as of period end
+    
+    BUILTIN.CONSOLIDATE is always used - it works universally:
+    - OneWorld: Performs currency consolidation to parent subsidiary
+    - Non-OneWorld: Passes through amount unchanged
     
     Args:
         accountingbook: Accounting book ID (default: Primary Book / ID 1)
@@ -926,27 +922,22 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
     where_clause += f" AND t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')"
     where_clause += f" AND tal.accountingbook = {accountingbook}"
     
-    # If period_id is None (period doesn't exist in NetSuite), skip consolidation
-    # This happens for future periods that haven't been created yet
-    if period_id and target_sub:
-        amount_calc = f"""CASE
-                            WHEN subs_count > 1 THEN
-                                TO_NUMBER(
-                                    BUILTIN.CONSOLIDATE(
-                                        tal.amount,
-                                        'LEDGER',
-                                        'DEFAULT',
-                                        'DEFAULT',
-                                        {target_sub},
-                                        {period_id},
-                                        'DEFAULT'
-                                    )
-                                )
-                            ELSE tal.amount
-                        END"""
+    # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
+    # For BS, we use the target period_id for exchange rate (not posting period)
+    if period_id:
+        amount_calc = f"""TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER',
+                                'DEFAULT',
+                                'DEFAULT',
+                                {target_sub or 1},
+                                {period_id},
+                                'DEFAULT'
+                            )
+                        )"""
     else:
-        # No consolidation - use raw amount
-        # This is a fallback for periods not in NetSuite's AccountingPeriod table
+        # Fallback for periods not in NetSuite's AccountingPeriod table
         print(f"WARNING: Using non-consolidated amounts for BS query (period_id={period_id})", file=sys.stderr)
         amount_calc = "tal.amount"
     
@@ -959,11 +950,6 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
                 JOIN Transaction t ON t.id = tal.transaction
                 JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
                 JOIN Account a ON a.id = tal.account
-                CROSS JOIN (
-                    SELECT COUNT(*) AS subs_count
-                    FROM Subsidiary
-                    WHERE isinactive = 'F'
-                ) subs_cte
             WHERE {where_clause}
             GROUP BY a.acctnumber
         """
@@ -975,11 +961,6 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
             FROM TransactionAccountingLine tal
                 JOIN Transaction t ON t.id = tal.transaction
                 JOIN Account a ON a.id = tal.account
-                CROSS JOIN (
-                    SELECT COUNT(*) AS subs_count
-                    FROM Subsidiary
-                    WHERE isinactive = 'F'
-                ) subs_cte
             WHERE {where_clause}
             GROUP BY a.acctnumber
         """
@@ -992,6 +973,10 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
     
     Key difference: For each period, use t.trandate <= period.enddate
     Returns row-based output (like P&L) - one row per account per period
+    
+    BUILTIN.CONSOLIDATE is always used - it works universally:
+    - OneWorld: Performs currency consolidation to parent subsidiary
+    - Non-OneWorld: Passes through amount unchanged
     
     Performance optimization: 
     1. Query ONE period at a time (UNION ALL)
@@ -1044,21 +1029,19 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
         # Add accountingbook filter (supports Multi-Book Accounting)
         period_where += f" AND tal.accountingbook = {accountingbook}"
         
-        amount_calc = f"""CASE
-                            WHEN subs_count > 1 THEN
-                                TO_NUMBER(
-                                    BUILTIN.CONSOLIDATE(
-                                        tal.amount,
-                                        'LEDGER',
-                                        'DEFAULT',
-                                        'DEFAULT',
-                                        {target_sub},
-                                        {period_id},
-                                        'DEFAULT'
-                                    )
-                                )
-                            ELSE tal.amount
-                        END""" if target_sub else "tal.amount"
+        # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
+        # For BS, we use the period_id for exchange rate (not posting period)
+        amount_calc = f"""TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER',
+                                'DEFAULT',
+                                'DEFAULT',
+                                {target_sub or 1},
+                                {period_id},
+                                'DEFAULT'
+                            )
+                        )"""
         
         # Query for THIS period only
         if needs_line_join:
@@ -1071,11 +1054,6 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
                     JOIN Account a ON a.id = tal.account
-                    CROSS JOIN (
-                        SELECT COUNT(*) AS subs_count
-                        FROM Subsidiary
-                        WHERE isinactive = 'F'
-                    ) subs_cte
                 WHERE {period_where}
                 GROUP BY a.acctnumber
             """
@@ -1088,11 +1066,6 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN Account a ON a.id = tal.account
-                    CROSS JOIN (
-                        SELECT COUNT(*) AS subs_count
-                        FROM Subsidiary
-                        WHERE isinactive = 'F'
-                    ) subs_cte
                 WHERE {period_where}
                 GROUP BY a.acctnumber
             """
@@ -1540,6 +1513,7 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     line_join = "JOIN transactionline tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     # Build the pivoted query with all 12 months as columns
+    # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
     query = f"""
     SELECT
       a.acctnumber AS account_number,
@@ -1560,32 +1534,23 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
       SELECT
         tal.account,
         t.postingperiod,
-        CASE
-          WHEN subs_count > 1 THEN
-            TO_NUMBER(
-              BUILTIN.CONSOLIDATE(
-                tal.amount,
-                'LEDGER',
-                'DEFAULT',
-                'DEFAULT',
-                {target_sub},
-                t.postingperiod,
-                'DEFAULT'
-              )
-            )
-          ELSE tal.amount
-        END
+        TO_NUMBER(
+          BUILTIN.CONSOLIDATE(
+            tal.amount,
+            'LEDGER',
+            'DEFAULT',
+            'DEFAULT',
+            {target_sub or 1},
+            t.postingperiod,
+            'DEFAULT'
+          )
+        )
         * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
       FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
         {line_join}
         JOIN account a ON a.id = tal.account
         JOIN accountingperiod apf ON apf.id = t.postingperiod
-        CROSS JOIN (
-          SELECT COUNT(*) AS subs_count
-          FROM subsidiary
-          WHERE isinactive = 'F'
-        ) subs_cte
       WHERE t.posting = 'T'
         AND tal.posting = 'T'
         AND tal.accountingbook = {accountingbook}
@@ -2199,38 +2164,29 @@ def batch_periods_refresh():
         # Build period names for IN clause
         period_names_sql = "', '".join([escape_sql(p[2]) for p in parsed_periods])
         
+        # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         pl_query = f"""
-        WITH sub_cte AS (
-          SELECT COUNT(*) AS subs_count
-          FROM Subsidiary
-          WHERE isinactive = 'F'
-        ),
-        base AS (
+        WITH base AS (
           SELECT
             tal.account AS account_id,
             t.postingperiod AS period_id,
-            CASE
-              WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
-                TO_NUMBER(
-                  BUILTIN.CONSOLIDATE(
-                    tal.amount,
-                    'LEDGER',
-                    'DEFAULT',
-                    'DEFAULT',
-                    {target_sub},
-                    t.postingperiod,
-                    'DEFAULT'
-                  )
-                )
-              ELSE tal.amount
-            END
+            TO_NUMBER(
+              BUILTIN.CONSOLIDATE(
+                tal.amount,
+                'LEDGER',
+                'DEFAULT',
+                'DEFAULT',
+                {target_sub},
+                t.postingperiod,
+                'DEFAULT'
+              )
+            )
             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
             AS cons_amt
           FROM TransactionAccountingLine tal
           JOIN Transaction t ON t.id = tal.transaction
           JOIN Account a ON a.id = tal.account
           JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-          CROSS JOIN sub_cte
           WHERE t.posting = 'T'
             AND tal.posting = 'T'
             AND tal.accountingbook = {accountingbook}
@@ -2302,36 +2258,27 @@ def batch_periods_refresh():
             prior_end_date = f"{earliest_year}-{earliest_month:02d}-01"  # 1st of current month = end of prior
         
         # Query BS activity for the period range
+        # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         bs_query = f"""
-        WITH sub_cte AS (
-          SELECT COUNT(*) AS subs_count
-          FROM Subsidiary
-          WHERE isinactive = 'F'
-        ),
-        base AS (
+        WITH base AS (
           SELECT
             tal.account AS account_id,
             t.postingperiod AS period_id,
-            CASE
-              WHEN (SELECT subs_count FROM sub_cte) > 1 THEN
-                TO_NUMBER(
-                  BUILTIN.CONSOLIDATE(
-                    tal.amount,
-                    'LEDGER',
-                    'DEFAULT',
-                    'DEFAULT',
-                    {target_sub},
-                    t.postingperiod,
-                    'DEFAULT'
-                  )
-                )
-              ELSE tal.amount
-            END AS cons_amt
+            TO_NUMBER(
+              BUILTIN.CONSOLIDATE(
+                tal.amount,
+                'LEDGER',
+                'DEFAULT',
+                'DEFAULT',
+                {target_sub},
+                t.postingperiod,
+                'DEFAULT'
+              )
+            ) AS cons_amt
           FROM TransactionAccountingLine tal
           JOIN Transaction t ON t.id = tal.transaction
           JOIN Account a ON a.id = tal.account
           JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-          CROSS JOIN sub_cte
           WHERE t.posting = 'T'
             AND tal.posting = 'T'
             AND tal.accountingbook = {accountingbook}
@@ -2397,36 +2344,27 @@ def batch_periods_refresh():
                 batch = bs_accounts[i:i+batch_size]
                 bs_account_list = "', '".join([escape_sql(str(a)) for a in batch])
                 
-                # Use same CROSS JOIN pattern as working queries - no CTE with subquery
+                # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
                 prior_query = f"""
                 SELECT 
                     a.acctnumber AS acctnumber,
                     SUM(
-                        CASE 
-                            WHEN subs_count > 1 THEN
-                                TO_NUMBER(
-                                    BUILTIN.CONSOLIDATE(
-                                        tal.amount,
-                                        'LEDGER',
-                                        'DEFAULT',
-                                        'DEFAULT',
-                                        {target_sub},
-                                        t.postingperiod,
-                                        'DEFAULT'
-                                    )
-                                )
-                            ELSE tal.amount
-                        END
+                        TO_NUMBER(
+                            BUILTIN.CONSOLIDATE(
+                                tal.amount,
+                                'LEDGER',
+                                'DEFAULT',
+                                'DEFAULT',
+                                {target_sub},
+                                t.postingperiod,
+                                'DEFAULT'
+                            )
+                        )
                     ) AS balance
                 FROM TransactionAccountingLine tal
                 JOIN Transaction t ON t.id = tal.transaction
                 JOIN Account a ON a.id = tal.account
                 JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-                CROSS JOIN (
-                    SELECT COUNT(*) AS subs_count
-                    FROM Subsidiary
-                    WHERE isinactive = 'F'
-                ) subs_cte
                 WHERE t.posting = 'T' 
                     AND tal.posting = 'T' 
                     AND tal.accountingbook = {accountingbook}
@@ -3553,38 +3491,30 @@ def get_balance():
         # Need TransactionLine join if filtering by department, class, or location
         needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
         
+        # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         if (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):
             if needs_line_join:
                 query = f"""
                     SELECT SUM(x.cons_amt) AS balance
                     FROM (
                         SELECT
-                            CASE
-                                WHEN subs_count > 1 THEN
-                                    TO_NUMBER(
-                                        BUILTIN.CONSOLIDATE(
-                                            tal.amount,
-                                            'LEDGER',
-                                            'DEFAULT',
-                                            'DEFAULT',
-                                            {target_sub},
-                                            t.postingperiod,
-                                            'DEFAULT'
-                                        )
-                                    )
-                                ELSE tal.amount
-                            END
+                            TO_NUMBER(
+                                BUILTIN.CONSOLIDATE(
+                                    tal.amount,
+                                    'LEDGER',
+                                    'DEFAULT',
+                                    'DEFAULT',
+                                    {target_sub},
+                                    t.postingperiod,
+                                    'DEFAULT'
+                                )
+                            )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
                             JOIN Account a ON a.id = tal.account
                             JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-                            CROSS JOIN (
-                                SELECT COUNT(*) AS subs_count
-                                FROM Subsidiary
-                                WHERE isinactive = 'F'
-                            ) subs_cte
                         WHERE {where_clause}
                     ) x
                 """
@@ -3593,31 +3523,22 @@ def get_balance():
                     SELECT SUM(x.cons_amt) AS balance
                     FROM (
                         SELECT
-                            CASE
-                                WHEN subs_count > 1 THEN
-                                    TO_NUMBER(
-                                        BUILTIN.CONSOLIDATE(
-                                            tal.amount,
-                                            'LEDGER',
-                                            'DEFAULT',
-                                            'DEFAULT',
-                                            {target_sub},
-                                            t.postingperiod,
-                                            'DEFAULT'
-                                        )
-                                    )
-                                ELSE tal.amount
-                            END
+                            TO_NUMBER(
+                                BUILTIN.CONSOLIDATE(
+                                    tal.amount,
+                                    'LEDGER',
+                                    'DEFAULT',
+                                    'DEFAULT',
+                                    {target_sub},
+                                    t.postingperiod,
+                                    'DEFAULT'
+                                )
+                            )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
                             JOIN AccountingPeriod ap ON ap.id = t.postingperiod
-                            CROSS JOIN (
-                                SELECT COUNT(*) AS subs_count
-                                FROM Subsidiary
-                                WHERE isinactive = 'F'
-                            ) subs_cte
                         WHERE {where_clause}
                     ) x
                 """
@@ -3627,31 +3548,22 @@ def get_balance():
                     SELECT SUM(x.cons_amt) AS balance
                     FROM (
                         SELECT
-                            CASE
-                                WHEN subs_count > 1 THEN
-                                    TO_NUMBER(
-                                        BUILTIN.CONSOLIDATE(
-                                            tal.amount,
-                                            'LEDGER',
-                                            'DEFAULT',
-                                            'DEFAULT',
-                                            {target_sub},
-                                            t.postingperiod,
-                                            'DEFAULT'
-                                        )
-                                    )
-                                ELSE tal.amount
-                            END
+                            TO_NUMBER(
+                                BUILTIN.CONSOLIDATE(
+                                    tal.amount,
+                                    'LEDGER',
+                                    'DEFAULT',
+                                    'DEFAULT',
+                                    {target_sub},
+                                    t.postingperiod,
+                                    'DEFAULT'
+                                )
+                            )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
                             JOIN Account a ON a.id = tal.account
-                            CROSS JOIN (
-                                SELECT COUNT(*) AS subs_count
-                                FROM Subsidiary
-                                WHERE isinactive = 'F'
-                            ) subs_cte
                         WHERE {where_clause}
                     ) x
                 """
@@ -3660,30 +3572,21 @@ def get_balance():
                     SELECT SUM(x.cons_amt) AS balance
                     FROM (
                         SELECT
-                            CASE
-                                WHEN subs_count > 1 THEN
-                                    TO_NUMBER(
-                                        BUILTIN.CONSOLIDATE(
-                                            tal.amount,
-                                            'LEDGER',
-                                            'DEFAULT',
-                                            'DEFAULT',
-                                            {target_sub},
-                                            t.postingperiod,
-                                            'DEFAULT'
-                                        )
-                                    )
-                                ELSE tal.amount
-                            END
+                            TO_NUMBER(
+                                BUILTIN.CONSOLIDATE(
+                                    tal.amount,
+                                    'LEDGER',
+                                    'DEFAULT',
+                                    'DEFAULT',
+                                    {target_sub},
+                                    t.postingperiod,
+                                    'DEFAULT'
+                                )
+                            )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
-                            CROSS JOIN (
-                                SELECT COUNT(*) AS subs_count
-                                FROM Subsidiary
-                                WHERE isinactive = 'F'
-                            ) subs_cte
                         WHERE {where_clause}
                     ) x
                 """
@@ -4602,11 +4505,15 @@ def build_consolidate_amount(target_sub, period_ref='t.postingperiod'):
     """
     Build the BUILTIN.CONSOLIDATE SQL fragment for multi-currency consolidation.
     
+    BUILTIN.CONSOLIDATE works universally:
+    - OneWorld: Performs currency consolidation to parent subsidiary
+    - Non-OneWorld: Passes through amount unchanged
+    
     Parameters for BUILTIN.CONSOLIDATE (NetSuite SuiteQL):
     - 'LEDGER' - Consolidation type
     - 'DEFAULT' - Rate type  
     - 'DEFAULT' - Adjustment option
-    - target_sub - Target subsidiary ID
+    - target_sub - Target subsidiary ID (defaults to 1 if not provided)
     - period_ref - Period reference
     - 'DEFAULT' - Elimination option (handles intercompany)
     
@@ -4617,26 +4524,20 @@ def build_consolidate_amount(target_sub, period_ref='t.postingperiod'):
     Returns:
         SQL fragment that calculates consolidated amount
     """
-    if target_sub:
-        return f"""
-            CASE
-                WHEN subs_count > 1 THEN
-                    TO_NUMBER(
-                        BUILTIN.CONSOLIDATE(
-                            tal.amount,
-                            'LEDGER',
-                            'DEFAULT',
-                            'DEFAULT',
-                            {target_sub},
-                            {period_ref},
-                            'DEFAULT'
-                        )
-                    )
-                ELSE tal.amount
-            END
-        """
-    else:
-        return "tal.amount"
+    # Always use BUILTIN.CONSOLIDATE - it works for both OneWorld and non-OneWorld
+    return f"""
+        TO_NUMBER(
+            BUILTIN.CONSOLIDATE(
+                tal.amount,
+                'LEDGER',
+                'DEFAULT',
+                'DEFAULT',
+                {target_sub or 1},
+                {period_ref},
+                'DEFAULT'
+            )
+        )
+    """
 
 
 @app.route('/retained-earnings', methods=['POST'])
