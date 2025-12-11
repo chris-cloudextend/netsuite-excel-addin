@@ -2098,75 +2098,67 @@
                 <button class="settings-close" onclick="closeSettings()">×</button>
             </div>
             <div class="settings-content">
-                <!-- Server Status -->
+                <!-- Connection Status -->
                 <div class="settings-section">
-                    <h3>🖥️ Backend Server</h3>
-                    <div id="serverStatus" class="status-indicator checking">
-                        <span class="status-dot checking"></span>
-                        Checking...
+                    <h3>🔌 Connection Status</h3>
+                    <div style="display: grid; gap: 8px; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #f9fafb; border-radius: 6px;">
+                            <span style="font-size: 12px; color: #4b5563; font-weight: 500;">Backend Server</span>
+                            <div id="serverStatus" class="status-indicator checking" style="margin: 0; padding: 4px 10px; font-size: 11px;">
+                                <span class="status-dot checking"></span>
+                                Checking...
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #f9fafb; border-radius: 6px;">
+                            <span style="font-size: 12px; color: #4b5563; font-weight: 500;">Cloudflare Tunnel</span>
+                            <div id="tunnelStatus" class="status-indicator checking" style="margin: 0; padding: 4px 10px; font-size: 11px;">
+                                <span class="status-dot checking"></span>
+                                Checking...
+                            </div>
+                        </div>
                     </div>
-                    <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
-                        <button class="settings-btn-action" onclick="checkServerStatus()">
-                            Check Status
+                    <div style="display: flex; gap: 8px;">
+                        <button class="settings-btn-action" onclick="checkServerStatus()" style="flex: 1;">
+                            🔄 Refresh
                         </button>
-                        <button class="settings-btn-action secondary" onclick="reloadLookups()">
-                            Reload Lookups
-                        </button>
-                        <button class="settings-btn-action" onclick="restartServer()" style="background: #dc2626;">
-                            🔄 Restart Server
+                        <button class="settings-btn-action secondary" onclick="reloadLookups()" style="flex: 1;">
+                            ↻ Reload Lookups
                         </button>
                     </div>
-                    <p style="font-size: 11px; color: var(--bottlenose); margin-top: 8px;">
-                        Restart if you've updated backend code or see connection issues.
-                    </p>
                 </div>
 
-                <!-- Tunnel Status -->
+                <!-- NetSuite Account Info -->
                 <div class="settings-section">
-                    <h3>🔗 Cloudflare Tunnel</h3>
-                    <div id="tunnelStatus" class="status-indicator checking">
-                        <span class="status-dot checking"></span>
-                        Checking...
-                    </div>
+                    <h3>🏢 NetSuite Account</h3>
+                    <button class="settings-btn-action" onclick="checkNetSuitePermissions()" id="checkPermissionsBtn" style="width: 100%; margin-bottom: 12px;">
+                        🔍 Check Account Features
+                    </button>
                     
-                    <div style="margin-top: 12px; padding: 12px; background: linear-gradient(135deg, rgba(10, 226, 193, 0.1) 0%, rgba(0, 121, 255, 0.05) 100%); border-radius: 8px; border: 1px solid var(--anenome);">
-                        <p style="font-size: 11px; color: var(--deep-dive); margin-bottom: 8px; font-weight: 600;">
-                            ⚠️ Tunnel cannot be auto-restarted from add-in
-                        </p>
-                        <p style="font-size: 11px; color: var(--bottlenose); margin-bottom: 10px;">
-                            To restart tunnel, run in Terminal:
-                        </p>
-                        <div style="background: var(--deep-dive); padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 10px; color: var(--anenome); margin-bottom: 10px;">
-                            pkill cloudflared; cloudflared tunnel --url http://localhost:5002
+                    <div id="permissionsResults" style="display: none;">
+                        <!-- Status banner -->
+                        <div id="permissionsStatus" style="padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; font-weight: 600;">
                         </div>
-                        <button class="settings-btn-action" onclick="copyTunnelCommand()" style="font-size: 11px; padding: 6px 12px; width: 100%;">
-                            📋 Copy Command
-                        </button>
+                        
+                        <!-- Features section -->
+                        <div id="featuresSection" style="margin-bottom: 12px;">
+                        </div>
+                        
+                        <!-- Subsidiaries list -->
+                        <div id="subsidiariesSection" style="display: none; margin-bottom: 12px;">
+                            <h4 style="font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 8px;">📋 Subsidiaries</h4>
+                            <div id="subsidiariesList" style="max-height: 200px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 11px;">
+                            </div>
+                        </div>
+                        
+                        <!-- Permissions list -->
+                        <details style="margin-top: 8px;">
+                            <summary style="font-size: 11px; color: var(--tidal-wave); cursor: pointer; font-weight: 500;">
+                                View Table Permissions
+                            </summary>
+                            <div id="permissionsList" style="font-size: 11px; margin-top: 8px;">
+                            </div>
+                        </details>
                     </div>
-                    
-                    <details style="margin-top: 12px;">
-                        <summary style="font-size: 12px; color: var(--tidal-wave); cursor: pointer; font-weight: 500;">
-                            📝 Update Worker with new tunnel URL
-                        </summary>
-                        <div style="margin-top: 10px; padding: 12px; background: var(--barnacle); border-radius: 8px;">
-                            <p style="font-size: 11px; color: var(--deep-dive); margin-bottom: 8px;">
-                                After restarting tunnel, copy the new URL (shown in terminal) and update Cloudflare Worker:
-                            </p>
-                            <ol style="font-size: 11px; color: var(--bottlenose); padding-left: 20px; line-height: 1.8;">
-                                <li>Copy the new <code>https://xxx.trycloudflare.com</code> URL from terminal</li>
-                                <li>Go to <a href="https://dash.cloudflare.com" target="_blank" style="color: var(--tidal-wave);">Cloudflare Dashboard</a></li>
-                                <li>Workers & Pages → <strong>netsuite-proxy</strong></li>
-                                <li>Edit code → Update <code>TUNNEL_URL</code></li>
-                                <li>Save and Deploy</li>
-                            </ol>
-                            <input type="text" id="newTunnelUrl" class="settings-input" 
-                                   placeholder="Paste new tunnel URL here" 
-                                   style="font-size: 11px; margin-top: 8px;"/>
-                            <button class="settings-btn-action" onclick="copyWorkerCode()" style="font-size: 11px; padding: 6px 12px; margin-top: 8px; width: 100%;">
-                                📋 Copy Worker Code with New URL
-                            </button>
-                        </div>
-                    </details>
                 </div>
 
                 <!-- Cache Info -->
@@ -2178,41 +2170,13 @@
                     </div>
                 </div>
 
-                <!-- NetSuite Permissions Check -->
-                <div class="settings-section">
-                    <h3>🔐 NetSuite Permissions</h3>
-                    <p style="font-size: 11px; color: var(--bottlenose); margin-bottom: 12px;">
-                        Verify your NetSuite user role has the required permissions for XAVI.
-                    </p>
-                    <button class="settings-btn-action" onclick="checkNetSuitePermissions()" id="checkPermissionsBtn">
-                        🔍 Check Permissions
-                    </button>
-                    
-                    <div id="permissionsResults" style="display: none; margin-top: 16px;">
-                        <!-- Status banner -->
-                        <div id="permissionsStatus" style="padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; font-weight: 600;">
-                        </div>
-                        
-                        <!-- Permissions list -->
-                        <div id="permissionsList" style="font-size: 11px;">
-                        </div>
-                        
-                        <!-- Legend -->
-                        <div style="margin-top: 12px; padding: 10px; background: #f9fafb; border-radius: 6px; font-size: 10px; color: #6b7280;">
-                            <div style="margin-bottom: 4px;"><span style="color: #10b981;">✅</span> = Access verified</div>
-                            <div style="margin-bottom: 4px;"><span style="color: #ef4444;">❌</span> = Access denied or feature not enabled</div>
-                            <div><span style="color: #f59e0b;">⚠️</span> = Required permission missing</div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Version Info -->
                 <div class="settings-section">
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.2.0</strong></p>
-                        <p style="margin-top: 4px;">Proxy URL: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.3.0</strong></p>
+                        <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
             </div>
@@ -6875,6 +6839,9 @@ export default {
             const btn = document.getElementById('checkPermissionsBtn');
             const resultsDiv = document.getElementById('permissionsResults');
             const statusDiv = document.getElementById('permissionsStatus');
+            const featuresSection = document.getElementById('featuresSection');
+            const subsidiariesSection = document.getElementById('subsidiariesSection');
+            const subsidiariesList = document.getElementById('subsidiariesList');
             const listDiv = document.getElementById('permissionsList');
             
             // Show loading state
@@ -6883,13 +6850,15 @@ export default {
             resultsDiv.style.display = 'block';
             statusDiv.style.background = '#f3f4f6';
             statusDiv.style.color = '#4b5563';
-            statusDiv.textContent = 'Checking NetSuite permissions...';
-            listDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #9ca3af;">Running permission checks...</div>';
+            statusDiv.textContent = 'Checking NetSuite account...';
+            featuresSection.innerHTML = '';
+            subsidiariesSection.style.display = 'none';
+            listDiv.innerHTML = '';
             
             try {
                 const response = await fetch(`${SERVER_URL}/check-permissions`, {
                     method: 'GET',
-                    signal: AbortSignal.timeout(60000)  // 60 second timeout for all checks
+                    signal: AbortSignal.timeout(60000)
                 });
                 
                 if (!response.ok) {
@@ -6913,86 +6882,125 @@ export default {
                     statusDiv.innerHTML = `❌ ${data.message}`;
                 }
                 
-                // Build permissions list
-                let listHTML = '';
-                for (const check of data.checks) {
-                    const help = PERMISSION_HELP[check.table] || { 
-                        description: check.name, 
-                        impact: 'Permission details not available.',
-                        required: check.required 
-                    };
+                // Build features cards
+                let featuresHTML = '<div style="display: grid; gap: 8px;">';
+                
+                // Find feature checks (OneWorld, Multibook, Budgets)
+                const featureChecks = data.checks.filter(c => 
+                    ['Subsidiary', 'AccountingBook', 'Budgets'].includes(c.table)
+                );
+                
+                for (const check of featureChecks) {
+                    const enabled = check.enabled === true;
+                    const bgColor = enabled ? '#ecfdf5' : '#f9fafb';
+                    const borderColor = enabled ? '#10b981' : '#e5e7eb';
+                    const icon = enabled ? '✅' : '➖';
                     
-                    let statusIcon, statusColor, statusText, statusMessage;
+                    featuresHTML += `
+                        <div style="padding: 10px 12px; background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 6px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 600; font-size: 12px; color: #374151;">${check.name}</span>
+                                <span>${icon}</span>
+                            </div>
+                            ${check.details ? `<div style="font-size: 10px; color: #6b7280; margin-top: 4px;">${check.details}</div>` : ''}
+                        </div>
+                    `;
+                }
+                featuresHTML += '</div>';
+                
+                // Add account ID
+                if (data.account_id) {
+                    featuresHTML += `
+                        <div style="margin-top: 8px; padding: 8px 12px; background: #f3f4f6; border-radius: 6px; font-size: 11px; color: #6b7280;">
+                            Account ID: <strong>${data.account_id}</strong>
+                        </div>
+                    `;
+                }
+                
+                featuresSection.innerHTML = featuresHTML;
+                
+                // Build subsidiaries list
+                if (data.subsidiaries && data.subsidiaries.length > 0) {
+                    subsidiariesSection.style.display = 'block';
+                    let subsHTML = '';
+                    
+                    for (const sub of data.subsidiaries) {
+                        const isElim = sub.isElimination;
+                        const badge = isElim ? '<span style="font-size: 9px; background: #fef3c7; color: #92400e; padding: 1px 4px; border-radius: 3px; margin-left: 6px;">Elimination</span>' : '';
+                        subsHTML += `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f3f4f6;">
+                                <span style="color: #374151;">${sub.name}${badge}</span>
+                                <span style="color: #9ca3af; font-size: 10px;">ID: ${sub.id}</span>
+                            </div>
+                        `;
+                    }
+                    
+                    subsidiariesList.innerHTML = subsHTML;
+                }
+                
+                // Build table permissions list (collapsed by default)
+                const tableChecks = data.checks.filter(c => 
+                    !['Subsidiary', 'AccountingBook', 'Budgets'].includes(c.table) || c.table === 'Subsidiary'
+                );
+                
+                let listHTML = '';
+                for (const check of tableChecks) {
+                    // Skip feature cards we already showed
+                    if (['Subsidiary', 'AccountingBook', 'Budgets'].includes(check.table) && check.name.includes('(')) {
+                        continue;
+                    }
+                    
+                    let statusIcon, statusColor, statusMessage;
                     if (check.accessible === true) {
                         statusIcon = '✅';
                         statusColor = '#10b981';
-                        statusMessage = 'Access verified';
+                        statusMessage = check.row_count !== undefined ? `${check.row_count} row(s)` : 'OK';
                     } else if (check.accessible === null) {
                         statusIcon = '➖';
                         statusColor = '#9ca3af';
-                        statusMessage = 'Feature not available';
+                        statusMessage = 'N/A';
                     } else {
                         statusIcon = check.required ? '⚠️' : '❌';
                         statusColor = check.required ? '#f59e0b' : '#ef4444';
-                        // Convert technical errors to user-friendly messages
-                        statusMessage = getFriendlyErrorMessage(check.error, check.table);
+                        statusMessage = check.error || 'Failed';
                     }
                     
                     listHTML += `
-                        <div style="display: flex; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #f3f4f6;">
-                            <span style="font-size: 14px; margin-right: 8px;">${statusIcon}</span>
-                            <div style="flex: 1;">
-                                <div style="font-weight: 600; color: #1f2937;">
-                                    ${check.name}
-                                    ${check.required ? '<span style="color: #ef4444; font-weight: normal; font-size: 10px;"> (Required)</span>' : ''}
-                                </div>
-                                <div style="color: ${statusColor}; font-size: 10px; margin-top: 2px;">
-                                    ${statusMessage}
-                                </div>
-                            </div>
-                            <span class="help-icon small" data-tip="${help.impact}">?</span>
+                        <div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #f3f4f6;">
+                            <span style="font-size: 12px; margin-right: 8px;">${statusIcon}</span>
+                            <span style="flex: 1; color: #374151;">${check.name}</span>
+                            <span style="color: ${statusColor}; font-size: 10px;">${statusMessage}</span>
                         </div>
                     `;
                 }
                 
                 listDiv.innerHTML = listHTML;
                 
-                // Add account ID info
-                if (data.account_id) {
-                    listDiv.innerHTML += `
-                        <div style="margin-top: 12px; padding: 8px; background: #f9fafb; border-radius: 6px; font-size: 10px; color: #6b7280;">
-                            NetSuite Account: <strong>${data.account_id}</strong>
-                        </div>
-                    `;
-                }
-                
             } catch (error) {
                 statusDiv.style.background = 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)';
                 statusDiv.style.color = '#991b1b';
                 
                 if (error.name === 'TimeoutError') {
-                    statusDiv.innerHTML = '❌ Permission check timed out. Server may be slow or SuiteQL access may be denied.';
+                    statusDiv.innerHTML = '❌ Check timed out';
                 } else if (error.message.includes('Failed to fetch')) {
-                    statusDiv.innerHTML = '❌ Cannot connect to server. Check that the backend is running.';
+                    statusDiv.innerHTML = '❌ Cannot connect to server';
                 } else {
-                    statusDiv.innerHTML = `❌ Error: ${error.message}`;
+                    statusDiv.innerHTML = `❌ ${error.message}`;
                 }
                 
-                listDiv.innerHTML = `
-                    <div style="padding: 16px; background: #fef2f2; border-radius: 8px; color: #991b1b; font-size: 11px;">
-                        <p style="font-weight: 600; margin-bottom: 8px;">Troubleshooting:</p>
-                        <ul style="padding-left: 16px; line-height: 1.8;">
-                            <li>Ensure the backend server is running</li>
-                            <li>Check that Cloudflare tunnel is active</li>
-                            <li>Verify your NetSuite role has SuiteAnalytics Workbook permission</li>
-                            <li>Confirm the Integration Record has SuiteQL scope enabled</li>
+                featuresSection.innerHTML = `
+                    <div style="padding: 12px; background: #fef2f2; border-radius: 8px; color: #991b1b; font-size: 11px;">
+                        <p style="margin-bottom: 6px;">Check that:</p>
+                        <ul style="padding-left: 16px; line-height: 1.6; margin: 0;">
+                            <li>Backend server is running</li>
+                            <li>Cloudflare tunnel is active</li>
                         </ul>
                     </div>
                 `;
             }
             
             btn.disabled = false;
-            btn.textContent = '🔍 Check Permissions';
+            btn.textContent = '🔍 Check Account Features';
         }
 
         function copyTunnelInstructions() {

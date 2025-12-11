@@ -743,13 +743,15 @@ def debug_budget_categories():
 @app.route('/check-permissions')
 def check_permissions():
     """
-    Check if the connected NetSuite user has proper permissions for XAVI.
-    Tests access to each required table with a simple query.
-    Returns a detailed report of what's accessible and what's missing.
+    Check NetSuite account features and permissions for XAVI.
+    Uses CompanyFeatureSetup for accurate feature detection.
+    Returns detailed info about enabled features and subsidiaries.
     """
     results = {
         'suiteql_access': False,
         'account_id': account_id,
+        'features': {},
+        'subsidiaries': [],
         'checks': [],
         'summary': {
             'passed': 0,
@@ -759,23 +761,155 @@ def check_permissions():
         }
     }
     
-    # Define tables to check with their requirements
-    # (table_name, display_name, required, test_query)
-    checks = [
+    # =================================================================
+    # 1. OneWorld Detection - Check for elimination subsidiaries
+    # =================================================================
+    oneworld_result = {
+        'name': 'OneWorld (Multi-Subsidiary)',
+        'table': 'Subsidiary',
+        'required': False,
+        'accessible': False,
+        'enabled': False,
+        'details': None
+    }
+    
+    try:
+        # Best OneWorld test: elimination subsidiaries only exist in OneWorld
+        elim_query = "SELECT id, name, iselimination FROM Subsidiary WHERE iselimination = 'T'"
+        elim_response = query_netsuite(elim_query)
+        
+        if isinstance(elim_response, list):
+            results['suiteql_access'] = True
+            oneworld_result['accessible'] = True
+            
+            if len(elim_response) > 0:
+                # Has elimination subsidiaries = definitely OneWorld
+                oneworld_result['enabled'] = True
+                oneworld_result['details'] = f"Enabled ({len(elim_response)} elimination subsidiary)"
+            else:
+                # No elimination subs - try to count all subsidiaries
+                count_query = "SELECT COUNT(*) as cnt FROM Subsidiary WHERE isinactive = 'F'"
+                count_response = query_netsuite(count_query)
+                if isinstance(count_response, list) and len(count_response) > 0:
+                    sub_count = int(count_response[0].get('cnt', 0))
+                    if sub_count > 1:
+                        oneworld_result['enabled'] = True
+                        oneworld_result['details'] = f"Enabled ({sub_count} subsidiaries)"
+                    else:
+                        oneworld_result['details'] = "Single subsidiary"
+            
+            results['summary']['passed'] += 1
+        else:
+            oneworld_result['error'] = 'Subsidiary table not accessible'
+    except Exception as e:
+        oneworld_result['error'] = str(e)
+    
+    results['checks'].append(oneworld_result)
+    results['features']['oneworld'] = oneworld_result.get('enabled', False)
+    
+    # =================================================================
+    # 2. Get All Subsidiaries (for display)
+    # =================================================================
+    try:
+        sub_query = """
+            SELECT id, name, iselimination 
+            FROM Subsidiary 
+            WHERE isinactive = 'F' 
+            ORDER BY name
+        """
+        sub_response = query_netsuite(sub_query)
+        if isinstance(sub_response, list):
+            results['subsidiaries'] = [
+                {'id': str(row['id']), 'name': row['name'], 'isElimination': row.get('iselimination') == 'T'}
+                for row in sub_response
+            ]
+    except:
+        pass  # Already handled in OneWorld check
+    
+    # =================================================================
+    # 3. Multi-Book Accounting - CompanyFeatureSetup
+    # =================================================================
+    multibook_result = {
+        'name': 'Multi-Book Accounting',
+        'table': 'AccountingBook',
+        'required': False,
+        'accessible': False,
+        'enabled': False,
+        'details': None
+    }
+    
+    try:
+        mb_query = "SELECT Name, IsAvailable, IsActive FROM CompanyFeatureSetup WHERE ID = 'MULTIBOOK'"
+        mb_response = query_netsuite(mb_query)
+        
+        if isinstance(mb_response, list) and len(mb_response) > 0:
+            results['suiteql_access'] = True
+            multibook_result['accessible'] = True
+            row = mb_response[0]
+            is_available = row.get('isavailable') == 'T'
+            is_active = row.get('isactive') == 'T'
+            multibook_result['enabled'] = is_active
+            multibook_result['details'] = f"Available: {'Yes' if is_available else 'No'}, Active: {'Yes' if is_active else 'No'}"
+            results['summary']['passed'] += 1
+        elif isinstance(mb_response, dict) and 'error' in mb_response:
+            multibook_result['details'] = 'CompanyFeatureSetup not accessible'
+    except Exception as e:
+        multibook_result['error'] = str(e)
+    
+    results['checks'].append(multibook_result)
+    results['features']['multibook'] = multibook_result.get('enabled', False)
+    
+    # =================================================================
+    # 4. Budgets - CompanyFeatureSetup for MULTIPLEBUDGETS
+    # =================================================================
+    budget_result = {
+        'name': 'Budgets',
+        'table': 'Budgets',
+        'required': False,
+        'accessible': False,
+        'enabled': False,
+        'details': None
+    }
+    
+    try:
+        budget_query = "SELECT Name, ID, IsAvailable, IsActive FROM CompanyFeatureSetup WHERE ID = 'MULTIPLEBUDGETS'"
+        budget_response = query_netsuite(budget_query)
+        
+        if isinstance(budget_response, list) and len(budget_response) > 0:
+            results['suiteql_access'] = True
+            budget_result['accessible'] = True
+            row = budget_response[0]
+            is_available = row.get('isavailable') == 'T'
+            is_active = row.get('isactive') == 'T'
+            budget_result['enabled'] = is_active
+            budget_result['details'] = f"Available: {'Yes' if is_available else 'No'}, Active: {'Yes' if is_active else 'No'}"
+            results['summary']['passed'] += 1
+        elif isinstance(budget_response, dict) and 'error' in budget_response:
+            # Fallback: try querying Budgets table directly
+            fallback_query = "SELECT TOP 1 id FROM Budgets"
+            fallback_response = query_netsuite(fallback_query)
+            if isinstance(fallback_response, list):
+                budget_result['accessible'] = True
+                budget_result['enabled'] = len(fallback_response) > 0
+                budget_result['details'] = f"{len(fallback_response)} budget(s) found" if fallback_response else "No budgets"
+    except Exception as e:
+        budget_result['error'] = str(e)
+    
+    results['checks'].append(budget_result)
+    results['features']['budgets'] = budget_result.get('enabled', False)
+    
+    # =================================================================
+    # 5. Required Core Tables
+    # =================================================================
+    core_checks = [
         ('Account', 'Chart of Accounts', True, 
-         "SELECT TOP 1 id, acctnumber, accountsearchdisplaynamecopy FROM Account WHERE isinactive = 'F'"),
+         "SELECT TOP 1 id, acctnumber FROM Account WHERE isinactive = 'F'"),
         
-        ('TransactionAccountingLine', 'Transaction Lines (GL Data)', True,
-         "SELECT tal.account, tal.amount FROM TransactionAccountingLine tal WHERE ROWNUM <= 1"),
-        
-        ('Transaction', 'Transactions', True,
-         "SELECT TOP 1 id, trandate, postingperiod FROM Transaction"),
+        ('TransactionAccountingLine', 'GL Transaction Lines', True,
+         "SELECT tal.account FROM TransactionAccountingLine tal WHERE ROWNUM <= 1"),
         
         ('AccountingPeriod', 'Accounting Periods', True,
-         "SELECT TOP 1 id, periodname, startdate, enddate FROM AccountingPeriod"),
-        
-        ('Subsidiary', 'Subsidiaries (OneWorld)', False,
-         "SELECT TOP 1 id, name, currency FROM Subsidiary WHERE isinactive = 'F'"),
+         "SELECT TOP 1 id, periodname FROM AccountingPeriod"),
         
         ('Department', 'Departments', False,
          "SELECT TOP 1 id, name FROM Department WHERE isinactive = 'F'"),
@@ -785,82 +919,38 @@ def check_permissions():
         
         ('Location', 'Locations', False,
          "SELECT TOP 1 id, name FROM Location WHERE isinactive = 'F'"),
-        
-        ('Budget', 'Budgets', False,
-         "SELECT TOP 1 b.account FROM Budget b"),
-        
-        ('ConsolidatedExchangeRate', 'Exchange Rates', False,
-         "SELECT TOP 1 id, fromcurrency, tocurrency FROM ConsolidatedExchangeRate"),
-        
-        ('AccountingBook', 'Accounting Books (Multi-Book)', False,
-         "SELECT TOP 1 id, name FROM AccountingBook WHERE isinactive = 'F'"),
     ]
     
-    for table_name, display_name, required, test_query in checks:
+    for table_name, display_name, required, test_query in core_checks:
         check_result = {
             'table': table_name,
             'name': display_name,
             'required': required,
             'accessible': False,
-            'error': None,
-            'sample_data': None
+            'error': None
         }
         
         try:
-            response = requests.post(
-                suiteql_url,
-                auth=auth,
-                headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
-                json={'q': test_query},
-                timeout=15
-            )
+            response = query_netsuite(test_query)
             
-            if response.status_code == 200:
-                data = response.json()
-                items = data.get('items', [])
+            if isinstance(response, list):
                 check_result['accessible'] = True
-                check_result['row_count'] = len(items)
-                results['suiteql_access'] = True  # If any query works, SuiteQL is enabled
-                
-                if items:
-                    # Include sample data (first row) for debugging
-                    check_result['sample_data'] = items[0]
-                
+                check_result['row_count'] = len(response)
+                results['suiteql_access'] = True
                 results['summary']['passed'] += 1
                 if required:
                     results['summary']['required_passed'] += 1
-                    
-            elif response.status_code == 400:
-                # Table might not exist (non-OneWorld, no budgets, etc.)
-                error_data = response.json() if response.text else {}
-                error_msg = error_data.get('o:errorDetails', [{}])[0].get('detail', 'Unknown error')
-                
-                if 'invalid table' in error_msg.lower() or 'does not exist' in error_msg.lower():
-                    check_result['error'] = 'Table not available (feature may not be enabled)'
-                    check_result['accessible'] = None  # N/A, not a permission issue
+            elif isinstance(response, dict) and 'error' in response:
+                error_detail = response.get('details', response.get('error', 'Unknown error'))
+                if 'invalid' in str(error_detail).lower() or 'not found' in str(error_detail).lower():
+                    check_result['error'] = 'Feature not enabled'
+                    check_result['accessible'] = None  # N/A
                 else:
-                    check_result['error'] = error_msg
+                    check_result['error'] = str(error_detail)[:100]
                     results['summary']['failed'] += 1
                     if required:
                         results['summary']['required_failed'] += 1
                         
-            elif response.status_code == 403:
-                check_result['error'] = 'Permission denied - user role lacks access'
-                results['summary']['failed'] += 1
-                if required:
-                    results['summary']['required_failed'] += 1
-                    
-            else:
-                check_result['error'] = f'HTTP {response.status_code}: {response.text[:200]}'
-                results['summary']['failed'] += 1
-                if required:
-                    results['summary']['required_failed'] += 1
-                    
-        except requests.exceptions.Timeout:
-            check_result['error'] = 'Query timed out'
-            results['summary']['failed'] += 1
-            if required:
-                results['summary']['required_failed'] += 1
         except Exception as e:
             check_result['error'] = str(e)
             results['summary']['failed'] += 1
@@ -869,16 +959,18 @@ def check_permissions():
         
         results['checks'].append(check_result)
     
-    # Generate overall status
+    # =================================================================
+    # Generate Overall Status
+    # =================================================================
     if not results['suiteql_access']:
         results['status'] = 'error'
-        results['message'] = 'SuiteQL access denied. Ensure the user role has SuiteAnalytics Workbook permission and the Integration Record has SuiteQL scope enabled.'
+        results['message'] = 'SuiteQL access denied. Check role permissions.'
     elif results['summary']['required_failed'] > 0:
         results['status'] = 'warning'
-        results['message'] = f"Some required permissions are missing. {results['summary']['required_failed']} required table(s) not accessible."
+        results['message'] = f"{results['summary']['required_failed']} required permission(s) missing."
     else:
         results['status'] = 'success'
-        results['message'] = f"All required permissions verified. {results['summary']['passed']} table(s) accessible."
+        results['message'] = f"All required permissions verified."
     
     return jsonify(results)
 
