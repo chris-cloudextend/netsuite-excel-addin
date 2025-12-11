@@ -596,6 +596,13 @@ def convert_name_to_id(dimension_type, value):
     # Look up name in cache (case-insensitive)
     value_lower = str(value).lower().strip()
     
+    # For subsidiaries, handle "(Consolidated)" suffix
+    # The "(Consolidated)" version uses the SAME subsidiary ID - it just affects
+    # how BUILTIN.CONSOLIDATE handles child transactions
+    if dimension_type == 'subsidiary' and value_lower.endswith(' (consolidated)'):
+        value_lower = value_lower.replace(' (consolidated)', '')
+        print(f"   Stripped '(Consolidated)' suffix → looking up '{value_lower}'")
+    
     # Map dimension type to cache key (handle 'class' → 'classes')
     cache_key_map = {
         'subsidiary': 'subsidiaries',

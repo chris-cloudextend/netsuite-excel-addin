@@ -17,7 +17,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://counter-gibraltar-conclude-believe.trycloudflare.com';
+    const TUNNEL_URL = 'https://coupons-grad-issue-nav.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
