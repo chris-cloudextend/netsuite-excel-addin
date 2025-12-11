@@ -169,45 +169,39 @@
         },
         {
           "name": "subsidiary",
-          "description": "Subsidiary ID (optional, use \"\" to ignore)",
+          "description": "Subsidiary filter (use \"\" for all)",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         },
         {
           "name": "department",
-          "description": "Department ID (optional, use \"\" to ignore)",
+          "description": "Department filter (use \"\" for all)",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         },
         {
           "name": "location",
-          "description": "Location ID (optional, use \"\" to ignore)",
+          "description": "Location filter (use \"\" for all)",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         },
         {
           "name": "classId",
-          "description": "Class ID (optional, use \"\" to ignore)",
+          "description": "Class filter (use \"\" for all)",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         },
         {
           "name": "accountingBook",
-          "description": "Accounting Book ID (optional, defaults to Primary Book). For Multi-Book Accounting.",
+          "description": "Accounting Book ID (use \"\" for Primary Book)",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         },
         {
           "name": "budgetCategory",
-          "description": "Budget Category name or ID (e.g., \"FY 2024 Budget\"). Optional - omit to include all categories.",
+          "description": "Budget Category name or ID (use \"\" for all categories)",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         }
       ],
       "options": {
