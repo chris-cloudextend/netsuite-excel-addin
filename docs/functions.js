@@ -11,6 +11,8 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
+const FUNCTIONS_VERSION = '3.0.5.3';  // Version marker for debugging
+console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
 // STATUS BROADCAST - Communicate progress to taskpane via localStorage
@@ -747,16 +749,22 @@ async function runBuildModeBatch() {
             const p = item.params;
             accounts.add(p.account);
             
+            // DEBUG: Log what we're processing
+            console.log(`   📅 Processing: ${p.account} from=${p.fromPeriod} to=${p.toPeriod}`);
+            
             // If there's a date RANGE (fromPeriod !== toPeriod), expand to all months
             if (p.fromPeriod && p.toPeriod && p.fromPeriod !== p.toPeriod) {
                 // Use the second expandPeriodRange function that takes (from, to) 
                 const expandedPeriods = expandPeriodRangeFromTo(p.fromPeriod, p.toPeriod);
+                console.log(`   📅 EXPANDING range: ${p.fromPeriod} to ${p.toPeriod} → ${expandedPeriods.length} periods`);
                 for (const period of expandedPeriods) {
                     periods.add(period);
                 }
             } else if (p.fromPeriod && p.fromPeriod !== '') {
+                console.log(`   📅 Single period (from): ${p.fromPeriod}`);
                 periods.add(p.fromPeriod);
             } else if (p.toPeriod && p.toPeriod !== '') {
+                console.log(`   📅 Single period (to): ${p.toPeriod}`);
                 periods.add(p.toPeriod);
             }
         }
