@@ -465,6 +465,29 @@ BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
 | Income | Negative | × -1 |
 | Expenses | Positive | × 1 |
 
+### Special Account (sspecacct) Sign Handling
+
+NetSuite uses "Matching" special accounts as contra/offset entries for currency revaluation. These require an **additional sign inversion**:
+
+```sql
+-- Standard P&L sign logic PLUS Matching account inversion
+SUM(amount) 
+    * CASE WHEN a.accttype IN ('Income', 'OthIncome') THEN -1 ELSE 1 END
+    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
+```
+
+| Account | sspecacct | Effect |
+|---------|-----------|--------|
+| 89100 - Unrealized Gain/Loss | `UnrERV` | Normal sign |
+| 89201 - Unrealized Matching Gain/Loss | `MatchingUnrERV` | **Inverted sign** |
+
+Find all Matching accounts:
+```sql
+SELECT id, acctnumber, fullname, accttype, sspecacct 
+FROM account 
+WHERE sspecacct LIKE 'Matching%'
+```
+
 ### Account Type Constants
 
 **CRITICAL - Exact spelling required:**

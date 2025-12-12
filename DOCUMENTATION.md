@@ -10,6 +10,7 @@
 6. [SuiteQL Deep Dive](#suiteql-deep-dive)
 7. [BUILTIN.CONSOLIDATE Explained](#builtinconsolidate-explained)
 8. [Account Types & Sign Conventions](#account-types--sign-conventions)
+   - [Special Account Sign Handling (sspecacct)](#special-account-sign-handling-sspecacct)
 9. [AWS Migration Roadmap](#aws-migration-roadmap)
 10. [CEFI Integration (CloudExtend Federated Integration)](#cefi-integration-cloudextend-federated-integration)
 11. [Troubleshooting](#troubleshooting)
@@ -655,6 +656,63 @@ Cost of Goods Sold  COGS (legacy - include BOTH!)
 Expense           Operating Expense
 OthExpense        Other Expense
 ```
+
+## Special Account Sign Handling (sspecacct)
+
+### The Problem
+
+Certain NetSuite accounts require **additional sign inversion** when displaying amounts on financial statements. Specifically, accounts with a `sspecacct` (Special Account) field value that starts with "Matching" need their calculated amounts inverted to match NetSuite's native financial report presentation.
+
+### Background
+
+NetSuite uses "Matching" special accounts as **contra/offset entries for currency revaluation**. For example:
+
+| Account | sspecacct | Display Behavior |
+|---------|-----------|------------------|
+| 89100 - Unrealized Gain/Loss | `UnrERV` | Normal sign logic |
+| 89201 - Unrealized Matching Gain/Loss | `MatchingUnrERV` | **Inverted sign** |
+
+Both accounts have the same `accttype` (e.g., `OthExpense`), so you **cannot rely on account type alone** for sign logic.
+
+### The Solution
+
+Apply an additional sign inversion for any account where `sspecacct LIKE 'Matching%'`.
+
+**SQL Pattern (applied to all P&L queries):**
+```sql
+SUM(amount) 
+    * CASE WHEN a.accttype IN ('Income', 'OthIncome') THEN -1 ELSE 1 END
+    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
+```
+
+**How it works:**
+
+| Account Type | Is Matching? | First Multiplier | Second Multiplier | Net Effect |
+|--------------|--------------|------------------|-------------------|------------|
+| Income/Revenue | No | -1 | 1 | -1 (flip to positive) |
+| Expense | No | 1 | 1 | 1 (keep as is) |
+| Income/Revenue | Yes | -1 | -1 | 1 (double flip) |
+| **OthExpense (Matching)** | **Yes** | 1 | **-1** | **-1 (flip for display)** |
+
+### Why This Works
+
+- The `sspecacct` field is a NetSuite system field that identifies special-purpose accounts
+- "Matching" is NetSuite's naming convention for contra accounts used in currency revaluation eliminations
+- This approach is **universal** and will automatically handle any future "Matching" special accounts NetSuite may add
+- **No hardcoded account numbers required**
+
+### Testing
+
+Verify against NetSuite's native Income Statement for any account with `sspecacct LIKE 'Matching%'`:
+
+```sql
+SELECT id, acctnumber, fullname, accttype, sspecacct 
+FROM account 
+WHERE sspecacct LIKE 'Matching%'
+```
+
+Current Matching accounts in this instance:
+- **89201** - Unrealized Matching Gain/Loss (`MatchingUnrERV`)
 
 ---
 
