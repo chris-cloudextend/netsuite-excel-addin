@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.13</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.14</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2962,7 +2962,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.13</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.14</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -5619,13 +5619,15 @@
                     </div>
                 `;
                 
-                // Fetch accounts for the target year
+                // Fetch accounts for the target year AND selected subsidiary
+                // This ensures we get accounts that have data for THIS subsidiary
+                console.log(`Syncing structure for year ${targetYear}, subsidiary: "${currentSubsidiary}"`);
                 const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         year: targetYear,
-                        subsidiary: '',
+                        subsidiary: currentSubsidiary || '',  // Use selected subsidiary!
                         department: '',
                         location: '',
                         class: ''
@@ -7873,13 +7875,14 @@ export default {
             const statusEl = document.getElementById('refreshStatus');
             
             try {
-                // Fetch accounts for the target year
+                // Fetch accounts for the target year AND selected subsidiary
+                console.log(`performStructureSync: year=${targetYear}, subsidiary="${currentSubsidiary}"`);
                 const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         year: targetYear,
-                        subsidiary: '',
+                        subsidiary: currentSubsidiary || '',  // Use selected subsidiary!
                         department: '',
                         location: '',
                         class: ''
@@ -8795,15 +8798,15 @@ export default {
                 // If this is an auto-generated sheet with sync enabled, rebuild structure
                 if (shouldSyncStructure) {
                     showLoading('Refresh Accounts', `Syncing structure for ${syncYear}...`, 10);
-                    console.log(`🔄 Rebuilding Income Statement structure for year ${syncYear}`);
+                    console.log(`🔄 Rebuilding Income Statement structure for year ${syncYear}, subsidiary: "${syncSubsidiary}"`);
                     
-                    // Fetch accounts for the target year
+                    // Fetch accounts for the target year AND selected subsidiary
                     const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             year: syncYear,
-                            subsidiary: '',
+                            subsidiary: syncSubsidiary || '',  // Use selected subsidiary!
                             department: '',
                             location: '',
                             class: ''
