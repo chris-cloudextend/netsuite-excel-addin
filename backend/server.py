@@ -5233,24 +5233,44 @@ def get_all_lookups():
             all_subs = {}
             
             if isinstance(hierarchy_result, list):
+                # First pass: collect all subsidiaries and their parents
                 for row in hierarchy_result:
                     sub_id = str(row['id'])
-                    all_subs[sub_id] = row['name']
-                    if row.get('parent'):
-                        parent_ids.add(str(row['parent']))
+                    parent_id = str(row['parent']) if row.get('parent') else None
+                    all_subs[sub_id] = {
+                        'name': row['name'],
+                        'parent': parent_id
+                    }
+                    if parent_id:
+                        parent_ids.add(parent_id)
                 
-                # Add all subsidiaries
-                for sub_id, sub_name in all_subs.items():
+                # Second pass: calculate depth for each subsidiary
+                def get_depth(sub_id):
+                    depth = 0
+                    current = sub_id
+                    while current and current in all_subs and all_subs[current]['parent']:
+                        depth += 1
+                        current = all_subs[current]['parent']
+                    return depth
+                
+                # Add all subsidiaries with hierarchy info
+                for sub_id, sub_info in all_subs.items():
+                    depth = get_depth(sub_id)
                     lookups['subsidiaries'].append({
                         'id': sub_id,
-                        'name': sub_name
+                        'name': sub_info['name'],
+                        'parent': sub_info['parent'],
+                        'depth': depth
                     })
                     
                     # If this is a parent, also add "(Consolidated)" version
                     if sub_id in parent_ids:
                         lookups['subsidiaries'].append({
                             'id': sub_id,  # Same ID, BUILTIN.CONSOLIDATE handles consolidation
-                            'name': f"{sub_name} (Consolidated)"
+                            'name': f"{sub_info['name']} (Consolidated)",
+                            'parent': sub_info['parent'],
+                            'depth': depth,
+                            'isConsolidated': True
                         })
         except Exception as e:
             print(f"Error loading subsidiary hierarchy: {e}", file=sys.stderr)

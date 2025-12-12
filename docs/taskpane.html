@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.15</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.16</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2962,7 +2962,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.15</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.16</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -3099,6 +3099,72 @@
                 console.log('🏢 Subsidiary lookup cached:', Object.keys(subsidiaryLookupCache).length, 'entries');
             }
             return subsidiaryLookupCache;
+        }
+        
+        // Sort subsidiaries hierarchically for display
+        // Parents come first, then children indented underneath
+        function sortSubsidiariesHierarchically(subsidiaries) {
+            if (!subsidiaries || subsidiaries.length === 0) return [];
+            
+            // Build a map of id → subsidiary for quick lookup
+            const subMap = new Map();
+            subsidiaries.forEach(s => {
+                // Store by ID (non-consolidated version takes precedence)
+                if (!subMap.has(s.id) || !s.isConsolidated) {
+                    subMap.set(s.id, s);
+                }
+            });
+            
+            // Build children map: parent_id → [child_ids]
+            const childrenOf = new Map();
+            subsidiaries.forEach(s => {
+                if (s.parent && !s.isConsolidated) {
+                    if (!childrenOf.has(s.parent)) {
+                        childrenOf.set(s.parent, []);
+                    }
+                    childrenOf.get(s.parent).push(s.id);
+                }
+            });
+            
+            // Find root subsidiaries (no parent)
+            const roots = subsidiaries.filter(s => !s.parent && !s.isConsolidated);
+            
+            // Recursively build sorted list
+            const result = [];
+            const visited = new Set();
+            
+            function addSubtree(sub, depth) {
+                if (visited.has(sub.id + (sub.isConsolidated ? '_c' : ''))) return;
+                visited.add(sub.id + (sub.isConsolidated ? '_c' : ''));
+                
+                // Add this subsidiary
+                result.push({ ...sub, depth });
+                
+                // If this is a parent, add its "(Consolidated)" version and children
+                if (childrenOf.has(sub.id)) {
+                    // Add consolidated version right after the parent
+                    const consolidated = subsidiaries.find(s => s.id === sub.id && s.isConsolidated);
+                    if (consolidated && !visited.has(sub.id + '_c')) {
+                        visited.add(sub.id + '_c');
+                        result.push({ ...consolidated, depth });
+                    }
+                    
+                    // Add children (sorted alphabetically)
+                    const childIds = childrenOf.get(sub.id);
+                    const children = childIds
+                        .map(id => subMap.get(id))
+                        .filter(Boolean)
+                        .sort((a, b) => a.name.localeCompare(b.name));
+                    
+                    children.forEach(child => addSubtree(child, depth + 1));
+                }
+            }
+            
+            // Sort roots alphabetically and build tree
+            roots.sort((a, b) => a.name.localeCompare(b.name));
+            roots.forEach(root => addSubtree(root, 0));
+            
+            return result;
         }
         
         // ========================================================================
@@ -7236,13 +7302,21 @@ export default {
                 const data = await response.json();
                 console.log('Lookups loaded:', data);
                 
-                // Populate subsidiary dropdown - Show NAMES only (backend converts to IDs)
+                // Populate subsidiary dropdown - Show NAMES with hierarchical indentation
                 const subSelect = document.getElementById('subsidiarySelect');
                 subSelect.innerHTML = '<option value="">-- All (No Filter) --</option>';
-                (data.subsidiaries || []).forEach(item => {
+                
+                // Sort subsidiaries hierarchically
+                const subsidiaries = data.subsidiaries || [];
+                const sortedSubs = sortSubsidiariesHierarchically(subsidiaries);
+                
+                sortedSubs.forEach(item => {
                     const option = document.createElement('option');
                     option.value = item.name;  // Use NAME as value (backend converts)
-                    option.textContent = item.name;  // Show NAME only
+                    // Add visual indentation based on depth
+                    const indent = '\u00A0\u00A0\u00A0\u00A0'.repeat(item.depth || 0);  // 4 non-breaking spaces per level
+                    const prefix = (item.depth || 0) > 0 ? '└─ ' : '';
+                    option.textContent = indent + prefix + item.name;
                     subSelect.appendChild(option);
                 });
                 
