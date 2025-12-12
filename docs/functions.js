@@ -11,7 +11,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.6';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.7';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -2878,20 +2878,46 @@ async function processBatchQueue() {
         // Collect ALL unique periods from ALL requests in this group
         // EXPAND date ranges (e.g., "Jan 2025" to "Dec 2025" → all 12 months)
         const periods = new Set();
+        let isFullYearRequest = true;
+        let yearForOptimization = null;
+        
         for (const r of groupRequests) {
             const { fromPeriod, toPeriod } = r.request.params;
             if (fromPeriod && toPeriod && fromPeriod !== toPeriod) {
+                // Check if this is a full year request (Jan to Dec of same year)
+                const fromMatch = fromPeriod.match(/^Jan\s+(\d{4})$/);
+                const toMatch = toPeriod.match(/^Dec\s+(\d{4})$/);
+                if (fromMatch && toMatch && fromMatch[1] === toMatch[1]) {
+                    const year = fromMatch[1];
+                    if (yearForOptimization === null) {
+                        yearForOptimization = year;
+                    } else if (yearForOptimization !== year) {
+                        isFullYearRequest = false;
+                    }
+                } else {
+                    isFullYearRequest = false;
+                }
+                
                 // Expand the range to all months
                 const expanded = expandPeriodRangeFromTo(fromPeriod, toPeriod);
                 console.log(`  📅 Expanding ${fromPeriod} to ${toPeriod} → ${expanded.length} months`);
                 expanded.forEach(p => periods.add(p));
             } else if (fromPeriod) {
+                isFullYearRequest = false;
                 periods.add(fromPeriod);
             } else if (toPeriod) {
+                isFullYearRequest = false;
                 periods.add(toPeriod);
             }
         }
         const periodsArray = [...periods];
+        
+        // OPTIMIZATION: If all requests are for a full year, use the year endpoint
+        const useYearEndpoint = isFullYearRequest && yearForOptimization && periodsArray.length === 12;
+        
+        if (useYearEndpoint) {
+            console.log(`  🗓️ YEAR OPTIMIZATION: Using /batch/balance/year for FY ${yearForOptimization}`);
+        }
         
         console.log(`  Batch: ${accounts.length} accounts × ${periodsArray.length} period(s)`);
         
@@ -2930,6 +2956,53 @@ async function processBatchQueue() {
                 periodsNeeded,
                 periodsProcessed: new Set()
             });
+        }
+        
+        // YEAR OPTIMIZATION: If requesting full year, use optimized year endpoint
+        if (useYearEndpoint) {
+            const yearStartTime = Date.now();
+            console.log(`  📤 Year request: ${accounts.length} accounts for FY ${yearForOptimization}`);
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/batch/balance/year`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        accounts: accounts,
+                        year: parseInt(yearForOptimization),
+                        subsidiary: filters.subsidiary || '',
+                        accountingbook: filters.accountingBook || ''
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const balances = data.balances || {};
+                    const yearTime = ((Date.now() - yearStartTime) / 1000).toFixed(1);
+                    const periodName = data.period || `FY ${yearForOptimization}`;
+                    
+                    console.log(`  ✅ Year endpoint returned ${Object.keys(balances).length} accounts in ${yearTime}s`);
+                    
+                    // Resolve all requests with year totals
+                    for (const {cacheKey, request} of groupRequests) {
+                        const account = request.params.account;
+                        const accountData = balances[account] || {};
+                        const total = accountData[periodName] || 0;
+                        
+                        console.log(`    🎯 RESOLVING (year): ${account} = ${total}`);
+                        
+                        cache.balance.set(cacheKey, total);
+                        request.resolve(total);
+                        resolvedRequests.add(cacheKey);
+                    }
+                    
+                    continue; // Skip to next filter group
+                } else {
+                    console.warn(`  ⚠️ Year endpoint failed (${response.status}), falling back to monthly`);
+                }
+            } catch (yearError) {
+                console.warn(`  ⚠️ Year endpoint error, falling back to monthly:`, yearError);
+            }
         }
         
         // Process chunks sequentially (both accounts AND periods)

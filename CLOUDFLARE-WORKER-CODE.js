@@ -17,7 +17,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://lucas-motors-thorough-europe.trycloudflare.com';
+    const TUNNEL_URL = 'https://lopez-valves-premiere-bridges.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {

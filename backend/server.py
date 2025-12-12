@@ -3123,6 +3123,137 @@ def batch_bs_periods():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/batch/balance/year', methods=['POST'])
+def batch_balance_year():
+    """
+    OPTIMIZED YEAR ENDPOINT - Get annual P&L totals using NetSuite's year periods
+    
+    This is faster than querying 12 months because NetSuite pre-calculates year totals.
+    
+    POST JSON:
+    {
+        "accounts": ["60010", "60020", "60030"],
+        "year": 2025,
+        "subsidiary": "",
+        "accountingbook": ""
+    }
+    
+    Returns:
+    {
+        "balances": {
+            "60010": {"FY 2025": 43983641.42},
+            "60020": {"FY 2025": 1234567.89}
+        }
+    }
+    """
+    data = request.get_json()
+    
+    if not data or 'accounts' not in data or 'year' not in data:
+        return jsonify({'error': 'accounts and year required'}), 400
+    
+    accounts = data.get('accounts', [])
+    year = data.get('year')
+    subsidiary = data.get('subsidiary', '')
+    accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
+    
+    # Convert subsidiary name to ID if needed
+    subsidiary = convert_name_to_id('subsidiary', subsidiary)
+    
+    # Handle accountingbook
+    if isinstance(accountingbook, str) and accountingbook.strip():
+        try:
+            accountingbook = int(accountingbook)
+        except ValueError:
+            accountingbook = DEFAULT_ACCOUNTING_BOOK
+    elif not accountingbook:
+        accountingbook = DEFAULT_ACCOUNTING_BOOK
+    
+    print(f"\n{'='*80}")
+    print(f"🗓️  YEAR PERIOD QUERY: {year}")
+    print(f"   Accounts: {len(accounts)}")
+    print(f"   Subsidiary: {subsidiary or 'consolidated'}")
+    print(f"   Accounting Book: {accountingbook}")
+    print(f"{'='*80}\n")
+    
+    # Determine target subsidiary for CONSOLIDATE
+    if subsidiary:
+        target_sub = int(subsidiary)
+    else:
+        target_sub = 1  # Parent/consolidated
+    
+    # Build account filter
+    account_filter = ", ".join([f"'{escape_sql(str(a))}'" for a in accounts])
+    
+    # Query all 12 monthly periods for the year and SUM to get annual total
+    # (Year periods don't have transactions posted to them - only monthly periods do)
+    # This is more efficient than 12 separate queries because we GROUP BY account only
+    query = f"""
+        SELECT 
+            a.acctnumber,
+            SUM(
+                TO_NUMBER(
+                    BUILTIN.CONSOLIDATE(
+                        tal.amount,
+                        'LEDGER',
+                        'DEFAULT',
+                        'DEFAULT',
+                        {target_sub},
+                        t.postingperiod,
+                        'DEFAULT'
+                    )
+                )
+                * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
+            ) AS balance
+        FROM transactionaccountingline tal
+        JOIN transaction t ON t.id = tal.transaction
+        JOIN account a ON tal.account = a.id
+        JOIN accountingperiod ap ON t.postingperiod = ap.id
+        WHERE a.acctnumber IN ({account_filter})
+          AND tal.posting = 'T'
+          AND tal.accountingbook = {accountingbook}
+          AND ap.isyear = 'F'
+          AND ap.isquarter = 'F'
+          AND EXTRACT(YEAR FROM ap.startdate) = {year}
+        GROUP BY a.acctnumber
+    """
+    
+    try:
+        result = query_netsuite(query)
+        
+        if isinstance(result, dict) and 'error' in result:
+            print(f"❌ Year query error: {result}")
+            return jsonify({'error': result.get('details', 'Query failed')}), 500
+        
+        # Build response - annual total per account
+        balances = {}
+        period_name = f"FY {year}"
+        
+        for row in result:
+            acct = row.get('acctnumber', '')
+            balance = float(row.get('balance', 0) or 0)
+            balances[acct] = {period_name: balance}
+        
+        # Fill in zeros for accounts not returned
+        for acct in accounts:
+            acct_str = str(acct)
+            if acct_str not in balances:
+                balances[acct_str] = {period_name: 0}
+        
+        print(f"✅ Year query: {len(result)} accounts with data, {len(accounts) - len(result)} zeros")
+        
+        return jsonify({
+            'balances': balances,
+            'year': year,
+            'period': period_name
+        })
+        
+    except Exception as e:
+        print(f"❌ Year query exception: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/batch/balance', methods=['POST'])
 def batch_balance():
     """
