@@ -11,7 +11,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.10';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.11';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -2115,42 +2115,80 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
                 
                 console.log(`🗑️ Cleared ALL caches (${cleared} balance entries)`);
             } else {
-                // Clear SPECIFIC items only - parse "60032:May 2025,60032:Jun 2025" format
+                // Clear SPECIFIC items - parse format:
+                // Old: "60032:May 2025,60032:Jun 2025"
+                // New: "balance:60032:May 2025,budget:60032:Jun 2025"
                 const items = itemsStr.split(',').map(s => {
-                    const [account, period] = s.trim().split(':');
-                    return { account, period };
+                    const parts = s.trim().split(':');
+                    if (parts.length >= 3 && (parts[0] === 'balance' || parts[0] === 'budget')) {
+                        // New format with type prefix
+                        return { type: parts[0], account: parts[1], period: parts.slice(2).join(':') };
+                    } else {
+                        // Old format without type prefix - assume balance
+                        return { type: 'balance', account: parts[0], period: parts.slice(1).join(':') };
+                    }
                 });
                 
-                console.log(`   Clearing ${items.length} specific items...`);
+                const balanceItems = items.filter(i => i.type === 'balance');
+                const budgetItems = items.filter(i => i.type === 'budget');
+                console.log(`   Clearing ${items.length} specific items (balance: ${balanceItems.length}, budget: ${budgetItems.length})...`);
                 
-                // Clear from localStorage (functions context)
-                try {
-                    const stored = localStorage.getItem('netsuite_balance_cache');
-                    if (stored) {
-                        const balanceData = JSON.parse(stored);
-                        let modified = false;
-                        
-                        for (const item of items) {
-                            if (balanceData[item.account] && balanceData[item.account][item.period] !== undefined) {
-                                delete balanceData[item.account][item.period];
-                                cleared++;
-                                modified = true;
-                                console.log(`   ✓ Cleared localStorage: ${item.account}/${item.period}`);
+                // Clear BALANCE items from localStorage
+                if (balanceItems.length > 0) {
+                    try {
+                        const stored = localStorage.getItem('netsuite_balance_cache');
+                        if (stored) {
+                            const balanceData = JSON.parse(stored);
+                            let modified = false;
+                            
+                            for (const item of balanceItems) {
+                                if (balanceData[item.account] && balanceData[item.account][item.period] !== undefined) {
+                                    delete balanceData[item.account][item.period];
+                                    cleared++;
+                                    modified = true;
+                                    console.log(`   ✓ Cleared balance localStorage: ${item.account}/${item.period}`);
+                                }
+                            }
+                            
+                            if (modified) {
+                                localStorage.setItem('netsuite_balance_cache', JSON.stringify(balanceData));
                             }
                         }
-                        
-                        if (modified) {
-                            localStorage.setItem('netsuite_balance_cache', JSON.stringify(balanceData));
-                        }
+                    } catch (e) {
+                        console.warn('   ⚠️ balance localStorage parse error:', e.message);
                     }
-                } catch (e) {
-                    console.warn('   ⚠️ localStorage parse error:', e.message);
+                }
+                
+                // Clear BUDGET items from localStorage
+                if (budgetItems.length > 0) {
+                    try {
+                        const stored = localStorage.getItem('netsuite_budget_cache');
+                        if (stored) {
+                            const budgetData = JSON.parse(stored);
+                            let modified = false;
+                            
+                            for (const item of budgetItems) {
+                                if (budgetData[item.account] && budgetData[item.account][item.period] !== undefined) {
+                                    delete budgetData[item.account][item.period];
+                                    cleared++;
+                                    modified = true;
+                                    console.log(`   ✓ Cleared budget localStorage: ${item.account}/${item.period}`);
+                                }
+                            }
+                            
+                            if (modified) {
+                                localStorage.setItem('netsuite_budget_cache', JSON.stringify(budgetData));
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('   ⚠️ budget localStorage parse error:', e.message);
+                    }
                 }
                 
                 // Clear from in-memory caches
                 for (const item of items) {
-                    // Clear from cache.balance
-                    const cacheKey = getCacheKey('balance', {
+                    const cacheToUse = item.type === 'budget' ? cache.budget : cache.balance;
+                    const cacheKey = getCacheKey(item.type, {
                         account: item.account,
                         fromPeriod: item.period,
                         toPeriod: item.period,
@@ -2160,14 +2198,14 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
                         classId: ''
                     });
                     
-                    if (cache.balance.has(cacheKey)) {
-                        cache.balance.delete(cacheKey);
+                    if (cacheToUse.has(cacheKey)) {
+                        cacheToUse.delete(cacheKey);
                         cleared++;
-                        console.log(`   ✓ Cleared cache.balance: ${item.account}/${item.period}`);
+                        console.log(`   ✓ Cleared cache.${item.type}: ${item.account}/${item.period}`);
                     }
                     
-                    // Clear from fullYearCache (check for null AND undefined)
-                    if (fullYearCache && fullYearCache[item.account]) {
+                    // Clear from fullYearCache (only for balance)
+                    if (item.type === 'balance' && fullYearCache && fullYearCache[item.account]) {
                         if (fullYearCache[item.account][item.period] !== undefined) {
                             delete fullYearCache[item.account][item.period];
                             cleared++;

@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.10</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.11</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2962,7 +2962,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.10</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.11</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -8282,10 +8282,12 @@ export default {
                 try {
                     localStorage.removeItem('netsuite_balance_cache');
                     localStorage.removeItem('netsuite_balance_cache_timestamp');
+                    localStorage.removeItem('netsuite_budget_cache');
+                    localStorage.removeItem('netsuite_budget_cache_timestamp');
                     localStorage.removeItem('netsuite_preload_status');
                     localStorage.removeItem('netsuite_cache_invalidate');
                     localStorage.removeItem('netsuite_status');
-                    console.log('   ✅ localStorage cleared');
+                    console.log('   ✅ localStorage cleared (balance + budget)');
                 } catch (e) {
                     console.warn('   ⚠️ localStorage clear failed:', e.message);
                 }
@@ -10238,25 +10240,29 @@ export default {
                     const formulas = range.formulas;
                     const values = range.values;
                     
-                    // Check if any cell contains XAVI.BALANCE formula
+                    // Check if any cell contains XAVI.BALANCE or XAVI.BUDGET formula
                     let formulaCount = 0;
                     const cellsWithFormulas = [];
                     
                     for (let r = 0; r < range.rowCount; r++) {
                         for (let c = 0; c < range.columnCount; c++) {
                             const formula = formulas[r][c];
-                            if (formula && typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
-                                formulaCount++;
-                                cellsWithFormulas.push({ row: r, col: c, formula });
+                            if (formula && typeof formula === 'string') {
+                                const upperFormula = formula.toUpperCase();
+                                if (upperFormula.includes('XAVI.BALANCE') || upperFormula.includes('XAVI.BUDGET')) {
+                                    const formulaType = upperFormula.includes('XAVI.BUDGET') ? 'budget' : 'balance';
+                                    formulaCount++;
+                                    cellsWithFormulas.push({ row: r, col: c, formula, formulaType });
+                                }
                             }
                         }
                     }
                     
-                    console.log(`📋 Found ${formulaCount} XAVI.BALANCE formulas in selection`);
+                    console.log(`📋 Found ${formulaCount} XAVI formulas in selection (BALANCE + BUDGET)`);
                     
                     if (formulaCount === 0) {
                         hideLoading();
-                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">⚠️ No XAVI.BALANCE formulas found in selection</strong></div>`;
+                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">⚠️ No XAVI.BALANCE or XAVI.BUDGET formulas found in selection</strong></div>`;
                         setTimeout(() => statusEl.textContent = '', 5000);
                         return;
                     }
@@ -10310,8 +10316,8 @@ export default {
                                 }
                                 
                                 if (account && period) {
-                                    itemsToClear.push({ account, period });
-                                    console.log(`   📌 Resolved: ${account} / ${period}`);
+                                    itemsToClear.push({ account, period, formulaType: cell.formulaType });
+                                    console.log(`   📌 Resolved: ${account} / ${period} (${cell.formulaType})`);
                                 }
                             } catch (e) {
                                 console.warn(`   ⚠️ Could not resolve refs for formula: ${formula}`, e);
@@ -10333,33 +10339,62 @@ export default {
                     // SELECTIVE cache clear - clear from localStorage directly
                     // Also set invalidation signal for functions.js to check
                     let clearedCount = 0;
+                    const balanceItems = itemsToClear.filter(i => i.formulaType === 'balance');
+                    const budgetItems = itemsToClear.filter(i => i.formulaType === 'budget');
+                    
                     try {
-                        const STORAGE_KEY = 'netsuite_balance_cache';
-                        const stored = localStorage.getItem(STORAGE_KEY);
-                        if (stored) {
-                            const balanceData = JSON.parse(stored);
+                        // Clear BALANCE cache
+                        const BALANCE_STORAGE_KEY = 'netsuite_balance_cache';
+                        const balanceStored = localStorage.getItem(BALANCE_STORAGE_KEY);
+                        if (balanceStored && balanceItems.length > 0) {
+                            const balanceData = JSON.parse(balanceStored);
                             let modified = false;
                             
-                            for (const item of itemsToClear) {
+                            for (const item of balanceItems) {
                                 const acct = String(item.account);
                                 if (balanceData[acct] && balanceData[acct][item.period] !== undefined) {
                                     delete balanceData[acct][item.period];
                                     clearedCount++;
                                     modified = true;
-                                    console.log(`   ✓ Cleared localStorage: ${acct}/${item.period}`);
+                                    console.log(`   ✓ Cleared balance localStorage: ${acct}/${item.period}`);
                                 }
                             }
                             
                             if (modified) {
-                                localStorage.setItem(STORAGE_KEY, JSON.stringify(balanceData));
-                                console.log(`   💾 Updated localStorage (removed ${clearedCount} entries)`);
+                                localStorage.setItem(BALANCE_STORAGE_KEY, JSON.stringify(balanceData));
+                                console.log(`   💾 Updated balance localStorage (removed ${clearedCount} entries)`);
+                            }
+                        }
+                        
+                        // Clear BUDGET cache
+                        const BUDGET_STORAGE_KEY = 'netsuite_budget_cache';
+                        const budgetStored = localStorage.getItem(BUDGET_STORAGE_KEY);
+                        if (budgetStored && budgetItems.length > 0) {
+                            const budgetData = JSON.parse(budgetStored);
+                            let budgetCleared = 0;
+                            let modified = false;
+                            
+                            for (const item of budgetItems) {
+                                const acct = String(item.account);
+                                if (budgetData[acct] && budgetData[acct][item.period] !== undefined) {
+                                    delete budgetData[acct][item.period];
+                                    budgetCleared++;
+                                    modified = true;
+                                    console.log(`   ✓ Cleared budget localStorage: ${acct}/${item.period}`);
+                                }
+                            }
+                            
+                            if (modified) {
+                                localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(budgetData));
+                                console.log(`   💾 Updated budget localStorage (removed ${budgetCleared} entries)`);
+                                clearedCount += budgetCleared;
                             }
                         }
                         
                         // Set cache invalidation signal - functions.js will check this
                         // and clear its in-memory caches when it sees items to invalidate
                         const invalidateKey = 'netsuite_cache_invalidate';
-                        const invalidateItems = itemsToClear.map(i => `${i.account}:${i.period}`);
+                        const invalidateItems = itemsToClear.map(i => `${i.formulaType}:${i.account}:${i.period}`);
                         localStorage.setItem(invalidateKey, JSON.stringify({
                             items: invalidateItems,
                             timestamp: Date.now()
@@ -10373,13 +10408,13 @@ export default {
                     console.log(`✅ Cleared ${clearedCount} localStorage entries for refresh`)
                     
                     // CRITICAL: Call XAVI.BALANCE("__CLEARCACHE__", "items", "") in the custom functions runtime
-                    // This clears cache in the SAME context as BALANCE (different from taskpane!)
-                    // Pass specific items as "60032:May 2025,60032:Jun 2025" format (simple, no JSON escaping)
+                    // This clears cache in the SAME context as BALANCE/BUDGET (different from taskpane!)
+                    // Pass specific items as "balance:60032:May 2025,budget:60032:Jun 2025" format
                     updateLoading('Clearing in-memory cache...', 60);
                     try {
-                        // Build simple comma-separated list: "60032:May 2025,60032:Jun 2025"
-                        const itemsList = itemsToClear.map(i => `${i.account}:${i.period}`).join(',');
-                        console.log(`📡 Calling __CLEARCACHE__ for ${itemsToClear.length} items...`);
+                        // Build list with formula type prefix: "balance:60032:May 2025,budget:60032:Jun 2025"
+                        const itemsList = itemsToClear.map(i => `${i.formulaType}:${i.account}:${i.period}`).join(',');
+                        console.log(`📡 Calling __CLEARCACHE__ for ${itemsToClear.length} items (balance: ${balanceItems.length}, budget: ${budgetItems.length})...`);
                         console.log(`   Items: ${itemsList}`);
                         
                         // Use a temporary cell to evaluate the BALANCE function with __CLEARCACHE__ command
