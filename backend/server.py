@@ -2155,8 +2155,8 @@ def batch_full_year_refresh():
         else:
             fiscal_year = datetime.now().year
     
-    # Get filters
-    subsidiary = data.get('subsidiary', '')
+    # Get filters - IMPORTANT: Save raw subsidiary BEFORE converting to ID
+    raw_subsidiary = data.get('subsidiary', '')
     class_id = data.get('class', '')
     department = data.get('department', '')
     location = data.get('location', '')
@@ -2165,6 +2165,9 @@ def batch_full_year_refresh():
     # BS accounts require cumulative calculation from beginning of time (slow)
     # Set skip_bs=true for fast P&L-only preload
     skip_bs = data.get('skip_bs', False)
+    
+    # Check if "(Consolidated)" suffix was used (before converting to ID)
+    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
     
     # Multi-Book Accounting support - default to Primary Book (ID 1)
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
@@ -2177,7 +2180,7 @@ def batch_full_year_refresh():
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     # Convert names to IDs
-    subsidiary = convert_name_to_id('subsidiary', subsidiary)
+    subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     class_id = convert_name_to_id('class', class_id)
     department = convert_name_to_id('department', department)
     location = convert_name_to_id('location', location)
@@ -2188,16 +2191,22 @@ def batch_full_year_refresh():
     else:
         target_sub = default_subsidiary_id or '1'
     
-    # Build filters dict
+    # Build filters dict - include use_hierarchy flag for consolidated requests
     filters = {}
     if subsidiary and subsidiary != '':
         filters['subsidiary'] = subsidiary
+        # Use hierarchy if explicitly consolidated OR if root subsidiary
+        filters['use_hierarchy'] = wants_consolidated or is_root_subsidiary(subsidiary)
     if class_id and class_id != '':
         filters['class'] = class_id
     if department and department != '':
         filters['department'] = department
     if location and location != '':
         filters['location'] = location
+    
+    print(f"🔍 FULL YEAR REFRESH: raw_subsidiary='{raw_subsidiary}', wants_consolidated={wants_consolidated}", file=sys.stderr)
+    if subsidiary:
+        print(f"   use_hierarchy={filters.get('use_hierarchy', False)}", file=sys.stderr)
     
     try:
         print(f"\n{'='*80}", flush=True)
@@ -2963,7 +2972,11 @@ def batch_full_year_refresh_bs():
         else:
             fiscal_year = datetime.now().year
     
-    subsidiary = convert_name_to_id('subsidiary', data.get('subsidiary', ''))
+    # IMPORTANT: Check for "(Consolidated)" BEFORE converting to ID
+    raw_subsidiary = data.get('subsidiary', '')
+    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
+    
+    subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     class_id = convert_name_to_id('class', data.get('class', ''))
     department = convert_name_to_id('department', data.get('department', ''))
     location = convert_name_to_id('location', data.get('location', ''))
@@ -2981,10 +2994,14 @@ def batch_full_year_refresh_bs():
     target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
     
     filters = {}
-    if subsidiary: filters['subsidiary'] = subsidiary
+    if subsidiary:
+        filters['subsidiary'] = subsidiary
+        filters['use_hierarchy'] = wants_consolidated or is_root_subsidiary(subsidiary)
     if class_id: filters['class'] = class_id
     if department: filters['department'] = department
     if location: filters['location'] = location
+    
+    print(f"🔍 BS FULL YEAR REFRESH: raw_subsidiary='{raw_subsidiary}', wants_consolidated={wants_consolidated}", file=sys.stderr)
     
     try:
         print(f"\n{'='*80}", flush=True)
@@ -3097,7 +3114,11 @@ def batch_bs_periods():
     if not periods:
         return jsonify({'error': 'periods list required'}), 400
     
-    subsidiary = convert_name_to_id('subsidiary', data.get('subsidiary', ''))
+    # IMPORTANT: Check for "(Consolidated)" BEFORE converting to ID
+    raw_subsidiary = data.get('subsidiary', '')
+    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
+    
+    subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     class_id = convert_name_to_id('class', data.get('class', ''))
     department = convert_name_to_id('department', data.get('department', ''))
     location = convert_name_to_id('location', data.get('location', ''))
@@ -3115,10 +3136,14 @@ def batch_bs_periods():
     target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
     
     filters = {}
-    if subsidiary: filters['subsidiary'] = subsidiary
+    if subsidiary:
+        filters['subsidiary'] = subsidiary
+        filters['use_hierarchy'] = wants_consolidated or is_root_subsidiary(subsidiary)
     if class_id: filters['class'] = class_id
     if department: filters['department'] = department
     if location: filters['location'] = location
+    
+    print(f"🔍 BS PERIODS: raw_subsidiary='{raw_subsidiary}', wants_consolidated={wants_consolidated}", file=sys.stderr)
     
     try:
         print(f"\n{'='*80}", flush=True)
@@ -3248,11 +3273,14 @@ def batch_balance_year():
     
     accounts = data.get('accounts', [])
     year = data.get('year')
-    subsidiary = data.get('subsidiary', '')
+    raw_subsidiary = data.get('subsidiary', '')
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
     
+    # Check for "(Consolidated)" BEFORE converting to ID
+    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
+    
     # Convert subsidiary name to ID if needed
-    subsidiary = convert_name_to_id('subsidiary', subsidiary)
+    subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     
     # Handle accountingbook
     if isinstance(accountingbook, str) and accountingbook.strip():
@@ -3263,10 +3291,23 @@ def batch_balance_year():
     elif not accountingbook:
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
+    # Determine if we should use hierarchy (include children)
+    use_hierarchy = False
+    sub_filter_clause = ""
+    if subsidiary:
+        use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+        if use_hierarchy:
+            hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
+            sub_filter_clause = f"AND t.subsidiary IN ({', '.join(hierarchy_subs)})"
+        else:
+            sub_filter_clause = f"AND t.subsidiary = {subsidiary}"
+    
     print(f"\n{'='*80}")
     print(f"🗓️  YEAR PERIOD QUERY: {year}")
     print(f"   Accounts: {len(accounts)}")
-    print(f"   Subsidiary: {subsidiary or 'consolidated'}")
+    print(f"   Raw Subsidiary: '{raw_subsidiary}'")
+    print(f"   Subsidiary ID: {subsidiary or 'consolidated'}")
+    print(f"   wants_consolidated: {wants_consolidated}, use_hierarchy: {use_hierarchy}")
     print(f"   Accounting Book: {accountingbook}")
     print(f"{'='*80}\n")
     
@@ -3309,6 +3350,7 @@ def batch_balance_year():
           AND ap.isyear = 'F'
           AND ap.isquarter = 'F'
           AND EXTRACT(YEAR FROM ap.startdate) = {year}
+          {sub_filter_clause}
         GROUP BY a.acctnumber
     """
     
@@ -3393,6 +3435,11 @@ def batch_balance():
     
     # Check if "(Consolidated)" suffix was used (before converting to ID)
     wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
+    
+    # DEBUG: Log consolidated detection
+    if raw_subsidiary:
+        print(f"🔍 CONSOLIDATED DEBUG: raw_subsidiary='{raw_subsidiary}'", file=sys.stderr)
+        print(f"   wants_consolidated={wants_consolidated}", file=sys.stderr)
     
     # Multi-Book Accounting support - default to Primary Book (ID 1)
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
@@ -3497,16 +3544,19 @@ def batch_balance():
         # Otherwise: just that specific subsidiary
         # ========================================================================
         if subsidiary and subsidiary != '':
-            use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+            is_root = is_root_subsidiary(subsidiary)
+            use_hierarchy = wants_consolidated or is_root
+            
+            print(f"🔍 HIERARCHY DEBUG: subsidiary_id={subsidiary}, is_root={is_root}, wants_consolidated={wants_consolidated}, use_hierarchy={use_hierarchy}", file=sys.stderr)
             
             if use_hierarchy:
                 hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
                 sub_filter = ', '.join(hierarchy_subs)
                 where_clauses.append(f"t.subsidiary IN ({sub_filter})")
-                print(f"DEBUG - Consolidated: {len(hierarchy_subs)} subsidiaries in hierarchy", file=sys.stderr)
+                print(f"✅ CONSOLIDATED: Including {len(hierarchy_subs)} subsidiaries: {hierarchy_subs}", file=sys.stderr)
             else:
                 where_clauses.append(f"t.subsidiary = {subsidiary}")
-                print(f"DEBUG - Single subsidiary: {subsidiary}", file=sys.stderr)
+                print(f"⚠️  SINGLE: Only subsidiary {subsidiary}", file=sys.stderr)
         else:
             # No subsidiary specified - use default (parent) and include all subsidiaries
             hierarchy_subs = get_subsidiaries_in_hierarchy(default_subsidiary_id or '1')
