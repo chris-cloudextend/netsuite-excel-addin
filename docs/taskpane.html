@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.16</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.17</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2962,7 +2962,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.16</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.17</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -3102,23 +3102,26 @@
         }
         
         // Sort subsidiaries hierarchically for display
-        // Parents come first, then children indented underneath
+        // Order: Consolidated first, then plain, then children indented
         function sortSubsidiariesHierarchically(subsidiaries) {
             if (!subsidiaries || subsidiaries.length === 0) return [];
             
-            // Build a map of id → subsidiary for quick lookup
+            // Separate consolidated and non-consolidated entries
+            const nonConsolidated = subsidiaries.filter(s => !s.isConsolidated);
+            const consolidated = subsidiaries.filter(s => s.isConsolidated);
+            
+            // Build a map of id → non-consolidated subsidiary
             const subMap = new Map();
-            subsidiaries.forEach(s => {
-                // Store by ID (non-consolidated version takes precedence)
-                if (!subMap.has(s.id) || !s.isConsolidated) {
-                    subMap.set(s.id, s);
-                }
-            });
+            nonConsolidated.forEach(s => subMap.set(s.id, s));
+            
+            // Build a map of id → consolidated subsidiary
+            const consolidatedMap = new Map();
+            consolidated.forEach(s => consolidatedMap.set(s.id, s));
             
             // Build children map: parent_id → [child_ids]
             const childrenOf = new Map();
-            subsidiaries.forEach(s => {
-                if (s.parent && !s.isConsolidated) {
+            nonConsolidated.forEach(s => {
+                if (s.parent) {
                     if (!childrenOf.has(s.parent)) {
                         childrenOf.set(s.parent, []);
                     }
@@ -3127,42 +3130,45 @@
             });
             
             // Find root subsidiaries (no parent)
-            const roots = subsidiaries.filter(s => !s.parent && !s.isConsolidated);
+            const roots = nonConsolidated.filter(s => !s.parent);
             
             // Recursively build sorted list
             const result = [];
             const visited = new Set();
             
-            function addSubtree(sub, depth) {
-                if (visited.has(sub.id + (sub.isConsolidated ? '_c' : ''))) return;
-                visited.add(sub.id + (sub.isConsolidated ? '_c' : ''));
+            function addSubtree(subId, depth) {
+                if (visited.has(subId)) return;
+                visited.add(subId);
                 
-                // Add this subsidiary
+                const sub = subMap.get(subId);
+                if (!sub) return;
+                
+                const isParent = childrenOf.has(subId);
+                const consolidatedVersion = consolidatedMap.get(subId);
+                
+                // For parents: add "(Consolidated)" FIRST, then plain version
+                if (isParent && consolidatedVersion) {
+                    result.push({ ...consolidatedVersion, depth });
+                }
+                
+                // Add the plain version
                 result.push({ ...sub, depth });
                 
-                // If this is a parent, add its "(Consolidated)" version and children
-                if (childrenOf.has(sub.id)) {
-                    // Add consolidated version right after the parent
-                    const consolidated = subsidiaries.find(s => s.id === sub.id && s.isConsolidated);
-                    if (consolidated && !visited.has(sub.id + '_c')) {
-                        visited.add(sub.id + '_c');
-                        result.push({ ...consolidated, depth });
-                    }
-                    
-                    // Add children (sorted alphabetically)
-                    const childIds = childrenOf.get(sub.id);
+                // Add children (sorted alphabetically)
+                if (isParent) {
+                    const childIds = childrenOf.get(subId);
                     const children = childIds
                         .map(id => subMap.get(id))
                         .filter(Boolean)
                         .sort((a, b) => a.name.localeCompare(b.name));
                     
-                    children.forEach(child => addSubtree(child, depth + 1));
+                    children.forEach(child => addSubtree(child.id, depth + 1));
                 }
             }
             
             // Sort roots alphabetically and build tree
             roots.sort((a, b) => a.name.localeCompare(b.name));
-            roots.forEach(root => addSubtree(root, 0));
+            roots.forEach(root => addSubtree(root.id, 0));
             
             return result;
         }
@@ -8583,7 +8589,7 @@ export default {
                 // These don't have XAVI.BALANCE but should use the same currency
                 // ============================================
                 if (isIncomeStatement) {
-                    console.log('💱 AUTO-FORMAT: Income Statement detected, formatting SUM cells too...');
+                    console.log('💱 AUTO-FORMAT: Income Statement detected, formatting ALL formula cells...');
                     
                     // Get the subsidiary from Q3 and determine its currency
                     const subValue = String(subCell.values[0][0] || '').trim();
@@ -8601,21 +8607,25 @@ export default {
                     const sheetFormat = formats[sheetSymbol] || defaultFormat;
                     console.log(`💱 AUTO-FORMAT: Sheet subsidiary "${subValue}" → ID ${sheetSubId} → ${sheetSymbol}`);
                     
-                    // Find and format SUM cells in the data area (columns C-O, starting from row 6)
-                    let sumFormatted = 0;
+                    // Format ALL formula cells in the data area (columns C-O, starting from row 6)
+                    // This includes SUM, subtraction (GROSS PROFIT), and any other calculations
+                    let formulaFormatted = 0;
                     for (let row = 5; row < usedRange.rowCount; row++) { // 0-indexed, so row 5 = Excel row 6
                         for (let col = 2; col <= 14; col++) { // Columns C (2) through O (14)
                             const formula = formulas[row][col];
-                            if (typeof formula === 'string' && formula.toUpperCase().includes('SUM(')) {
+                            // Format if it's a formula (starts with =) but NOT XAVI.BALANCE (already formatted above)
+                            if (typeof formula === 'string' && 
+                                formula.startsWith('=') && 
+                                !formula.toUpperCase().includes('XAVI.BALANCE')) {
                                 const range = usedRange.getCell(row, col);
                                 range.numberFormat = [[sheetFormat]];
-                                sumFormatted++;
+                                formulaFormatted++;
                             }
                         }
                     }
                     
                     await context.sync();
-                    console.log(`💱 AUTO-FORMAT: Applied currency format to ${sumFormatted} SUM cells`);
+                    console.log(`💱 AUTO-FORMAT: Applied currency format to ${formulaFormatted} formula cells (SUM, subtraction, etc.)`);
                 }
             });
         }
