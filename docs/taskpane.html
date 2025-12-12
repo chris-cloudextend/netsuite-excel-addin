@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.11</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.12</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2962,7 +2962,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.11</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.12</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -4709,10 +4709,11 @@
                         sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                         
                         // Balance formulas for each month (header row is now 5)
+                        // Use direct cell reference - XAVI.BALANCE handles date conversion internally
                         for (let m = 0; m < 12; m++) {
                             const colLetter = String.fromCharCode(67 + m);
                             const cell = sheet.getRange(`${colLetter}${row}`);
-                            cell.formulas = [[`=XAVI.BALANCE($A${row},TEXT(${colLetter}$5,"mmm yyyy"),TEXT(${colLetter}$5,"mmm yyyy"),$Q$3)`]];
+                            cell.formulas = [[`=XAVI.BALANCE($A${row},${colLetter}$5,${colLetter}$5,$Q$3)`]];
                         }
                         
                         // YTD formula
@@ -5315,7 +5316,7 @@
                             const colLetter = String.fromCharCode(67 + m);
                             const cell = sheet.getRange(`${colLetter}${row}`);
                             // Full formula with all parameters as cell references
-                            cell.formulas = [[`=XAVI.BUDGET($A${row},TEXT(${colLetter}$5,"mmm yyyy"),TEXT(${colLetter}$5,"mmm yyyy"),$Q$3,$S$3,$U$3,$T$3,"",$R$3)`]];
+                            cell.formulas = [[`=XAVI.BUDGET($A${row},${colLetter}$5,${colLetter}$5,$Q$3,$S$3,$U$3,$T$3,"",$R$3)`]];
                         }
                         
                         // YTD formula
@@ -5843,7 +5844,7 @@
                         sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                         for (let m = 0; m < 12; m++) {
                             const col = String.fromCharCode(67 + m);
-                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];
+                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3)`]];
                         }
                         sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                     };
@@ -8081,7 +8082,7 @@ export default {
                         sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                         for (let m = 0; m < 12; m++) {
                             const col = String.fromCharCode(67 + m);
-                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];
+                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3)`]];
                         }
                         sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                     };
@@ -9014,7 +9015,7 @@ export default {
                                 sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                                 for (let m = 0; m < 12; m++) {
                                     const col = String.fromCharCode(67 + m);
-                                    sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},TEXT(${col}$5,"mmm yyyy"),TEXT(${col}$5,"mmm yyyy"),$Q$3)`]];
+                                    sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3)`]];
                                 }
                                 sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                             };
