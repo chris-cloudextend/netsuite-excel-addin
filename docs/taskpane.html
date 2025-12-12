@@ -9238,6 +9238,13 @@ export default {
                             const monthData = allBalances[acctNum];
                             const hasData = Object.values(monthData).some(val => val !== 0 && val !== null);
                             
+                            // DEBUG: Trace account 59998 specifically
+                            if (acctNum === '59998') {
+                                console.log(`🔍 DEBUG 59998: monthData =`, JSON.stringify(monthData));
+                                console.log(`🔍 DEBUG 59998: hasData = ${hasData}`);
+                                console.log(`🔍 DEBUG 59998: accountTypes['59998'] = "${accountTypes['59998']}"`);
+                            }
+                            
                             if (hasData) {
                                 const acctInfo = {
                                     number: acctNum,
@@ -9246,6 +9253,13 @@ export default {
                                 };
                                 
                                 const acctType = (accountTypes[acctNum] || '').toLowerCase();
+                                
+                                // DEBUG: Trace 59998 categorization
+                                if (acctNum === '59998') {
+                                    console.log(`🔍 DEBUG 59998: acctType (lowercased) = "${acctType}"`);
+                                    console.log(`🔍 DEBUG 59998: Will match COGS? ${acctType === 'cogs' || acctType === 'cost of goods sold'}`);
+                                }
+                                
                                 if (acctType === 'income') { categories.income.push(acctInfo); categorizedCount++; }
                                 else if (acctType === 'othincome') { categories.othIncome.push(acctInfo); categorizedCount++; }
                                 else if (acctType === 'cogs' || acctType === 'cost of goods sold') { categories.cogs.push(acctInfo); categorizedCount++; }
