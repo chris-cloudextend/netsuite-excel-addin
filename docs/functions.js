@@ -11,7 +11,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.17';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.18';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -2286,6 +2286,11 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         // Multi-Book Accounting support - default to empty (uses Primary Book on backend)
         accountingBook = String(accountingBook || '').trim();
         
+        // DEBUG: Log subsidiary to trace (Consolidated) suffix handling
+        if (subsidiary && subsidiary.toLowerCase().includes('europe')) {
+            console.log(`🔍 BALANCE DEBUG: account=${account}, subsidiary="${subsidiary}", hasConsolidated=${subsidiary.includes('(Consolidated)')}`);
+        }
+        
         const params = { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook };
         const cacheKey = getCacheKey('balance', params);
         
@@ -3248,6 +3253,12 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
             location: filters.location || '',
             class: filters.class || ''
         };
+        
+        // DEBUG: Log the exact payload being sent to API
+        if (filters.subsidiary && filters.subsidiary.toLowerCase().includes('europe')) {
+            console.log(`📤 BATCH API DEBUG: subsidiary="${filters.subsidiary}", hasConsolidated=${filters.subsidiary.includes('(Consolidated)')}`);
+            console.log(`📤 Full payload:`, JSON.stringify(payload, null, 2));
+        }
         
         const response = await fetch(`${SERVER_URL}/batch/balance`, {
             method: 'POST',
