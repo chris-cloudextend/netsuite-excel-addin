@@ -11,7 +11,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.5';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.6';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -1161,17 +1161,34 @@ async function runBuildModeBatch() {
             const { params, resolve, cacheKey } = item;
             const { account, fromPeriod, toPeriod } = params;
             
-            const lookupPeriod = (fromPeriod && fromPeriod !== '') ? fromPeriod : toPeriod;
+            // If there's a date RANGE, sum ALL months in that range
+            let value = 0;
+            let foundAny = false;
             
-            if (allBalances[account] && allBalances[account][lookupPeriod] !== undefined) {
-                const value = allBalances[account][lookupPeriod];
-                
+            if (fromPeriod && toPeriod && fromPeriod !== toPeriod) {
+                // SUM all months in the range
+                const periodsToSum = expandPeriodRangeFromTo(fromPeriod, toPeriod);
+                for (const period of periodsToSum) {
+                    if (allBalances[account] && allBalances[account][period] !== undefined) {
+                        value += allBalances[account][period];
+                        foundAny = true;
+                    }
+                }
+            } else {
+                // Single period lookup
+                const lookupPeriod = (fromPeriod && fromPeriod !== '') ? fromPeriod : toPeriod;
+                if (allBalances[account] && allBalances[account][lookupPeriod] !== undefined) {
+                    value = allBalances[account][lookupPeriod];
+                    foundAny = true;
+                }
+            }
+            
+            if (foundAny) {
                 // Cache with the ORIGINAL request's cacheKey (includes its own filters)
                 cache.balance.set(cacheKey, value);
-                
                 resolve(value);
                 totalResolved++;
-            } else if (hasError && !successfulPeriods.has(lookupPeriod)) {
+            } else if (hasError) {
                 resolve('');
                 totalZeros++;
             } else {
