@@ -7896,9 +7896,16 @@ export default {
                         }
                         
                         // Check if the changed cell is Q3 (SUBSIDIARY parameter for auto-sync)
+                        // Use debounce to prevent rapid-fire triggering
                         if (event.address === 'Q3' || event.address === '$Q$3') {
-                            console.log('🏢 SUBSIDIARY cell (Q3) changed - checking for auto-sync...');
-                            await handleSubsidiaryChange();
+                            console.log('🏢 SUBSIDIARY cell (Q3) changed - debouncing...');
+                            if (window.subsidiaryChangeTimer) {
+                                clearTimeout(window.subsidiaryChangeTimer);
+                            }
+                            window.subsidiaryChangeTimer = setTimeout(async () => {
+                                console.log('🏢 SUBSIDIARY debounce complete - checking for auto-sync...');
+                                await handleSubsidiaryChange();
+                            }, 1000); // 1 second debounce
                         }
                         
                         // ============================================
@@ -8113,6 +8120,7 @@ export default {
         // Flag to prevent re-entry during sync operations
         let isSyncInProgress = false;
         let lastSyncedYear = null;
+        let lastSyncedSubsidiary = null;
         
         // Handle automatic structure sync when YEAR changes
         async function handleYearChange() {
@@ -8218,9 +8226,10 @@ export default {
                     year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                     newSubsidiary = subCell.values[0][0] || '';
                     
-                    // Only sync if: has marker AND sync enabled
+                    // Only sync if: has marker, sync enabled, AND subsidiary actually changed
                     if ((marker.includes('structure sync') || marker.includes('🔄')) &&
-                        (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                        (sync === 'TRUE' || sync === 'YES' || sync === '1') &&
+                        newSubsidiary !== lastSyncedSubsidiary) {
                         shouldSync = true;
                     }
                 });
@@ -8230,6 +8239,7 @@ export default {
                     
                     // Set flag to prevent re-entry
                     isSyncInProgress = true;
+                    lastSyncedSubsidiary = newSubsidiary;
                     
                     // Show a brief notification
                     const statusEl = document.getElementById('refreshStatus');
