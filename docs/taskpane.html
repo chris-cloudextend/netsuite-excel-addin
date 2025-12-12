@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.14</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.15</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2962,7 +2962,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.14</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.15</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -5619,6 +5619,23 @@
                     </div>
                 `;
                 
+                // Get currency format for the selected subsidiary
+                let currencyFormat = '$#,##0.00';  // Default to USD
+                try {
+                    const currencyData = await getCurrencyData();
+                    if (currencyData && currentSubsidiary) {
+                        const subsidiaryNameToId = await getSubsidiaryLookup();
+                        const subId = /^\d+$/.test(currentSubsidiary) ? 
+                            currentSubsidiary : 
+                            (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
+                        const symbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
+                        currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
+                        console.log(`💱 Sync currency: "${currentSubsidiary}" → ID ${subId} → ${symbol} → ${currencyFormat}`);
+                    }
+                } catch (e) {
+                    console.warn('Currency lookup failed:', e.message);
+                }
+                
                 // Fetch accounts for the target year AND selected subsidiary
                 // This ensures we get accounts that have data for THIS subsidiary
                 console.log(`Syncing structure for year ${targetYear}, subsidiary: "${currentSubsidiary}"`);
@@ -5984,12 +6001,13 @@
                     } catch (e) {}
                     netIncomeRow = currentRow;
                     
-                    // Format numbers
+                    // Format numbers with correct currency
                     try {
                         const rows = netIncomeRow - 5;
-                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill('#,##0'));
+                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill(currencyFormat));
                         sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                         await context.sync();
+                        console.log(`💱 Applied ${currencyFormat} to ${rows} data rows`);
                     } catch (e) {}
                     
                     // Freeze
@@ -7875,6 +7893,23 @@ export default {
             const statusEl = document.getElementById('refreshStatus');
             
             try {
+                // Get currency format for the selected subsidiary
+                let currencyFormat = '$#,##0.00';  // Default to USD
+                try {
+                    const currencyData = await getCurrencyData();
+                    if (currencyData && currentSubsidiary) {
+                        const subsidiaryNameToId = await getSubsidiaryLookup();
+                        const subId = /^\d+$/.test(currentSubsidiary) ? 
+                            currentSubsidiary : 
+                            (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
+                        const symbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
+                        currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
+                        console.log(`💱 performStructureSync currency: "${currentSubsidiary}" → ${currencyFormat}`);
+                    }
+                } catch (e) {
+                    console.warn('Currency lookup failed:', e.message);
+                }
+                
                 // Fetch accounts for the target year AND selected subsidiary
                 console.log(`performStructureSync: year=${targetYear}, subsidiary="${currentSubsidiary}"`);
                 const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
@@ -8215,11 +8250,13 @@ export default {
                     } catch (e) {}
                     netIncomeRow = currentRow;
                     
+                    // Apply currency format to all number cells
                     try {
                         const rows = netIncomeRow - 5;
-                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill('#,##0'));
+                        const formatArray = Array(rows).fill(null).map(() => Array(13).fill(currencyFormat));
                         sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                         await context.sync();
+                        console.log(`💱 performStructureSync: Applied ${currencyFormat} to ${rows} rows`);
                     } catch (e) {}
                     
                     try { sheet.freezePanes.freezeRows(5); await context.sync(); } catch (e) {}
@@ -8378,11 +8415,22 @@ export default {
                 const sheet = context.workbook.worksheets.getActiveWorksheet();
                 const usedRange = sheet.getUsedRange();
                 usedRange.load(['formulas', 'rowCount', 'columnCount']);
+                
+                // Also check for Income Statement marker and subsidiary cell
+                const markerCell = sheet.getRange("R2");
+                markerCell.load("values");
+                const subCell = sheet.getRange("Q3");
+                subCell.load("values");
+                
                 await context.sync();
                 
                 const formulas = usedRange.formulas;
                 const cellRefsToResolve = new Set();
                 const pendingCells = [];
+                
+                // Check if this is an auto-generated Income Statement
+                const markerValue = String(markerCell.values[0][0] || '').toLowerCase();
+                const isIncomeStatement = markerValue.includes('structure sync') || markerValue.includes('🔄');
                 
                 // Clear and rebuild known subsidiary cells
                 knownSubsidiaryCells.clear();
@@ -8428,7 +8476,7 @@ export default {
                 // Get subsidiary lookup (cached)
                 const subsidiaryNameToId = await getSubsidiaryLookup();
                 
-                // Apply formats
+                // Apply formats to XAVI.BALANCE cells
                 let formatted = 0;
                 for (const { row, col, subsidiaryParam } of pendingCells) {
                     let subId = '';
@@ -8454,7 +8502,47 @@ export default {
                 }
                 
                 await context.sync();
-                console.log(`💱 AUTO-FORMAT: Applied currency format to ${formatted} cells`);
+                console.log(`💱 AUTO-FORMAT: Applied currency format to ${formatted} BALANCE cells`);
+                
+                // ============================================
+                // INCOME STATEMENT: Also format SUM cells (subtotals/totals)
+                // These don't have XAVI.BALANCE but should use the same currency
+                // ============================================
+                if (isIncomeStatement) {
+                    console.log('💱 AUTO-FORMAT: Income Statement detected, formatting SUM cells too...');
+                    
+                    // Get the subsidiary from Q3 and determine its currency
+                    const subValue = String(subCell.values[0][0] || '').trim();
+                    let sheetSubId = '';
+                    
+                    if (subValue) {
+                        if (/^\d+$/.test(subValue)) {
+                            sheetSubId = subValue;
+                        } else {
+                            sheetSubId = subsidiaryNameToId[subValue.toLowerCase()] || '';
+                        }
+                    }
+                    
+                    const sheetSymbol = sheetSubId && currencies[sheetSubId] ? currencies[sheetSubId] : defaultSymbol;
+                    const sheetFormat = formats[sheetSymbol] || defaultFormat;
+                    console.log(`💱 AUTO-FORMAT: Sheet subsidiary "${subValue}" → ID ${sheetSubId} → ${sheetSymbol}`);
+                    
+                    // Find and format SUM cells in the data area (columns C-O, starting from row 6)
+                    let sumFormatted = 0;
+                    for (let row = 5; row < usedRange.rowCount; row++) { // 0-indexed, so row 5 = Excel row 6
+                        for (let col = 2; col <= 14; col++) { // Columns C (2) through O (14)
+                            const formula = formulas[row][col];
+                            if (typeof formula === 'string' && formula.toUpperCase().includes('SUM(')) {
+                                const range = usedRange.getCell(row, col);
+                                range.numberFormat = [[sheetFormat]];
+                                sumFormatted++;
+                            }
+                        }
+                    }
+                    
+                    await context.sync();
+                    console.log(`💱 AUTO-FORMAT: Applied currency format to ${sumFormatted} SUM cells`);
+                }
             });
         }
         
@@ -8799,6 +8887,23 @@ export default {
                 if (shouldSyncStructure) {
                     showLoading('Refresh Accounts', `Syncing structure for ${syncYear}...`, 10);
                     console.log(`🔄 Rebuilding Income Statement structure for year ${syncYear}, subsidiary: "${syncSubsidiary}"`);
+                    
+                    // Get currency format for the selected subsidiary
+                    let currencyFormat = '$#,##0.00';  // Default to USD
+                    try {
+                        const currencyData = await getCurrencyData();
+                        if (currencyData && syncSubsidiary) {
+                            const subsidiaryNameToId = await getSubsidiaryLookup();
+                            const subId = /^\d+$/.test(syncSubsidiary) ? 
+                                syncSubsidiary : 
+                                (subsidiaryNameToId[syncSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
+                            const symbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
+                            currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
+                            console.log(`💱 refreshSelected currency: "${syncSubsidiary}" → ${currencyFormat}`);
+                        }
+                    } catch (e) {
+                        console.warn('Currency lookup failed:', e.message);
+                    }
                     
                     // Fetch accounts for the target year AND selected subsidiary
                     const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
@@ -9156,12 +9261,13 @@ export default {
                             } catch (e) {}
                             netIncomeRow = currentRow;
                             
-                            // Format numbers
+                            // Format numbers with correct currency
                             try {
                                 const rows = netIncomeRow - 5;
-                                const formatArray = Array(rows).fill(null).map(() => Array(13).fill('#,##0'));
+                                const formatArray = Array(rows).fill(null).map(() => Array(13).fill(currencyFormat));
                                 sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                                 await context.sync();
+                                console.log(`💱 refreshSelected: Applied ${currencyFormat} to ${rows} rows`);
                             } catch (e) {}
                             
                             // Freeze header rows
