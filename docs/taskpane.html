@@ -7895,6 +7895,12 @@ export default {
                             await handleYearChange();
                         }
                         
+                        // Check if the changed cell is Q3 (SUBSIDIARY parameter for auto-sync)
+                        if (event.address === 'Q3' || event.address === '$Q$3') {
+                            console.log('🏢 SUBSIDIARY cell (Q3) changed - checking for auto-sync...');
+                            await handleSubsidiaryChange();
+                        }
+                        
                         // ============================================
                         // DETECT NEW XAVI FORMULAS
                         // When user adds/pastes/drags formulas, we need to:
@@ -8179,6 +8185,75 @@ export default {
             }
         }
         
+        // Handle subsidiary change - trigger structure sync if enabled
+        async function handleSubsidiaryChange() {
+            // Prevent infinite loop - don't sync if already syncing
+            if (isSyncInProgress) {
+                console.log('⏸️ Sync already in progress, skipping...');
+                return;
+            }
+            
+            try {
+                let shouldSync = false;
+                let year = null;
+                let newSubsidiary = '';
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Check for sync marker (R2 = label, R3 = value)
+                    const markerCell = sheet.getRange("R2");
+                    markerCell.load("values");
+                    const syncCell = sheet.getRange("R3");
+                    syncCell.load("values");
+                    const yearCell = sheet.getRange("P3");
+                    yearCell.load("values");
+                    const subCell = sheet.getRange("Q3");
+                    subCell.load("values");
+                    
+                    await context.sync();
+                    
+                    const marker = String(markerCell.values[0][0] || '').toLowerCase();
+                    const sync = String(syncCell.values[0][0] || '').toUpperCase();
+                    year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
+                    newSubsidiary = subCell.values[0][0] || '';
+                    
+                    // Only sync if: has marker AND sync enabled
+                    if ((marker.includes('structure sync') || marker.includes('🔄')) &&
+                        (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                        shouldSync = true;
+                    }
+                });
+                
+                if (shouldSync && year) {
+                    console.log(`🔄 Auto-syncing structure for subsidiary "${newSubsidiary}"...`);
+                    
+                    // Set flag to prevent re-entry
+                    isSyncInProgress = true;
+                    
+                    // Show a brief notification
+                    const statusEl = document.getElementById('refreshStatus');
+                    if (statusEl) {
+                        statusEl.innerHTML = `<div style="background: #dbeafe; padding: 10px; border-radius: 6px; border-left: 4px solid #3b82f6;">
+                            <strong style="color: #1e40af;">🔄 Syncing for ${newSubsidiary || 'Consolidated'}...</strong><br>
+                            <small style="color: #1e3a8a;">Rebuilding structure with accounts for this subsidiary</small>
+                        </div>`;
+                    }
+                    
+                    try {
+                        // Trigger the sync with the new subsidiary
+                        await performStructureSync(year, newSubsidiary);
+                    } finally {
+                        // Always clear the flag when done
+                        isSyncInProgress = false;
+                    }
+                }
+            } catch (e) {
+                console.warn('Auto-sync (subsidiary) error:', e.message);
+                isSyncInProgress = false; // Clear flag on error
+            }
+        }
+
         // Perform the structure sync (extracted for reuse)
         async function performStructureSync(targetYear, currentSubsidiary) {
             const statusEl = document.getElementById('refreshStatus');
