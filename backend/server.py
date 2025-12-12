@@ -1274,7 +1274,7 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
                     t.postingperiod,
                     {amount_calc}
                     * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                    * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -1299,7 +1299,7 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
                     t.postingperiod,
                     {amount_calc}
                     * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                    * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN Account a ON a.id = tal.account
@@ -2035,7 +2035,7 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
               )
             )
         * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-        * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+        * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
       FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
         {line_join}
@@ -2238,6 +2238,25 @@ def batch_full_year_refresh():
     if subsidiary:
         print(f"   use_hierarchy={filters.get('use_hierarchy', False)}", file=sys.stderr)
     
+    # DEBUG: Query sspecacct values for 80xxx and 89xxx accounts
+    try:
+        debug_query = """
+        SELECT acctnumber, accttype, sspecacct 
+        FROM account 
+        WHERE acctnumber LIKE '80%' OR acctnumber LIKE '89%'
+        ORDER BY acctnumber
+        """
+        debug_items = run_suiteql_query(debug_query)
+        print(f"   DEBUG sspecacct values for 80xxx/89xxx accounts:", file=sys.stderr)
+        for item in debug_items:
+            acct = item.get('acctnumber', '')
+            atype = item.get('accttype', '')
+            sspec = item.get('sspecacct', '')
+            is_matching = 'YES' if sspec and sspec.startswith('Matching') else 'NO'
+            print(f"     {acct}: type={atype}, sspecacct='{sspec}', isMatching={is_matching}", file=sys.stderr)
+    except Exception as e:
+        print(f"   DEBUG query failed: {e}", file=sys.stderr)
+    
     try:
         print(f"\n{'='*80}", flush=True)
         print(f"🚀 FULL YEAR REFRESH (OPTIMIZED PIVOTED QUERY): {fiscal_year}", flush=True)
@@ -2301,6 +2320,12 @@ def batch_full_year_refresh():
                 else:
                     # SuiteQL may not return column if all values are 0
                     balances[account][period_name] = 0.0
+            
+            # DEBUG: Log 80xxx and 89xxx accounts to diagnose sign issues
+            if account.startswith('80') or account.startswith('89'):
+                feb_val = balances[account].get(f'Feb {fiscal_year}', 0)
+                if feb_val != 0:
+                    print(f"   DEBUG SIGN: acct={account}, type={acct_type}, Feb={feb_val}", file=sys.stderr)
         
         print(f"📊 Returning {len(balances)} accounts × 12 months (P&L)")
         
@@ -2704,7 +2729,7 @@ def batch_periods_refresh():
                   )
                 )
             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
+            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
             AS cons_amt
           FROM TransactionAccountingLine tal
           JOIN Transaction t ON t.id = tal.transaction
@@ -3390,7 +3415,7 @@ def batch_balance_year():
                     )
                 )
                 * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
+                * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
             ) AS balance
         FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
@@ -4334,7 +4359,7 @@ def get_balance():
                                         )
                                     )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -4360,7 +4385,7 @@ def get_balance():
                                         )
                                     )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
@@ -4386,7 +4411,7 @@ def get_balance():
                                         )
                                     )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -4411,7 +4436,7 @@ def get_balance():
                                         )
                                     )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
@@ -5974,7 +5999,7 @@ def calculate_retained_earnings():
         
         # Define queries
         prior_pl_query = f"""
-            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
             FROM transactionaccountingline tal
             JOIN transaction t ON t.id = tal.transaction
             JOIN account a ON a.id = tal.account
@@ -5990,7 +6015,7 @@ def calculate_retained_earnings():
         
         # Posted RE query - query directly by account type/name pattern instead of 2-step
         posted_re_query = f"""
-            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
             FROM transactionaccountingline tal
             JOIN transaction t ON t.id = tal.transaction
             JOIN account a ON a.id = tal.account
@@ -6177,7 +6202,7 @@ def calculate_net_income():
         
         # Simplified Net Income query - no CROSS JOIN, directly uses BUILTIN.CONSOLIDATE
         net_income_query = f"""
-            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS net_income
+            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS net_income
             FROM transactionaccountingline tal
             JOIN transaction t ON t.id = tal.transaction
             JOIN account a ON a.id = tal.account
@@ -6340,7 +6365,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'total_liabilities': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -6354,7 +6379,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'posted_equity': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -6369,7 +6394,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'prior_pl': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -6383,7 +6408,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'posted_re': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -6397,7 +6422,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'net_income': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
