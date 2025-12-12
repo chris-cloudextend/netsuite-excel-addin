@@ -9168,13 +9168,21 @@ export default {
                     const markerValue = String(markerCell.values[0][0] || '').toLowerCase();
                     const syncValue = String(syncCell.values[0][0] || '').toUpperCase();
                     
+                    // DEBUG: Show exactly what values we're reading
+                    console.log(`🔍 SYNC CHECK - R2 raw: "${markerCell.values[0][0]}", lowercased: "${markerValue}"`);
+                    console.log(`🔍 SYNC CHECK - R3 raw: "${syncCell.values[0][0]}", uppercased: "${syncValue}"`);
+                    console.log(`🔍 SYNC CHECK - includes 'structure sync': ${markerValue.includes('structure sync')}`);
+                    console.log(`🔍 SYNC CHECK - syncValue === 'TRUE': ${syncValue === 'TRUE'}`);
+                    
                     // Check if this is an auto-generated sheet with sync enabled
                     if ((markerValue.includes('structure sync') || markerValue.includes('🔄')) &&
                         (syncValue === 'TRUE' || syncValue === 'YES' || syncValue === '1')) {
                         shouldSyncStructure = true;
                         syncYear = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                         syncSubsidiary = subCell.values[0][0] || '';
-                        console.log(`📊 Auto-generated Income Statement detected. Year: ${syncYear}, Sync: enabled`);
+                        console.log(`📊 Auto-generated Income Statement detected. Year: ${syncYear}, Subsidiary: "${syncSubsidiary}", Sync: enabled`);
+                    } else {
+                        console.log(`⚠️ SYNC CHECK FAILED - not an auto-generated sheet or sync disabled`);
                     }
                 });
                 
