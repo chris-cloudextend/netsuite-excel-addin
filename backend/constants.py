@@ -190,6 +190,33 @@ SIGN_FLIP_TYPES_SQL = "'" + "', '".join(sorted(AccountType.SIGN_FLIP_TYPES)) + "
 # Result: 'Income', 'OthIncome'
 INCOME_TYPES_SQL = "'Income', 'OthIncome'"
 
+# Expense types for P&L (used when we need to flip expense signs)
+# Per NetSuite docs, expense accounts may need sign flip: 'Expense', 'OthExpense', 'COGS', 'Cost of Goods Sold'
+EXPENSE_TYPES_SQL = "'Expense', 'OthExpense', 'COGS', 'Cost of Goods Sold'"
+
+# ================================================================================
+# SPECIAL ACCOUNT (sspecacct) SIGN HANDLING
+# ================================================================================
+# NetSuite uses "Matching" special accounts as contra/offset entries for currency
+# revaluation. These accounts require additional sign inversion when displaying
+# amounts on financial statements.
+#
+# Example:
+#   - UnrERV (Unrealized Exchange Rate Variance) = normal sign logic
+#   - MatchingUnrERV = inverted sign for proper display
+#
+# Both have the same accttype (e.g., OthExpense), so we cannot rely on accttype alone.
+#
+# Solution: Apply additional sign inversion for accounts where sspecacct LIKE 'Matching%'
+#
+# SQL Pattern:
+#   * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
+#   * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
+#
+# This approach is universal and will automatically handle any future "Matching"
+# special accounts NetSuite may add. No hardcoded account numbers required.
+# ================================================================================
+
 # Asset types for Balance Sheet (debit balance, no sign flip)
 # Result: 'AcctRec', 'Bank', 'DeferExpense', 'FixedAsset', 'OthAsset', 'OthCurrAsset', 'UnbilledRec'
 BS_ASSET_TYPES_SQL = "'" + "', '".join(sorted(AccountType.BS_ASSET_TYPES)) + "'"
