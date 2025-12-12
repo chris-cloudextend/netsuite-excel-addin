@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.7</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.8</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2962,7 +2962,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.7</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.8</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -6561,14 +6561,24 @@
 
         async function checkServerStatus() {
             const statusEl = document.getElementById('serverStatus');
+            if (!statusEl) {
+                console.error('serverStatus element not found');
+                return;
+            }
             statusEl.className = 'status-indicator checking';
             statusEl.innerHTML = '<span class="status-dot checking"></span> Checking...';
 
             try {
+                // Use AbortController for broader browser compatibility
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
                 const response = await fetch(`${SERVER_URL}/health`, { 
                     method: 'GET',
-                    signal: AbortSignal.timeout(10000)
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 if (response.ok) {
                     statusEl.className = 'status-indicator connected';
@@ -6577,8 +6587,9 @@
                     throw new Error(`Status: ${response.status}`);
                 }
             } catch (error) {
+                console.error('checkServerStatus error:', error);
                 statusEl.className = 'status-indicator error';
-                statusEl.innerHTML = `<span class="status-dot error"></span> Error: ${error.message}`;
+                statusEl.innerHTML = `<span class="status-dot error"></span> Error: ${error.message || 'Connection failed'}`;
             }
         }
 
@@ -6747,32 +6758,49 @@ export default {
 
         async function reloadLookups() {
             const statusEl = document.getElementById('serverStatus');
+            if (!statusEl) {
+                console.error('serverStatus element not found');
+                return;
+            }
             statusEl.className = 'status-indicator checking';
             statusEl.innerHTML = '<span class="status-dot checking"></span> Reloading lookups...';
             
             try {
+                console.log('Reloading lookups...');
                 await loadNetSuiteLookups();
                 await preloadAccountTitles();
                 statusEl.className = 'status-indicator connected';
                 statusEl.innerHTML = '<span class="status-dot connected"></span> Lookups reloaded ✓';
+                console.log('Lookups reloaded successfully');
             } catch (error) {
+                console.error('reloadLookups error:', error);
                 statusEl.className = 'status-indicator error';
-                statusEl.innerHTML = `<span class="status-dot error"></span> Failed: ${error.message}`;
+                statusEl.innerHTML = `<span class="status-dot error"></span> Failed: ${error.message || 'Unknown error'}`;
             }
         }
 
         async function checkTunnelStatus() {
             const statusEl = document.getElementById('tunnelStatus');
+            if (!statusEl) {
+                console.error('tunnelStatus element not found');
+                return;
+            }
             statusEl.className = 'status-indicator checking';
             statusEl.innerHTML = '<span class="status-dot checking"></span> Checking...';
 
             try {
+                // Use AbortController for broader browser compatibility
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
                 // The health check goes through the worker → tunnel → server
                 // If it works, tunnel is working
                 const response = await fetch(`${SERVER_URL}/health`, { 
                     method: 'GET',
-                    signal: AbortSignal.timeout(10000)
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 if (response.ok) {
                     statusEl.className = 'status-indicator connected';
@@ -6783,11 +6811,12 @@ export default {
                     throw new Error(`Status: ${response.status}`);
                 }
             } catch (error) {
+                console.error('checkTunnelStatus error:', error);
                 statusEl.className = 'status-indicator error';
-                if (error.message.includes('530')) {
+                if (error.message && error.message.includes('530')) {
                     statusEl.innerHTML = '<span class="status-dot error"></span> Tunnel Offline - needs restart';
                 } else {
-                    statusEl.innerHTML = `<span class="status-dot error"></span> ${error.message}`;
+                    statusEl.innerHTML = `<span class="status-dot error"></span> ${error.message || 'Connection failed'}`;
                 }
             }
         }
