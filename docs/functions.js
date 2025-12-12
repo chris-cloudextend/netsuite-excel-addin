@@ -11,7 +11,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.12';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.13';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -1528,14 +1528,17 @@ window.populateFrontendCache = function(balances, filters = {}) {
 const pendingRequests = {
     balance: new Map(),    // Map<cacheKey, {params, resolve, reject}>
     budget: new Map(),
-    type: new Map()        // Map<account, {resolve, reject}> - for TYPE batching
+    type: new Map(),       // Map<account, {resolve, reject}> - for TYPE batching
+    title: new Map()       // Map<account, {resolve, reject}> - for NAME/title batching
 };
 
 let batchTimer = null;  // Timer reference for BALANCE batching
 let typeBatchTimer = null;  // Timer reference for TYPE batching
 let budgetBatchTimer = null;  // Timer reference for BUDGET batching
+let titleBatchTimer = null;  // Timer reference for NAME/title batching
 const BATCH_DELAY = 500;           // Wait 500ms to collect multiple requests (matches build mode settle)
 const BUDGET_BATCH_DELAY = 300;    // Faster batch delay for BUDGET (simpler queries)
+const TITLE_BATCH_DELAY = 100;     // Fast batch delay for titles (simple lookups)
 const TYPE_BATCH_DELAY = 150;      // Faster batch delay for TYPE (lightweight queries)
 const CHUNK_SIZE = 50;             // Max 50 accounts per batch (balances NetSuite limits)
 const MAX_PERIODS_PER_BATCH = 3;   // Max 3 periods per batch (prevents backend timeout for high-volume accounts)
@@ -1637,6 +1640,84 @@ function getCacheKey(type, params) {
 // ============================================================================
 // NAME - Get Account Name
 // ============================================================================
+// NAME BATCH PROCESSING
+// When multiple NAME formulas are triggered (e.g., loading a sheet with 100 accounts),
+// we batch them into a single API call instead of 100 individual calls.
+// ============================================================================
+async function processTitleBatchQueue() {
+    titleBatchTimer = null;
+    
+    const pending = new Map(pendingRequests.title);
+    pendingRequests.title.clear();
+    
+    if (pending.size === 0) {
+        console.log('📦 TITLE batch queue empty, nothing to process');
+        return;
+    }
+    
+    console.log(`📦 Processing TITLE batch: ${pending.size} accounts`);
+    
+    const accounts = [...pending.keys()];
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/account/names`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accounts })
+        });
+        
+        if (!response.ok) {
+            console.error(`TITLE batch API error: ${response.status}`);
+            // Resolve all pending with #N/A
+            for (const [account, { resolve }] of pending) {
+                resolve('#N/A');
+            }
+            return;
+        }
+        
+        const titles = await response.json();
+        
+        console.log(`📦 TITLE batch response: ${Object.keys(titles).length} titles returned`);
+        
+        // Also update localStorage cache for persistence
+        let localStorageCache = {};
+        try {
+            const existing = localStorage.getItem('netsuite_name_cache');
+            if (existing) localStorageCache = JSON.parse(existing);
+        } catch (e) { /* ignore */ }
+        
+        // Resolve each pending request
+        for (const [account, { resolve }] of pending) {
+            const title = titles[account] || '#N/A';
+            
+            // Cache the result
+            const cacheKey = getCacheKey('title', { account });
+            cache.title.set(cacheKey, title);
+            
+            // Update localStorage cache
+            if (title && title !== '#N/A' && title !== 'Not Found') {
+                localStorageCache[account] = title;
+            }
+            
+            resolve(title);
+        }
+        
+        // Save to localStorage
+        try {
+            localStorage.setItem('netsuite_name_cache', JSON.stringify(localStorageCache));
+        } catch (e) { /* ignore quota errors */ }
+        
+        console.log(`📦 TITLE batch complete: ${pending.size} resolved`);
+        
+    } catch (error) {
+        console.error('TITLE batch fetch error:', error);
+        // Resolve all pending with #N/A
+        for (const [account, { resolve }] of pending) {
+            resolve('#N/A');
+        }
+    }
+}
+
 /**
  * @customfunction NAME
  * @param {any} accountNumber The account number
@@ -1671,7 +1752,7 @@ async function NAME(accountNumber, invocation) {
         return cache.title.get(cacheKey);
     }
     
-    // Check localStorage name cache as fallback (prevents 35+ parallel requests!)
+    // Check localStorage name cache as fallback
     try {
         const nameCache = localStorage.getItem('netsuite_name_cache');
         if (nameCache) {
@@ -1689,72 +1770,36 @@ async function NAME(accountNumber, invocation) {
     }
     
     cacheStats.misses++;
-    console.log(`📥 CACHE MISS [title]: ${account}`);
+    console.log(`📥 CACHE MISS [title]: ${account} → queuing for batch`);
     
-    // Single request - make with retry for rate limiting
-    const MAX_RETRIES = 3;
-    const RETRY_DELAYS = [1000, 2000, 4000]; // Exponential backoff
-    
-    try {
-        const controller = new AbortController();
-        const signal = controller.signal;
-        
-        // Listen for cancellation
-        if (invocation) {
-            invocation.onCanceled = () => {
-                console.log(`Title request canceled for ${account}`);
-                controller.abort();
+    // Check if this account is already pending in the batch queue
+    if (pendingRequests.title.has(account)) {
+        console.log(`📥 TITLE already pending, waiting for batch: ${account}`);
+        // Return a new promise that will be resolved when the batch completes
+        return new Promise((resolve) => {
+            const existing = pendingRequests.title.get(account);
+            const origResolve = existing.resolve;
+            existing.resolve = (value) => {
+                origResolve(value);
+                resolve(value);
             };
-        }
-        
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                // Use POST to avoid exposing account numbers in URLs/logs
-                const response = await fetch(`${SERVER_URL}/account/name`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ account: String(account) }),
-                    signal
-                });
-                
-                if (response.ok) {
-                    const title = await response.text();
-                    cache.title.set(cacheKey, title);
-                    console.log(`💾 Cached title: ${account} → "${title}"`);
-                    return title;
-                }
-                
-                // Retry on 429 (rate limit) or 500 (server error from rate limit)
-                if ((response.status === 429 || response.status === 500) && attempt < MAX_RETRIES) {
-                    console.warn(`⏳ Title rate limited for ${account}, retry ${attempt + 1}/${MAX_RETRIES} in ${RETRY_DELAYS[attempt]}ms`);
-                    await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
-                    continue;
-                }
-                
-                console.error(`Title API error: ${response.status}`);
-                return '#N/A';
-                
-            } catch (fetchError) {
-                if (fetchError.name === 'AbortError') throw fetchError;
-                if (attempt < MAX_RETRIES) {
-                    console.warn(`⏳ Title fetch error for ${account}, retry ${attempt + 1}/${MAX_RETRIES}`);
-                    await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
-                    continue;
-                }
-                throw fetchError;
-            }
-        }
-        
-        return '#N/A';
-        
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            console.log('Title request was canceled');
-            return '#N/A';
-        }
-        console.error('Title fetch error:', error);
-        return '#N/A';
+        });
     }
+    
+    // Add to batch queue
+    return new Promise((resolve, reject) => {
+        pendingRequests.title.set(account, { resolve, reject });
+        
+        // Start batch timer if not already running
+        if (!titleBatchTimer) {
+            console.log(`⏱️ Starting TITLE batch timer (${TITLE_BATCH_DELAY}ms)`);
+            titleBatchTimer = setTimeout(() => {
+                processTitleBatchQueue().catch(err => {
+                    console.error('❌ TITLE batch processing error:', err);
+                });
+            }, TITLE_BATCH_DELAY);
+        }
+    });
 }
 
 // ============================================================================

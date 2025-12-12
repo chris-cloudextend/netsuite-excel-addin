@@ -3870,6 +3870,87 @@ def get_account_name():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/account/names', methods=['POST'])
+def get_account_names_batch():
+    """
+    Get multiple account names in a single request (BATCH)
+    
+    Request body: { "accounts": ["60010", "60020", "60030"] }
+    Returns: { "60010": "Revenue", "60020": "Cost of Goods", "60030": "Expenses" }
+    
+    Efficiently handles cache hits and batches cache misses into a single SuiteQL query.
+    """
+    global account_title_cache
+    
+    try:
+        data = request.get_json() or {}
+        accounts = data.get('accounts', [])
+        
+        if not accounts:
+            return jsonify({'error': 'Missing accounts parameter'}), 400
+        
+        # Deduplicate and normalize
+        accounts = list(set(str(a).strip() for a in accounts if a))
+        
+        print(f"📦 Batch account names request: {len(accounts)} accounts")
+        
+        results = {}
+        cache_misses = []
+        
+        # Check cache first
+        for account in accounts:
+            if account in account_title_cache:
+                results[account] = account_title_cache[account]
+            else:
+                cache_misses.append(account)
+        
+        print(f"   ✅ Cache hits: {len(results)}, ❓ Cache misses: {len(cache_misses)}")
+        
+        # Batch query for cache misses
+        if cache_misses:
+            # Build IN clause for efficiency
+            escaped_accounts = [f"'{escape_sql(a)}'" for a in cache_misses]
+            in_clause = ', '.join(escaped_accounts)
+            
+            query = f"""
+                SELECT acctnumber, accountsearchdisplaynamecopy AS account_name
+                FROM Account
+                WHERE acctnumber IN ({in_clause})
+            """
+            
+            result = query_netsuite(query)
+            
+            if isinstance(result, dict) and 'error' in result:
+                print(f"   ⚠️ NetSuite query error: {result['error']}", file=sys.stderr)
+                # Still return what we have from cache
+                for miss in cache_misses:
+                    results[miss] = 'Error'
+            elif isinstance(result, list):
+                # Process results and cache them
+                found_accounts = set()
+                for row in result:
+                    acct_num = str(row.get('acctnumber', ''))
+                    acct_name = row.get('account_name', 'Unknown')
+                    if acct_num:
+                        results[acct_num] = acct_name
+                        account_title_cache[acct_num] = acct_name
+                        found_accounts.add(acct_num)
+                
+                # Mark not found accounts
+                for miss in cache_misses:
+                    if miss not in found_accounts:
+                        results[miss] = 'Not Found'
+                        account_title_cache[miss] = 'Not Found'  # Cache to avoid repeated queries
+                
+                print(f"   📝 Cached {len(found_accounts)} new titles")
+        
+        return jsonify(results)
+        
+    except Exception as e:
+        print(f"Error in get_account_names_batch: {str(e)}", file=sys.stderr)
+        return jsonify({'error': str(e)}), 500
+
+
 def _get_account_name_impl(account_number):
     """Internal implementation for getting account name"""
     global account_title_cache
