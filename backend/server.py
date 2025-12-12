@@ -1274,8 +1274,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
                     t.postingperiod,
                     {amount_calc}
                     * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
                     * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
@@ -1301,8 +1299,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
                     t.postingperiod,
                     {amount_calc}
                     * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
                     * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
@@ -3395,7 +3391,6 @@ def batch_balance_year():
                 )
                 * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
                 * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
             ) AS balance
         FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
@@ -4339,9 +4334,7 @@ def get_balance():
                                         )
                                     )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-                    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -4367,9 +4360,7 @@ def get_balance():
                                         )
                                     )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-                    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
@@ -4395,9 +4386,7 @@ def get_balance():
                                         )
                                     )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-                    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -4422,9 +4411,7 @@ def get_balance():
                                         )
                                     )
                             * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
-                    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
