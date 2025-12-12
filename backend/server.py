@@ -1532,7 +1532,8 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters, a
     
     # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        # ONLY use hierarchy when explicitly requested via filters
+        use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
@@ -1639,7 +1640,8 @@ def build_bs_multi_period_query(periods, target_sub, filters, accountingbook=Non
     
     # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        # ONLY use hierarchy when explicitly requested via filters
+        use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
@@ -1802,7 +1804,8 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters, a
     filter_clauses = []
     # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        # ONLY use hierarchy when explicitly requested via filters
+        use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
@@ -1867,7 +1870,8 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters, accounti
     filter_clauses = []
     # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        # ONLY use hierarchy when explicitly requested via filters
+        use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
@@ -1953,7 +1957,8 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     
     # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        # ONLY use hierarchy when explicitly requested via filters
+        use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
@@ -2196,7 +2201,10 @@ def batch_full_year_refresh():
     if subsidiary and subsidiary != '':
         filters['subsidiary'] = subsidiary
         # Use hierarchy if explicitly consolidated OR if root subsidiary
-        filters['use_hierarchy'] = wants_consolidated or is_root_subsidiary(subsidiary)
+        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
+        # Per NetSuite behavior: "Celigo Inc." = just that subsidiary
+        #                        "Celigo Inc. (Consolidated)" = includes children
+        filters['use_hierarchy'] = wants_consolidated
     if class_id and class_id != '':
         filters['class'] = class_id
     if department and department != '':
@@ -2615,7 +2623,8 @@ def batch_periods_refresh():
     # Use hierarchy only for root subsidiary or explicit "(Consolidated)" request
     filter_clauses = []
     if subsidiary:
-        use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
+        use_hierarchy = wants_consolidated
         
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
@@ -2996,7 +3005,10 @@ def batch_full_year_refresh_bs():
     filters = {}
     if subsidiary:
         filters['subsidiary'] = subsidiary
-        filters['use_hierarchy'] = wants_consolidated or is_root_subsidiary(subsidiary)
+        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
+        # Per NetSuite behavior: "Celigo Inc." = just that subsidiary
+        #                        "Celigo Inc. (Consolidated)" = includes children
+        filters['use_hierarchy'] = wants_consolidated
     if class_id: filters['class'] = class_id
     if department: filters['department'] = department
     if location: filters['location'] = location
@@ -3138,7 +3150,10 @@ def batch_bs_periods():
     filters = {}
     if subsidiary:
         filters['subsidiary'] = subsidiary
-        filters['use_hierarchy'] = wants_consolidated or is_root_subsidiary(subsidiary)
+        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
+        # Per NetSuite behavior: "Celigo Inc." = just that subsidiary
+        #                        "Celigo Inc. (Consolidated)" = includes children
+        filters['use_hierarchy'] = wants_consolidated
     if class_id: filters['class'] = class_id
     if department: filters['department'] = department
     if location: filters['location'] = location
@@ -3295,7 +3310,8 @@ def batch_balance_year():
     use_hierarchy = False
     sub_filter_clause = ""
     if subsidiary:
-        use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
+        use_hierarchy = wants_consolidated
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
             sub_filter_clause = f"AND t.subsidiary IN ({', '.join(hierarchy_subs)})"
@@ -3537,17 +3553,18 @@ def batch_balance():
         # ========================================================================
         # SUBSIDIARY FILTERING - Critical for correct subsidiary-level reporting
         # ========================================================================
-        # Use hierarchy (include children) if:
-        # 1. No subsidiary specified (default to root with all children)
-        # 2. It's the ROOT subsidiary (parent=NULL)
-        # 3. User explicitly requested "(Consolidated)" suffix
-        # Otherwise: just that specific subsidiary
+        # SUBSIDIARY FILTERING - Matches NetSuite's actual behavior:
+        # - "(Consolidated)" suffix in name = include children
+        # - Base name (no suffix) = ONLY that specific subsidiary
+        # - No subsidiary specified = consolidated from root
+        # 
+        # NOTE: NetSuite dynamically creates "(Consolidated)" entries in UI for
+        # subsidiaries that have children. We detect this via the suffix.
         # ========================================================================
         if subsidiary and subsidiary != '':
-            is_root = is_root_subsidiary(subsidiary)
-            use_hierarchy = wants_consolidated or is_root
+            use_hierarchy = wants_consolidated  # ONLY when "(Consolidated)" is explicitly requested
             
-            print(f"🔍 HIERARCHY DEBUG: subsidiary_id={subsidiary}, is_root={is_root}, wants_consolidated={wants_consolidated}, use_hierarchy={use_hierarchy}", file=sys.stderr)
+            print(f"🔍 HIERARCHY DEBUG: subsidiary_id={subsidiary}, wants_consolidated={wants_consolidated}, use_hierarchy={use_hierarchy}", file=sys.stderr)
             
             if use_hierarchy:
                 hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
@@ -3556,13 +3573,13 @@ def batch_balance():
                 print(f"✅ CONSOLIDATED: Including {len(hierarchy_subs)} subsidiaries: {hierarchy_subs}", file=sys.stderr)
             else:
                 where_clauses.append(f"t.subsidiary = {subsidiary}")
-                print(f"⚠️  SINGLE: Only subsidiary {subsidiary}", file=sys.stderr)
+                print(f"📍 SINGLE: Only subsidiary {subsidiary}", file=sys.stderr)
         else:
             # No subsidiary specified - use default (parent) and include all subsidiaries
             hierarchy_subs = get_subsidiaries_in_hierarchy(default_subsidiary_id or '1')
             sub_filter = ', '.join(hierarchy_subs)
             where_clauses.append(f"t.subsidiary IN ({sub_filter})")
-            print(f"DEBUG - No subsidiary specified, using root hierarchy: {len(hierarchy_subs)} subsidiaries", file=sys.stderr)
+            print(f"🌍 NO SUBSIDIARY: Using root hierarchy with {len(hierarchy_subs)} subsidiaries", file=sys.stderr)
         
         # Need TransactionLine join if filtering by department, class, or location
         needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
@@ -4186,12 +4203,9 @@ def get_balance():
         ]
         
         # Add subsidiary filter
-        # Use hierarchy (include children) if:
-        # 1. It's the ROOT subsidiary (parent=NULL), OR
-        # 2. User explicitly requested "(Consolidated)" suffix
-        # Otherwise: just that subsidiary
+        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
         if subsidiary and subsidiary != '':
-            use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+            use_hierarchy = wants_consolidated
             
             if use_hierarchy:
                 hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
@@ -4968,9 +4982,9 @@ def get_transactions():
             f"ap.periodname = '{escape_sql(period)}'"
         ]
         
-        # Use hierarchy only for root subsidiary or explicit "(Consolidated)" request
+        # Use hierarchy ONLY when "(Consolidated)" is explicitly requested
         if subsidiary:
-            use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+            use_hierarchy = wants_consolidated
             
             if use_hierarchy:
                 hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)

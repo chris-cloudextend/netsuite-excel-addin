@@ -2456,7 +2456,7 @@
                             <div class="excel-cell header">B</div>
                             
                             <div class="excel-cell row-header">1</div>
-                            <div class="excel-cell value">Subsidiary:</div>
+                            <div class="excel-cell value">Subsidiary Context:</div>
                             <div class="excel-cell">Celigo Inc.</div>
                             
                             <div class="excel-cell row-header">2</div>
@@ -2554,7 +2554,7 @@
                     </p>
                     
                     <div class="filter-group">
-                        <label class="filter-label">Subsidiary</label>
+                        <label class="filter-label">Subsidiary Context</label>
                         <select id="subsidiarySelect" class="filter-select">
                             <option value="">Loading...</option>
                         </select>
@@ -2863,7 +2863,7 @@
                     </div>
                     <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
                     <div class="param-item">
-                        <span class="param-name">subsidiary</span> - Subsidiary ID or name
+                        <span class="param-name">subsidiary</span> - Subsidiary Context (ID or name, add "(Consolidated)" for children)
                     </div>
                     <div class="param-item">
                         <span class="param-name">accountingBook</span> - Accounting Book ID
@@ -2898,7 +2898,7 @@
                     </div>
                     <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
                     <div class="param-item">
-                        <span class="param-name">subsidiary</span> - Subsidiary ID or name
+                        <span class="param-name">subsidiary</span> - Subsidiary Context (ID or name, add "(Consolidated)" for children)
                     </div>
                     <div class="param-item">
                         <span class="param-name">accountingBook</span> - Accounting Book ID
@@ -2933,7 +2933,7 @@
                     </div>
                     <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
                     <div class="param-item">
-                        <span class="param-name">subsidiary</span> - Subsidiary ID or name
+                        <span class="param-name">subsidiary</span> - Subsidiary Context (ID or name, add "(Consolidated)" for children)
                     </div>
                     <div class="param-item">
                         <span class="param-name">accountingBook</span> - Accounting Book ID
@@ -4061,7 +4061,7 @@
                     
                     // ========== ROW 2: PARAMETER LABELS (above values) ==========
                     sheet.getRange("E2").values = [["YEAR"]];
-                    sheet.getRange("G2").values = [["Subsidiary"]];
+                    sheet.getRange("G2").values = [["Subsidiary Context"]];
                     await context.sync();
                     console.log('Guide Me: Parameter labels written');
                     
@@ -4623,7 +4623,7 @@
                     
                     // ========== ROW 2: PARAMETER LABELS (above values) ==========
                     sheet.getRange("P2").values = [["YEAR"]];
-                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("Q2").values = [["Subsidiary Context"]];
                     sheet.getRange("R2").values = [["Structure Sync"]];
                     await context.sync();
                     
@@ -5294,7 +5294,7 @@
                     
                     // ========== ROW 2: PARAMETER LABELS ==========
                     sheet.getRange("P2").values = [["YEAR"]];
-                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("Q2").values = [["Subsidiary Context"]];
                     sheet.getRange("R2").values = [["Budget Category"]];
                     sheet.getRange("S2").values = [["Department"]];
                     sheet.getRange("T2").values = [["Class"]];
@@ -5816,7 +5816,7 @@
                     
                     // ========== ROW 2: PARAMETER LABELS (above values) ==========
                     sheet.getRange("P2").values = [["YEAR"]];
-                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("Q2").values = [["Subsidiary Context"]];
                     sheet.getRange("R2").values = [["Structure Sync"]];
                     await context.sync();
                     
@@ -8083,7 +8083,7 @@ export default {
                     
                     // ROW 2: PARAMETER LABELS (above values)
                     sheet.getRange("P2").values = [["YEAR"]];
-                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("Q2").values = [["Subsidiary Context"]];
                     sheet.getRange("R2").values = [["Structure Sync"]];
                     await context.sync();
                     
@@ -9104,7 +9104,7 @@ export default {
                             
                             // ===== ROW 2: PARAMETER LABELS =====
                             sheet.getRange("P2").values = [["YEAR"]];
-                            sheet.getRange("Q2").values = [["Subsidiary"]];
+                            sheet.getRange("Q2").values = [["Subsidiary Context"]];
                             sheet.getRange("R2").values = [["Structure Sync"]];
                             await context.sync();
                             
