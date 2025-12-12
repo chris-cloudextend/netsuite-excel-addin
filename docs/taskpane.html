@@ -2248,7 +2248,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.23</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.24</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3000,7 +3000,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.23</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.24</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -4683,14 +4683,14 @@
                     } catch (e) {}
                     
                     // ========== ROW 3: PARAMETER VALUES (below labels) ==========
+                    // Set sync trackers BEFORE context.sync() to prevent race condition with change listeners
+                    lastSyncedYear = String(currentYear);
+                    lastSyncedSubsidiary = defaultSubsidiary;
+                    
                     sheet.getRange("P3").values = [[currentYear]];
                     sheet.getRange("Q3").values = [[defaultSubsidiary]];
                     sheet.getRange("R3").values = [["TRUE"]];
                     await context.sync();
-                    
-                    // Set sync trackers to prevent change listeners from re-triggering
-                    lastSyncedYear = String(currentYear);
-                    lastSyncedSubsidiary = defaultSubsidiary;
                     
                     // Style parameter value cells
                     try {
@@ -5134,8 +5134,11 @@
                     </div>`;
                 progress.style.lineHeight = '1.6';
                 
-                // Clear sync flag after successful generation
-                isSyncInProgress = false;
+                // Clear sync flag after a delay to let any queued change events fire first
+                setTimeout(() => {
+                    isSyncInProgress = false;
+                    console.log('✅ Sync protection cleared - ready for user changes');
+                }, 3000);
                 
                 // Close Quick Start accordion after successful generation
                 closeQuickStart();
@@ -5149,8 +5152,10 @@
                 progress.style.display = 'block';
                 progress.textContent = `❌ Error: ${error.message}`;
                 
-                // Clear sync flag on error too
-                isSyncInProgress = false;
+                // Clear sync flag after a delay on error too
+                setTimeout(() => {
+                    isSyncInProgress = false;
+                }, 3000);
             }
         }
 
@@ -5384,6 +5389,10 @@
                     } catch (e) {}
                     
                     // ========== ROW 3: PARAMETER VALUES ==========
+                    // Set sync trackers BEFORE context.sync() to prevent race condition
+                    lastSyncedYear = String(budgetYear);
+                    lastSyncedSubsidiary = defaultSubsidiary;
+                    
                     sheet.getRange("P3").values = [[budgetYear]];
                     sheet.getRange("Q3").values = [[defaultSubsidiary]];
                     sheet.getRange("R3").values = [[budgetCategory || 'All Categories']];
@@ -5391,10 +5400,6 @@
                     sheet.getRange("T3").values = [[""]];  // Class - empty by default
                     sheet.getRange("U3").values = [[""]];  // Location - empty by default
                     await context.sync();
-                    
-                    // Set sync trackers to prevent change listeners from re-triggering
-                    lastSyncedYear = String(budgetYear);
-                    lastSyncedSubsidiary = defaultSubsidiary;
                     
                     // Style parameter value cells
                     try {
@@ -5661,7 +5666,11 @@
                     icon: '❌'
                 });
             } finally {
-                isSyncInProgress = false;
+                // Clear sync flag after a delay to let any queued change events fire first
+                setTimeout(() => {
+                    isSyncInProgress = false;
+                    console.log('✅ Sync protection cleared - ready for user changes');
+                }, 3000);
             }
         }
 
@@ -5914,14 +5923,14 @@
                     } catch (e) {}
                     
                     // ========== ROW 3: PARAMETER VALUES (below labels) ==========
+                    // Set sync trackers BEFORE context.sync() to prevent race condition
+                    lastSyncedYear = String(targetYear);
+                    lastSyncedSubsidiary = currentSubsidiary || 'Celigo Inc. (Consolidated)';
+                    
                     sheet.getRange("P3").values = [[targetYear]];
                     sheet.getRange("Q3").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
                     sheet.getRange("R3").values = [["TRUE"]];
                     await context.sync();
-                    
-                    // Set sync trackers to prevent change listeners from re-triggering
-                    lastSyncedYear = String(targetYear);
-                    lastSyncedSubsidiary = currentSubsidiary || 'Celigo Inc. (Consolidated)';
                     
                     try {
                         // Style input cells with teal background
@@ -8195,13 +8204,16 @@ export default {
                         // Trigger the sync
                         await performStructureSync(newYear, subsidiary);
                     } finally {
-                        // Always clear the flag when done
-                        isSyncInProgress = false;
+                        // Clear sync flag after a delay to let any queued change events fire first
+                        setTimeout(() => {
+                            isSyncInProgress = false;
+                            console.log('✅ Year sync protection cleared');
+                        }, 3000);
                     }
                 }
             } catch (e) {
                 console.warn('Auto-sync error:', e.message);
-                isSyncInProgress = false; // Clear flag on error
+                setTimeout(() => { isSyncInProgress = false; }, 3000);
             }
         }
         
@@ -8266,13 +8278,16 @@ export default {
                         // Trigger the sync with the new subsidiary
                         await performStructureSync(year, newSubsidiary);
                     } finally {
-                        // Always clear the flag when done
-                        isSyncInProgress = false;
+                        // Clear sync flag after a delay to let any queued change events fire first
+                        setTimeout(() => {
+                            isSyncInProgress = false;
+                            console.log('✅ Subsidiary sync protection cleared');
+                        }, 3000);
                     }
                 }
             } catch (e) {
                 console.warn('Auto-sync (subsidiary) error:', e.message);
-                isSyncInProgress = false; // Clear flag on error
+                setTimeout(() => { isSyncInProgress = false; }, 3000);
             }
         }
 
@@ -8394,14 +8409,14 @@ export default {
                     } catch (e) {}
                     
                     // ROW 3: PARAMETER VALUES (below labels)
+                    // Set sync trackers BEFORE context.sync() to prevent race condition
+                    lastSyncedYear = String(targetYear);
+                    lastSyncedSubsidiary = currentSubsidiary || 'Celigo Inc. (Consolidated)';
+                    
                     sheet.getRange("P3").values = [[targetYear]];
                     sheet.getRange("Q3").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
                     sheet.getRange("R3").values = [["TRUE"]];
                     await context.sync();
-                    
-                    // Set sync trackers to prevent change listeners from re-triggering
-                    lastSyncedYear = String(targetYear);
-                    lastSyncedSubsidiary = currentSubsidiary || 'Celigo Inc. (Consolidated)';
                     
                     try {
                         sheet.getRange("P3").format.fill.color = "#0AE2C1";
@@ -9451,14 +9466,14 @@ export default {
                             } catch (e) {}
                             
                             // ===== ROW 3: PARAMETER VALUES =====
+                            // Set sync trackers BEFORE context.sync() to prevent race condition
+                            lastSyncedYear = String(syncYear);
+                            lastSyncedSubsidiary = syncSubsidiary || 'Celigo Inc. (Consolidated)';
+                            
                             sheet.getRange("P3").values = [[syncYear]];
                             sheet.getRange("Q3").values = [[syncSubsidiary || 'Celigo Inc. (Consolidated)']];
                             sheet.getRange("R3").values = [["TRUE"]];
                             await context.sync();
-                            
-                            // Set sync trackers to prevent change listeners from re-triggering
-                            lastSyncedYear = String(syncYear);
-                            lastSyncedSubsidiary = syncSubsidiary || 'Celigo Inc. (Consolidated)';
                             
                             try {
                                 sheet.getRange("P3").format.fill.color = "#0AE2C1";
