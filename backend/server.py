@@ -1530,16 +1530,20 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters, a
     filter_clauses = []
     needs_line_join = False
     
-    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
+    # CRITICAL: For subsidiary filtering, use tl.subsidiary (TransactionLine) NOT t.subsidiary
+    # This is because intercompany journal entries have header on one subsidiary but 
+    # lines that post to different subsidiaries. GL reports should filter by where
+    # the accounting line posts, not the transaction header.
     if filters.get('subsidiary'):
         # ONLY use hierarchy when explicitly requested via filters
         use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
-            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            filter_clauses.append(f"tl.subsidiary IN ({sub_filter})")
         else:
-            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+            filter_clauses.append(f"tl.subsidiary = {filters['subsidiary']}")
+        needs_line_join = True  # Must join TransactionLine for subsidiary filtering
     if filters.get('department'):
         filter_clauses.append(f"tl.department = {filters['department']}")
         needs_line_join = True
@@ -1638,16 +1642,17 @@ def build_bs_multi_period_query(periods, target_sub, filters, accountingbook=Non
     filter_clauses = []
     needs_line_join = False
     
-    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
+    # CRITICAL: Use tl.subsidiary for GL line-level filtering (intercompany JEs have header on different sub)
     if filters.get('subsidiary'):
         # ONLY use hierarchy when explicitly requested via filters
         use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
-            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            filter_clauses.append(f"tl.subsidiary IN ({sub_filter})")
         else:
-            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+            filter_clauses.append(f"tl.subsidiary = {filters['subsidiary']}")
+        needs_line_join = True  # Must join TransactionLine for subsidiary filtering
     if filters.get('department'):
         filter_clauses.append(f"tl.department = {filters['department']}")
         needs_line_join = True
@@ -1802,24 +1807,30 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters, a
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     filter_clauses = []
-    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
+    needs_line_join = False
+    
+    # CRITICAL: Use tl.subsidiary for GL line-level filtering (intercompany JEs have header on different sub)
     if filters.get('subsidiary'):
-        # ONLY use hierarchy when explicitly requested via filters
         use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
-            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            filter_clauses.append(f"tl.subsidiary IN ({sub_filter})")
         else:
-            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+            filter_clauses.append(f"tl.subsidiary = {filters['subsidiary']}")
+        needs_line_join = True
     if filters.get('department'):
-        filter_clauses.append(f"tal.department = {filters['department']}")
+        filter_clauses.append(f"tl.department = {filters['department']}")
+        needs_line_join = True
     if filters.get('location'):
-        filter_clauses.append(f"tal.location = {filters['location']}")
+        filter_clauses.append(f"tl.location = {filters['location']}")
+        needs_line_join = True
     if filters.get('class'):
-        filter_clauses.append(f"tal.class = {filters['class']}")
+        filter_clauses.append(f"tl.class = {filters['class']}")
+        needs_line_join = True
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    line_join = "JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     prior_year = int(fiscal_year) - 1
     
     query = f"""
@@ -1840,6 +1851,7 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters, a
       ) AS opening_balance
       FROM TransactionAccountingLine tal
       JOIN Transaction t ON t.id = tal.transaction
+      {line_join}
       JOIN Account a ON a.id = tal.account
       JOIN AccountingPeriod ap ON ap.id = t.postingperiod
       WHERE t.posting = 'T'
@@ -1868,24 +1880,30 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters, accounti
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     filter_clauses = []
-    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
+    needs_line_join = False
+    
+    # CRITICAL: Use tl.subsidiary for GL line-level filtering
     if filters.get('subsidiary'):
-        # ONLY use hierarchy when explicitly requested via filters
         use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
-            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            filter_clauses.append(f"tl.subsidiary IN ({sub_filter})")
         else:
-            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+            filter_clauses.append(f"tl.subsidiary = {filters['subsidiary']}")
+        needs_line_join = True
     if filters.get('department'):
-        filter_clauses.append(f"tal.department = {filters['department']}")
+        filter_clauses.append(f"tl.department = {filters['department']}")
+        needs_line_join = True
     if filters.get('location'):
-        filter_clauses.append(f"tal.location = {filters['location']}")
+        filter_clauses.append(f"tl.location = {filters['location']}")
+        needs_line_join = True
     if filters.get('class'):
-        filter_clauses.append(f"tal.class = {filters['class']}")
+        filter_clauses.append(f"tl.class = {filters['class']}")
+        needs_line_join = True
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    line_join = "JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     query = f"""
     SELECT
@@ -1906,6 +1924,7 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters, accounti
       ) AS amount
     FROM TransactionAccountingLine tal
     JOIN Transaction t ON t.id = tal.transaction
+    {line_join}
     JOIN Account a ON a.id = tal.account
     JOIN AccountingPeriod ap ON ap.id = t.postingperiod
     WHERE t.posting = 'T'
@@ -1951,20 +1970,20 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     # Build optional filter clauses
-    # Note: class, department, location are on TransactionLine, not TransactionAccountingLine
+    # Note: class, department, location, and subsidiary are on TransactionLine
     filter_clauses = []
     needs_line_join = False
     
-    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
+    # CRITICAL: Use tl.subsidiary for GL line-level filtering (intercompany JEs have header on different sub)
     if filters.get('subsidiary'):
-        # ONLY use hierarchy when explicitly requested via filters
         use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
-            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            filter_clauses.append(f"tl.subsidiary IN ({sub_filter})")
         else:
-            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
+            filter_clauses.append(f"tl.subsidiary = {filters['subsidiary']}")
+        needs_line_join = True  # Must join TransactionLine for subsidiary filtering
     if filters.get('department'):
         filter_clauses.append(f"tl.department = {filters['department']}")
         needs_line_join = True
@@ -1977,7 +1996,7 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
     
-    # Add TransactionLine join if filtering by class/department/location
+    # Add TransactionLine join if filtering by class/department/location/subsidiary
     line_join = "JOIN transactionline tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     # Build the pivoted query with all 12 months as columns
@@ -2620,27 +2639,33 @@ def batch_periods_refresh():
     filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
     
     # Build filter clauses
-    # Use hierarchy only for root subsidiary or explicit "(Consolidated)" request
+    # CRITICAL: Use tl.subsidiary for GL line-level filtering (intercompany JEs have header on different sub)
     filter_clauses = []
+    needs_line_join = False
+    
     if subsidiary:
-        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
         use_hierarchy = wants_consolidated
         
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
             sub_filter = ', '.join(hierarchy_subs)
-            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            filter_clauses.append(f"tl.subsidiary IN ({sub_filter})")
             print(f"   Consolidated: {len(hierarchy_subs)} subsidiaries in hierarchy")
         else:
-            filter_clauses.append(f"t.subsidiary = {subsidiary}")
+            filter_clauses.append(f"tl.subsidiary = {subsidiary}")
             print(f"   Single subsidiary: {subsidiary}")
+        needs_line_join = True
     if department:
-        filter_clauses.append(f"tal.department = {department}")
+        filter_clauses.append(f"tl.department = {department}")
+        needs_line_join = True
     if location:
-        filter_clauses.append(f"tal.location = {location}")
+        filter_clauses.append(f"tl.location = {location}")
+        needs_line_join = True
     if class_id:
-        filter_clauses.append(f"tal.class = {class_id}")
+        filter_clauses.append(f"tl.class = {class_id}")
+        needs_line_join = True
     filter_sql = (" AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
+    line_join = "JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
     
@@ -2679,6 +2704,7 @@ def batch_periods_refresh():
             AS cons_amt
           FROM TransactionAccountingLine tal
           JOIN Transaction t ON t.id = tal.transaction
+          {line_join}
           JOIN Account a ON a.id = tal.account
           JOIN AccountingPeriod ap ON ap.id = t.postingperiod
           WHERE t.posting = 'T'
@@ -3307,16 +3333,20 @@ def batch_balance_year():
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     # Determine if we should use hierarchy (include children)
+    # CRITICAL: Use tl.subsidiary for GL line-level filtering
     use_hierarchy = False
     sub_filter_clause = ""
+    needs_line_join = False
     if subsidiary:
-        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
         use_hierarchy = wants_consolidated
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
-            sub_filter_clause = f"AND t.subsidiary IN ({', '.join(hierarchy_subs)})"
+            sub_filter_clause = f"AND tl.subsidiary IN ({', '.join(hierarchy_subs)})"
         else:
-            sub_filter_clause = f"AND t.subsidiary = {subsidiary}"
+            sub_filter_clause = f"AND tl.subsidiary = {subsidiary}"
+        needs_line_join = True
+    
+    line_join = "JOIN transactionline tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     print(f"\n{'='*80}")
     print(f"🗓️  YEAR PERIOD QUERY: {year}")
@@ -3358,6 +3388,7 @@ def batch_balance_year():
             ) AS balance
         FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
+        {line_join}
         JOIN account a ON tal.account = a.id
         JOIN accountingperiod ap ON t.postingperiod = ap.id
         WHERE a.acctnumber IN ({account_filter})
@@ -3553,14 +3584,11 @@ def batch_balance():
         # ========================================================================
         # SUBSIDIARY FILTERING - Critical for correct subsidiary-level reporting
         # ========================================================================
-        # SUBSIDIARY FILTERING - Matches NetSuite's actual behavior:
-        # - "(Consolidated)" suffix in name = include children
-        # - Base name (no suffix) = ONLY that specific subsidiary
-        # - No subsidiary specified = consolidated from root
-        # 
-        # NOTE: NetSuite dynamically creates "(Consolidated)" entries in UI for
-        # subsidiaries that have children. We detect this via the suffix.
+        # CRITICAL: Use tl.subsidiary (TransactionLine) NOT t.subsidiary!
+        # Intercompany JEs have header on one subsidiary but lines post to different ones.
+        # GL reports should filter by where the line posts, not the transaction header.
         # ========================================================================
+        needs_line_join = False
         if subsidiary and subsidiary != '':
             use_hierarchy = wants_consolidated  # ONLY when "(Consolidated)" is explicitly requested
             
@@ -3569,20 +3597,23 @@ def batch_balance():
             if use_hierarchy:
                 hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
                 sub_filter = ', '.join(hierarchy_subs)
-                where_clauses.append(f"t.subsidiary IN ({sub_filter})")
+                where_clauses.append(f"tl.subsidiary IN ({sub_filter})")
                 print(f"✅ CONSOLIDATED: Including {len(hierarchy_subs)} subsidiaries: {hierarchy_subs}", file=sys.stderr)
             else:
-                where_clauses.append(f"t.subsidiary = {subsidiary}")
+                where_clauses.append(f"tl.subsidiary = {subsidiary}")
                 print(f"📍 SINGLE: Only subsidiary {subsidiary}", file=sys.stderr)
+            needs_line_join = True  # Must join TransactionLine for subsidiary filtering
         else:
             # No subsidiary specified - use default (parent) and include all subsidiaries
             hierarchy_subs = get_subsidiaries_in_hierarchy(default_subsidiary_id or '1')
             sub_filter = ', '.join(hierarchy_subs)
-            where_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            where_clauses.append(f"tl.subsidiary IN ({sub_filter})")
             print(f"🌍 NO SUBSIDIARY: Using root hierarchy with {len(hierarchy_subs)} subsidiaries", file=sys.stderr)
+            needs_line_join = True
         
-        # Need TransactionLine join if filtering by department, class, or location
-        needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
+        # Also need TransactionLine join if filtering by department, class, or location
+        if (department and department != '') or (class_id and class_id != '') or (location and location != ''):
+            needs_line_join = True
         
         if class_id and class_id != '':
             where_clauses.append(f"tl.class = {class_id}")
@@ -4203,18 +4234,20 @@ def get_balance():
         ]
         
         # Add subsidiary filter
-        # ONLY use hierarchy when "(Consolidated)" is explicitly requested
+        # CRITICAL: Use tl.subsidiary for GL line-level filtering (intercompany JEs)
+        needs_line_join_for_subsidiary = False
         if subsidiary and subsidiary != '':
             use_hierarchy = wants_consolidated
             
             if use_hierarchy:
                 hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
                 sub_filter = ', '.join(hierarchy_subs)
-                where_clauses.append(f"t.subsidiary IN ({sub_filter})")
+                where_clauses.append(f"tl.subsidiary IN ({sub_filter})")
                 print(f"DEBUG - Consolidated subsidiary filter: {len(hierarchy_subs)} subsidiaries in hierarchy")
             else:
-                where_clauses.append(f"t.subsidiary = {subsidiary}")
+                where_clauses.append(f"tl.subsidiary = {subsidiary}")
                 print(f"DEBUG - Single subsidiary filter: {subsidiary}")
+            needs_line_join_for_subsidiary = True
         
         # Handle period filters - support both period IDs and names
         if from_period and to_period:
@@ -4273,8 +4306,8 @@ def get_balance():
         # Must use valid subsidiary ID (not NULL) for BUILTIN.CONSOLIDATE
         target_sub = subsidiary if subsidiary and subsidiary != '' else (default_subsidiary_id or '1')
         
-        # Need TransactionLine join if filtering by department, class, or location
-        needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
+        # Need TransactionLine join if filtering by department, class, location, or subsidiary
+        needs_line_join = needs_line_join_for_subsidiary or (department and department != '') or (class_id and class_id != '') or (location and location != '')
         
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         if (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):
@@ -4982,19 +5015,22 @@ def get_transactions():
             f"ap.periodname = '{escape_sql(period)}'"
         ]
         
-        # Use hierarchy ONLY when "(Consolidated)" is explicitly requested
+        # CRITICAL: Use tl.subsidiary for GL line-level filtering (intercompany JEs)
+        needs_line_join = False
         if subsidiary:
             use_hierarchy = wants_consolidated
             
             if use_hierarchy:
                 hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
                 sub_filter = ', '.join(hierarchy_subs)
-                where_conditions.append(f"t.subsidiary IN ({sub_filter})")
+                where_conditions.append(f"tl.subsidiary IN ({sub_filter})")
             else:
-                where_conditions.append(f"t.subsidiary = {subsidiary}")
+                where_conditions.append(f"tl.subsidiary = {subsidiary}")
+            needs_line_join = True
         
-        # Need TransactionLine join if filtering by department, class, or location
-        needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
+        # Also need TransactionLine join if filtering by department, class, or location
+        if (department and department != '') or (class_id and class_id != '') or (location and location != ''):
+            needs_line_join = True
         
         if class_id:
             where_conditions.append(f"tl.class = {class_id}")
@@ -5874,9 +5910,9 @@ def calculate_retained_earnings():
         sub_filter = ', '.join(hierarchy_subs)
         print(f"   Subsidiary hierarchy: {len(hierarchy_subs)} subsidiaries")
         
-        # Build segment filters - use t.subsidiary IN (...) for consolidated view
+        # Build segment filters - use tl.subsidiary for GL line-level filtering (intercompany JEs)
         segment_filters = []
-        segment_filters.append(f"t.subsidiary IN ({sub_filter})")  # Always filter by hierarchy
+        segment_filters.append(f"tl.subsidiary IN ({sub_filter})")  # Always filter by hierarchy at line level
         if department:
             segment_filters.append(f"tl.department = {department}")
         if location:
@@ -5886,8 +5922,8 @@ def calculate_retained_earnings():
         
         segment_where = ' AND ' + ' AND '.join(segment_filters) if segment_filters else ''
         
-        # Need TransactionLine join if filtering by dept/class/loc
-        needs_tl_join = department or classId or location
+        # Always need TransactionLine join for tl.subsidiary filter
+        needs_tl_join = True  # Required for tl.subsidiary filter
         tl_join = "JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_tl_join else ""
         
         # Parse fy_start date for comparison
@@ -6085,9 +6121,9 @@ def calculate_net_income():
         sub_filter = ', '.join(hierarchy_subs)
         print(f"   Subsidiary hierarchy: {len(hierarchy_subs)} subsidiaries")
         
-        # Build segment filters - use t.subsidiary IN (...) for consolidated view
+        # Build segment filters - use tl.subsidiary for GL line-level filtering (intercompany JEs)
         segment_filters = []
-        segment_filters.append(f"t.subsidiary IN ({sub_filter})")  # Always filter by hierarchy
+        segment_filters.append(f"tl.subsidiary IN ({sub_filter})")  # Always filter by hierarchy at line level
         if department:
             segment_filters.append(f"tl.department = {department}")
         if location:
@@ -6097,8 +6133,8 @@ def calculate_net_income():
         
         segment_where = ' AND ' + ' AND '.join(segment_filters) if segment_filters else ''
         
-        # Need TransactionLine join if filtering by dept/class/loc
-        needs_tl_join = department or classId or location
+        # Always need TransactionLine join for tl.subsidiary filter
+        needs_tl_join = True  # Required for tl.subsidiary filter
         tl_join = "JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_tl_join else ""
         
         # Parse dates
