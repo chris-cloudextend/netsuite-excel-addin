@@ -2248,7 +2248,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.25</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.26</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3000,7 +3000,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.25</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.26</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -8593,6 +8593,15 @@ export default {
                         } catch (e) {}
                     };
                     
+                    // Helper to create named ranges (makes formulas robust against row changes)
+                    const createNamedRange = async (name, row) => {
+                        try {
+                            try { sheet.names.getItem(name).delete(); await context.sync(); } catch (e) {}
+                            sheet.names.add(name, sheet.getRange(`C${row}:O${row}`));
+                            await context.sync();
+                        } catch (e) { console.warn(`Could not create ${name}:`, e.message); }
+                    };
+                    
                     let revenueTotalRow, cogsTotalRow, grossProfitRow, expenseTotalRow, operatingIncomeRow;
                     let othIncomeTotalRow, othExpenseTotalRow, netIncomeRow;
                     
@@ -8602,7 +8611,9 @@ export default {
                         for (const acct of categories.income) writeAccountRow(acct, currentRow++);
                         await context.sync();
                         await writeSubtotalRow('Total Revenue', startRow, currentRow - 1, currentRow);
-                        revenueTotalRow = currentRow++;
+                        revenueTotalRow = currentRow;
+                        await createNamedRange('_Total_Revenue', currentRow);
+                        currentRow++;
                         currentRow++;
                     }
                     
@@ -8612,24 +8623,29 @@ export default {
                         for (const acct of categories.cogs) writeAccountRow(acct, currentRow++);
                         await context.sync();
                         await writeSubtotalRow('Total Cost of Sales', startRow, currentRow - 1, currentRow);
-                        cogsTotalRow = currentRow++;
+                        cogsTotalRow = currentRow;
+                        await createNamedRange('_Total_COGS', currentRow);
+                        currentRow++;
                         currentRow++;
                     }
                     
-                    if (revenueTotalRow && cogsTotalRow) {
+                    // GROSS PROFIT - Always create if we have revenue or COGS
+                    if (revenueTotalRow || cogsTotalRow) {
                         sheet.getRange(`B${currentRow}`).values = [['GROSS PROFIT']];
-                        for (let m = 0; m < 12; m++) {
+                        const gpFormula = '=IFERROR(@INDIRECT("_Total_Revenue"),0)-IFERROR(@INDIRECT("_Total_COGS"),0)';
+                        for (let m = 0; m < 13; m++) {
                             const col = String.fromCharCode(67 + m);
-                            sheet.getRange(`${col}${currentRow}`).formulas = [[`=${col}${revenueTotalRow}-${col}${cogsTotalRow}`]];
+                            sheet.getRange(`${col}${currentRow}`).formulas = [[gpFormula]];
                         }
-                        sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
                         await context.sync();
                         try {
                             sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.bold = true;
                             sheet.getRange(`A${currentRow}:O${currentRow}`).format.fill.color = "#D4E6F1";
                             await context.sync();
                         } catch (e) {}
-                        grossProfitRow = currentRow++;
+                        grossProfitRow = currentRow;
+                        await createNamedRange('_Gross_Profit', currentRow);
+                        currentRow++;
                         currentRow++;
                     }
                     
@@ -8639,24 +8655,29 @@ export default {
                         for (const acct of categories.expense) writeAccountRow(acct, currentRow++);
                         await context.sync();
                         await writeSubtotalRow('Total Operating Expenses', startRow, currentRow - 1, currentRow);
-                        expenseTotalRow = currentRow++;
+                        expenseTotalRow = currentRow;
+                        await createNamedRange('_Total_Operating_Expenses', currentRow);
+                        currentRow++;
                         currentRow++;
                     }
                     
-                    if (grossProfitRow && expenseTotalRow) {
+                    // OPERATING INCOME - Always create if we have gross profit or expenses
+                    if (grossProfitRow || expenseTotalRow) {
                         sheet.getRange(`B${currentRow}`).values = [['OPERATING INCOME']];
-                        for (let m = 0; m < 12; m++) {
+                        const oiFormula = '=IFERROR(@INDIRECT("_Gross_Profit"),0)-IFERROR(@INDIRECT("_Total_Operating_Expenses"),0)';
+                        for (let m = 0; m < 13; m++) {
                             const col = String.fromCharCode(67 + m);
-                            sheet.getRange(`${col}${currentRow}`).formulas = [[`=${col}${grossProfitRow}-${col}${expenseTotalRow}`]];
+                            sheet.getRange(`${col}${currentRow}`).formulas = [[oiFormula]];
                         }
-                        sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
                         await context.sync();
                         try {
                             sheet.getRange(`A${currentRow}:O${currentRow}`).format.font.bold = true;
                             sheet.getRange(`A${currentRow}:O${currentRow}`).format.fill.color = "#D5F5E3";
                             await context.sync();
                         } catch (e) {}
-                        operatingIncomeRow = currentRow++;
+                        operatingIncomeRow = currentRow;
+                        await createNamedRange('_Operating_Income', currentRow);
+                        currentRow++;
                         currentRow++;
                     }
                     
@@ -8666,7 +8687,9 @@ export default {
                         for (const acct of categories.othIncome) writeAccountRow(acct, currentRow++);
                         await context.sync();
                         await writeSubtotalRow('Total Other Income', startRow, currentRow - 1, currentRow);
-                        othIncomeTotalRow = currentRow++;
+                        othIncomeTotalRow = currentRow;
+                        await createNamedRange('_Total_Other_Income', currentRow);
+                        currentRow++;
                         currentRow++;
                     }
                     
@@ -8676,23 +8699,19 @@ export default {
                         for (const acct of categories.othExpense) writeAccountRow(acct, currentRow++);
                         await context.sync();
                         await writeSubtotalRow('Total Other Expense', startRow, currentRow - 1, currentRow);
-                        othExpenseTotalRow = currentRow++;
+                        othExpenseTotalRow = currentRow;
+                        await createNamedRange('_Total_Other_Expenses', currentRow);
+                        currentRow++;
                         currentRow++;
                     }
                     
+                    // NET INCOME - Using named ranges with IFERROR for missing sections
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                    for (let m = 0; m < 12; m++) {
+                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-IFERROR(@INDIRECT("_Total_Other_Expenses"),0)';
+                    for (let m = 0; m < 13; m++) {
                         const col = String.fromCharCode(67 + m);
-                        let formula = '=';
-                        if (operatingIncomeRow) formula += `${col}${operatingIncomeRow}`;
-                        else if (grossProfitRow) formula += `${col}${grossProfitRow}`;
-                        else if (revenueTotalRow) formula += `${col}${revenueTotalRow}`;
-                        else formula += '0';
-                        if (othIncomeTotalRow) formula += `+${col}${othIncomeTotalRow}`;
-                        if (othExpenseTotalRow) formula += `-${col}${othExpenseTotalRow}`;
-                        sheet.getRange(`${col}${currentRow}`).formulas = [[formula]];
+                        sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
                     }
-                    sheet.getRange(`O${currentRow}`).formulas = [[`=SUM(C${currentRow}:N${currentRow})`]];
                     await context.sync();
                     
                     try {
@@ -8702,6 +8721,7 @@ export default {
                         await context.sync();
                     } catch (e) {}
                     netIncomeRow = currentRow;
+                    await createNamedRange('_Net_Income', currentRow);
                     
                     // Apply currency format to all number cells
                     try {
