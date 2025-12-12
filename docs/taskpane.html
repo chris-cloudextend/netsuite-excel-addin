@@ -224,7 +224,7 @@
 
         .collapsible-header {
             background: white;
-            padding: 16px;
+            padding: 12px 14px;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -244,19 +244,19 @@
         }
 
         .collapsible-header h3 {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             color: #1f2937;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .collapsible-header .section-icon {
-            width: 40px;
-            height: 40px;
+            width: 34px;
+            height: 34px;
             background: #f3f4f6;
-            border-radius: 8px;
+            border-radius: 7px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -264,8 +264,8 @@
         }
 
         .collapsible-header .section-icon svg {
-            width: 20px;
-            height: 20px;
+            width: 17px;
+            height: 17px;
             stroke: var(--deep-dive);
             fill: none;
             stroke-width: 2;
@@ -282,7 +282,7 @@
         }
 
         .collapsible-header .header-text .subtitle {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 400;
             color: #6b7280;
         }
@@ -299,9 +299,42 @@
         }
 
         .collapsible-content {
-            padding: 16px;
+            padding: 14px;
             background: #fafbfc;
             border-top: 1px solid #e5e7eb;
+        }
+
+        /* Drag handle indicator */
+        .collapsible-header .drag-handle {
+            cursor: grab;
+            padding: 4px;
+            opacity: 0.3;
+            transition: opacity 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin-right: 6px;
+        }
+
+        .collapsible-header .drag-handle:hover {
+            opacity: 0.7;
+        }
+
+        .collapsible-header .drag-handle span {
+            display: block;
+            width: 12px;
+            height: 2px;
+            background: #9ca3af;
+            border-radius: 1px;
+        }
+
+        .collapsible-section.dragging {
+            opacity: 0.5;
+            border: 2px dashed var(--anenome);
+        }
+
+        .collapsible-section.drag-over {
+            border-top: 3px solid var(--anenome);
         }
 
         details.collapsible-section > summary {
@@ -1217,15 +1250,15 @@
            DATA MANAGEMENT REDESIGN
            ============================================ */
         .data-mgmt-section .collapsible-header {
-            background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
+            background: linear-gradient(135deg, rgba(0, 79, 182, 0.08) 0%, rgba(9, 35, 92, 0.08) 100%);
         }
         
         .data-mgmt-section .collapsible-header h3 {
-            color: white;
+            color: var(--deep-dive);
         }
         
         .data-mgmt-section .chevron {
-            fill: white;
+            fill: var(--bottlenose);
         }
         
         .data-mgmt-content {
@@ -2291,8 +2324,9 @@
                 </div>
 
                 <!-- QUICK START - Accordion Section -->
-            <details class="collapsible-section help-section" id="quickStartSection" open>
-                <summary class="collapsible-header">
+            <details class="collapsible-section help-section" id="quickStartSection" data-section-id="quickStart" open>
+                <summary class="collapsible-header" onclick="handleAccordionClick(event, 'quickStartSection')">
+                    <div class="drag-handle" draggable="true" title="Drag to reorder"><span></span><span></span><span></span></div>
                     <h3>
                         <div class="section-icon" style="background: var(--anenome);">
                             <svg viewBox="0 0 24 24" style="stroke: white;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
@@ -2347,8 +2381,9 @@
             </details>
 
             <!-- GETTING STARTED HELP SECTION -->
-            <details class="collapsible-section help-section" id="helpSection">
-                <summary class="collapsible-header">
+            <details class="collapsible-section help-section" id="helpSection" data-section-id="help">
+                <summary class="collapsible-header" onclick="handleAccordionClick(event, 'helpSection')">
+                    <div class="drag-handle" draggable="true" title="Drag to reorder"><span></span><span></span><span></span></div>
                     <h3>
                         <div class="section-icon">
                             <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
@@ -2475,8 +2510,9 @@
             </details>
 
             <!-- DATA MANAGEMENT SECTION - Redesigned with integrated preload -->
-            <details class="collapsible-section data-mgmt-section" id="dataMgmtSection">
-                <summary class="collapsible-header">
+            <details class="collapsible-section data-mgmt-section" id="dataMgmtSection" data-section-id="dataMgmt">
+                <summary class="collapsible-header" onclick="handleAccordionClick(event, 'dataMgmtSection')">
+                    <div class="drag-handle" draggable="true" title="Drag to reorder"><span></span><span></span><span></span></div>
                     <h3>
                         <div class="section-icon" style="background: #dbeafe;">
                             <svg viewBox="0 0 24 24" style="stroke: var(--blue-light);"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
@@ -2535,8 +2571,9 @@
             </details>
 
             <!-- NETSUITE FILTERS SECTION -->
-            <details class="collapsible-section">
-                <summary class="collapsible-header">
+            <details class="collapsible-section" id="filtersSection" data-section-id="filters">
+                <summary class="collapsible-header" onclick="handleAccordionClick(event, 'filtersSection')">
+                    <div class="drag-handle" draggable="true" title="Drag to reorder"><span></span><span></span><span></span></div>
                     <h3>
                         <div class="section-icon">
                             <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
@@ -2606,8 +2643,9 @@
             </details>
 
             <!-- ACCOUNT SEARCH SECTION -->
-            <details class="collapsible-section">
-                <summary class="collapsible-header">
+            <details class="collapsible-section" id="bulkAddSection" data-section-id="bulkAdd">
+                <summary class="collapsible-header" onclick="handleAccordionClick(event, 'bulkAddSection')">
+                    <div class="drag-handle" draggable="true" title="Drag to reorder"><span></span><span></span><span></span></div>
                     <h3>
                         <div class="section-icon">
                             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
@@ -4361,6 +4399,9 @@
                     • <code>=XAVI.BALANCE($B5,TEXT(D$4,"mmm yyyy"),TEXT(D$4,"mmm yyyy"),$G$3)</code> → Balance with Subsidiary`;
                 if (progress) progress.style.lineHeight = '1.6';
                 
+                // Close Quick Start accordion after successful generation
+                closeQuickStart();
+                
             } catch (error) {
                 console.error('Guide Me error:', error);
                 clearInterval(tipInterval);
@@ -4660,6 +4701,31 @@
                         sheet.getRange("R3").format.font.color = "#09235C";
                         await context.sync();
                     } catch (e) {}
+                    
+                    // Add Excel comments to parameter cells to explain their purpose
+                    try {
+                        const yearCell = sheet.getRange("P3");
+                        yearCell.addComment({
+                            content: "YEAR: Change this value to load a different fiscal year. The entire Income Statement will update automatically.",
+                            authorEmail: "XAVI"
+                        });
+                        
+                        const subCell = sheet.getRange("Q3");
+                        subCell.addComment({
+                            content: "SUBSIDIARY CONTEXT: Enter a subsidiary name or use the task pane's Filters section to insert a value. Use '(Consolidated)' suffix for consolidated views that include child subsidiaries.",
+                            authorEmail: "XAVI"
+                        });
+                        
+                        const syncCell = sheet.getRange("R3");
+                        syncCell.addComment({
+                            content: "STRUCTURE SYNC: When TRUE, clicking 'Refresh Selected' will rebuild the entire Income Statement structure with all accounts that have data for the selected year and subsidiary. Set to FALSE to only refresh existing formulas.",
+                            authorEmail: "XAVI"
+                        });
+                        
+                        await context.sync();
+                    } catch (commentErr) {
+                        console.warn('Could not add comments:', commentErr.message);
+                    }
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     // Set row height for KPI cards
@@ -5066,6 +5132,9 @@
                 
                 // Clear sync flag after successful generation
                 isSyncInProgress = false;
+                
+                // Close Quick Start accordion after successful generation
+                closeQuickStart();
                 
             } catch (error) {
                 console.error('Income Statement error:', error);
@@ -5569,6 +5638,9 @@
                         type: 'success',
                         icon: '💰'
                     });
+                    
+                    // Close Quick Start accordion after successful generation
+                    closeQuickStart();
                 }, 1500);
                 
             } catch (error) {
@@ -7308,6 +7380,126 @@ export default {
             });
         }
 
+        // ===== ACCORDION AND DRAG/DROP FUNCTIONS =====
+        
+        // Exclusive accordion behavior - close others when one opens
+        function handleAccordionClick(event, sectionId) {
+            // Don't handle if clicking on drag handle
+            if (event.target.closest('.drag-handle')) {
+                event.preventDefault();
+                return;
+            }
+            
+            const clickedSection = document.getElementById(sectionId);
+            if (!clickedSection) return;
+            
+            // If opening this section, close all others
+            if (!clickedSection.hasAttribute('open')) {
+                const allSections = document.querySelectorAll('.collapsible-section');
+                allSections.forEach(section => {
+                    if (section.id !== sectionId && section.hasAttribute('open')) {
+                        section.removeAttribute('open');
+                    }
+                });
+            }
+        }
+        
+        // Close Quick Start accordion
+        function closeQuickStart() {
+            const quickStart = document.getElementById('quickStartSection');
+            if (quickStart) {
+                quickStart.removeAttribute('open');
+            }
+        }
+        
+        // Initialize drag and drop for accordion reordering
+        function initDragAndDrop() {
+            const container = document.querySelector('.tab-panel#homePanel');
+            if (!container) return;
+            
+            const sections = container.querySelectorAll('.collapsible-section');
+            let draggedElement = null;
+            
+            sections.forEach(section => {
+                const handle = section.querySelector('.drag-handle');
+                if (!handle) return;
+                
+                handle.addEventListener('dragstart', (e) => {
+                    draggedElement = section;
+                    section.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', section.id);
+                });
+                
+                handle.addEventListener('dragend', () => {
+                    section.classList.remove('dragging');
+                    sections.forEach(s => s.classList.remove('drag-over'));
+                    draggedElement = null;
+                    
+                    // Save order to localStorage
+                    saveSectionOrder();
+                });
+                
+                section.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    if (draggedElement && draggedElement !== section) {
+                        section.classList.add('drag-over');
+                    }
+                });
+                
+                section.addEventListener('dragleave', () => {
+                    section.classList.remove('drag-over');
+                });
+                
+                section.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    section.classList.remove('drag-over');
+                    
+                    if (draggedElement && draggedElement !== section) {
+                        const rect = section.getBoundingClientRect();
+                        const midY = rect.top + rect.height / 2;
+                        
+                        if (e.clientY < midY) {
+                            section.parentNode.insertBefore(draggedElement, section);
+                        } else {
+                            section.parentNode.insertBefore(draggedElement, section.nextSibling);
+                        }
+                    }
+                });
+            });
+        }
+        
+        // Save section order to localStorage
+        function saveSectionOrder() {
+            const container = document.querySelector('.tab-panel#homePanel');
+            if (!container) return;
+            
+            const sections = container.querySelectorAll('.collapsible-section');
+            const order = Array.from(sections).map(s => s.id);
+            localStorage.setItem('xavi_section_order', JSON.stringify(order));
+        }
+        
+        // Restore section order from localStorage
+        function restoreSectionOrder() {
+            const savedOrder = localStorage.getItem('xavi_section_order');
+            if (!savedOrder) return;
+            
+            try {
+                const order = JSON.parse(savedOrder);
+                const container = document.querySelector('.tab-panel#homePanel');
+                if (!container) return;
+                
+                order.forEach(id => {
+                    const section = document.getElementById(id);
+                    if (section) {
+                        container.appendChild(section);
+                    }
+                });
+            } catch (e) {
+                console.warn('Could not restore section order:', e);
+            }
+        }
+
         // Load NetSuite lookups into dropdowns
         async function loadNetSuiteLookups() {
             const statusEl = document.getElementById('lookupStatus');
@@ -7624,6 +7816,10 @@ export default {
             
             // Initialize tab navigation
             initializeTabNavigation();
+            
+            // Initialize accordion drag/drop and restore saved order
+            restoreSectionOrder();
+            initDragAndDrop();
         });
         
         // Tab Navigation - switch between Data Management, Analytics, and Financial Reporting
@@ -9139,6 +9335,31 @@ export default {
                                 sheet.getRange("R3").format.font.color = "#09235C";
                                 await context.sync();
                             } catch (e) {}
+                            
+                            // Add Excel comments to parameter cells
+                            try {
+                                const yearCell = sheet.getRange("P3");
+                                yearCell.addComment({
+                                    content: "YEAR: Change this value to load a different fiscal year. The entire Income Statement will update automatically.",
+                                    authorEmail: "XAVI"
+                                });
+                                
+                                const subCell = sheet.getRange("Q3");
+                                subCell.addComment({
+                                    content: "SUBSIDIARY CONTEXT: Enter a subsidiary name or use the task pane's Filters section to insert a value. Use '(Consolidated)' suffix for consolidated views.",
+                                    authorEmail: "XAVI"
+                                });
+                                
+                                const syncCell = sheet.getRange("R3");
+                                syncCell.addComment({
+                                    content: "STRUCTURE SYNC: When TRUE, clicking 'Refresh Selected' rebuilds the Income Statement with all accounts for the selected year/subsidiary. Set to FALSE to only refresh existing formulas.",
+                                    authorEmail: "XAVI"
+                                });
+                                
+                                await context.sync();
+                            } catch (commentErr) {
+                                console.warn('Could not add comments:', commentErr.message);
+                            }
                             
                             // ===== ROW 4: KPI METRICS =====
                             try {
