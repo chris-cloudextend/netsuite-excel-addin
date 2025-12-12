@@ -228,7 +228,7 @@
             cursor: pointer;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 8px;
             user-select: none;
             transition: background 0.2s;
             border-left: 3px solid transparent;
@@ -250,6 +250,8 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            flex: 1;
+            margin: 0;
         }
 
         .collapsible-header .section-icon {
@@ -292,6 +294,7 @@
             height: 20px;
             fill: #9ca3af;
             transition: transform 0.3s ease;
+            flex-shrink: 0;
         }
 
         .collapsible-section[open] .chevron {
@@ -312,6 +315,8 @@
             transition: opacity 0.2s;
             display: flex;
             flex-direction: column;
+            width: 16px;
+            flex-shrink: 0;
             gap: 2px;
             margin-right: 6px;
         }
@@ -350,7 +355,7 @@
         }
 
         .help-section .collapsible-header {
-            background: linear-gradient(135deg, rgba(10, 226, 193, 0.15) 0%, rgba(10, 226, 193, 0.05) 100%);
+            background: white;
         }
 
         .help-section .collapsible-header h3 {
@@ -1250,7 +1255,7 @@
            DATA MANAGEMENT REDESIGN
            ============================================ */
         .data-mgmt-section .collapsible-header {
-            background: linear-gradient(135deg, rgba(0, 79, 182, 0.08) 0%, rgba(9, 35, 92, 0.08) 100%);
+            background: white;
         }
         
         .data-mgmt-section .collapsible-header h3 {
@@ -2248,7 +2253,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.29</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.30</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3002,7 +3007,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.29</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.30</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
