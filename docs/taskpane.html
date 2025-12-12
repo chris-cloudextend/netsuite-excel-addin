@@ -2248,7 +2248,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.27</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.28</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2686,8 +2686,9 @@
             </details>
 
             <!-- DRILL-DOWN SECTION -->
-            <details class="collapsible-section">
-                <summary class="collapsible-header">
+            <details class="collapsible-section" id="drillDownSection" data-section-id="drillDown">
+                <summary class="collapsible-header" onclick="handleAccordionClick(event, 'drillDownSection')">
+                    <div class="drag-handle" draggable="true" title="Drag to reorder"><span></span><span></span><span></span></div>
                     <h3>
                         <div class="section-icon">
                             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -2711,8 +2712,9 @@
             </details>
 
             <!-- FORMULA REFERENCE SECTION -->
-            <details class="collapsible-section">
-                <summary class="collapsible-header">
+            <details class="collapsible-section" id="formulaRefSection" data-section-id="formulaRef">
+                <summary class="collapsible-header" onclick="handleAccordionClick(event, 'formulaRefSection')">
+                    <div class="drag-handle" draggable="true" title="Drag to reorder"><span></span><span></span><span></span></div>
                     <h3>
                         <div class="section-icon">
                             <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -3000,7 +3002,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.27</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.28</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -4707,29 +4709,33 @@
                     } catch (e) {}
                     
                     // Add Excel comments to parameter cells to explain their purpose
-                    try {
-                        const yearCell = sheet.getRange("P3");
-                        yearCell.addComment({
-                            content: "YEAR: Change this value to load a different fiscal year. The entire Income Statement will update automatically.",
-                            authorEmail: "XAVI"
-                        });
-                        
-                        const subCell = sheet.getRange("Q3");
-                        subCell.addComment({
-                            content: "SUBSIDIARY CONTEXT: Enter a subsidiary name or use the task pane's Filters section to insert a value. Use '(Consolidated)' suffix for consolidated views that include child subsidiaries.",
-                            authorEmail: "XAVI"
-                        });
-                        
-                        const syncCell = sheet.getRange("R3");
-                        syncCell.addComment({
-                            content: "STRUCTURE SYNC: When TRUE, clicking 'Refresh Selected' will rebuild the entire Income Statement structure with all accounts that have data for the selected year and subsidiary. Set to FALSE to only refresh existing formulas.",
-                            authorEmail: "XAVI"
-                        });
-                        
-                        await context.sync();
-                    } catch (commentErr) {
-                        console.warn('Could not add comments:', commentErr.message);
-                    }
+                    // Helper function to add comment (clears existing first)
+                    const addCellComment = async (cell, commentText) => {
+                        try {
+                            // Try to get existing comment and delete it
+                            const existingComment = cell.getComment();
+                            existingComment.delete();
+                            await context.sync();
+                        } catch (e) {
+                            // No existing comment - that's fine
+                        }
+                        try {
+                            cell.addComment({
+                                content: commentText,
+                                authorEmail: "XAVI"
+                            });
+                            await context.sync();
+                        } catch (e) {
+                            console.warn('Could not add comment:', e.message);
+                        }
+                    };
+                    
+                    await addCellComment(sheet.getRange("P3"), 
+                        "YEAR: Change this value to load a different fiscal year. The entire Income Statement will update automatically.");
+                    await addCellComment(sheet.getRange("Q3"), 
+                        "SUBSIDIARY CONTEXT: Enter a subsidiary name or use the task pane's Filters section to insert a value. Use '(Consolidated)' suffix for consolidated views that include child subsidiaries.");
+                    await addCellComment(sheet.getRange("R3"), 
+                        "STRUCTURE SYNC: When TRUE, clicking 'Refresh Selected' will rebuild the entire Income Statement structure with all accounts that have data for the selected year and subsidiary. Set to FALSE to only refresh existing formulas.");
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     // Set row height for KPI cards
@@ -7481,7 +7487,7 @@ export default {
         
         // Initialize drag and drop for accordion reordering
         function initDragAndDrop() {
-            const container = document.querySelector('.tab-panel#homePanel');
+            const container = document.querySelector('.tab-panel#panelFinancial');
             if (!container) return;
             
             const sections = container.querySelectorAll('.collapsible-section');
@@ -7538,7 +7544,7 @@ export default {
         
         // Save section order to localStorage
         function saveSectionOrder() {
-            const container = document.querySelector('.tab-panel#homePanel');
+            const container = document.querySelector('.tab-panel#panelFinancial');
             if (!container) return;
             
             const sections = container.querySelectorAll('.collapsible-section');
@@ -7553,7 +7559,7 @@ export default {
             
             try {
                 const order = JSON.parse(savedOrder);
-                const container = document.querySelector('.tab-panel#homePanel');
+                const container = document.querySelector('.tab-panel#panelFinancial');
                 if (!container) return;
                 
                 order.forEach(id => {
@@ -9555,29 +9561,25 @@ export default {
                             } catch (e) {}
                             
                             // Add Excel comments to parameter cells
-                            try {
-                                const yearCell = sheet.getRange("P3");
-                                yearCell.addComment({
-                                    content: "YEAR: Change this value to load a different fiscal year. The entire Income Statement will update automatically.",
-                                    authorEmail: "XAVI"
-                                });
-                                
-                                const subCell = sheet.getRange("Q3");
-                                subCell.addComment({
-                                    content: "SUBSIDIARY CONTEXT: Enter a subsidiary name or use the task pane's Filters section to insert a value. Use '(Consolidated)' suffix for consolidated views.",
-                                    authorEmail: "XAVI"
-                                });
-                                
-                                const syncCell = sheet.getRange("R3");
-                                syncCell.addComment({
-                                    content: "STRUCTURE SYNC: When TRUE, clicking 'Refresh Selected' rebuilds the Income Statement with all accounts for the selected year/subsidiary. Set to FALSE to only refresh existing formulas.",
-                                    authorEmail: "XAVI"
-                                });
-                                
-                                await context.sync();
-                            } catch (commentErr) {
-                                console.warn('Could not add comments:', commentErr.message);
-                            }
+                            // Helper function to add comment (clears existing first)
+                            const addCellComment = async (cell, commentText) => {
+                                try {
+                                    const existingComment = cell.getComment();
+                                    existingComment.delete();
+                                    await context.sync();
+                                } catch (e) { /* No existing comment */ }
+                                try {
+                                    cell.addComment({ content: commentText, authorEmail: "XAVI" });
+                                    await context.sync();
+                                } catch (e) { console.warn('Could not add comment:', e.message); }
+                            };
+                            
+                            await addCellComment(sheet.getRange("P3"), 
+                                "YEAR: Change this value to load a different fiscal year. The entire Income Statement will update automatically.");
+                            await addCellComment(sheet.getRange("Q3"), 
+                                "SUBSIDIARY CONTEXT: Enter a subsidiary name or use the task pane's Filters section to insert a value. Use '(Consolidated)' suffix for consolidated views.");
+                            await addCellComment(sheet.getRange("R3"), 
+                                "STRUCTURE SYNC: When TRUE, clicking 'Refresh Selected' rebuilds the Income Statement with all accounts for the selected year/subsidiary. Set to FALSE to only refresh existing formulas.");
                             
                             // ===== ROW 4: KPI METRICS =====
                             try {
