@@ -11,7 +11,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.4';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.5';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -2859,11 +2859,24 @@ async function processBatchQueue() {
         const accounts = [...new Set(groupRequests.map(r => r.request.params.account))];
         
         // Collect ALL unique periods from ALL requests in this group
-        // This allows us to fetch multiple periods in one API call
-        const allPeriods = groupRequests.flatMap(r => [r.request.params.fromPeriod, r.request.params.toPeriod]);
-        const periods = [...new Set(allPeriods.filter(p => p))];
+        // EXPAND date ranges (e.g., "Jan 2025" to "Dec 2025" → all 12 months)
+        const periods = new Set();
+        for (const r of groupRequests) {
+            const { fromPeriod, toPeriod } = r.request.params;
+            if (fromPeriod && toPeriod && fromPeriod !== toPeriod) {
+                // Expand the range to all months
+                const expanded = expandPeriodRangeFromTo(fromPeriod, toPeriod);
+                console.log(`  📅 Expanding ${fromPeriod} to ${toPeriod} → ${expanded.length} months`);
+                expanded.forEach(p => periods.add(p));
+            } else if (fromPeriod) {
+                periods.add(fromPeriod);
+            } else if (toPeriod) {
+                periods.add(toPeriod);
+            }
+        }
+        const periodsArray = [...periods];
         
-        console.log(`  Batch: ${accounts.length} accounts × ${periods.length} period(s)`);
+        console.log(`  Batch: ${accounts.length} accounts × ${periodsArray.length} period(s)`);
         
         // Split into chunks to avoid overwhelming NetSuite
         // Chunk by BOTH accounts AND periods to prevent backend timeouts
@@ -2873,8 +2886,8 @@ async function processBatchQueue() {
         }
         
         const periodChunks = [];
-        for (let i = 0; i < periods.length; i += MAX_PERIODS_PER_BATCH) {
-            periodChunks.push(periods.slice(i, i + MAX_PERIODS_PER_BATCH));
+        for (let i = 0; i < periodsArray.length; i += MAX_PERIODS_PER_BATCH) {
+            periodChunks.push(periodsArray.slice(i, i + MAX_PERIODS_PER_BATCH));
         }
         
         console.log(`  Split into ${accountChunks.length} account chunk(s) × ${periodChunks.length} period chunk(s) = ${accountChunks.length * periodChunks.length} total batches`);
@@ -2884,11 +2897,20 @@ async function processBatchQueue() {
         
         // For each request, track which period chunks need to be processed
         // and accumulate the total across chunks
+        // For date RANGES, we need ALL periods in the range, not just from/to
         const requestAccumulators = new Map();
         for (const {cacheKey, request} of groupRequests) {
+            const { fromPeriod, toPeriod } = request.params;
+            let periodsNeeded;
+            if (fromPeriod && toPeriod && fromPeriod !== toPeriod) {
+                // Full range - need all months
+                periodsNeeded = new Set(expandPeriodRangeFromTo(fromPeriod, toPeriod));
+            } else {
+                periodsNeeded = new Set([fromPeriod, toPeriod].filter(p => p));
+            }
             requestAccumulators.set(cacheKey, {
                 total: 0,
-                periodsNeeded: new Set([request.params.fromPeriod, request.params.toPeriod].filter(p => p)),
+                periodsNeeded,
                 periodsProcessed: new Set()
             });
         }
