@@ -9179,9 +9179,10 @@ export default {
                 });
                 
                 // If this is an auto-generated sheet with sync enabled, rebuild structure
+                console.log(`🔍 STRUCTURE SYNC CHECK: shouldSyncStructure = ${shouldSyncStructure}`);
                 if (shouldSyncStructure) {
                     showLoading('Refresh Accounts', `Syncing structure for ${syncYear}...`, 10);
-                    console.log(`🔄 Rebuilding Income Statement structure for year ${syncYear}, subsidiary: "${syncSubsidiary}"`);
+                    console.log(`🚀 ENTERING STRUCTURE SYNC for year ${syncYear}, subsidiary: "${syncSubsidiary}"`);
                     
                     // Get currency format for the selected subsidiary
                     let currencyFormat = '$#,##0.00';  // Default to USD
@@ -9201,6 +9202,8 @@ export default {
                     }
                     
                     // Fetch accounts for the target year AND selected subsidiary
+                    console.log(`🚀 STRUCTURE SYNC: Calling API with year=${syncYear}, subsidiary="${syncSubsidiary}"`);
+                    
                     const refreshResponse = await fetch(`${SERVER_URL}/batch/full_year_refresh`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -9213,6 +9216,8 @@ export default {
                         })
                     });
                     
+                    console.log(`🚀 STRUCTURE SYNC: API response status = ${refreshResponse.status}`);
+                    
                     if (refreshResponse.ok) {
                         const refreshData = await refreshResponse.json();
                         const allBalances = refreshData.balances || {};
@@ -9222,6 +9227,11 @@ export default {
                         // DEBUG: Log what we received
                         console.log(`📊 Auto-sync received ${Object.keys(allBalances).length} accounts from API for subsidiary: "${syncSubsidiary}"`);
                         console.log(`   Account types received: ${Object.keys(accountTypes).length}`);
+                        console.log(`   🔍 Is 59998 in allBalances? ${allBalances.hasOwnProperty('59998')}`);
+                        if (allBalances['59998']) {
+                            console.log(`   🔍 59998 balance data:`, JSON.stringify(allBalances['59998']));
+                            console.log(`   🔍 59998 account type:`, accountTypes['59998']);
+                        }
                         
                         // Categorize accounts
                         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
