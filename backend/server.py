@@ -9,10 +9,19 @@ import json
 import requests
 from requests_oauthlib import OAuth1
 import sys
+import threading
+import time
 from datetime import datetime
 from dateutil import parser as date_parser
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Rate limiting for NetSuite API calls
+NETSUITE_CONCURRENCY_LIMIT = 4  # NetSuite allows 5, keep 1 buffer
+netsuite_semaphore = threading.Semaphore(NETSUITE_CONCURRENCY_LIMIT)
+netsuite_request_lock = threading.Lock()
+last_netsuite_request_time = 0
+MIN_REQUEST_INTERVAL = 0.05  # 50ms between requests
 
 # Import account type constants to avoid magic strings
 from constants import (
@@ -99,29 +108,39 @@ def query_netsuite(sql_query, timeout=30):
         sql_query: The SuiteQL query to execute
         timeout: Request timeout in seconds (default 30, increase for complex BS queries)
     """
-    try:
-        response = requests.post(
-            suiteql_url,
-            auth=auth,
-            headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
-            json={'q': sql_query},
-            timeout=timeout
-        )
+    global last_netsuite_request_time
+    
+    # Rate limiting: acquire semaphore and enforce minimum interval
+    with netsuite_semaphore:
+        with netsuite_request_lock:
+            elapsed = time.time() - last_netsuite_request_time
+            if elapsed < MIN_REQUEST_INTERVAL:
+                time.sleep(MIN_REQUEST_INTERVAL - elapsed)
+            last_netsuite_request_time = time.time()
         
-        if response.status_code == 200:
-            return response.json().get('items', [])
-        else:
-            error_msg = f"NetSuite error: {response.status_code}"
-            print(f"=== NetSuite Error ===", file=sys.stderr)
-            print(f"Query: {sql_query[:200]}...", file=sys.stderr)
-            print(f"Status: {response.status_code}", file=sys.stderr)
-            print(f"Response: {response.text}", file=sys.stderr)
-            print(f"=====================", file=sys.stderr)
-            return {'error': error_msg, 'details': response.text}
+        try:
+            response = requests.post(
+                suiteql_url,
+                auth=auth,
+                headers={'Content-Type': 'application/json', 'Prefer': 'transient'},
+                json={'q': sql_query},
+                timeout=timeout
+            )
             
-    except Exception as e:
-        print(f"Exception querying NetSuite: {str(e)}", file=sys.stderr)
-        return {'error': str(e)}
+            if response.status_code == 200:
+                return response.json().get('items', [])
+            else:
+                error_msg = f"NetSuite error: {response.status_code}"
+                print(f"=== NetSuite Error ===", file=sys.stderr)
+                print(f"Query: {sql_query[:200]}...", file=sys.stderr)
+                print(f"Status: {response.status_code}", file=sys.stderr)
+                print(f"Response: {response.text}", file=sys.stderr)
+                print(f"=====================", file=sys.stderr)
+                return {'error': error_msg, 'details': response.text}
+                
+        except Exception as e:
+            print(f"Exception querying NetSuite: {str(e)}", file=sys.stderr)
+            return {'error': str(e)}
 
 
 def escape_sql(text):
