@@ -171,37 +171,43 @@
           "name": "subsidiary",
           "description": "Subsidiary filter (use \"\" for all)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "department",
           "description": "Department filter (use \"\" for all)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "location",
           "description": "Location filter (use \"\" for all)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "classId",
           "description": "Class filter (use \"\" for all)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "accountingBook",
           "description": "Accounting Book ID (use \"\" for Primary Book)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "budgetCategory",
           "description": "Budget Category name or ID (use \"\" for all categories)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         }
       ],
       "options": {
