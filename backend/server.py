@@ -565,6 +565,34 @@ def load_default_subsidiary():
 subsidiary_hierarchy_cache = {}
 
 
+def is_root_subsidiary(sub_id):
+    """
+    Check if a subsidiary is the root (top-level) subsidiary.
+    Root subsidiaries have parent = NULL.
+    
+    Args:
+        sub_id: Subsidiary ID (string or int)
+        
+    Returns:
+        True if root subsidiary, False otherwise
+    """
+    sub_id = str(sub_id)
+    
+    try:
+        query = f"""
+            SELECT parent FROM Subsidiary WHERE id = {sub_id}
+        """
+        result = query_netsuite(query)
+        
+        if isinstance(result, list) and len(result) > 0:
+            parent = result[0].get('parent')
+            return parent is None
+        return False
+    except Exception as e:
+        print(f"   ⚠️ Error checking if subsidiary is root: {e}")
+        return False
+
+
 def get_subsidiaries_in_hierarchy(target_sub_id):
     """
     Get all subsidiary IDs that roll up to the target subsidiary (including the target itself).
@@ -1502,11 +1530,15 @@ def build_bs_cumulative_balance_query(target_period_name, target_sub, filters, a
     filter_clauses = []
     needs_line_join = False
     
-    # For subsidiary filtering, ALWAYS use hierarchy to include child subsidiaries
+    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
-        sub_filter = ', '.join(hierarchy_subs)
-        filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        if use_hierarchy:
+            hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
+            sub_filter = ', '.join(hierarchy_subs)
+            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        else:
+            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
     if filters.get('department'):
         filter_clauses.append(f"tl.department = {filters['department']}")
         needs_line_join = True
@@ -1605,11 +1637,15 @@ def build_bs_multi_period_query(periods, target_sub, filters, accountingbook=Non
     filter_clauses = []
     needs_line_join = False
     
-    # For subsidiary filtering, ALWAYS use hierarchy to include child subsidiaries
+    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
-        sub_filter = ', '.join(hierarchy_subs)
-        filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        if use_hierarchy:
+            hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
+            sub_filter = ', '.join(hierarchy_subs)
+            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        else:
+            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
     if filters.get('department'):
         filter_clauses.append(f"tl.department = {filters['department']}")
         needs_line_join = True
@@ -1764,11 +1800,15 @@ def build_full_year_bs_opening_balance_query(fiscal_year, target_sub, filters, a
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     filter_clauses = []
-    # For subsidiary filtering, ALWAYS use hierarchy to include child subsidiaries
+    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
-        sub_filter = ', '.join(hierarchy_subs)
-        filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        if use_hierarchy:
+            hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
+            sub_filter = ', '.join(hierarchy_subs)
+            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        else:
+            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
     if filters.get('department'):
         filter_clauses.append(f"tal.department = {filters['department']}")
     if filters.get('location'):
@@ -1825,11 +1865,15 @@ def build_full_year_bs_activity_query(fiscal_year, target_sub, filters, accounti
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     filter_clauses = []
-    # For subsidiary filtering, ALWAYS use hierarchy to include child subsidiaries
+    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
-        sub_filter = ', '.join(hierarchy_subs)
-        filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        if use_hierarchy:
+            hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
+            sub_filter = ', '.join(hierarchy_subs)
+            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        else:
+            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
     if filters.get('department'):
         filter_clauses.append(f"tal.department = {filters['department']}")
     if filters.get('location'):
@@ -1907,12 +1951,15 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     filter_clauses = []
     needs_line_join = False
     
-    # For subsidiary filtering, ALWAYS use hierarchy to include child subsidiaries
-    # This matches NetSuite's consolidated reporting behavior
+    # For subsidiary filtering, use hierarchy if flag is set OR if root subsidiary
     if filters.get('subsidiary'):
-        hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
-        sub_filter = ', '.join(hierarchy_subs)
-        filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        use_hierarchy = filters.get('use_hierarchy', False) or is_root_subsidiary(filters['subsidiary'])
+        if use_hierarchy:
+            hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
+            sub_filter = ', '.join(hierarchy_subs)
+            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+        else:
+            filter_clauses.append(f"t.subsidiary = {filters['subsidiary']}")
     if filters.get('department'):
         filter_clauses.append(f"tl.department = {filters['department']}")
         needs_line_join = True
@@ -2537,8 +2584,11 @@ def batch_periods_refresh():
     print(f"📅 Date range: {start_date} to end of {month_order[latest[1]]} {latest[0]}")
     print(f"📅 Only loading {len(parsed_periods)} periods (not full years!)")
     
-    # Get filter parameters
-    subsidiary = convert_name_to_id('subsidiary', data.get('subsidiary', ''))
+    # Get filter parameters - check for "(Consolidated)" before converting
+    raw_subsidiary = data.get('subsidiary', '')
+    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
+    
+    subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     department = convert_name_to_id('department', data.get('department', ''))
     location = convert_name_to_id('location', data.get('location', ''))
     class_id = convert_name_to_id('class', data.get('class', ''))
@@ -2552,13 +2602,20 @@ def batch_periods_refresh():
     # IMPORTANT: Use same format as batch_balance for cache key compatibility
     filters_hash = f"{subsidiary}:{department}:{location}:{class_id}"
     
-    # Build filter clauses - ALWAYS use hierarchy to include child subsidiaries
+    # Build filter clauses
+    # Use hierarchy only for root subsidiary or explicit "(Consolidated)" request
     filter_clauses = []
     if subsidiary:
-        hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
-        sub_filter = ', '.join(hierarchy_subs)
-        filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
-        print(f"   Subsidiary filter: {len(hierarchy_subs)} subsidiaries in hierarchy")
+        use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+        
+        if use_hierarchy:
+            hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
+            sub_filter = ', '.join(hierarchy_subs)
+            filter_clauses.append(f"t.subsidiary IN ({sub_filter})")
+            print(f"   Consolidated: {len(hierarchy_subs)} subsidiaries in hierarchy")
+        else:
+            filter_clauses.append(f"t.subsidiary = {subsidiary}")
+            print(f"   Single subsidiary: {subsidiary}")
     if department:
         filter_clauses.append(f"tal.department = {department}")
     if location:
@@ -3329,10 +3386,13 @@ def batch_balance():
     
     accounts = data.get('accounts', [])
     periods = data.get('periods', [])
-    subsidiary = data.get('subsidiary', '')
+    raw_subsidiary = data.get('subsidiary', '')
     class_id = data.get('class', '')
     department = data.get('department', '')
     location = data.get('location', '')
+    
+    # Check if "(Consolidated)" suffix was used (before converting to ID)
+    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
     
     # Multi-Book Accounting support - default to Primary Book (ID 1)
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
@@ -3345,7 +3405,7 @@ def batch_balance():
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
     # Convert names to IDs (accepts names OR IDs)
-    subsidiary = convert_name_to_id('subsidiary', subsidiary)
+    subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     class_id = convert_name_to_id('class', class_id)
     department = convert_name_to_id('department', department)
     location = convert_name_to_id('location', location)
@@ -3430,25 +3490,29 @@ def batch_balance():
         # ========================================================================
         # SUBSIDIARY FILTERING - Critical for correct subsidiary-level reporting
         # ========================================================================
-        # BUILTIN.CONSOLIDATE only handles CURRENCY CONVERSION, not filtering!
-        # We must explicitly filter t.subsidiary to include only transactions from
-        # the target subsidiary and its children (the "hierarchy").
-        #
-        # For consolidated (parent) view: include all subsidiaries in hierarchy
-        # For single subsidiary: include only that subsidiary (+ its children if any)
+        # Use hierarchy (include children) if:
+        # 1. No subsidiary specified (default to root with all children)
+        # 2. It's the ROOT subsidiary (parent=NULL)
+        # 3. User explicitly requested "(Consolidated)" suffix
+        # Otherwise: just that specific subsidiary
         # ========================================================================
         if subsidiary and subsidiary != '':
-            # User specified a subsidiary - get its hierarchy (includes children)
-            hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
-            sub_filter = ', '.join(hierarchy_subs)
-            where_clauses.append(f"t.subsidiary IN ({sub_filter})")
-            print(f"DEBUG - Subsidiary filter: {len(hierarchy_subs)} subsidiaries in hierarchy for sub {subsidiary}", file=sys.stderr)
+            use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+            
+            if use_hierarchy:
+                hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
+                sub_filter = ', '.join(hierarchy_subs)
+                where_clauses.append(f"t.subsidiary IN ({sub_filter})")
+                print(f"DEBUG - Consolidated: {len(hierarchy_subs)} subsidiaries in hierarchy", file=sys.stderr)
+            else:
+                where_clauses.append(f"t.subsidiary = {subsidiary}")
+                print(f"DEBUG - Single subsidiary: {subsidiary}", file=sys.stderr)
         else:
             # No subsidiary specified - use default (parent) and include all subsidiaries
             hierarchy_subs = get_subsidiaries_in_hierarchy(default_subsidiary_id or '1')
             sub_filter = ', '.join(hierarchy_subs)
             where_clauses.append(f"t.subsidiary IN ({sub_filter})")
-            print(f"DEBUG - No subsidiary specified, using parent hierarchy: {len(hierarchy_subs)} subsidiaries", file=sys.stderr)
+            print(f"DEBUG - No subsidiary specified, using root hierarchy: {len(hierarchy_subs)} subsidiaries", file=sys.stderr)
         
         # Need TransactionLine join if filtering by department, class, or location
         needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
@@ -4035,12 +4099,15 @@ def get_balance():
     try:
         # Get parameters (accept both 'from'/'to' and 'from_period'/'to_period')
         account = request.args.get('account', '')
-        subsidiary = request.args.get('subsidiary', '')
+        raw_subsidiary = request.args.get('subsidiary', '')
         from_period = request.args.get('from_period', '') or request.args.get('from', '')
         to_period = request.args.get('to_period', '') or request.args.get('to', '')
         class_id = request.args.get('class', '')
         department = request.args.get('department', '')
         location = request.args.get('location', '')
+        
+        # Check if "(Consolidated)" suffix was used (before converting to ID)
+        wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
         
         # Handle year-only format (e.g., "2025" -> "Jan 2025" to "Dec 2025")
         if is_year_only(from_period):
@@ -4049,7 +4116,7 @@ def get_balance():
             _, to_period = expand_year_to_periods(to_period)
         
         # Convert names to IDs (accepts names OR IDs)
-        subsidiary = convert_name_to_id('subsidiary', subsidiary)
+        subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
         class_id = convert_name_to_id('class', class_id)
         department = convert_name_to_id('department', department)
         location = convert_name_to_id('location', location)
@@ -4068,13 +4135,22 @@ def get_balance():
             f"tal.accountingbook = {accounting_book}"  # Always filter to specific accounting book
         ]
         
-        # Add subsidiary filter - ALWAYS use hierarchy to include child subsidiaries
-        # This matches NetSuite's consolidated reporting behavior
+        # Add subsidiary filter
+        # Use hierarchy (include children) if:
+        # 1. It's the ROOT subsidiary (parent=NULL), OR
+        # 2. User explicitly requested "(Consolidated)" suffix
+        # Otherwise: just that subsidiary
         if subsidiary and subsidiary != '':
-            hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
-            sub_filter = ', '.join(hierarchy_subs)
-            where_clauses.append(f"t.subsidiary IN ({sub_filter})")
-            print(f"DEBUG - Subsidiary filter: {len(hierarchy_subs)} subsidiaries in hierarchy for sub {subsidiary}")
+            use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+            
+            if use_hierarchy:
+                hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
+                sub_filter = ', '.join(hierarchy_subs)
+                where_clauses.append(f"t.subsidiary IN ({sub_filter})")
+                print(f"DEBUG - Consolidated subsidiary filter: {len(hierarchy_subs)} subsidiaries in hierarchy")
+            else:
+                where_clauses.append(f"t.subsidiary = {subsidiary}")
+                print(f"DEBUG - Single subsidiary filter: {subsidiary}")
         
         # Handle period filters - support both period IDs and names
         if from_period and to_period:
@@ -4809,13 +4885,16 @@ def get_transactions():
     try:
         account = request.args.get('account')
         period = request.args.get('period')
-        subsidiary = request.args.get('subsidiary', '')
+        raw_subsidiary = request.args.get('subsidiary', '')
         class_id = request.args.get('class', '')
         department = request.args.get('department', '')
         location = request.args.get('location', '')
         
+        # Check if "(Consolidated)" suffix was used (before converting to ID)
+        wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
+        
         # Convert names to IDs (accepts names OR IDs)
-        subsidiary = convert_name_to_id('subsidiary', subsidiary)
+        subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
         class_id = convert_name_to_id('class', class_id)
         department = convert_name_to_id('department', department)
         location = convert_name_to_id('location', location)
@@ -4839,11 +4918,16 @@ def get_transactions():
             f"ap.periodname = '{escape_sql(period)}'"
         ]
         
-        # ALWAYS use hierarchy to include child subsidiaries
+        # Use hierarchy only for root subsidiary or explicit "(Consolidated)" request
         if subsidiary:
-            hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
-            sub_filter = ', '.join(hierarchy_subs)
-            where_conditions.append(f"t.subsidiary IN ({sub_filter})")
+            use_hierarchy = wants_consolidated or is_root_subsidiary(subsidiary)
+            
+            if use_hierarchy:
+                hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
+                sub_filter = ', '.join(hierarchy_subs)
+                where_conditions.append(f"t.subsidiary IN ({sub_filter})")
+            else:
+                where_conditions.append(f"t.subsidiary = {subsidiary}")
         
         # Need TransactionLine join if filtering by department, class, or location
         needs_line_join = (department and department != '') or (class_id and class_id != '') or (location and location != '')
