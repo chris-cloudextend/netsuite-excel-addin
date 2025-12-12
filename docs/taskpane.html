@@ -2215,7 +2215,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.8</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.9</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2962,7 +2962,7 @@
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.8</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.9</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -6560,11 +6560,16 @@
         }
 
         async function checkServerStatus() {
-            const statusEl = document.getElementById('serverStatus');
+            // Find the status element in the VISIBLE settings panel (inline view)
+            const settingsInline = document.getElementById('settingsViewInline');
+            const statusEl = settingsInline ? settingsInline.querySelector('#serverStatus') : document.getElementById('serverStatus');
+            
             if (!statusEl) {
                 console.error('serverStatus element not found');
                 return;
             }
+            
+            console.log('checkServerStatus: Starting check...');
             statusEl.className = 'status-indicator checking';
             statusEl.innerHTML = '<span class="status-dot checking"></span> Checking...';
 
@@ -6579,6 +6584,7 @@
                 });
                 
                 clearTimeout(timeoutId);
+                console.log('checkServerStatus: Response received', response.status);
                 
                 if (response.ok) {
                     statusEl.className = 'status-indicator connected';
@@ -6757,7 +6763,10 @@ export default {
         }
 
         async function reloadLookups() {
-            const statusEl = document.getElementById('serverStatus');
+            // Find the status element in the VISIBLE settings panel (inline view)
+            const settingsInline = document.getElementById('settingsViewInline');
+            const statusEl = settingsInline ? settingsInline.querySelector('#serverStatus') : document.getElementById('serverStatus');
+            
             if (!statusEl) {
                 console.error('serverStatus element not found');
                 return;
@@ -6780,11 +6789,16 @@ export default {
         }
 
         async function checkTunnelStatus() {
-            const statusEl = document.getElementById('tunnelStatus');
+            // Find the status element in the VISIBLE settings panel (inline view)
+            const settingsInline = document.getElementById('settingsViewInline');
+            const statusEl = settingsInline ? settingsInline.querySelector('#tunnelStatus') : document.getElementById('tunnelStatus');
+            
             if (!statusEl) {
                 console.error('tunnelStatus element not found');
                 return;
             }
+            
+            console.log('checkTunnelStatus: Starting check...');
             statusEl.className = 'status-indicator checking';
             statusEl.innerHTML = '<span class="status-dot checking"></span> Checking...';
 
@@ -6801,6 +6815,7 @@ export default {
                 });
                 
                 clearTimeout(timeoutId);
+                console.log('checkTunnelStatus: Response received', response.status);
                 
                 if (response.ok) {
                     statusEl.className = 'status-indicator connected';
@@ -6829,8 +6844,15 @@ export default {
                 const cached = localStorage.getItem(STORAGE_KEY);
                 const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
                 
-                const localStorageEl = document.getElementById('localStorageStatus');
-                const accountsEl = document.getElementById('cachedAccountsCount');
+                // Find elements in the VISIBLE settings panel (inline view)
+                const settingsInline = document.getElementById('settingsViewInline');
+                const localStorageEl = settingsInline ? settingsInline.querySelector('#localStorageStatus') : document.getElementById('localStorageStatus');
+                const accountsEl = settingsInline ? settingsInline.querySelector('#cachedAccountsCount') : document.getElementById('cachedAccountsCount');
+                
+                if (!localStorageEl || !accountsEl) {
+                    console.error('Cache status elements not found');
+                    return;
+                }
                 
                 if (cached && timestamp) {
                     const balances = JSON.parse(cached);
@@ -6846,8 +6868,12 @@ export default {
                     accountsEl.textContent = '0';
                 }
             } catch (e) {
-                document.getElementById('localStorageStatus').textContent = 'Error';
-                document.getElementById('cachedAccountsCount').textContent = '-';
+                console.error('checkCacheStatus error:', e);
+                const settingsInline = document.getElementById('settingsViewInline');
+                const localStorageEl = settingsInline ? settingsInline.querySelector('#localStorageStatus') : document.getElementById('localStorageStatus');
+                const accountsEl = settingsInline ? settingsInline.querySelector('#cachedAccountsCount') : document.getElementById('cachedAccountsCount');
+                if (localStorageEl) localStorageEl.textContent = 'Error';
+                if (accountsEl) accountsEl.textContent = '-';
             }
         }
 
