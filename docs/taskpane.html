@@ -5732,6 +5732,10 @@
                 const accountTypes = refreshData.account_types || {};
                 const accountNames = refreshData.account_names || {};
                 
+                // DEBUG: Log what we received
+                console.log(`📊 Structure sync received ${Object.keys(allBalances).length} accounts from API`);
+                console.log(`   Account types received: ${Object.keys(accountTypes).length}`);
+                
                 // Categorize accounts
                 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -5739,6 +5743,9 @@
                 const categories = {
                     income: [], othIncome: [], cogs: [], expense: [], othExpense: []
                 };
+                
+                let skippedZeroData = 0;
+                let categorizedCount = 0;
                 
                 for (const acctNum in allBalances) {
                     const monthData = allBalances[acctNum];
@@ -5752,13 +5759,21 @@
                         };
                         
                         const acctType = (accountTypes[acctNum] || '').toLowerCase();
-                        if (acctType === 'income') categories.income.push(acctInfo);
-                        else if (acctType === 'othincome') categories.othIncome.push(acctInfo);
-                        else if (acctType === 'cogs' || acctType === 'cost of goods sold') categories.cogs.push(acctInfo);
-                        else if (acctType === 'expense') categories.expense.push(acctInfo);
-                        else if (acctType === 'othexpense') categories.othExpense.push(acctInfo);
+                        if (acctType === 'income') { categories.income.push(acctInfo); categorizedCount++; }
+                        else if (acctType === 'othincome') { categories.othIncome.push(acctInfo); categorizedCount++; }
+                        else if (acctType === 'cogs' || acctType === 'cost of goods sold') { categories.cogs.push(acctInfo); categorizedCount++; }
+                        else if (acctType === 'expense') { categories.expense.push(acctInfo); categorizedCount++; }
+                        else if (acctType === 'othexpense') { categories.othExpense.push(acctInfo); categorizedCount++; }
+                        else {
+                            console.warn(`   ⚠️ Unknown account type for ${acctNum}: "${acctType}"`);
+                        }
+                    } else {
+                        skippedZeroData++;
                     }
                 }
+                
+                console.log(`   Categorized: ${categorizedCount}, Skipped (zero data): ${skippedZeroData}`);
+                console.log(`   COGS accounts: ${categories.cogs.map(a => a.number).join(', ')}`)
                 
                 // Sort categories
                 for (const cat in categories) {
@@ -9008,6 +9023,10 @@ export default {
                         const accountTypes = refreshData.account_types || {};
                         const accountNames = refreshData.account_names || {};
                         
+                        // DEBUG: Log what we received
+                        console.log(`📊 Auto-sync received ${Object.keys(allBalances).length} accounts from API for subsidiary: "${syncSubsidiary}"`);
+                        console.log(`   Account types received: ${Object.keys(accountTypes).length}`);
+                        
                         // Categorize accounts
                         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -9015,6 +9034,9 @@ export default {
                         const categories = {
                             income: [], othIncome: [], cogs: [], expense: [], othExpense: []
                         };
+                        
+                        let skippedZeroData = 0;
+                        let categorizedCount = 0;
                         
                         for (const acctNum in allBalances) {
                             const monthData = allBalances[acctNum];
@@ -9028,13 +9050,21 @@ export default {
                                 };
                                 
                                 const acctType = (accountTypes[acctNum] || '').toLowerCase();
-                                if (acctType === 'income') categories.income.push(acctInfo);
-                                else if (acctType === 'othincome') categories.othIncome.push(acctInfo);
-                                else if (acctType === 'cogs' || acctType === 'cost of goods sold') categories.cogs.push(acctInfo);
-                                else if (acctType === 'expense') categories.expense.push(acctInfo);
-                                else if (acctType === 'othexpense') categories.othExpense.push(acctInfo);
+                                if (acctType === 'income') { categories.income.push(acctInfo); categorizedCount++; }
+                                else if (acctType === 'othincome') { categories.othIncome.push(acctInfo); categorizedCount++; }
+                                else if (acctType === 'cogs' || acctType === 'cost of goods sold') { categories.cogs.push(acctInfo); categorizedCount++; }
+                                else if (acctType === 'expense') { categories.expense.push(acctInfo); categorizedCount++; }
+                                else if (acctType === 'othexpense') { categories.othExpense.push(acctInfo); categorizedCount++; }
+                                else {
+                                    console.warn(`   ⚠️ Unknown account type for ${acctNum}: "${acctType}"`);
+                                }
+                            } else {
+                                skippedZeroData++;
                             }
                         }
+                        
+                        console.log(`   Categorized: ${categorizedCount}, Skipped (zero data): ${skippedZeroData}`);
+                        console.log(`   COGS accounts: ${categories.cogs.map(a => a.number).join(', ')}`);
                         
                         // Sort categories
                         for (const cat in categories) {
