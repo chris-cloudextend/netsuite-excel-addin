@@ -1769,9 +1769,6 @@ async function NAME(accountNumber, invocation) {
         console.warn('localStorage name cache read error:', e.message);
     }
     
-    cacheStats.misses++;
-    console.log(`📥 CACHE MISS [title]: ${account} → queuing for batch`);
-    
     // Check if this account is already pending in the batch queue
     if (pendingRequests.title.has(account)) {
         console.log(`📥 TITLE already pending, waiting for batch: ${account}`);
@@ -1785,6 +1782,9 @@ async function NAME(accountNumber, invocation) {
             };
         });
     }
+    
+    cacheStats.misses++;
+    console.log(`📥 CACHE MISS [title]: ${account} → queuing for batch`);
     
     // Add to batch queue
     return new Promise((resolve, reject) => {
