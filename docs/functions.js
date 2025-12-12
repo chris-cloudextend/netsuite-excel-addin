@@ -11,8 +11,65 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.3';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.4';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
+
+// ============================================================================
+// UTILITY: Expand period range from "Jan 2025" to "Dec 2025" → all 12 months
+// Must be defined early because it's used in batch processing
+// ============================================================================
+function expandPeriodRangeFromTo(fromPeriod, toPeriod) {
+    if (!fromPeriod) {
+        return [];
+    }
+    if (!toPeriod || fromPeriod === toPeriod) {
+        return [fromPeriod];
+    }
+    
+    try {
+        // Parse month and year from "Jan 2025" format
+        const parseMonthYear = (period) => {
+            const match = period.match(/^([A-Za-z]+)\s+(\d{4})$/);
+            if (!match) return null;
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthIndex = monthNames.findIndex(m => m === match[1]);
+            if (monthIndex === -1) return null;
+            return { month: monthIndex, year: parseInt(match[2]) };
+        };
+        
+        const from = parseMonthYear(fromPeriod);
+        const to = parseMonthYear(toPeriod);
+        
+        if (!from || !to) {
+            // Can't parse - return original periods
+            return [fromPeriod, toPeriod];
+        }
+        
+        // Generate all months in range
+        const result = [];
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        
+        let currentMonth = from.month;
+        let currentYear = from.year;
+        
+        while (currentYear < to.year || (currentYear === to.year && currentMonth <= to.month)) {
+            result.push(`${monthNames[currentMonth]} ${currentYear}`);
+            currentMonth++;
+            if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            }
+        }
+        
+        return result;
+        
+    } catch (error) {
+        console.error('Error expanding period range:', error);
+        return [fromPeriod, toPeriod];
+    }
+}
 
 // ============================================================================
 // STATUS BROADCAST - Communicate progress to taskpane via localStorage
@@ -3110,61 +3167,7 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
     }
 }
 
-// ============================================================================
-// HELPER: Expand period range (e.g., "Jan 2025" to "Mar 2025" → all months)
-// ============================================================================
-function expandPeriodRangeFromTo(fromPeriod, toPeriod) {
-    if (!fromPeriod) {
-        return [];
-    }
-    if (!toPeriod || fromPeriod === toPeriod) {
-        return [fromPeriod];
-    }
-    
-    try {
-        // Parse month and year from "Jan 2025" format
-        const parseMonthYear = (period) => {
-            const match = period.match(/^([A-Za-z]+)\s+(\d{4})$/);
-            if (!match) return null;
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const monthIndex = monthNames.findIndex(m => m === match[1]);
-            if (monthIndex === -1) return null;
-            return { month: monthIndex, year: parseInt(match[2]) };
-        };
-        
-        const from = parseMonthYear(fromPeriod);
-        const to = parseMonthYear(toPeriod);
-        
-        if (!from || !to) {
-            // Can't parse - return original periods
-            return [fromPeriod, toPeriod];
-        }
-        
-        // Generate all months in range
-        const result = [];
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        
-        let currentMonth = from.month;
-        let currentYear = from.year;
-        
-        while (currentYear < to.year || (currentYear === to.year && currentMonth <= to.month)) {
-            result.push(`${monthNames[currentMonth]} ${currentYear}`);
-            currentMonth++;
-            if (currentMonth > 11) {
-                currentMonth = 0;
-                currentYear++;
-            }
-        }
-        
-        return result;
-        
-    } catch (error) {
-        console.error('Error expanding period range:', error);
-        return [fromPeriod, toPeriod];
-    }
-}
+// expandPeriodRangeFromTo is defined at the top of this file
 */
 
 // (Old streaming functions removed - not needed for Phase 3 non-streaming async)
