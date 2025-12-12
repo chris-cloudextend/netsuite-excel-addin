@@ -2796,10 +2796,13 @@
                 <div class="example">
                     <div class="example-title">Examples</div>
                     <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Dec 2025")</div>
-                    <div class="example-code">=XAVI.BALANCE("4010", "2025", "2025")  <span style="color:#6b7280;">← Year-only format</span></div>
+                    <div class="example-code">=XAVI.BALANCE("4010", "2025", "2025")  <span style="color:#6b7280;">← Year-only format (optimized)</span></div>
                     <div class="example-code">=XAVI.BALANCE(A4, B1, C1)</div>
                     <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025", "", "13", "", "")</div>
-        </div>
+                </div>
+                <div class="tip" style="margin-top: 12px; padding: 10px; background: #f0fdf4; border-left: 3px solid #22c55e; font-size: 12px;">
+                    <strong>💡 Tip:</strong> Use year-only format (e.g., "2025", "2025") for annual reports - it uses an optimized single query instead of 12 monthly queries, making it significantly faster.
+                </div>
     </div>
     
             <!-- XAVI.BUDGET -->
@@ -2839,6 +2842,7 @@
                 <div class="example">
                     <div class="example-title">Examples</div>
                     <div class="example-code">=XAVI.BUDGET("5000", "Jan 2025", "Dec 2025")</div>
+                    <div class="example-code">=XAVI.BUDGET("5000", "2025", "2025")  <span style="color:#6b7280;">← Year-only format</span></div>
                     <div class="example-code">=XAVI.BUDGET(A4, B1, C1)</div>
                 </div>
             </div>
