@@ -607,7 +607,7 @@ def get_subsidiary_type(sub_id):
     - 'UNKNOWN': Could not determine (defaults to domestic behavior)
     
     Args:
-        sub_id: Subsidiary ID (string or int)
+        sub_id: Subsidiary ID (string or int) OR subsidiary name
         
     Returns:
         str: 'ROOT', 'DOMESTIC', 'FOREIGN', or 'UNKNOWN'
@@ -615,13 +615,30 @@ def get_subsidiary_type(sub_id):
     if not sub_id:
         return 'UNKNOWN'
     
-    sub_id = str(sub_id)
+    sub_id = str(sub_id).strip()
+    
+    # Remove "(Consolidated)" suffix if present - we're checking the base subsidiary
+    if '(Consolidated)' in sub_id:
+        sub_id = sub_id.replace('(Consolidated)', '').strip()
     
     # Check cache first
     if sub_id in _subsidiary_type_cache:
-        return _subsidiary_type_cache[sub_id]
+        cached = _subsidiary_type_cache[sub_id]
+        print(f"   📍 get_subsidiary_type (cached): {sub_id} -> {cached}", file=sys.stderr)
+        return cached
     
     try:
+        # Check if sub_id is numeric (ID) or string (name)
+        is_numeric = sub_id.isdigit()
+        
+        if is_numeric:
+            # Query by ID
+            where_clause = f"s.id = {sub_id}"
+        else:
+            # Query by name - escape single quotes
+            escaped_name = sub_id.replace("'", "''")
+            where_clause = f"s.name = '{escaped_name}'"
+        
         # Single query to determine subsidiary type
         # Compares this subsidiary's currency to the root subsidiary's currency
         query = f"""
@@ -630,13 +647,19 @@ def get_subsidiary_type(sub_id):
                     WHEN s.parent IS NULL THEN 'ROOT'
                     WHEN s.currency = root.currency THEN 'DOMESTIC'
                     ELSE 'FOREIGN'
-                END AS sub_type
+                END AS sub_type,
+                s.id AS sub_id,
+                s.name AS sub_name,
+                s.currency AS sub_currency,
+                root.currency AS root_currency
             FROM Subsidiary s
             CROSS JOIN Subsidiary root
-            WHERE s.id = {sub_id}
+            WHERE {where_clause}
               AND root.parent IS NULL
         """
+        print(f"   🔍 get_subsidiary_type: input='{sub_id}', is_numeric={is_numeric}", file=sys.stderr)
         result = query_netsuite(query)
+        print(f"   🔍 get_subsidiary_type result: {result}", file=sys.stderr)
         
         if isinstance(result, list) and len(result) > 0:
             sub_type = result[0].get('sub_type', 'UNKNOWN')
@@ -1373,10 +1396,13 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     # Check if we need the MatchingUnrERV exception (foreign sub + non-consolidated only)
     # This single account (89201 Intercompany Unrealized Gain/Loss) requires sign flip for foreign subs
     flip_matching = False
+    print(f"   🔍 build_pl_query: subsidiary_id={subsidiary_id}, use_hierarchy={use_hierarchy}", file=sys.stderr)
     if subsidiary_id and not use_hierarchy:
         sub_type = get_subsidiary_type(subsidiary_id)
+        print(f"   🔍 build_pl_query: sub_type={sub_type}", file=sys.stderr)
         if sub_type == 'FOREIGN':
             flip_matching = True
+            print(f"   ✅ build_pl_query: Applying MatchingUnrERV flip for foreign sub", file=sys.stderr)
     
     # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
     # Additional flip for MatchingUnrERV accounts on foreign subsidiaries (non-consolidated)
@@ -2878,15 +2904,19 @@ def batch_periods_refresh():
         
         # Check if we need the MatchingUnrERV exception (foreign sub + non-consolidated only)
         flip_matching = False
+        print(f"   🔍 batch_full_year_refresh P&L: subsidiary={subsidiary}, use_hierarchy={use_hierarchy}", file=sys.stderr)
         if subsidiary and not use_hierarchy:
             sub_type = get_subsidiary_type(subsidiary)
+            print(f"   🔍 batch_full_year_refresh P&L: sub_type={sub_type}", file=sys.stderr)
             if sub_type == 'FOREIGN':
                 flip_matching = True
+                print(f"   ✅ batch_full_year_refresh P&L: APPLYING MatchingUnrERV flip!", file=sys.stderr)
         
         # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
         # Additional flip for MatchingUnrERV accounts on foreign subsidiaries (non-consolidated)
         if flip_matching:
             sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct = 'MatchingUnrERV' THEN -1 ELSE 1 END"
+            print(f"   🔍 sign_sql includes MatchingUnrERV flip", file=sys.stderr)
         else:
             sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
         
