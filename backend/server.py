@@ -593,6 +593,120 @@ def is_root_subsidiary(sub_id):
         return False
 
 
+# Cache for subsidiary type lookups (avoids repeated API calls)
+_subsidiary_type_cache = {}
+
+def get_subsidiary_type(sub_id):
+    """
+    Determine the type of subsidiary for sign logic purposes.
+    
+    Returns one of:
+    - 'ROOT': This is the root/parent subsidiary (parent IS NULL)
+    - 'DOMESTIC': Child subsidiary with same base currency as root
+    - 'FOREIGN': Child subsidiary with different base currency than root
+    - 'UNKNOWN': Could not determine (defaults to domestic behavior)
+    
+    Args:
+        sub_id: Subsidiary ID (string or int)
+        
+    Returns:
+        str: 'ROOT', 'DOMESTIC', 'FOREIGN', or 'UNKNOWN'
+    """
+    if not sub_id:
+        return 'UNKNOWN'
+    
+    sub_id = str(sub_id)
+    
+    # Check cache first
+    if sub_id in _subsidiary_type_cache:
+        return _subsidiary_type_cache[sub_id]
+    
+    try:
+        # Single query to determine subsidiary type
+        # Compares this subsidiary's currency to the root subsidiary's currency
+        query = f"""
+            SELECT 
+                CASE 
+                    WHEN s.parent IS NULL THEN 'ROOT'
+                    WHEN s.currency = root.currency THEN 'DOMESTIC'
+                    ELSE 'FOREIGN'
+                END AS sub_type
+            FROM Subsidiary s
+            CROSS JOIN Subsidiary root
+            WHERE s.id = {sub_id}
+              AND root.parent IS NULL
+        """
+        result = query_netsuite(query)
+        
+        if isinstance(result, list) and len(result) > 0:
+            sub_type = result[0].get('sub_type', 'UNKNOWN')
+            _subsidiary_type_cache[sub_id] = sub_type
+            print(f"   📍 Subsidiary {sub_id} type: {sub_type}", file=sys.stderr)
+            return sub_type
+        
+        _subsidiary_type_cache[sub_id] = 'UNKNOWN'
+        return 'UNKNOWN'
+        
+    except Exception as e:
+        print(f"   ⚠️ Error determining subsidiary type: {e}", file=sys.stderr)
+        _subsidiary_type_cache[sub_id] = 'UNKNOWN'
+        return 'UNKNOWN'
+
+
+def is_foreign_subsidiary(sub_id):
+    """
+    Check if a subsidiary uses a different base currency than the root subsidiary.
+    
+    Args:
+        sub_id: Subsidiary ID (string or int)
+        
+    Returns:
+        True if foreign currency subsidiary, False otherwise
+    """
+    return get_subsidiary_type(sub_id) == 'FOREIGN'
+
+
+# ================================================================================
+# AUTO-CONSOLIDATION FEATURE
+# ================================================================================
+# When enabled, if user queries the root subsidiary (parent IS NULL), 
+# automatically treat as consolidated even without "(Consolidated)" suffix.
+# 
+# DISABLED: Root subsidiary can have its OWN direct transactions (like 
+# intracompany accounts 59998, 59999) that differ from consolidated totals.
+# Users need explicit control via "(Consolidated)" suffix.
+# Example: "Celigo Inc." = just that sub's transactions
+#          "Celigo Inc. (Consolidated)" = all children included
+AUTO_CONSOLIDATE_ROOT = False
+
+def should_use_consolidated(raw_subsidiary, subsidiary_id):
+    """
+    Determine if a query should use consolidated (hierarchy) logic.
+    
+    Returns True if:
+    1. User explicitly included "(Consolidated)" in subsidiary name, OR
+    2. AUTO_CONSOLIDATE_ROOT is True AND subsidiary is root (parent IS NULL)
+    
+    Args:
+        raw_subsidiary: Original subsidiary string from user (before ID conversion)
+        subsidiary_id: Converted subsidiary ID (string)
+        
+    Returns:
+        bool: True if should use consolidated/hierarchy logic
+    """
+    # Check for explicit "(Consolidated)" suffix
+    if raw_subsidiary and '(consolidated)' in raw_subsidiary.lower():
+        return True
+    
+    # Check for auto-consolidation of root subsidiary
+    if AUTO_CONSOLIDATE_ROOT and subsidiary_id:
+        if is_root_subsidiary(subsidiary_id):
+            print(f"   🔄 AUTO-CONSOLIDATION: Subsidiary {subsidiary_id} is root (parent=NULL), treating as consolidated", file=sys.stderr)
+            return True
+    
+    return False
+
+
 def get_subsidiaries_in_hierarchy(target_sub_id):
     """
     Get all subsidiary IDs that roll up to the target subsidiary (including the target itself).
@@ -1221,7 +1335,8 @@ def search_accounts():
         return jsonify({'error': str(e)}), 500
 
 
-def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, accountingbook=None):
+def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, accountingbook=None, 
+                   subsidiary_id=None, use_hierarchy=False):
     """
     Build query for P&L accounts (Income Statement)
     P&L accounts show activity within the specific period only
@@ -1232,6 +1347,13 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     
     Args:
         accountingbook: Accounting book ID (default: Primary Book / ID 1)
+        subsidiary_id: Subsidiary ID for foreign currency check
+        use_hierarchy: True if consolidated view (skip OthExpense flip)
+    
+    SIGN CONVENTIONS:
+    - Income/OthIncome: Always flip (credit amounts to positive revenue)
+    - OthExpense on FOREIGN subsidiaries (non-consolidated): Flip to match NetSuite IS display
+    - All other expenses: No flip
     """
     if accountingbook is None:
         accountingbook = DEFAULT_ACCOUNTING_BOOK
@@ -1247,6 +1369,9 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     
     # Add accountingbook filter (Multi-Book Accounting support)
     where_clause += f" AND tal.accountingbook = {accountingbook}"
+    
+    # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
+    sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
     
     # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
     # For non-OneWorld, it simply returns the original amount unchanged
@@ -1273,8 +1398,8 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
                     tal.account,
                     t.postingperiod,
                     {amount_calc}
-                    * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                    * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                    {sign_sql}
+ AS cons_amt
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -1298,8 +1423,8 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
                     tal.account,
                     t.postingperiod,
                     {amount_calc}
-                    * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                    * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                    {sign_sql}
+ AS cons_amt
                 FROM TransactionAccountingLine tal
                     JOIN Transaction t ON t.id = tal.transaction
                     JOIN Account a ON a.id = tal.account
@@ -1967,6 +2092,13 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     
     Args:
         accountingbook: Accounting book ID (default: Primary Book / ID 1)
+    
+    SIGN CONVENTIONS:
+    - Income/OthIncome: Always flip (credit amounts to positive revenue)
+    - OthExpense on FOREIGN subsidiaries (non-consolidated): Flip to match NetSuite IS display
+    - All other expenses: No flip (debit amounts remain as positive expenses)
+    
+    See DOCUMENTATION.md for full explanation of OthExpense sign handling.
     """
     if accountingbook is None:
         accountingbook = DEFAULT_ACCOUNTING_BOOK
@@ -1975,10 +2107,10 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     # Note: class, department, location, and subsidiary are on TransactionLine
     filter_clauses = []
     needs_line_join = False
+    use_hierarchy = filters.get('use_hierarchy', False)
     
     # CRITICAL: Use tl.subsidiary for GL line-level filtering (intercompany JEs have header on different sub)
     if filters.get('subsidiary'):
-        use_hierarchy = filters.get('use_hierarchy', False)
         if use_hierarchy:
             hierarchy_subs = get_subsidiaries_in_hierarchy(filters['subsidiary'])
             sub_filter = ', '.join(hierarchy_subs)
@@ -2000,6 +2132,9 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     
     # Add TransactionLine join if filtering by class/department/location/subsidiary
     line_join = "JOIN transactionline tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
+    
+    # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
+    sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
     
     # Build the pivoted query with all 12 months as columns
     # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
@@ -2034,8 +2169,8 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
                 'DEFAULT'
               )
             )
-        * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-        * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+        {sign_sql}
+        AS cons_amt
       FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
         {line_join}
@@ -2193,9 +2328,6 @@ def batch_full_year_refresh():
     # Set skip_bs=true for fast P&L-only preload
     skip_bs = data.get('skip_bs', False)
     
-    # Check if "(Consolidated)" suffix was used (before converting to ID)
-    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
-    
     # Multi-Book Accounting support - default to Primary Book (ID 1)
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
     if isinstance(accountingbook, str) and accountingbook.strip():
@@ -2211,6 +2343,9 @@ def batch_full_year_refresh():
     class_id = convert_name_to_id('class', class_id)
     department = convert_name_to_id('department', department)
     location = convert_name_to_id('location', location)
+    
+    # Determine consolidated status (explicit OR auto from root)
+    wants_consolidated = should_use_consolidated(raw_subsidiary, subsidiary)
     
     # Determine target subsidiary for consolidation
     if subsidiary and subsidiary != '':
@@ -2246,14 +2381,17 @@ def batch_full_year_refresh():
         WHERE acctnumber LIKE '80%' OR acctnumber LIKE '89%'
         ORDER BY acctnumber
         """
-        debug_items = run_suiteql_query(debug_query)
-        print(f"   DEBUG sspecacct values for 80xxx/89xxx accounts:", file=sys.stderr)
-        for item in debug_items:
-            acct = item.get('acctnumber', '')
-            atype = item.get('accttype', '')
-            sspec = item.get('sspecacct', '')
-            is_matching = 'YES' if sspec and sspec.startswith('Matching') else 'NO'
-            print(f"     {acct}: type={atype}, sspecacct='{sspec}', isMatching={is_matching}", file=sys.stderr)
+        debug_result = query_netsuite(debug_query)
+        if isinstance(debug_result, list):
+            print(f"   DEBUG sspecacct values for 80xxx/89xxx accounts:", file=sys.stderr)
+            for item in debug_result:
+                acct = item.get('acctnumber', '')
+                atype = item.get('accttype', '')
+                sspec = item.get('sspecacct', '')
+                is_matching = 'YES' if sspec and str(sspec).startswith('Matching') else 'NO'
+                print(f"     {acct}: type={atype}, sspecacct='{sspec}', isMatching={is_matching}", file=sys.stderr)
+        else:
+            print(f"   DEBUG query returned: {debug_result}", file=sys.stderr)
     except Exception as e:
         print(f"   DEBUG query failed: {e}", file=sys.stderr)
     
@@ -2650,12 +2788,14 @@ def batch_periods_refresh():
     
     # Get filter parameters - check for "(Consolidated)" before converting
     raw_subsidiary = data.get('subsidiary', '')
-    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
     
     subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     department = convert_name_to_id('department', data.get('department', ''))
     location = convert_name_to_id('location', data.get('location', ''))
     class_id = convert_name_to_id('class', data.get('class', ''))
+    
+    # Determine consolidated status (explicit OR auto from root)
+    wants_consolidated = should_use_consolidated(raw_subsidiary, subsidiary)
     
     filters = {
         'subsidiary': subsidiary,
@@ -2711,6 +2851,11 @@ def batch_periods_refresh():
         # Build period names for IN clause
         period_names_sql = "', '".join([escape_sql(p[2]) for p in parsed_periods])
         
+        use_hierarchy = wants_consolidated
+        
+        # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
+        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+        
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         pl_query = f"""
         WITH base AS (
@@ -2728,8 +2873,7 @@ def batch_periods_refresh():
                     'DEFAULT'
                   )
                 )
-            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
+            {sign_sql}
             AS cons_amt
           FROM TransactionAccountingLine tal
           JOIN Transaction t ON t.id = tal.transaction
@@ -3037,14 +3181,15 @@ def batch_full_year_refresh_bs():
         else:
             fiscal_year = datetime.now().year
     
-    # IMPORTANT: Check for "(Consolidated)" BEFORE converting to ID
+    # Get subsidiary and convert to ID
     raw_subsidiary = data.get('subsidiary', '')
-    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
-    
     subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     class_id = convert_name_to_id('class', data.get('class', ''))
     department = convert_name_to_id('department', data.get('department', ''))
     location = convert_name_to_id('location', data.get('location', ''))
+    
+    # Determine consolidated status (explicit OR auto from root)
+    wants_consolidated = should_use_consolidated(raw_subsidiary, subsidiary)
     
     # Multi-Book Accounting support - default to Primary Book (ID 1)
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
@@ -3182,14 +3327,15 @@ def batch_bs_periods():
     if not periods:
         return jsonify({'error': 'periods list required'}), 400
     
-    # IMPORTANT: Check for "(Consolidated)" BEFORE converting to ID
+    # Get subsidiary and convert to ID
     raw_subsidiary = data.get('subsidiary', '')
-    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
-    
     subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
     class_id = convert_name_to_id('class', data.get('class', ''))
     department = convert_name_to_id('department', data.get('department', ''))
     location = convert_name_to_id('location', data.get('location', ''))
+    
+    # Determine consolidated status (explicit OR auto from root)
+    wants_consolidated = should_use_consolidated(raw_subsidiary, subsidiary)
     
     # Multi-Book Accounting support - default to Primary Book (ID 1)
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
@@ -3347,11 +3493,11 @@ def batch_balance_year():
     raw_subsidiary = data.get('subsidiary', '')
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
     
-    # Check for "(Consolidated)" BEFORE converting to ID
-    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
-    
     # Convert subsidiary name to ID if needed
     subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
+    
+    # Determine consolidated status (explicit OR auto from root)
+    wants_consolidated = should_use_consolidated(raw_subsidiary, subsidiary)
     
     # Handle accountingbook
     if isinstance(accountingbook, str) and accountingbook.strip():
@@ -3396,6 +3542,9 @@ def batch_balance_year():
     # Build account filter
     account_filter = ", ".join([f"'{escape_sql(str(a))}'" for a in accounts])
     
+    # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
+    sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+    
     # Query all 12 monthly periods for the year and SUM to get annual total
     # (Year periods don't have transactions posted to them - only monthly periods do)
     # This is more efficient than 12 separate queries because we GROUP BY account only
@@ -3414,8 +3563,7 @@ def batch_balance_year():
                         'DEFAULT'
                     )
                 )
-                * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
+                {sign_sql}
             ) AS balance
         FROM transactionaccountingline tal
         JOIN transaction t ON t.id = tal.transaction
@@ -3511,14 +3659,6 @@ def batch_balance():
     department = data.get('department', '')
     location = data.get('location', '')
     
-    # Check if "(Consolidated)" suffix was used (before converting to ID)
-    wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
-    
-    # DEBUG: Log consolidated detection
-    if raw_subsidiary:
-        print(f"🔍 CONSOLIDATED DEBUG: raw_subsidiary='{raw_subsidiary}'", file=sys.stderr)
-        print(f"   wants_consolidated={wants_consolidated}", file=sys.stderr)
-    
     # Multi-Book Accounting support - default to Primary Book (ID 1)
     accountingbook = data.get('accountingbook', DEFAULT_ACCOUNTING_BOOK)
     if isinstance(accountingbook, str) and accountingbook.strip():
@@ -3534,6 +3674,14 @@ def batch_balance():
     class_id = convert_name_to_id('class', class_id)
     department = convert_name_to_id('department', department)
     location = convert_name_to_id('location', location)
+    
+    # Determine consolidated status (explicit OR auto from root)
+    wants_consolidated = should_use_consolidated(raw_subsidiary, subsidiary)
+    
+    # DEBUG: Log consolidated detection
+    if raw_subsidiary:
+        print(f"🔍 CONSOLIDATED DEBUG: raw_subsidiary='{raw_subsidiary}'", file=sys.stderr)
+        print(f"   wants_consolidated={wants_consolidated}", file=sys.stderr)
     
     if not accounts or not periods:
         return jsonify({'error': 'accounts and periods must be non-empty'}), 400
@@ -3730,7 +3878,8 @@ def batch_balance():
             pl_where_clauses.append(f"a.acctnumber IN ({pl_accounts_in})")
             pl_base_where = " AND ".join(pl_where_clauses)
             
-            pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join, accountingbook)
+            pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join, accountingbook,
+                                      subsidiary_id=subsidiary, use_hierarchy=wants_consolidated)
             
             print(f"DEBUG - P&L Query (for {len(pl_accounts)} accounts, book={accountingbook}):\n{pl_query[:500]}...", file=sys.stderr)
             
@@ -4235,9 +4384,6 @@ def get_balance():
         department = request.args.get('department', '')
         location = request.args.get('location', '')
         
-        # Check if "(Consolidated)" suffix was used (before converting to ID)
-        wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
-        
         # Handle year-only format (e.g., "2025" -> "Jan 2025" to "Dec 2025")
         if is_year_only(from_period):
             from_period, _ = expand_year_to_periods(from_period)
@@ -4249,6 +4395,9 @@ def get_balance():
         class_id = convert_name_to_id('class', class_id)
         department = convert_name_to_id('department', department)
         location = convert_name_to_id('location', location)
+        
+        # Determine consolidated status (explicit OR auto from root)
+        wants_consolidated = should_use_consolidated(raw_subsidiary, subsidiary)
         
         if not account:
             return jsonify({'error': 'Account number required'}), 400
@@ -4340,6 +4489,11 @@ def get_balance():
         # Need TransactionLine join if filtering by department, class, location, or subsidiary
         needs_line_join = needs_line_join_for_subsidiary or (department and department != '') or (class_id and class_id != '') or (location and location != '')
         
+        use_hierarchy = wants_consolidated
+        
+        # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
+        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+        
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         if (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):
             if needs_line_join:
@@ -4358,8 +4512,8 @@ def get_balance():
                                             'DEFAULT'
                                         )
                                     )
-                            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            {sign_sql}
+ AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -4384,8 +4538,8 @@ def get_balance():
                                             'DEFAULT'
                                         )
                                     )
-                            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            {sign_sql}
+ AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
@@ -4410,8 +4564,8 @@ def get_balance():
                                             'DEFAULT'
                                         )
                                     )
-                            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            {sign_sql}
+ AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
@@ -4435,8 +4589,8 @@ def get_balance():
                                             'DEFAULT'
                                         )
                                     )
-                            * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END
-                            * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END AS cons_amt
+                            {sign_sql}
+ AS cons_amt
                         FROM TransactionAccountingLine tal
                             JOIN Transaction t ON t.id = tal.transaction
                             JOIN Account a ON a.id = tal.account
@@ -5022,14 +5176,14 @@ def get_transactions():
         department = request.args.get('department', '')
         location = request.args.get('location', '')
         
-        # Check if "(Consolidated)" suffix was used (before converting to ID)
-        wants_consolidated = raw_subsidiary and '(consolidated)' in raw_subsidiary.lower()
-        
         # Convert names to IDs (accepts names OR IDs)
         subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
         class_id = convert_name_to_id('class', class_id)
         department = convert_name_to_id('department', department)
         location = convert_name_to_id('location', location)
+        
+        # Determine consolidated status (explicit OR auto from root)
+        wants_consolidated = should_use_consolidated(raw_subsidiary, subsidiary)
         
         if not account or not period:
             return jsonify({'error': 'Missing required parameters: account and period'}), 400
@@ -5971,7 +6125,7 @@ def calculate_retained_earnings():
         # Step 2: Sum prior years' P&L with consolidation
         # Query all Income/Expense transactions from inception through the day before FY started
         # Use BUILTIN.CONSOLIDATE with 'ELIMINATE' for proper intercompany elimination
-        # Sign convention: ALL P&L amounts * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END (credits become positive revenue, debits become negative expense)
+        # Sign convention: ALL P&L amounts flip Income, plus OthExpense for foreign subs
         # Result: Positive = accumulated profit, Negative = accumulated loss
         
         # CRITICAL: Get target period ID for BUILTIN.CONSOLIDATE
@@ -5984,6 +6138,9 @@ def calculate_retained_earnings():
             cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {target_period_id}, 'DEFAULT'))"""
         else:
             cons_amount = "tal.amount"
+        
+        # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
+        re_sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
         
         # Get period_end_date for posted RE query
         period_end = fy_info['period_end']
@@ -5999,7 +6156,7 @@ def calculate_retained_earnings():
         
         # Define queries
         prior_pl_query = f"""
-            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+            SELECT SUM({cons_amount} {re_sign_sql} ) AS value
             FROM transactionaccountingline tal
             JOIN transaction t ON t.id = tal.transaction
             JOIN account a ON a.id = tal.account
@@ -6014,8 +6171,9 @@ def calculate_retained_earnings():
         """
         
         # Posted RE query - query directly by account type/name pattern instead of 2-step
+        # Note: This queries RetainedEarnings accounts (BS type), not Income types, so no flip needed
         posted_re_query = f"""
-            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+            SELECT SUM({cons_amount}) AS value
             FROM transactionaccountingline tal
             JOIN transaction t ON t.id = tal.transaction
             JOIN account a ON a.id = tal.account
@@ -6186,7 +6344,8 @@ def calculate_net_income():
         # Step 2: Sum current FY P&L with consolidation
         # From FY start through target period end
         # Use BUILTIN.CONSOLIDATE with 'ELIMINATE' for proper intercompany elimination
-        # Sign convention: ALL P&L amounts * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END (credits become positive revenue, debits become negative expense)
+        # Sign convention: Standard Income flip only (this is a consolidated view via hierarchy)
+        # NOTE: No OthExpense flip because this endpoint always uses consolidated hierarchy
         # Result: Positive = profit, Negative = loss
         
         # CRITICAL: Get target period ID for BUILTIN.CONSOLIDATE
@@ -6200,9 +6359,12 @@ def calculate_net_income():
         else:
             cons_amount = "tal.amount"
         
+        # Sign SQL - standard Income flip only (consolidated view, no OthExpense flip)
+        ni_sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+        
         # Simplified Net Income query - no CROSS JOIN, directly uses BUILTIN.CONSOLIDATE
         net_income_query = f"""
-            SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS net_income
+            SELECT SUM({cons_amount} {ni_sign_sql} ) AS net_income
             FROM transactionaccountingline tal
             JOIN transaction t ON t.id = tal.transaction
             JOIN account a ON a.id = tal.account
@@ -6324,6 +6486,9 @@ def calculate_cta():
         # Liability types: credit balance (flip to positive for display)
         liability_types = BS_LIABILITY_TYPES_SQL
         
+        # Sign multiplier for P&L: flip Income/OthIncome from credits (negative) to positive display
+        cta_pl_sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+        
         # Build consolidation SQL - Use TARGET PERIOD ID for proper exchange rate translation
         # OLD (WRONG): t.postingperiod - translated at each transaction's posting period rate
         # NEW (CORRECT): target_period_id - translated at report period-end rate
@@ -6365,7 +6530,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'total_liabilities': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END ) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -6379,7 +6544,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'posted_equity': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END ) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -6394,7 +6559,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'prior_pl': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} {cta_pl_sign_sql} ) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -6408,7 +6573,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'posted_re': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount}) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
@@ -6422,7 +6587,7 @@ def calculate_cta():
                   AND tal.accountingbook = {accountingbook}
             """,
             'net_income': f"""
-                SELECT SUM({cons_amount} * CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct IS NOT NULL AND a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END) AS value
+                SELECT SUM({cons_amount} {cta_pl_sign_sql} ) AS value
                 FROM transactionaccountingline tal
                 JOIN transaction t ON t.id = tal.transaction
                 JOIN account a ON a.id = tal.account
