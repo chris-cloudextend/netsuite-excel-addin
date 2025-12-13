@@ -751,7 +751,11 @@ Line signs in NetSuite UI are not reliable indicators of true GL polarity.
 
 ---
 
-## Single Sign Exception: MatchingUnrERV Account
+## Single Sign Exception: MatchingUnrERV Account (89201)
+
+### Quick Summary
+
+NetSuite treats **account 89201 (Unrealized Matching Gain/Loss)** differently from all other accounts. For foreign subsidiaries, NetSuite reverses the display sign in financial statements without changing the underlying GL value. Because XAVI uses true GL values for accuracy, we must apply a small sign adjustment **only for this one account** to match NetSuite's totals.
 
 ### The Exception
 
@@ -761,11 +765,26 @@ There is **ONE exception** to our "use raw GL values" approach:
 1. The subsidiary is a **foreign currency** subsidiary (different base currency than root)
 2. The report is **non-consolidated** (single subsidiary view)
 
-### Why This Exception Exists
+---
 
-This specific intercompany elimination account behaves differently in NetSuite's GL for foreign currency subsidiaries. Unlike other accounts where display differs from GL, this account's GL value itself needs adjustment for proper matching.
+### For Finance Users (Customer-Safe Explanation)
 
-### Technical Implementation
+> NetSuite presents one specific FX adjustment (Unrealized Matching Gain/Loss - account 89201) with the opposite sign from how it exists in the ledger. XAVI uses the ledger value for accurate calculations, and we adjust this one account's sign so that **Net Income matches NetSuite exactly**.
+
+This is the only account that requires special handling. All other accounts use raw GL values.
+
+---
+
+### For Engineers (Technical Explanation)
+
+Account 89201 has `sspecacct = 'MatchingUnrERV'`.
+
+- This classification means the account is a **currency-matching revaluation entry**
+- NetSuite reverses its polarity during report rendering for foreign-only subsidiary P&Ls
+- However, the **underlying ledger amount is not reversed**
+- To match NetSuite Net Income, we must multiply the GL value by -1 for 89201 when rendering a non-consolidated foreign subsidiary report
+
+**Implementation:**
 
 ```python
 # Check if we need the MatchingUnrERV exception
@@ -782,7 +801,13 @@ else:
     sign_sql = "* CASE WHEN accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END"
 ```
 
-### When the Exception Does NOT Apply
+**Code locations:** `build_pl_query()`, `build_full_year_pl_query_pivoted()`, `batch_full_year_refresh()`, `batch_balance_year()`, `get_balance` endpoint
+
+---
+
+### For QA (Validation & Testing)
+
+#### When the Exception Applies
 
 | Scenario | Apply MatchingUnrERV Flip? | Reason |
 |----------|---------------------------|--------|
@@ -791,34 +816,36 @@ else:
 | Foreign subsidiary, **consolidated** view | ❌ No | Consolidation handles it |
 | Foreign subsidiary, **single-sub** view | ✅ Yes | Manual flip required |
 
----
+#### ⚠️ NetSuite Release Testing (CRITICAL)
 
-### ⚠️ QA: NetSuite Release Testing
+**Test this exception after every major NetSuite release.**
 
-**CRITICAL:** Test this exception after every major NetSuite release.
+NetSuite may change the `sspecacct` value or behavior in future releases. 
 
-NetSuite may change the `sspecacct` value or behavior in future releases. QA should verify:
+**Step 1: Verify the sspecacct value hasn't changed**
 
-1. **Query the sspecacct value:**
 ```sql
 SELECT acctnumber, fullname, sspecacct 
 FROM account 
 WHERE acctnumber = '89201'
 ```
 
-2. **Verify the expected value:** `sspecacct` should equal `'MatchingUnrERV'`
+Expected: `sspecacct = 'MatchingUnrERV'`
 
-3. **If NetSuite changes this value:**
-   - Update the SQL condition in `server.py` (search for `MatchingUnrERV`)
-   - Update this documentation
-   - Re-test all foreign subsidiary reports
+**Step 2: If NetSuite changes this value**
+1. Update the SQL condition in `server.py` (search for `MatchingUnrERV`)
+2. Update this documentation
+3. Re-test all foreign subsidiary reports
 
-4. **Test matrix for new releases:**
-   - [ ] Foreign subsidiary (e.g., Celigo Europe B.V.) - single sub view
-   - [ ] Foreign subsidiary - consolidated view  
-   - [ ] Domestic subsidiary - single sub view
-   - [ ] Parent consolidated view
-   - [ ] Verify account 89201 matches NetSuite in all scenarios
+**Step 3: Test matrix for each release**
+
+| Test Case | Expected Result |
+|-----------|-----------------|
+| Foreign subsidiary (e.g., Celigo Europe B.V.) - single sub view | Account 89201 matches NetSuite |
+| Foreign subsidiary - consolidated view | Account 89201 matches NetSuite |
+| Domestic subsidiary - single sub view | Account 89201 matches NetSuite |
+| Parent consolidated view | Account 89201 matches NetSuite |
+| Net Income matches in all scenarios | ✅ |
 
 ---
 
