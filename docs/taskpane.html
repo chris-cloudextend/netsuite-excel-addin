@@ -5090,12 +5090,11 @@
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
                     
                     // NET INCOME formula using named ranges with IFERROR for missing sections
-                    // Formula: Operating Income + Other Income + Other Expenses
-                    // NOTE: Other Expenses uses ADDITION because OthExpense values are signed:
-                    //   - Negative = expense (reduces NI when added)
-                    //   - Positive = gain (increases NI when added)
+                    // Formula: Operating Income + Other Income - ABS(Other Expenses)
+                    // NOTE: ABS ensures expenses always reduce NI regardless of sign convention
+                    //       (foreign subs show negative, domestic shows positive)
                     // Falls back through: Operating Income → Gross Profit → Total Revenue → 0
-                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)+IFERROR(@INDIRECT("_Total_Other_Expenses"),0)';
+                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-ABS(IFERROR(@INDIRECT("_Total_Other_Expenses"),0))';
                     
                     for (let m = 0; m < 13; m++) { // C through O
                         const colLetter = String.fromCharCode(67 + m);
@@ -6224,9 +6223,9 @@
                     }
                     
                     // NET INCOME - Using named ranges with IFERROR for missing sections
-                    // NOTE: Other Expenses uses ADDITION because OthExpense values are signed
+                    // NOTE: ABS ensures expenses reduce NI regardless of sign convention
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)+IFERROR(@INDIRECT("_Total_Other_Expenses"),0)';
+                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-ABS(IFERROR(@INDIRECT("_Total_Other_Expenses"),0))';
                     for (let m = 0; m < 13; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
@@ -8721,9 +8720,9 @@ export default {
                     }
                     
                     // NET INCOME - Using named ranges with IFERROR for missing sections
-                    // NET INCOME - NOTE: Other Expenses uses ADDITION because OthExpense values are signed
+                    // NET INCOME - ABS ensures expenses reduce NI regardless of sign convention
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)+IFERROR(@INDIRECT("_Total_Other_Expenses"),0)';
+                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-ABS(IFERROR(@INDIRECT("_Total_Other_Expenses"),0))';
                     for (let m = 0; m < 13; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
@@ -9825,9 +9824,9 @@ export default {
                                 currentRow++;
                             }
                             
-                            // NET INCOME - NOTE: Other Expenses uses ADDITION because OthExpense values are signed
+                            // NET INCOME - ABS ensures expenses reduce NI regardless of sign convention
                             sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                            const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)+IFERROR(@INDIRECT("_Total_Other_Expenses"),0)';
+                            const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-ABS(IFERROR(@INDIRECT("_Total_Other_Expenses"),0))';
                             for (let m = 0; m < 13; m++) {
                                 const col = String.fromCharCode(67 + m);
                                 sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
