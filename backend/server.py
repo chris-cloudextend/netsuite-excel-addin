@@ -1370,8 +1370,20 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     # Add accountingbook filter (Multi-Book Accounting support)
     where_clause += f" AND tal.accountingbook = {accountingbook}"
     
+    # Check if we need the MatchingUnrERV exception (foreign sub + non-consolidated only)
+    # This single account (89201 Intercompany Unrealized Gain/Loss) requires sign flip for foreign subs
+    flip_matching = False
+    if subsidiary_id and not use_hierarchy:
+        sub_type = get_subsidiary_type(subsidiary_id)
+        if sub_type == 'FOREIGN':
+            flip_matching = True
+    
     # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-    sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+    # Additional flip for MatchingUnrERV accounts on foreign subsidiaries (non-consolidated)
+    if flip_matching:
+        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct = 'MatchingUnrERV' THEN -1 ELSE 1 END"
+    else:
+        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
     
     # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
     # For non-OneWorld, it simply returns the original amount unchanged
@@ -2133,8 +2145,19 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     # Add TransactionLine join if filtering by class/department/location/subsidiary
     line_join = "JOIN transactionline tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
+    # Check if we need the MatchingUnrERV exception (foreign sub + non-consolidated only)
+    flip_matching = False
+    if filters.get('subsidiary') and not use_hierarchy:
+        sub_type = get_subsidiary_type(filters['subsidiary'])
+        if sub_type == 'FOREIGN':
+            flip_matching = True
+    
     # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-    sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+    # Additional flip for MatchingUnrERV accounts on foreign subsidiaries (non-consolidated)
+    if flip_matching:
+        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct = 'MatchingUnrERV' THEN -1 ELSE 1 END"
+    else:
+        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
     
     # Build the pivoted query with all 12 months as columns
     # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
@@ -2853,8 +2876,19 @@ def batch_periods_refresh():
         
         use_hierarchy = wants_consolidated
         
+        # Check if we need the MatchingUnrERV exception (foreign sub + non-consolidated only)
+        flip_matching = False
+        if subsidiary and not use_hierarchy:
+            sub_type = get_subsidiary_type(subsidiary)
+            if sub_type == 'FOREIGN':
+                flip_matching = True
+        
         # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+        # Additional flip for MatchingUnrERV accounts on foreign subsidiaries (non-consolidated)
+        if flip_matching:
+            sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct = 'MatchingUnrERV' THEN -1 ELSE 1 END"
+        else:
+            sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
         
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         pl_query = f"""
@@ -3542,8 +3576,19 @@ def batch_balance_year():
     # Build account filter
     account_filter = ", ".join([f"'{escape_sql(str(a))}'" for a in accounts])
     
+    # Check if we need the MatchingUnrERV exception (foreign sub + non-consolidated only)
+    flip_matching = False
+    if subsidiary and not use_hierarchy:
+        sub_type = get_subsidiary_type(subsidiary)
+        if sub_type == 'FOREIGN':
+            flip_matching = True
+    
     # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-    sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+    # Additional flip for MatchingUnrERV accounts on foreign subsidiaries (non-consolidated)
+    if flip_matching:
+        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct = 'MatchingUnrERV' THEN -1 ELSE 1 END"
+    else:
+        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
     
     # Query all 12 monthly periods for the year and SUM to get annual total
     # (Year periods don't have transactions posted to them - only monthly periods do)
@@ -4491,8 +4536,19 @@ def get_balance():
         
         use_hierarchy = wants_consolidated
         
+        # Check if we need the MatchingUnrERV exception (foreign sub + non-consolidated only)
+        flip_matching = False
+        if subsidiary and not use_hierarchy:
+            sub_type = get_subsidiary_type(subsidiary)
+            if sub_type == 'FOREIGN':
+                flip_matching = True
+        
         # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-        sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+        # Additional flip for MatchingUnrERV accounts on foreign subsidiaries (non-consolidated)
+        if flip_matching:
+            sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END * CASE WHEN a.sspecacct = 'MatchingUnrERV' THEN -1 ELSE 1 END"
+        else:
+            sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
         
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
         if (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):

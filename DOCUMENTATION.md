@@ -12,6 +12,7 @@
 8. [Account Types & Sign Conventions](#account-types--sign-conventions)
    - [Special Account Sign Handling (sspecacct)](#special-account-sign-handling-sspecacct)
    - [NetSuite Display Signs vs. GL Signs](#netsuite-display-signs-vs-gl-signs)
+   - [Single Sign Exception: MatchingUnrERV Account](#single-sign-exception-matchingunerv-account)
    - [Income Statement Formula Sign Conventions](#income-statement-formula-sign-conventions-auto-generated-reports)
 9. [AWS Migration Roadmap](#aws-migration-roadmap)
 10. [CEFI Integration (CloudExtend Federated Integration)](#cefi-integration-cloudextend-federated-integration)
@@ -750,6 +751,77 @@ Line signs in NetSuite UI are not reliable indicators of true GL polarity.
 
 ---
 
+## Single Sign Exception: MatchingUnrERV Account
+
+### The Exception
+
+There is **ONE exception** to our "use raw GL values" approach:
+
+**Account 89201 (Intercompany Unrealized Gain/Loss)** with `sspecacct = 'MatchingUnrERV'` requires a sign flip, but **ONLY** when:
+1. The subsidiary is a **foreign currency** subsidiary (different base currency than root)
+2. The report is **non-consolidated** (single subsidiary view)
+
+### Why This Exception Exists
+
+This specific intercompany elimination account behaves differently in NetSuite's GL for foreign currency subsidiaries. Unlike other accounts where display differs from GL, this account's GL value itself needs adjustment for proper matching.
+
+### Technical Implementation
+
+```python
+# Check if we need the MatchingUnrERV exception
+flip_matching = False
+if subsidiary and not use_hierarchy:  # Non-consolidated only
+    sub_type = get_subsidiary_type(subsidiary)
+    if sub_type == 'FOREIGN':
+        flip_matching = True
+
+# Sign SQL with conditional MatchingUnrERV flip
+if flip_matching:
+    sign_sql = "* CASE WHEN accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END * CASE WHEN sspecacct = 'MatchingUnrERV' THEN -1 ELSE 1 END"
+else:
+    sign_sql = "* CASE WHEN accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END"
+```
+
+### When the Exception Does NOT Apply
+
+| Scenario | Apply MatchingUnrERV Flip? | Reason |
+|----------|---------------------------|--------|
+| Consolidated parent report | ❌ No | BUILTIN.CONSOLIDATE handles it |
+| Domestic subsidiary (same currency as root) | ❌ No | No currency translation |
+| Foreign subsidiary, **consolidated** view | ❌ No | Consolidation handles it |
+| Foreign subsidiary, **single-sub** view | ✅ Yes | Manual flip required |
+
+---
+
+### ⚠️ QA: NetSuite Release Testing
+
+**CRITICAL:** Test this exception after every major NetSuite release.
+
+NetSuite may change the `sspecacct` value or behavior in future releases. QA should verify:
+
+1. **Query the sspecacct value:**
+```sql
+SELECT acctnumber, fullname, sspecacct 
+FROM account 
+WHERE acctnumber = '89201'
+```
+
+2. **Verify the expected value:** `sspecacct` should equal `'MatchingUnrERV'`
+
+3. **If NetSuite changes this value:**
+   - Update the SQL condition in `server.py` (search for `MatchingUnrERV`)
+   - Update this documentation
+   - Re-test all foreign subsidiary reports
+
+4. **Test matrix for new releases:**
+   - [ ] Foreign subsidiary (e.g., Celigo Europe B.V.) - single sub view
+   - [ ] Foreign subsidiary - consolidated view  
+   - [ ] Domestic subsidiary - single sub view
+   - [ ] Parent consolidated view
+   - [ ] Verify account 89201 matches NetSuite in all scenarios
+
+---
+
 ## Income Statement Formula Sign Conventions (Auto-Generated Reports)
 
 ### The Challenge: Double-Entry Accounting in Excel
@@ -1219,7 +1291,8 @@ Backend prints detailed query information:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 3.0.5.41 | Dec 2025 | Reverted OthExpense sign flip for foreign subsidiaries - use raw GL values for mathematical accuracy |
+| 3.0.5.42 | Dec 2025 | Added single exception: MatchingUnrERV (account 89201) sign flip for non-consolidated foreign subsidiaries |
+| 3.0.5.41 | Dec 2025 | Reverted broad OthExpense sign flip - use raw GL values for mathematical accuracy |
 | 3.0.5.40 | Dec 2025 | Sign-aware formulas for Income Statement (Gross Profit, Operating Income, Net Income) |
 | 3.0.5.39 | Dec 2025 | Renamed `_Total_Other_Expenses` to `_Total_Other_Expense`, simplified Net Income formula |
 | 3.0.5.38 | Dec 2025 | Cleaned up console.log debugging (257 → 153 statements) |
@@ -1234,5 +1307,5 @@ Backend prints detailed query information:
 
 ---
 
-*Document Version: 2.3*
+*Document Version: 2.4*
 *Last Updated: December 13, 2025*
