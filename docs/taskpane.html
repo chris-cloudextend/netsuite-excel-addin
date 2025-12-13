@@ -4715,32 +4715,33 @@
                     
                     // Add Excel comments to parameter cells to explain their purpose
                     // Helper function to add comment (clears existing first)
-                    const addCellComment = async (cell, commentText) => {
+                    const addCellComment = async (cellAddress, commentText) => {
                         try {
-                            // Try to get existing comment and delete it
-                            const existingComment = cell.getComment();
-                            existingComment.delete();
+                            const range = sheet.getRange(cellAddress);
+                            // Try to delete existing comment first
+                            try {
+                                const existingComment = range.getComment();
+                                await context.sync();
+                                existingComment.delete();
+                                await context.sync();
+                            } catch (e) {
+                                // No existing comment - that's fine
+                            }
+                            // Add new comment - just pass the string directly
+                            range.addComment(commentText);
                             await context.sync();
+                            console.log(`✓ Added comment to ${cellAddress}`);
                         } catch (e) {
-                            // No existing comment - that's fine
-                        }
-                        try {
-                            cell.addComment({
-                                content: commentText,
-                                authorEmail: "XAVI"
-                            });
-                            await context.sync();
-                        } catch (e) {
-                            console.warn('Could not add comment:', e.message);
+                            console.warn(`Could not add comment to ${cellAddress}:`, e.message);
                         }
                     };
                     
-                    await addCellComment(sheet.getRange("P3"), 
-                        "YEAR: Change this value to load a different fiscal year. The entire Income Statement will update automatically.");
-                    await addCellComment(sheet.getRange("Q3"), 
-                        "SUBSIDIARY CONTEXT: Enter a subsidiary name or use the task pane's Filters section to insert a value. Use '(Consolidated)' suffix for consolidated views that include child subsidiaries.");
-                    await addCellComment(sheet.getRange("R3"), 
-                        "STRUCTURE SYNC: When TRUE, clicking 'Refresh Selected' will rebuild the entire Income Statement structure with all accounts that have data for the selected year and subsidiary. Set to FALSE to only refresh existing formulas.");
+                    await addCellComment("P3", 
+                        "YEAR: Change this value to load a different fiscal year. The Income Statement will update automatically.");
+                    await addCellComment("Q3", 
+                        "SUBSIDIARY: Enter a subsidiary name or use the Filters section. Add '(Consolidated)' suffix for consolidated views that include child subsidiaries.");
+                    await addCellComment("R3", 
+                        "STRUCTURE SYNC: When TRUE, 'Refresh Selected' rebuilds the entire statement with all accounts for the year/subsidiary. Set to FALSE to only refresh existing formulas.");
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     // Set row height for KPI cards
@@ -5985,6 +5986,28 @@
                         sheet.getRange("R3").format.font.color = "#09235C";
                         await context.sync();
                     } catch (e) {}
+                    
+                    // Add Excel comments to parameter cells
+                    const addCellComment = async (cellAddress, commentText) => {
+                        try {
+                            const range = sheet.getRange(cellAddress);
+                            try {
+                                const existingComment = range.getComment();
+                                await context.sync();
+                                existingComment.delete();
+                                await context.sync();
+                            } catch (e) { /* No existing comment */ }
+                            range.addComment(commentText);
+                            await context.sync();
+                        } catch (e) { console.warn(`Could not add comment to ${cellAddress}:`, e.message); }
+                    };
+                    
+                    await addCellComment("P3", 
+                        "YEAR: Change this value to load a different fiscal year. The Income Statement will update automatically.");
+                    await addCellComment("Q3", 
+                        "SUBSIDIARY: Enter a subsidiary name or use the Filters section. Add '(Consolidated)' suffix for consolidated views.");
+                    await addCellComment("R3", 
+                        "STRUCTURE SYNC: When TRUE, 'Refresh Selected' rebuilds the statement with all accounts. Set to FALSE to only refresh existing formulas.");
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     try {
@@ -8490,6 +8513,28 @@ export default {
                         await context.sync();
                     } catch (e) {}
                     
+                    // Add Excel comments to parameter cells
+                    const addCellComment = async (cellAddress, commentText) => {
+                        try {
+                            const range = sheet.getRange(cellAddress);
+                            try {
+                                const existingComment = range.getComment();
+                                await context.sync();
+                                existingComment.delete();
+                                await context.sync();
+                            } catch (e) { /* No existing comment */ }
+                            range.addComment(commentText);
+                            await context.sync();
+                        } catch (e) { console.warn(`Could not add comment to ${cellAddress}:`, e.message); }
+                    };
+                    
+                    await addCellComment("P3", 
+                        "YEAR: Change this value to load a different fiscal year. The Income Statement will update automatically.");
+                    await addCellComment("Q3", 
+                        "SUBSIDIARY: Enter a subsidiary name or use the Filters section. Add '(Consolidated)' suffix for consolidated views.");
+                    await addCellComment("R3", 
+                        "STRUCTURE SYNC: When TRUE, 'Refresh Selected' rebuilds the statement with all accounts. Set to FALSE to only refresh existing formulas.");
+                    
                     // ROW 4: KPI METRICS DASHBOARD
                     try {
                         sheet.getRange("4:4").format.rowHeight = 50;
@@ -9570,25 +9615,26 @@ export default {
                             } catch (e) {}
                             
                             // Add Excel comments to parameter cells
-                            // Helper function to add comment (clears existing first)
-                            const addCellComment = async (cell, commentText) => {
+                            const addCellComment = async (cellAddress, commentText) => {
                                 try {
-                                    const existingComment = cell.getComment();
-                                    existingComment.delete();
+                                    const range = sheet.getRange(cellAddress);
+                                    try {
+                                        const existingComment = range.getComment();
+                                        await context.sync();
+                                        existingComment.delete();
+                                        await context.sync();
+                                    } catch (e) { /* No existing comment */ }
+                                    range.addComment(commentText);
                                     await context.sync();
-                                } catch (e) { /* No existing comment */ }
-                                try {
-                                    cell.addComment({ content: commentText, authorEmail: "XAVI" });
-                                    await context.sync();
-                                } catch (e) { console.warn('Could not add comment:', e.message); }
+                                } catch (e) { console.warn(`Could not add comment to ${cellAddress}:`, e.message); }
                             };
                             
-                            await addCellComment(sheet.getRange("P3"), 
-                                "YEAR: Change this value to load a different fiscal year. The entire Income Statement will update automatically.");
-                            await addCellComment(sheet.getRange("Q3"), 
-                                "SUBSIDIARY CONTEXT: Enter a subsidiary name or use the task pane's Filters section to insert a value. Use '(Consolidated)' suffix for consolidated views.");
-                            await addCellComment(sheet.getRange("R3"), 
-                                "STRUCTURE SYNC: When TRUE, clicking 'Refresh Selected' rebuilds the Income Statement with all accounts for the selected year/subsidiary. Set to FALSE to only refresh existing formulas.");
+                            await addCellComment("P3", 
+                                "YEAR: Change this value to load a different fiscal year. The Income Statement will update automatically.");
+                            await addCellComment("Q3", 
+                                "SUBSIDIARY: Enter a subsidiary name or use the Filters section. Add '(Consolidated)' suffix for consolidated views.");
+                            await addCellComment("R3", 
+                                "STRUCTURE SYNC: When TRUE, 'Refresh Selected' rebuilds the statement with all accounts. Set to FALSE to only refresh existing formulas.");
                             
                             // ===== ROW 4: KPI METRICS =====
                             try {
