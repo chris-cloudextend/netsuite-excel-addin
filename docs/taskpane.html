@@ -3767,46 +3767,61 @@
                 console.warn('Guide Me: Cache clear warning:', e.message);
             }
             
-            // Excel tips to show during loading - finance-focused formulas and shortcuts
+            // Excel tips, history, and financial formulas interspersed
             const excelTips = [
                 // Financial formulas
                 '=SUMIF(range, criteria, sum_range) → Sum by condition',
+                '📜 VisiCalc (1979) was the first spreadsheet—it made the Apple II a business tool',
                 '=SUMIFS(sum_range, range1, criteria1, range2, criteria2)',
+                '📜 Lotus 1-2-3 dominated the 1980s and made "/" the menu key',
                 '=VLOOKUP(value, table, col, FALSE) → Exact match lookup',
+                '📜 Excel launched in 1985 for Mac—Windows version came in 1987',
                 '=INDEX(array, MATCH(value, range, 0)) → Flexible lookup',
+                '📜 The $ anchor (like $A$1) dates back to VisiCalc in 1979',
                 '=IFERROR(formula, 0) → Handle #DIV/0! errors',
+                '📜 Excel\'s 1,048,576 rows limit was set in Excel 2007 (was 65,536 before)',
                 '=SUMPRODUCT((A:A="Revenue")*(B:B)) → Sum with multiple criteria',
+                '📜 The name "Excel" was a play on "electronic spreadsheet" excellence',
                 '=EOMONTH(date, 0) → Last day of month',
+                '💡 Named ranges make formulas self-documenting and easier to audit',
                 '=EOMONTH(date, -1)+1 → First day of month',
+                '📜 Dan Bricklin invented VisiCalc after watching a professor erase a blackboard',
                 '=TEXT(date, "mmmm yyyy") → Format dates',
+                '💡 Use Ctrl+` to toggle formula view for auditing',
                 '=ROUND(value, -3) → Round to nearest thousand',
+                '📜 Excel was not Microsoft\'s first spreadsheet—Multiplan (1982) was',
                 '=ABS(value) → Absolute value for variances',
+                '💡 Tables (Ctrl+T) auto-expand formulas to new rows',
                 '=IF(actual>budget, "Over", "Under") → Budget variance',
-                '=YEAR(date) & "-" & TEXT(MONTH(date),"00")',
+                '📜 The first Excel easter egg was a flight simulator (Excel 97)',
                 '=(current-prior)/ABS(prior) → % change formula',
+                '💡 F4 cycles through A1 → $A$1 → A$1 → $A1 → A1',
                 '=AVERAGEIF(range, ">0") → Average positive values',
+                '📜 Over 750 million people use Excel worldwide today',
                 '=COUNTIF(range, "<0") → Count negative variances',
+                '💡 Alt+= is the fastest way to insert a SUM formula',
                 '=MAX(range)-MIN(range) → Range/spread analysis',
+                '📜 The @ symbol in Excel formulas was introduced for implicit intersection',
                 '=RANK(value, range, 0) → Rank accounts by size',
-                // Keyboard shortcuts
+                // Keyboard shortcuts with history
                 'Ctrl+D → Fill down from cell above',
+                '📜 Ctrl+C/V for copy/paste was invented by Larry Tesler at Apple',
                 'Ctrl+R → Fill right from cell left',
+                '💡 Double-click fill handle to auto-fill down to adjacent data',
                 'Ctrl+Shift+L → Toggle filters',
+                '📜 Pivot Tables were invented by Lotus in 1991 (called "Improv")',
                 'Ctrl+` → Show/hide formulas',
+                '💡 Ctrl+[ jumps to cells referenced by current formula',
                 'F4 → Toggle absolute refs ($A$1)',
+                '📜 Excel formulas are processed left-to-right, but PEMDAS still applies',
                 'Alt+= → Auto-sum selected range',
+                '💡 Conditional formatting can highlight variances automatically',
                 'Ctrl+; → Insert today\'s date',
-                'Ctrl+Shift+# → Date format',
+                '📜 The "ribbon" interface was introduced in Office 2007',
                 'Ctrl+Shift+$ → Currency format',
+                '💡 Data Validation creates dropdown lists for cleaner input',
                 'Ctrl+Shift+% → Percentage format',
-                'F2 → Edit cell directly',
-                'Ctrl+[ → Jump to precedent cell',
-                // Pro tips
-                'Name ranges for clearer formulas',
-                'Use Tables (Ctrl+T) for dynamic ranges',
-                'Conditional formatting for variances',
-                'Data Validation for dropdown lists',
-                'Pivot Tables for quick analysis'
+                '📜 Excel Online was launched in 2010 as "Excel Web App"'
             ];
             let tipIndex = 0;
             
@@ -3832,7 +3847,7 @@
                 <div class="loading-step-desc" id="guideMeStepDesc">Establishing secure connection</div>
                 
                 <div class="tips-section">
-                    <div class="tips-label">Excel Pro Tips</div>
+                    <div class="tips-label">Excel Tips & History</div>
                     <div class="loading-tip" id="guideMeTip">${excelTips[0]}</div>
                 </div>
             `;
@@ -4409,16 +4424,32 @@
             isSyncInProgress = true;
             lastSyncedYear = currentYear;
             
-            // Excel tips during loading
+            // Excel tips, history, and financial formulas interspersed
             const excelTips = [
                 '=SUMIF(range, criteria, sum_range) → Sum by condition',
+                '📜 VisiCalc (1979) was the "killer app" that launched personal computing',
                 '=INDEX(array, MATCH(value, range, 0)) → Flexible lookup',
+                '📜 Excel launched in 1985—originally just for Macintosh',
                 'Ctrl+Shift+L → Toggle filters quickly',
+                '💡 Named ranges make formulas self-documenting',
                 '=IFERROR(formula, 0) → Handle errors gracefully',
+                '📜 The $ anchor for absolute refs dates back to VisiCalc',
                 'Alt+= → Auto-sum selected range',
+                '📜 Over 750 million people use Excel worldwide',
                 '=TEXT(date, "mmmm yyyy") → Format dates nicely',
+                '💡 Double-click fill handle to auto-fill down',
                 'F4 → Toggle absolute refs ($A$1)',
-                '=ROUND(value, -3) → Round to nearest thousand'
+                '📜 Lotus 1-2-3 dominated spreadsheets before Excel',
+                '=ROUND(value, -3) → Round to nearest thousand',
+                '💡 Ctrl+[ jumps to cells referenced by your formula',
+                '=(current-prior)/ABS(prior) → % change formula',
+                '📜 The first Excel easter egg was a flight simulator',
+                '=SUMPRODUCT((A:A="Revenue")*(B:B)) → Multi-criteria sum',
+                '💡 Tables (Ctrl+T) auto-expand with new data',
+                '=EOMONTH(date, 0) → Last day of month',
+                '📜 Dan Bricklin invented spreadsheets watching a professor erase a blackboard',
+                '=ABS(value) → Absolute value for variances',
+                '💡 Conditional formatting can flag budget variances'
             ];
             let tipIndex = 0;
             
@@ -4444,7 +4475,7 @@
                 <div class="loading-step-desc" id="isStepDesc">Establishing secure connection</div>
                 
                 <div class="tips-section">
-                    <div class="tips-label">Excel Pro Tips</div>
+                    <div class="tips-label">Excel Tips & History</div>
                     <div class="loading-tip" id="isTip">${excelTips[0]}</div>
                 </div>
             `;
