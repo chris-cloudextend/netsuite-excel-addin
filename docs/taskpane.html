@@ -2523,7 +2523,7 @@
                             <svg viewBox="0 0 24 24" style="stroke: var(--blue-light);"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                         </div>
                         <div class="header-text">
-                            <span>Refresh & Sync</span>
+                            <span>Refresh & Caching</span>
                             <span class="subtitle">Update formulas and clear cache</span>
                         </div>
                     </h3>
@@ -2584,7 +2584,7 @@
                             <svg viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
                         </div>
                         <div class="header-text">
-                            <span>NetSuite Filters</span>
+                            <span>Filters</span>
                             <span class="subtitle">Class, Department, Location</span>
                         </div>
                     </h3>
@@ -2592,7 +2592,7 @@
                 </summary>
                 <div class="collapsible-content">
                     <p style="color: var(--bottlenose); font-size: 12px; margin-bottom: 14px; line-height: 1.5;">
-                        Select a filter and click "Insert" to add it to your cell. <strong>Tip:</strong> You can also type names directly in formulas!
+                        <strong>Pro Tip:</strong> Make your worksheet dynamic by inserting filter fields in your worksheet and referencing the appropriate cells with your Excel formulas.
                     </p>
                     
                     <div class="filter-group">
@@ -2656,7 +2656,7 @@
                             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
                         </div>
                         <div class="header-text">
-                            <span>Bulk Add Accounts</span>
+                            <span>Bulk Add GL Accounts</span>
                             <span class="subtitle">Add multiple accounts at once</span>
                         </div>
                     </h3>
@@ -2683,7 +2683,7 @@
                     </div>
                     
                     <button class="btn-primary" style="margin-top: 12px; background: linear-gradient(135deg, var(--anenome) 0%, #06d6a0 100%); color: var(--deep-dive);" onclick="searchAccounts()">
-                        <span>➕</span> Bulk Add Accounts
+                        <span>➕</span> Bulk Add GL Accounts
                     </button>
                     
                     <div class="refresh-status" id="searchStatus"></div>
@@ -7584,7 +7584,7 @@ export default {
         // Load NetSuite lookups into dropdowns
         async function loadNetSuiteLookups() {
             const statusEl = document.getElementById('lookupStatus');
-            statusEl.textContent = 'Loading NetSuite filters...';
+            statusEl.textContent = 'Loading filters...';
             statusEl.style.color = '#0284c7';
             
             try {
@@ -11644,7 +11644,7 @@ export default {
                 }, 8000);
             } finally {
                 btn.disabled = false;
-                btn.textContent = 'Bulk Add Accounts';
+                btn.textContent = 'Bulk Add GL Accounts';
             }
         }
 
