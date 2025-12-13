@@ -4977,7 +4977,8 @@
                     if (revenueTotalRow || cogsTotalRow) {
                         sheet.getRange(`B${currentRow}`).values = [['GROSS PROFIT']];
                         // Use IFERROR(@INDIRECT()) to handle missing sections gracefully
-                        const gpFormula = '=IFERROR(@INDIRECT("_Total_Revenue"),0)-IFERROR(@INDIRECT("_Total_COGS"),0)';
+                        // LET formula: cleaner, more efficient than INDIRECT
+                        const gpFormula = '=LET(rev,IFERROR(@_Total_Revenue,0),cogs,IFERROR(@_Total_COGS,0),rev-ABS(cogs))';
                         for (let m = 0; m < 13; m++) { // C through O (all 13 columns)
                             const colLetter = String.fromCharCode(67 + m);
                             sheet.getRange(`${colLetter}${currentRow}`).formulas = [[gpFormula]];
@@ -5023,8 +5024,8 @@
                     // Always create if we have Gross Profit or Expenses
                     if (grossProfitRow || expenseTotalRow) {
                         sheet.getRange(`B${currentRow}`).values = [['OPERATING INCOME']];
-                        // Use IFERROR(@INDIRECT()) to handle missing sections gracefully
-                        const oiFormula = '=IFERROR(@INDIRECT("_Gross_Profit"),0)-IFERROR(@INDIRECT("_Total_Operating_Expenses"),0)';
+                        // LET formula: cleaner, more efficient than INDIRECT
+                        const oiFormula = '=LET(gp,IFERROR(@_Gross_Profit,0),opex,IFERROR(@_Total_Operating_Expenses,0),gp-ABS(opex))';
                         for (let m = 0; m < 13; m++) { // C through O
                             const colLetter = String.fromCharCode(67 + m);
                             sheet.getRange(`${colLetter}${currentRow}`).formulas = [[oiFormula]];
@@ -5089,12 +5090,9 @@
                     // ========== NET INCOME ROW ==========
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
                     
-                    // NET INCOME formula using named ranges with IFERROR for missing sections
-                    // Formula: Operating Income + Other Income - ABS(Other Expenses)
-                    // NOTE: ABS ensures expenses always reduce NI regardless of sign convention
-                    //       (foreign subs show negative, domestic shows positive)
-                    // Falls back through: Operating Income → Gross Profit → Total Revenue → 0
-                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-ABS(IFERROR(@INDIRECT("_Total_Other_Expenses"),0))';
+                    // NET INCOME - LET formula: cleaner, more efficient than INDIRECT
+                    // Falls back: Operating Income → Gross Profit → Total Revenue → 0
+                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expenses,0),opInc+otherInc-ABS(otherExp))';
                     
                     for (let m = 0; m < 13; m++) { // C through O
                         const colLetter = String.fromCharCode(67 + m);
@@ -6146,7 +6144,8 @@
                     // GROSS PROFIT - Always create if we have revenue or COGS
                     if (revenueTotalRow || cogsTotalRow) {
                         sheet.getRange(`B${currentRow}`).values = [['GROSS PROFIT']];
-                        const gpFormula = '=IFERROR(@INDIRECT("_Total_Revenue"),0)-IFERROR(@INDIRECT("_Total_COGS"),0)';
+                        // LET formula: cleaner, more efficient than INDIRECT
+                        const gpFormula = '=LET(rev,IFERROR(@_Total_Revenue,0),cogs,IFERROR(@_Total_COGS,0),rev-ABS(cogs))';
                         for (let m = 0; m < 13; m++) {
                             const col = String.fromCharCode(67 + m);
                             sheet.getRange(`${col}${currentRow}`).formulas = [[gpFormula]];
@@ -6179,7 +6178,8 @@
                     // OPERATING INCOME - Always create if we have gross profit or expenses
                     if (grossProfitRow || expenseTotalRow) {
                         sheet.getRange(`B${currentRow}`).values = [['OPERATING INCOME']];
-                        const oiFormula = '=IFERROR(@INDIRECT("_Gross_Profit"),0)-IFERROR(@INDIRECT("_Total_Operating_Expenses"),0)';
+                        // LET formula: cleaner, more efficient than INDIRECT
+                        const oiFormula = '=LET(gp,IFERROR(@_Gross_Profit,0),opex,IFERROR(@_Total_Operating_Expenses,0),gp-ABS(opex))';
                         for (let m = 0; m < 13; m++) {
                             const col = String.fromCharCode(67 + m);
                             sheet.getRange(`${col}${currentRow}`).formulas = [[oiFormula]];
@@ -6222,10 +6222,9 @@
                         currentRow++;
                     }
                     
-                    // NET INCOME - Using named ranges with IFERROR for missing sections
-                    // NOTE: ABS ensures expenses reduce NI regardless of sign convention
+                    // NET INCOME - LET formula: cleaner, more efficient than INDIRECT
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-ABS(IFERROR(@INDIRECT("_Total_Other_Expenses"),0))';
+                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expenses,0),opInc+otherInc-ABS(otherExp))';
                     for (let m = 0; m < 13; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
@@ -8646,7 +8645,8 @@ export default {
                     // GROSS PROFIT - Always create if we have revenue or COGS
                     if (revenueTotalRow || cogsTotalRow) {
                         sheet.getRange(`B${currentRow}`).values = [['GROSS PROFIT']];
-                        const gpFormula = '=IFERROR(@INDIRECT("_Total_Revenue"),0)-IFERROR(@INDIRECT("_Total_COGS"),0)';
+                        // LET formula: cleaner, more efficient than INDIRECT
+                        const gpFormula = '=LET(rev,IFERROR(@_Total_Revenue,0),cogs,IFERROR(@_Total_COGS,0),rev-ABS(cogs))';
                         for (let m = 0; m < 13; m++) {
                             const col = String.fromCharCode(67 + m);
                             sheet.getRange(`${col}${currentRow}`).formulas = [[gpFormula]];
@@ -8678,7 +8678,8 @@ export default {
                     // OPERATING INCOME - Always create if we have gross profit or expenses
                     if (grossProfitRow || expenseTotalRow) {
                         sheet.getRange(`B${currentRow}`).values = [['OPERATING INCOME']];
-                        const oiFormula = '=IFERROR(@INDIRECT("_Gross_Profit"),0)-IFERROR(@INDIRECT("_Total_Operating_Expenses"),0)';
+                        // LET formula: cleaner, more efficient than INDIRECT
+                        const oiFormula = '=LET(gp,IFERROR(@_Gross_Profit,0),opex,IFERROR(@_Total_Operating_Expenses,0),gp-ABS(opex))';
                         for (let m = 0; m < 13; m++) {
                             const col = String.fromCharCode(67 + m);
                             sheet.getRange(`${col}${currentRow}`).formulas = [[oiFormula]];
@@ -8719,10 +8720,9 @@ export default {
                         currentRow++;
                     }
                     
-                    // NET INCOME - Using named ranges with IFERROR for missing sections
-                    // NET INCOME - ABS ensures expenses reduce NI regardless of sign convention
+                    // NET INCOME - LET formula: cleaner, more efficient than INDIRECT
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                    const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-ABS(IFERROR(@INDIRECT("_Total_Other_Expenses"),0))';
+                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expenses,0),opInc+otherInc-ABS(otherExp))';
                     for (let m = 0; m < 13; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
@@ -9748,7 +9748,8 @@ export default {
                             // GROSS PROFIT - Always create if we have revenue or COGS
                             if (revenueTotalRow || cogsTotalRow) {
                                 sheet.getRange(`B${currentRow}`).values = [['GROSS PROFIT']];
-                                const gpFormula = '=IFERROR(@INDIRECT("_Total_Revenue"),0)-IFERROR(@INDIRECT("_Total_COGS"),0)';
+                                // LET formula: cleaner, more efficient than INDIRECT
+                                const gpFormula = '=LET(rev,IFERROR(@_Total_Revenue,0),cogs,IFERROR(@_Total_COGS,0),rev-ABS(cogs))';
                                 for (let m = 0; m < 13; m++) {
                                     const col = String.fromCharCode(67 + m);
                                     sheet.getRange(`${col}${currentRow}`).formulas = [[gpFormula]];
@@ -9781,7 +9782,8 @@ export default {
                             // OPERATING INCOME - Always create if we have gross profit or expenses
                             if (grossProfitRow || expenseTotalRow) {
                                 sheet.getRange(`B${currentRow}`).values = [['OPERATING INCOME']];
-                                const oiFormula = '=IFERROR(@INDIRECT("_Gross_Profit"),0)-IFERROR(@INDIRECT("_Total_Operating_Expenses"),0)';
+                                // LET formula: cleaner, more efficient than INDIRECT
+                                const oiFormula = '=LET(gp,IFERROR(@_Gross_Profit,0),opex,IFERROR(@_Total_Operating_Expenses,0),gp-ABS(opex))';
                                 for (let m = 0; m < 13; m++) {
                                     const col = String.fromCharCode(67 + m);
                                     sheet.getRange(`${col}${currentRow}`).formulas = [[oiFormula]];
@@ -9824,9 +9826,9 @@ export default {
                                 currentRow++;
                             }
                             
-                            // NET INCOME - ABS ensures expenses reduce NI regardless of sign convention
+                            // NET INCOME - LET formula: cleaner, more efficient than INDIRECT
                             sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                            const niFormula = '=IFERROR(@INDIRECT("_Operating_Income"),IFERROR(@INDIRECT("_Gross_Profit"),IFERROR(@INDIRECT("_Total_Revenue"),0)))+IFERROR(@INDIRECT("_Total_Other_Income"),0)-ABS(IFERROR(@INDIRECT("_Total_Other_Expenses"),0))';
+                            const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expenses,0),opInc+otherInc-ABS(otherExp))';
                             for (let m = 0; m < 13; m++) {
                                 const col = String.fromCharCode(67 + m);
                                 sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
