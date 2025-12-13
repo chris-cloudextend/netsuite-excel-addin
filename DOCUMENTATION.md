@@ -11,6 +11,8 @@
 7. [BUILTIN.CONSOLIDATE Explained](#builtinconsolidate-explained)
 8. [Account Types & Sign Conventions](#account-types--sign-conventions)
    - [Special Account Sign Handling (sspecacct)](#special-account-sign-handling-sspecacct)
+   - [OthExpense Sign Handling for Foreign Subsidiaries](#othexpense-sign-handling-for-foreign-subsidiaries)
+   - [Income Statement Formula Sign Conventions](#income-statement-formula-sign-conventions-auto-generated-reports)
 9. [AWS Migration Roadmap](#aws-migration-roadmap)
 10. [CEFI Integration (CloudExtend Federated Integration)](#cefi-integration-cloudextend-federated-integration)
 11. [Troubleshooting](#troubleshooting)
@@ -657,62 +659,235 @@ Expense           Operating Expense
 OthExpense        Other Expense
 ```
 
-## Special Account Sign Handling (sspecacct)
+## OthExpense Sign Handling for Foreign Subsidiaries
 
 ### The Problem
 
-Certain NetSuite accounts require **additional sign inversion** when displaying amounts on financial statements. Specifically, accounts with a `sspecacct` (Special Account) field value that starts with "Matching" need their calculated amounts inverted to match NetSuite's native financial report presentation.
+When running Income Statement reports at the **individual subsidiary level** for **foreign currency subsidiaries**, all `OthExpense` accounts display with inverted signs compared to the native NetSuite Income Statement.
 
-### Background
+This issue **does NOT occur** when:
+- Running at consolidated (parent) level
+- Running at a subsidiary with the same base currency as the root subsidiary
 
-NetSuite uses "Matching" special accounts as **contra/offset entries for currency revaluation**. For example:
+### Affected Accounts
 
-| Account | sspecacct | Display Behavior |
-|---------|-----------|------------------|
-| 89100 - Unrealized Gain/Loss | `UnrERV` | Normal sign logic |
-| 89201 - Unrealized Matching Gain/Loss | `MatchingUnrERV` | **Inverted sign** |
+All `OthExpense` accounts on foreign currency subsidiaries, including:
+- 89000 Currency Gain/Loss
+- 89100 Realized Gain/Loss
+- 89200 Unrealized Gain/Loss
+- 80005 Interest Expense
+- 80115 Income Tax
+- All other OthExpense accounts
 
-Both accounts have the same `accttype` (e.g., `OthExpense`), so you **cannot rely on account type alone** for sign logic.
+**Note:** `OthIncome` accounts do NOT exhibit this issue.
+
+### Root Cause
+
+This is **expected NetSuite behavior**, not a bug. NetSuite's Financial Statement Report Writer applies sign polarity rules differently for foreign currency subsidiaries at the non-consolidated level. The consolidation engine handles this automatically when rolling up to parent, which is why consolidated reports match correctly.
 
 ### The Solution
 
-Apply an additional sign inversion for any account where `sspecacct LIKE 'Matching%'`.
+Detect foreign subsidiaries and apply additional sign flip for `OthExpense` accounts:
 
-**SQL Pattern (applied to all P&L queries):**
-```sql
-SUM(amount) 
-    * CASE WHEN a.accttype IN ('Income', 'OthIncome') THEN -1 ELSE 1 END
-    * CASE WHEN a.sspecacct LIKE 'Matching%' THEN -1 ELSE 1 END
+```python
+# Determine subsidiary type
+sub_type = get_subsidiary_type(subsidiary_id)  # Returns 'ROOT', 'DOMESTIC', or 'FOREIGN'
+
+# Apply OthExpense flip for foreign subsidiaries (non-consolidated only)
+if sub_type == 'FOREIGN' and not use_hierarchy:
+    sign_sql = "* CASE WHEN a.accttype IN ('Income', 'OthIncome', 'OthExpense') THEN -1 ELSE 1 END"
+else:
+    sign_sql = "* CASE WHEN a.accttype IN ('Income', 'OthIncome') THEN -1 ELSE 1 END"
 ```
 
-**How it works:**
+### How Foreign Subsidiary Detection Works
 
-| Account Type | Is Matching? | First Multiplier | Second Multiplier | Net Effect |
-|--------------|--------------|------------------|-------------------|------------|
-| Income/Revenue | No | -1 | 1 | -1 (flip to positive) |
-| Expense | No | 1 | 1 | 1 (keep as is) |
-| Income/Revenue | Yes | -1 | -1 | 1 (double flip) |
-| **OthExpense (Matching)** | **Yes** | 1 | **-1** | **-1 (flip for display)** |
+```sql
+-- Returns 'ROOT', 'DOMESTIC', or 'FOREIGN'
+SELECT 
+    CASE 
+        WHEN s.parent IS NULL THEN 'ROOT'
+        WHEN s.currency = root.currency THEN 'DOMESTIC'
+        ELSE 'FOREIGN'
+    END AS sub_type
+FROM Subsidiary s
+CROSS JOIN Subsidiary root
+WHERE s.id = :sub_id
+  AND root.parent IS NULL
+```
 
-### Why This Works
+### Summary Table
 
-- The `sspecacct` field is a NetSuite system field that identifies special-purpose accounts
-- "Matching" is NetSuite's naming convention for contra accounts used in currency revaluation eliminations
-- This approach is **universal** and will automatically handle any future "Matching" special accounts NetSuite may add
-- **No hardcoded account numbers required**
+| Subsidiary Type | View Type | OthExpense Flip? | Reason |
+|-----------------|-----------|------------------|--------|
+| Root (parent=NULL) | Any | No | Root currency = report currency |
+| Domestic (same currency as root) | Any | No | No currency translation |
+| Foreign (different currency) | **Consolidated** | No | BUILTIN.CONSOLIDATE handles it |
+| Foreign (different currency) | **Single-Sub** | **Yes** | Manual flip required |
+
+### Why Consolidated Doesn't Need the Flip
+
+When running consolidated reports, `BUILTIN.CONSOLIDATE` performs currency translation AND proper sign handling internally. Applying an additional flip would double-flip and produce wrong results.
 
 ### Testing
 
-Verify against NetSuite's native Income Statement for any account with `sspecacct LIKE 'Matching%'`:
+1. **Consolidated parent level** - should match NetSuite (no flip)
+2. **Domestic subsidiary** - should match NetSuite (no flip)  
+3. **Foreign currency subsidiary (non-consolidated)** - should now match NetSuite (with flip)
 
-```sql
-SELECT id, acctnumber, fullname, accttype, sspecacct 
-FROM account 
-WHERE sspecacct LIKE 'Matching%'
+---
+
+## Income Statement Formula Sign Conventions (Auto-Generated Reports)
+
+### The Challenge: Double-Entry Accounting in Excel
+
+When XAVI auto-generates Income Statements, it must handle the fundamental challenge that **NetSuite stores amounts using double-entry accounting conventions**, not the intuitive "positive = income, negative = expense" model that finance users expect.
+
+#### Double-Entry Storage vs. Financial Report Display
+
+| What You See on Reports | What's Stored in NetSuite | Why? |
+|-------------------------|---------------------------|------|
+| Revenue: **$100,000** (positive) | Credit: **-$100,000** (negative) | Revenue is a credit to income accounts |
+| COGS: **$60,000** (positive expense) | Debit: **$60,000** (positive) | Cost reduces inventory (credit) and increases expense (debit) |
+| Revenue Refund: **-$5,000** (reduces revenue) | Debit: **$5,000** (positive) | Refund is a debit to income account |
+| Expense Credit/Refund: **-$2,000** (reduces expense) | Credit: **-$2,000** (negative) | Credit to expense reduces the expense |
+
+### The Problem with Simple Formulas
+
+The original formulas assumed consistent signs:
+
+```excel
+// BROKEN: Assumed COGS is always positive (debit = expense)
+Gross Profit = Revenue - ABS(COGS)
+
+// What happens with a COGS credit (refund/reversal)?
+// COGS value = -5000 (a credit reducing cost)
+// ABS(-5000) = 5000
+// Result: Revenue - 5000 = WRONG (should ADD the credit back)
 ```
 
-Current Matching accounts in this instance:
-- **89201** - Unrealized Matching Gain/Loss (`MatchingUnrERV`)
+This caused incorrect calculations in periods with:
+- Year-end adjustments
+- Accrual reversals  
+- Credit-heavy months (like December)
+- Vendor refunds or rebates
+
+### The Solution: Sign-Aware Formulas
+
+**Key Insight:** The sign of the value tells you its accounting nature:
+
+| Sign | Meaning | Correct Action |
+|------|---------|----------------|
+| **Positive** COGS/OpEx | Normal debit (expense) | **Subtract** from profit |
+| **Negative** COGS/OpEx | Credit (reversal/refund) | **Add** back to profit |
+| **Positive** Other Income | Normal credit (income) | **Add** to income |
+| **Negative** Other Income | Debit (reduction to income) | **Subtract** from income |
+| **Positive** Other Expense | Normal debit (expense) | **Subtract** from income |
+| **Negative** Other Expense | Credit (reduction to expense) | **Add** back to income |
+
+### Corrected Excel Formulas
+
+#### 1. Gross Profit
+
+```excel
+=LET(
+  rev, IFERROR(@_Total_Revenue, 0),
+  cogs, IFERROR(@_Total_COGS, 0),
+  IF(cogs < 0,
+    ABS(rev) + ABS(cogs),   // Negative COGS = credit = add back
+    ABS(rev) - ABS(cogs)    // Positive COGS = debit = subtract
+  )
+)
+```
+
+**CPA Explanation:** 
+- Positive COGS = normal cost of goods sold → subtract from revenue
+- Negative COGS = purchase return, vendor credit, or reversal → reduces cost, increases margin
+
+#### 2. Operating Income
+
+```excel
+=LET(
+  gp, IFERROR(@_Gross_Profit, 0),
+  opex, IFERROR(@_Total_Operating_Expenses, 0),
+  IF(opex < 0,
+    ABS(gp) + ABS(opex),    // Negative OpEx = credit = add back
+    ABS(gp) - ABS(opex)     // Positive OpEx = debit = subtract
+  )
+)
+```
+
+**CPA Explanation:**
+- Positive OpEx = normal operating expenses → subtract from gross profit
+- Negative OpEx = expense accrual reversal, rebate, or credit → reduces expenses, increases operating income
+
+#### 3. Net Income
+
+```excel
+=LET(
+  opInc, IFERROR(@_Operating_Income, IFERROR(@_Gross_Profit, IFERROR(@_Total_Revenue, 0))),
+  otherInc, IFERROR(@_Total_Other_Income, 0),
+  otherExp, IFERROR(@_Total_Other_Expense, 0),
+  
+  // Negative Other Income = debit to income = reduces income
+  adjOtherInc, IF(otherInc < 0, -ABS(otherInc), otherInc),
+  
+  // Negative Other Expense = credit to expense = benefits income
+  adjOtherExp, IF(otherExp < 0, ABS(otherExp), -ABS(otherExp)),
+  
+  opInc + adjOtherInc + adjOtherExp
+)
+```
+
+**CPA Explanation:**
+- **Other Income (positive):** Interest earned, gains → add to operating income
+- **Other Income (negative):** Write-off of income, debit adjustment → reduces income
+- **Other Expense (positive):** Interest expense, losses → subtract from operating income  
+- **Other Expense (negative):** Expense reversal, credit adjustment → reduces expense, benefits income
+
+### Sign Logic Truth Table (Complete Reference)
+
+| Line Item | Stored Sign | Accounting Nature | Financial Statement Action |
+|-----------|-------------|-------------------|---------------------------|
+| Revenue | Negative (credit) | Normal income | Display as positive (× -1) |
+| Revenue | Positive (debit) | Refund/reduction | Display as negative (× -1) |
+| COGS | Positive (debit) | Normal cost | Subtract from Revenue |
+| COGS | Negative (credit) | Purchase return/credit | Add to Revenue |
+| OpEx | Positive (debit) | Normal expense | Subtract from Gross Profit |
+| OpEx | Negative (credit) | Accrual reversal/credit | Add to Gross Profit |
+| Other Income | Positive | Normal income | Add to Operating Income |
+| Other Income | Negative | Income reduction | Subtract from Operating Income |
+| Other Expense | Positive | Normal expense | Subtract from Operating Income |
+| Other Expense | Negative | Expense credit | Add to Operating Income |
+
+### Real-World Test Cases
+
+These formulas were validated against NetSuite's native Income Statement:
+
+| Month | Scenario | Expected Net Income | Result |
+|-------|----------|---------------------|--------|
+| January 2025 | Normal signs (mostly debits/credits as expected) | $670,296.01 | ✓ Match |
+| December 2025 | Reversed signs (year-end adjustments, accrual reversals) | $2,052,678.11 | ✓ Match |
+
+### Engineering Implementation Notes
+
+1. **Named Ranges:** Each calculated row uses Excel named ranges (`_Total_Revenue`, `_Total_COGS`, etc.) for robustness
+2. **IFERROR Handling:** Gracefully handles missing sections (e.g., no COGS for service companies)
+3. **LET Function:** Improves readability and performance by avoiding repeated calculations
+4. **Fallback Chain:** Net Income falls back through Operating Income → Gross Profit → Revenue → 0
+
+### Where These Formulas Are Applied
+
+The sign-aware formulas are inserted by these 4 functions in `taskpane.html`:
+
+| Function | When Called |
+|----------|-------------|
+| `generateFullIncomeStatement()` | Quick Start: "Create Income Statement" |
+| `runGuideMe()` | Quick Start: "Guide Me" wizard |
+| `performStructureSync()` | Auto-triggered when changing subsidiary or year |
+| `refreshSelected()` | When Structure Sync = TRUE during refresh |
+
+All 4 functions use identical formula logic to ensure consistency.
 
 ---
 
@@ -1031,6 +1206,10 @@ Backend prints detailed query information:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.0.5.40 | Dec 2025 | Sign-aware formulas for Income Statement (Gross Profit, Operating Income, Net Income) |
+| 3.0.5.39 | Dec 2025 | Renamed `_Total_Other_Expenses` to `_Total_Other_Expense`, simplified Net Income formula |
+| 3.0.5.38 | Dec 2025 | Cleaned up console.log debugging (257 → 153 statements) |
+| 3.0.5.37 | Dec 2025 | Auto-comments when inserting filter values from task pane |
 | 1.5.37.0 | Dec 2025 | Fix tooltips (lighter style), remove unnecessary error messages |
 | 1.5.36.0 | Dec 2025 | Remove duplicate tooltips |
 | 1.5.35.0 | Dec 2025 | TYPE formula batching for drag operations |
@@ -1041,5 +1220,5 @@ Backend prints detailed query information:
 
 ---
 
-*Document Version: 2.1*
-*Last Updated: December 2025*
+*Document Version: 2.2*
+*Last Updated: December 13, 2025*
