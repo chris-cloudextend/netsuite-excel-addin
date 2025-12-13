@@ -11,7 +11,7 @@
 7. [BUILTIN.CONSOLIDATE Explained](#builtinconsolidate-explained)
 8. [Account Types & Sign Conventions](#account-types--sign-conventions)
    - [Special Account Sign Handling (sspecacct)](#special-account-sign-handling-sspecacct)
-   - [OthExpense Sign Handling for Foreign Subsidiaries](#othexpense-sign-handling-for-foreign-subsidiaries)
+   - [NetSuite Display Signs vs. GL Signs](#netsuite-display-signs-vs-gl-signs)
    - [Income Statement Formula Sign Conventions](#income-statement-formula-sign-conventions-auto-generated-reports)
 9. [AWS Migration Roadmap](#aws-migration-roadmap)
 10. [CEFI Integration (CloudExtend Federated Integration)](#cefi-integration-cloudextend-federated-integration)
@@ -659,81 +659,62 @@ Expense           Operating Expense
 OthExpense        Other Expense
 ```
 
-## OthExpense Sign Handling for Foreign Subsidiaries
+## NetSuite Display Signs vs. GL Signs
 
-### The Problem
+### Important Distinction
 
-When running Income Statement reports at the **individual subsidiary level** for **foreign currency subsidiaries**, all `OthExpense` accounts display with inverted signs compared to the native NetSuite Income Statement.
+**NetSuite's printed/displayed signs ≠ GL (General Ledger) signs.**
 
-This issue **does NOT occur** when:
-- Running at consolidated (parent) level
-- Running at a subsidiary with the same base currency as the root subsidiary
+When comparing XAVI output to NetSuite's native reports, you may notice occasional sign differences. This is typically a **display formatting difference**, not a data error.
 
-### Affected Accounts
+### What NetSuite Does
 
-All `OthExpense` accounts on foreign currency subsidiaries, including:
-- 89000 Currency Gain/Loss
-- 89100 Realized Gain/Loss
-- 89200 Unrealized Gain/Loss
-- 80005 Interest Expense
-- 80115 Income Tax
-- All other OthExpense accounts
+NetSuite's Financial Statement Report Writer applies UI formatting rules that change how values **appear** without changing the underlying GL data:
 
-**Note:** `OthIncome` accounts do NOT exhibit this issue.
+| Account Type | GL Value | NetSuite UI Display | Notes |
+|--------------|----------|---------------------|-------|
+| Currency Gain | Credit (negative) | May show as positive | Display flip only |
+| Unrealized Gain/Loss | Varies | May show reversed at subsidiary level | Display flip only |
+| Interest Expense | Debit (positive) | Usually positive | Matches GL |
+| Foreign tax entries | Varies | Sometimes reversed in printed reports | Display flip only |
 
-### Root Cause
+**Key Point:** NetSuite **never flips the underlying GL value**. Only the display changes.
 
-This is **expected NetSuite behavior**, not a bug. NetSuite's Financial Statement Report Writer applies sign polarity rules differently for foreign currency subsidiaries at the non-consolidated level. The consolidation engine handles this automatically when rolling up to parent, which is why consolidated reports match correctly.
+### Why This Matters for XAVI
 
-### The Solution
+XAVI queries the actual GL values via SuiteQL and `BUILTIN.CONSOLIDATE`. These are the **true accounting values** that:
+- Sum correctly across accounts
+- Calculate accurate Net Income
+- Match the underlying accounting records
 
-Detect foreign subsidiaries and apply additional sign flip for `OthExpense` accounts:
+If we attempted to flip signs to match NetSuite's UI formatting:
+- ❌ The detail rows would no longer add up correctly
+- ❌ Subtotals and Net Income wouldn't match when summed
+- ❌ Excel formulas would calculate using wrong direction values
+- ❌ Different months/subsidiaries would behave inconsistently
 
-```python
-# Determine subsidiary type
-sub_type = get_subsidiary_type(subsidiary_id)  # Returns 'ROOT', 'DOMESTIC', or 'FOREIGN'
+### Our Approach
 
-# Apply OthExpense flip for foreign subsidiaries (non-consolidated only)
-if sub_type == 'FOREIGN' and not use_hierarchy:
-    sign_sql = "* CASE WHEN a.accttype IN ('Income', 'OthIncome', 'OthExpense') THEN -1 ELSE 1 END"
-else:
-    sign_sql = "* CASE WHEN a.accttype IN ('Income', 'OthIncome') THEN -1 ELSE 1 END"
-```
+**XAVI uses raw GL values, not display-formatted values.**
 
-### How Foreign Subsidiary Detection Works
+This means:
+- ✅ Your Excel formulas will sum correctly
+- ✅ All section totals will add up to Net Income
+- ✅ All subsidiaries behave identically
+- ✅ No month-by-month inconsistencies
+- ✅ Mathematical accuracy is preserved
 
-```sql
--- Returns 'ROOT', 'DOMESTIC', or 'FOREIGN'
-SELECT 
-    CASE 
-        WHEN s.parent IS NULL THEN 'ROOT'
-        WHEN s.currency = root.currency THEN 'DOMESTIC'
-        ELSE 'FOREIGN'
-    END AS sub_type
-FROM Subsidiary s
-CROSS JOIN Subsidiary root
-WHERE s.id = :sub_id
-  AND root.parent IS NULL
-```
+### If You See Sign Differences
 
-### Summary Table
+If an individual account shows a different sign in XAVI vs. NetSuite's native Income Statement:
 
-| Subsidiary Type | View Type | OthExpense Flip? | Reason |
-|-----------------|-----------|------------------|--------|
-| Root (parent=NULL) | Any | No | Root currency = report currency |
-| Domestic (same currency as root) | Any | No | No currency translation |
-| Foreign (different currency) | **Consolidated** | No | BUILTIN.CONSOLIDATE handles it |
-| Foreign (different currency) | **Single-Sub** | **Yes** | Manual flip required |
+1. **Check if the subtotals/totals match** - If section totals and Net Income match, the individual account difference is just display formatting
+2. **Compare to Trial Balance** - The Trial Balance shows raw GL values without display formatting
+3. **Trust the math** - If rows sum correctly to the totals, the values are correct
 
-### Why Consolidated Doesn't Need the Flip
+### Helper Functions (Retained for Reference)
 
-When running consolidated reports, `BUILTIN.CONSOLIDATE` performs currency translation AND proper sign handling internally. Applying an additional flip would double-flip and produce wrong results.
-
-### Testing
-
-1. **Consolidated parent level** - should match NetSuite (no flip)
-2. **Domestic subsidiary** - should match NetSuite (no flip)  
-3. **Foreign currency subsidiary (non-consolidated)** - should now match NetSuite (with flip)
+The codebase includes `get_subsidiary_type()` and `is_foreign_subsidiary()` functions that can classify subsidiaries as ROOT, DOMESTIC, or FOREIGN. These are available if display-only formatting is ever needed in the future, but are **not used for sign manipulation** to preserve mathematical accuracy.
 
 ---
 
@@ -1206,6 +1187,7 @@ Backend prints detailed query information:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.0.5.41 | Dec 2025 | Reverted OthExpense sign flip for foreign subsidiaries - use raw GL values for mathematical accuracy |
 | 3.0.5.40 | Dec 2025 | Sign-aware formulas for Income Statement (Gross Profit, Operating Income, Net Income) |
 | 3.0.5.39 | Dec 2025 | Renamed `_Total_Other_Expenses` to `_Total_Other_Expense`, simplified Net Income formula |
 | 3.0.5.38 | Dec 2025 | Cleaned up console.log debugging (257 → 153 statements) |
@@ -1220,5 +1202,5 @@ Backend prints detailed query information:
 
 ---
 
-*Document Version: 2.2*
+*Document Version: 2.3*
 *Last Updated: December 13, 2025*
