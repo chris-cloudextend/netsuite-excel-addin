@@ -2253,7 +2253,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.37</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.38</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3758,12 +3758,11 @@
             try {
                 if (typeof window.clearAllCaches === 'function') {
                     window.clearAllCaches();
-                    console.log('Guide Me: Cleared all frontend caches');
+                    console.log('Guide Me: Caches cleared');
                 }
                 // Also clear localStorage cache
                 localStorage.removeItem('netsuite_balance_cache');
                 localStorage.removeItem('netsuite_balance_cache_timestamp');
-                console.log('Guide Me: Cleared localStorage cache');
             } catch (e) {
                 console.warn('Guide Me: Cache clear warning:', e.message);
             }
@@ -3935,32 +3934,26 @@
                     const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(allBalances));
                     localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
-                    console.log('Guide Me: Saved balances to localStorage (including $0 for missing months)');
                     
                     // Save account types to localStorage for persistence
                     localStorage.setItem('netsuite_type_cache', JSON.stringify(accountTypes));
-                    console.log('Guide Me: Saved account types to localStorage');
                     
                     // Save account names to localStorage (prevents 35+ parallel requests!)
                     localStorage.setItem('netsuite_name_cache', JSON.stringify(accountNames));
-                    console.log('Guide Me: Saved account names to localStorage');
                     
                     // Populate in-memory caches via Shared Runtime (if available)
                     if (typeof window.setFullYearCache === 'function') {
                         window.setFullYearCache(allBalances);
-                        console.log('Guide Me: Populated balance cache via Shared Runtime');
                     }
                     
                     // Populate TYPE cache so XAVI.TYPE resolves correctly
                     if (typeof window.setAccountTypeCache === 'function') {
                         window.setAccountTypeCache(accountTypes);
-                        console.log('Guide Me: Populated TYPE cache via Shared Runtime');
                     }
                     
                     // Populate NAME cache so XAVI.NAME resolves without 35+ API calls
                     if (typeof window.setAccountNameCache === 'function') {
                         window.setAccountNameCache(accountNames);
-                        console.log('Guide Me: Populated NAME cache via Shared Runtime');
                     }
                 } catch (cacheError) {
                     console.warn('Guide Me: Cache population warning:', cacheError.message);
@@ -4061,23 +4054,18 @@
                     if (!defaultSubsidiary) {
                         defaultSubsidiary = 'Parent Company (Consolidated)';
                     }
-                    console.log(`🏢 Guide Me default subsidiary: ${defaultSubsidiary}`);
                 } catch (e) {
-                    console.warn('Guide Me: Could not fetch subsidiary, using default');
                     defaultSubsidiary = 'Parent Company (Consolidated)';
                 }
                 
                 await Excel.run(async (context) => {
-                    console.log('Guide Me: Starting Excel.run');
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
                     // Try to rename sheet (may fail if name exists)
                     try {
                         sheet.name = "Income Statement";
                         await context.sync();
-                    } catch (e) {
-                        console.log('Guide Me: Sheet rename skipped');
-                    }
+                    } catch (e) { /* Sheet name already exists */ }
                     
                     // Remove gridlines for cleaner look
                     try {
@@ -4090,7 +4078,6 @@
                     // ========================================
                     // ROW 1-2: PARAMETER SECTION
                     // ========================================
-                    console.log('Guide Me: Creating parameter section...');
                     
                     // Row 1: Title/spacing
                     const titleCell = sheet.getRange("A1");
@@ -4108,7 +4095,6 @@
                     sheet.getRange("E2").values = [["YEAR"]];
                     sheet.getRange("G2").values = [["Subsidiary Context"]];
                     await context.sync();
-                    console.log('Guide Me: Parameter labels written');
                     
                     // Style parameter labels
                     try {
@@ -4125,7 +4111,6 @@
                     sheet.getRange("E3").values = [[currentYear]];
                     sheet.getRange("G3").values = [[defaultSubsidiary]];
                     await context.sync();
-                    console.log('Guide Me: Parameter values written');
                     
                     // Style parameter INPUT cells (teal background)
                     try {
@@ -4158,10 +4143,7 @@
                         subInput.format.borders.getItem('EdgeRight').color = '#09235C';
                         
                         await context.sync();
-                        console.log('Guide Me: Parameter styling applied');
-                    } catch (styleErr) {
-                        console.warn('Guide Me: Parameter style warning:', styleErr.message);
-                    }
+                    } catch (styleErr) { /* Style error - continue */ }
                     
                     // ========================================
                     // ROW 3: Blank separator
@@ -4171,7 +4153,6 @@
                     // ROW 4: COLUMN HEADERS
                     // ========================================
                     const headerRow = 4;
-                    console.log('Guide Me: Writing column headers...');
                     
                     // Write text headers (A4:C4)
                     const cellA4 = sheet.getRange("A4");
@@ -4184,7 +4165,6 @@
                     cellC4.values = [["Account Name"]];
                     
                     await context.sync();
-                    console.log('Guide Me: Text header values written');
                     
                     // Format header row
                     try {
@@ -4193,12 +4173,10 @@
                         headerRange.format.font.color = "#FFFFFF";
                         headerRange.format.fill.color = "#09235C";
                         await context.sync();
-                        console.log('Guide Me: Header formatting applied');
                     } catch (formatErr) {
                         console.warn('Guide Me: Header format warning:', formatErr.message);
                     }
                     
-                    console.log('Guide Me: Writing date headers with dynamic year formula...');
                     
                     // Write date headers (D4:O4) using DATE formula that references the YEAR parameter
                     // Formula: =DATE($E$3, COLUMN()-COLUMN($C$4)+1, 1)
@@ -4212,7 +4190,6 @@
                     }
                     
                     await context.sync();
-                    console.log('Guide Me: Date formulas written');
                     
                     // Format month headers
                     try {
@@ -4222,7 +4199,6 @@
                     monthHeaderRange.format.font.color = "#FFFFFF";
                     monthHeaderRange.format.fill.color = "#09235C";
                         await context.sync();
-                        console.log('Guide Me: Month header formatting applied');
                     } catch (monthFormatErr) {
                         console.warn('Guide Me: Month format warning:', monthFormatErr.message);
                     }
@@ -4232,7 +4208,6 @@
                     totalHeaderRange.values = [['YTD Total']];
                     
                     await context.sync();
-                    console.log('Guide Me: YTD header written');
                     
                     // Format YTD header
                     try {
@@ -4241,7 +4216,6 @@
                         ytdRange.format.font.color = "#FFFFFF";
                         ytdRange.format.fill.color = "#09235C";
                         await context.sync();
-                        console.log('Guide Me: YTD formatting applied');
                     } catch (ytdFormatErr) {
                         console.warn('Guide Me: YTD format warning:', ytdFormatErr.message);
                     }
@@ -4254,7 +4228,6 @@
                         sheet.getRange("D:O").format.columnWidth = 85;  // Month columns (fixed width)
                         sheet.getRange("P:P").format.columnWidth = 90;  // YTD Total
                         await context.sync();
-                        console.log('Guide Me: Column widths set');
                     } catch (e) {}
                     
                     // ========================================
@@ -4322,7 +4295,6 @@
                     }
                     
                     await context.sync();
-                    console.log(`Guide Me: Wrote ${allAccounts.length} accounts to sheet`);
                     
                     updateProgress(92, '🎨 Finishing Up', 'Applying formatting...');
                     
@@ -4336,7 +4308,6 @@
                             Array(formatCols).fill('#,##0')
                         );
                         numRange.numberFormat = numberFormatArray;
-                        console.log(`Guide Me: Applied number format to D${dataStartRow}:P${lastDataRow}`);
                     } catch (formatError) {
                         console.warn('Guide Me: Number format warning:', formatError.message);
                     }
@@ -4351,7 +4322,6 @@
                         leftBorder.style = 'Continuous';
                         leftBorder.weight = 'Medium';
                         leftBorder.color = '#09235C';
-                        console.log(`Guide Me: Applied border to P4:P${lastDataRow}`);
                     } catch (borderError) {
                         console.warn('Guide Me: Border formatting warning:', borderError.message);
                     }
@@ -4363,7 +4333,6 @@
                     // Freeze rows 1-4 (parameters + header)
                     try {
                         sheet.freezePanes.freezeRows(4);
-                        console.log('Guide Me: Froze header row');
                     } catch (freezeError) {
                         console.warn('Guide Me: Freeze panes warning:', freezeError.message);
                     }
@@ -5095,7 +5064,6 @@
                         const formatArray = Array(rows).fill(null).map(() => Array(cols).fill(currencyFormat));
                         dataRange.numberFormat = formatArray;
                         await context.sync();
-                        console.log(`💱 Applied currency format: ${currencyFormat} to ${rows * cols} cells`);
                     } catch (e) {
                         console.warn('Format warning:', e.message);
                     }
@@ -6217,7 +6185,6 @@
                         const formatArray = Array(rows).fill(null).map(() => Array(13).fill(currencyFormat));
                         sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                         await context.sync();
-                        console.log(`💱 Applied ${currencyFormat} to ${rows} data rows`);
                     } catch (e) {}
                     
                     // Freeze
@@ -6300,7 +6267,6 @@
             
             // CRITICAL: Signal formulas to wait via localStorage
             // This works across contexts (taskpane iframe ↔ custom functions)
-            console.log('Pre-load: Setting preload status via localStorage');
             try {
                 localStorage.setItem('netsuite_preload_status', 'running');
                 localStorage.setItem('netsuite_preload_timestamp', Date.now().toString());
@@ -6380,7 +6346,6 @@
                 });
 
                 const yearsArray = Array.from(selectedYears).sort();
-                console.log('Pre-load: Detected periods:', selectedPeriods);
                 console.log('Pre-load: Years spanned:', yearsArray);
 
                 // Estimate time based on periods (not full years!)
@@ -6561,24 +6526,8 @@
                     }
 
                     const cacheJson = JSON.stringify(mergedBalances);
-                    console.log('Pre-load: Saving to localStorage...');
-                    console.log(`   Accounts: ${Object.keys(mergedBalances).length}`);
-                    console.log(`   Sample accounts: ${Object.keys(mergedBalances).slice(0, 5).join(', ')}`);
-                    console.log(`   Data size: ${cacheJson.length} chars`);
-                    
                     localStorage.setItem('netsuite_balance_cache', cacheJson);
                     localStorage.setItem('netsuite_balance_cache_timestamp', Date.now().toString());
-                    
-                    // Verify it was saved
-                    const verifyTimestamp = localStorage.getItem('netsuite_balance_cache_timestamp');
-                    const verifyData = localStorage.getItem('netsuite_balance_cache');
-                    console.log('Pre-load: Verification after save:');
-                    console.log(`   Timestamp saved: ${verifyTimestamp}`);
-                    console.log(`   Data saved: ${verifyData ? verifyData.length + ' chars' : 'NULL!'}`);
-                    
-                    if (mergedBalances['10010']) {
-                        console.log(`   Account 10010 periods: ${Object.keys(mergedBalances['10010']).join(', ')}`);
-                    }
                     
                     // Merge and save types
                     const existingTypes = JSON.parse(localStorage.getItem('netsuite_type_cache') || '{}');
@@ -6588,17 +6537,11 @@
                     const existingNames = JSON.parse(localStorage.getItem('netsuite_name_cache') || '{}');
                     localStorage.setItem('netsuite_name_cache', JSON.stringify({ ...existingNames, ...allNames }));
 
-                    console.log('Pre-load: Saved all data to localStorage');
+                    console.log(`Pre-load: Cached ${Object.keys(mergedBalances).length} accounts to localStorage`);
 
                     // Populate in-memory caches
-                    console.log('Pre-load: Populating caches...');
-                    console.log('   typeof window.setFullYearCache:', typeof window.setFullYearCache);
-                    
                     if (typeof window.setFullYearCache === 'function') {
-                        console.log('Pre-load: ✅ Calling setFullYearCache with', Object.keys(mergedBalances).length, 'accounts');
                         window.setFullYearCache(mergedBalances);
-                    } else {
-                        console.log('Pre-load: ⚠️ window.setFullYearCache NOT AVAILABLE');
                     }
                     if (typeof window.setAccountTypeCache === 'function') {
                         window.setAccountTypeCache({ ...existingTypes, ...allTypes });
@@ -6608,7 +6551,6 @@
                     }
                     
                     // CRITICAL: Signal formulas that preload is complete via localStorage
-                    console.log('Pre-load: ✅ Setting preload status to complete');
                     localStorage.setItem('netsuite_preload_status', 'complete');
                 } catch (cacheError) {
                     console.warn('Pre-load: Cache save warning:', cacheError);
@@ -8011,7 +7953,6 @@ export default {
                             }
                             
                             currencyFormatDebounceTimer = setTimeout(async () => {
-                                console.log(`💱 Detected change in subsidiary cell: ${event.address}`);
                                 await smartCurrencyFormatUpdate();
                             }, 1500); // 1.5 second debounce
                         }
@@ -8145,13 +8086,12 @@ export default {
                 // contexts, so we can't directly call window.clearAllCaches().
                 // Instead, we use localStorage as a cross-context signal.
                 // ============================================
-                console.log('🧹 Clearing all caches due to subsidiary change...');
+                console.log('🧹 Clearing caches for subsidiary change');
                 
                 // Clear localStorage cache
                 try {
                     localStorage.removeItem('netsuite_balance_cache');
                     localStorage.removeItem('netsuite_balance_cache_timestamp');
-                    console.log('   ✓ Cleared localStorage balance cache');
                 } catch (e) {
                     console.warn('   ⚠️ localStorage clear failed:', e.message);
                 }
@@ -8163,7 +8103,6 @@ export default {
                         timestamp: Date.now(),
                         reason: 'subsidiary_change'
                     }));
-                    console.log('   ✓ Set cache clear signal for functions.js');
                 } catch (e) {
                     console.warn('   ⚠️ Cache signal failed:', e.message);
                 }
@@ -8739,7 +8678,6 @@ export default {
                         const formatArray = Array(rows).fill(null).map(() => Array(13).fill(currencyFormat));
                         sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                         await context.sync();
-                        console.log(`💱 performStructureSync: Applied ${currencyFormat} to ${rows} rows`);
                     } catch (e) {}
                     
                     try { sheet.freezePanes.freezeRows(5); await context.sync(); } catch (e) {}
@@ -8802,7 +8740,6 @@ export default {
                 showLoading('Clear Cache', 'Clearing all cached data...', 20);
                 
                 // STEP 1: Clear localStorage (shared across all contexts)
-                console.log('🗑️ CLEAR CACHE: Clearing localStorage...');
                 try {
                     localStorage.removeItem('netsuite_balance_cache');
                     localStorage.removeItem('netsuite_balance_cache_timestamp');
@@ -8811,7 +8748,6 @@ export default {
                     localStorage.removeItem('netsuite_preload_status');
                     localStorage.removeItem('netsuite_cache_invalidate');
                     localStorage.removeItem('netsuite_status');
-                    console.log('   ✅ localStorage cleared (balance + budget)');
                 } catch (e) {
                     console.warn('   ⚠️ localStorage clear failed:', e.message);
                 }
@@ -8820,7 +8756,6 @@ export default {
                 
                 // STEP 2: Clear in-memory caches in custom functions runtime via __CLEARCACHE__ command
                 // Use "ALL" as the items string to signal full cache clear
-                console.log('🗑️ CLEAR CACHE: Sending __CLEARCACHE__ ALL command to custom functions...');
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -8838,7 +8773,6 @@ export default {
                     await context.sync();
                     
                     const result = tempRange.values[0][0];
-                    console.log('   🔧 __CLEARCACHE__ ALL result:', result);
                     
                     // Clean up temp cell
                     tempRange.clear();
@@ -8985,14 +8919,12 @@ export default {
                 }
                 
                 await context.sync();
-                console.log(`💱 AUTO-FORMAT: Applied currency format to ${formatted} BALANCE cells`);
                 
                 // ============================================
                 // INCOME STATEMENT: Also format SUM cells (subtotals/totals)
                 // These don't have XAVI.BALANCE but should use the same currency
                 // ============================================
                 if (isIncomeStatement) {
-                    console.log('💱 AUTO-FORMAT: Income Statement detected, formatting ALL formula cells...');
                     
                     // Get the subsidiary from Q3 and determine its currency
                     const subValue = String(subCell.values[0][0] || '').trim();
@@ -9028,7 +8960,6 @@ export default {
                     }
                     
                     await context.sync();
-                    console.log(`💱 AUTO-FORMAT: Applied currency format to ${formulaFormatted} formula cells (SUM, subtraction, etc.)`);
                 }
             });
         }
@@ -9424,14 +9355,7 @@ export default {
                         const accountTypes = refreshData.account_types || {};
                         const accountNames = refreshData.account_names || {};
                         
-                        // DEBUG: Log what we received
-                        console.log(`📊 Auto-sync received ${Object.keys(allBalances).length} accounts from API for subsidiary: "${syncSubsidiary}"`);
-                        console.log(`   Account types received: ${Object.keys(accountTypes).length}`);
-                        console.log(`   🔍 Is 59998 in allBalances? ${allBalances.hasOwnProperty('59998')}`);
-                        if (allBalances['59998']) {
-                            console.log(`   🔍 59998 balance data:`, JSON.stringify(allBalances['59998']));
-                            console.log(`   🔍 59998 account type:`, accountTypes['59998']);
-                        }
+                        console.log(`📊 Auto-sync: ${Object.keys(allBalances).length} accounts for "${syncSubsidiary}"`);
                         
                         // Categorize accounts
                         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
@@ -9448,13 +9372,6 @@ export default {
                             const monthData = allBalances[acctNum];
                             const hasData = Object.values(monthData).some(val => val !== 0 && val !== null);
                             
-                            // DEBUG: Trace account 59998 specifically
-                            if (acctNum === '59998') {
-                                console.log(`🔍 DEBUG 59998: monthData =`, JSON.stringify(monthData));
-                                console.log(`🔍 DEBUG 59998: hasData = ${hasData}`);
-                                console.log(`🔍 DEBUG 59998: accountTypes['59998'] = "${accountTypes['59998']}"`);
-                            }
-                            
                             if (hasData) {
                                 const acctInfo = {
                                     number: acctNum,
@@ -9464,27 +9381,16 @@ export default {
                                 
                                 const acctType = (accountTypes[acctNum] || '').toLowerCase();
                                 
-                                // DEBUG: Trace 59998 categorization
-                                if (acctNum === '59998') {
-                                    console.log(`🔍 DEBUG 59998: acctType (lowercased) = "${acctType}"`);
-                                    console.log(`🔍 DEBUG 59998: Will match COGS? ${acctType === 'cogs' || acctType === 'cost of goods sold'}`);
-                                }
-                                
                                 if (acctType === 'income') { categories.income.push(acctInfo); categorizedCount++; }
                                 else if (acctType === 'othincome') { categories.othIncome.push(acctInfo); categorizedCount++; }
                                 else if (acctType === 'cogs' || acctType === 'cost of goods sold') { categories.cogs.push(acctInfo); categorizedCount++; }
                                 else if (acctType === 'expense') { categories.expense.push(acctInfo); categorizedCount++; }
                                 else if (acctType === 'othexpense') { categories.othExpense.push(acctInfo); categorizedCount++; }
-                                else {
-                                    console.warn(`   ⚠️ Unknown account type for ${acctNum}: "${acctType}"`);
-                                }
+                                // Skip unknown account types silently - not relevant for P&L
                             } else {
                                 skippedZeroData++;
                             }
                         }
-                        
-                        console.log(`   Categorized: ${categorizedCount}, Skipped (zero data): ${skippedZeroData}`);
-                        console.log(`   COGS accounts: ${categories.cogs.map(a => a.number).join(', ')}`);
                         
                         // Sort categories
                         for (const cat in categories) {
@@ -9824,7 +9730,6 @@ export default {
                                 const formatArray = Array(rows).fill(null).map(() => Array(13).fill(currencyFormat));
                                 sheet.getRange(`C6:O${netIncomeRow}`).numberFormat = formatArray;
                                 await context.sync();
-                                console.log(`💱 refreshSelected: Applied ${currencyFormat} to ${rows} rows`);
                             } catch (e) {}
                             
                             // Freeze header rows
@@ -9974,15 +9879,10 @@ export default {
                         }
                     }
                     
-                    console.log(`📊 Detected SPECIFIC periods: ${[...detectedPeriods].join(', ')}`);
-                    console.log(`📊 Detected years: ${[...detectedYears].sort().join(', ')}`);
                 });
                 
                 console.log(`📊 Found ${cellsToUpdate.length} XAVI.BALANCE formulas`);
                 console.log(`📊 Found ${specialFormulas.length} special formulas (RETAINEDEARNINGS/NETINCOME/CTA)`);
-                console.log(`📊 Detected accounts: ${detectedAccounts.size}`);
-                console.log(`📊 Detected periods: ${[...detectedPeriods].join(', ')} (${detectedPeriods.size} total)`);
-                console.log(`📊 Detected years: ${[...detectedYears].join(', ')}`);
                 
                 if (cellsToUpdate.length === 0 && specialFormulas.length === 0) {
                     hideLoading();
@@ -10054,7 +9954,6 @@ export default {
                 localStorage.removeItem('netsuite_balance_cache');
                 localStorage.removeItem('netsuite_balance_cache_timestamp');
                 
-                console.log('🗑️ Clearing caches via __CLEARCACHE__ command...');
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     const tempRange = sheet.getRange('ZZ9999');
@@ -10064,7 +9963,6 @@ export default {
                     tempRange.clear();
                     await context.sync();
                 });
-                console.log('🗑️ Cache cleared via __CLEARCACHE__');
                 
                 let totalAccountsLoaded = 0;
                 let allBalances = {};
@@ -10075,7 +9973,6 @@ export default {
                 // If detectedAccounts is empty AND there are BALANCE formulas, 
                 // we still need to classify them - skip P&L in that case
                 // ============================================
-                console.log(`📊 P&L decision: plAccounts=${plAccounts.length}, bsAccounts=${bsAccounts.length}, detectedAccounts=${detectedAccounts.size}`);
                 
                 // ONLY fetch P&L if we actually have P&L accounts identified
                 if (plAccounts.length > 0) {
@@ -10134,7 +10031,6 @@ export default {
                         }
                     }
                 } else {
-                    console.log('📊 SKIPPING P&L fetch - no P&L accounts detected on sheet');
                     updateLoading('No P&L accounts to fetch', 50, 'All detected accounts are Balance Sheet type');
                 }
                 
@@ -10143,12 +10039,10 @@ export default {
                 // Uses batch_bs_periods endpoint - ONE query for ALL periods
                 // Instead of 12 queries (~14 min), runs 1 query (~36 sec)
                 // ============================================
-                console.log(`📊 BS decision: bsAccounts=${bsAccounts.length}, detectedAccounts=${detectedAccounts.size}`);
                 
                 // ONLY fetch BS if we have BS accounts, OR if we have no accounts at all (fallback for all BALANCE formulas)
                 if (bsAccounts.length > 0 || (detectedAccounts.size === 0 && cellsToUpdate.length > 0)) {
                     const bsCount = bsAccounts.length || 'All detected';
-                    console.log(`📊 ${bsCount} Balance Sheet accounts detected: ${bsAccounts.join(', ') || '(all accounts)'}`);
                     console.log(`📊 Fetching BS for ${bsCount} accounts`);
                     updateLoading('Fetching Balance Sheet accounts...', 50, 
                         `Unlike P&L accounts, Balance Sheet accounts must be summed from the beginning of time (inception-to-date). Using OPTIMIZED single-query approach.`);
@@ -10165,7 +10059,6 @@ export default {
                                 allPeriods.push(`${month} ${year}`);
                             }
                         }
-                        console.log(`📊 BS: No specific periods detected, falling back to all ${allPeriods.length} periods`);
                     } else {
                         console.log(`📊 BS: Fetching ONLY ${allPeriods.length} specific periods (optimized!)`);
                     }
@@ -10237,10 +10130,8 @@ export default {
                         console.warn('⚠️ No balance data loaded but BALANCE formulas exist on sheet');
                         // Don't show error toast - formulas will individually resolve via cache misses
                     } else {
-                        console.log('📊 No BALANCE formulas detected on sheet - nothing to cache');
                     }
                 } else {
-                    console.log(`📊 Sample data: ${JSON.stringify(Object.entries(allBalances).slice(0,2))}`);
                 }
                 
                 try {
@@ -10648,7 +10539,6 @@ export default {
                 );
                 
                 // Pre-clear ALL special formula caches
-                console.log('🗑️ Pre-clearing special formula caches...');
                 for (const period of detectedPeriods) {
                     try {
                         await Excel.run(async (context) => {
@@ -11023,13 +10913,11 @@ export default {
                                     delete balanceData[acct][item.period];
                                     clearedCount++;
                                     modified = true;
-                                    console.log(`   ✓ Cleared balance localStorage: ${acct}/${item.period}`);
                                 }
                             }
                             
                             if (modified) {
                                 localStorage.setItem(BALANCE_STORAGE_KEY, JSON.stringify(balanceData));
-                                console.log(`   💾 Updated balance localStorage (removed ${clearedCount} entries)`);
                             }
                         }
                         
@@ -11047,13 +10935,11 @@ export default {
                                     delete budgetData[acct][item.period];
                                     budgetCleared++;
                                     modified = true;
-                                    console.log(`   ✓ Cleared budget localStorage: ${acct}/${item.period}`);
                                 }
                             }
                             
                             if (modified) {
                                 localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(budgetData));
-                                console.log(`   💾 Updated budget localStorage (removed ${budgetCleared} entries)`);
                                 clearedCount += budgetCleared;
                             }
                         }
@@ -11072,7 +10958,6 @@ export default {
                         console.warn('Cache clear error:', e);
                     }
                     
-                    console.log(`✅ Cleared ${clearedCount} localStorage entries for refresh`)
                     
                     // CRITICAL: Call XAVI.BALANCE("__CLEARCACHE__", "items", "") in the custom functions runtime
                     // This clears cache in the SAME context as BALANCE/BUDGET (different from taskpane!)
@@ -11081,7 +10966,6 @@ export default {
                     try {
                         // Build list with formula type prefix: "balance:60032:May 2025,budget:60032:Jun 2025"
                         const itemsList = itemsToClear.map(i => `${i.formulaType}:${i.account}:${i.period}`).join(',');
-                        console.log(`📡 Calling __CLEARCACHE__ for ${itemsToClear.length} items (balance: ${balanceItems.length}, budget: ${budgetItems.length})...`);
                         console.log(`   Items: ${itemsList}`);
                         
                         // Use a temporary cell to evaluate the BALANCE function with __CLEARCACHE__ command
@@ -11100,7 +10984,6 @@ export default {
                         await context.sync();
                         
                         const result = tempRange.values[0][0];
-                        console.log('   🔧 __CLEARCACHE__ result:', result, '(items cleared)');
                         
                         // Clear the temp cell
                         tempRange.clear();
@@ -11157,9 +11040,6 @@ export default {
                 statusEl.textContent = 'Analyzing selected cell...';
                 statusEl.style.color = '#0284c7';
                 
-                console.log('=== DRILL-DOWN DEBUG START ===');
-                console.log('SERVER_URL:', SERVER_URL);
-                
                 await Excel.run(async (context) => {
                     // Get the selected cell
                     const range = context.workbook.getSelectedRange();
@@ -11170,10 +11050,6 @@ export default {
                     const formula = range.formulas[0][0];
                     const address = range.address;
                     
-                    console.log('Selected cell:', address);
-                    console.log('Formula:', formula);
-                    console.log('Value:', range.values[0][0]);
-                    
                     // Check if it's an XAVI.BALANCE formula
                     if (!formula || !formula.toUpperCase().includes('XAVI.BALANCE')) {
                         statusEl.textContent = '✗ Please select a cell with an XAVI.BALANCE formula';
@@ -11183,23 +11059,17 @@ export default {
                     }
                     
                     // Parse the formula to extract cell references
-                    // Formula format: =XAVI.BALANCE(account, fromPeriod, toPeriod, subsidiary, department, location, class)
                     const cellRefs = parseFormulaCellRefs(formula);
-                    console.log('Cell references from formula:', cellRefs);
                     
                     // Now get the actual VALUES from those cells
                     const params = await resolveFormulaParams(context, cellRefs);
-                    console.log('Resolved params:', params);
                     
                     if (!params || !params.account || !params.period) {
-                        console.error('Failed to parse formula. Params:', params);
                         statusEl.textContent = '✗ Could not parse formula parameters';
                         statusEl.style.color = '#dc2626';
                         setTimeout(() => { statusEl.textContent = ''; }, 5000);
                         return;
                     }
-                    
-                    console.log('Using account:', params.account, 'period:', params.period);
                     
                     statusEl.textContent = 'Fetching transactions from NetSuite...';
                     
@@ -11215,34 +11085,27 @@ export default {
                     if (params.class) queryParams.append('class', params.class);
                     
                     const fetchUrl = `${SERVER_URL}/transactions?${queryParams}`;
-                    console.log('Fetching from:', fetchUrl);
                     
                     // Fetch transactions from backend
                     const response = await fetch(fetchUrl);
                     
-                    console.log('Response status:', response.status);
-                    
                     if (!response.ok) {
                         const errorText = await response.text();
-                        console.error('API error response:', errorText);
+                        console.error('Drill-down API error:', errorText);
                         throw new Error(`API error: ${response.status} - ${errorText}`);
                     }
                     
                     const data = await response.json();
-                    console.log('API response:', data);
-                    
                     const transactions = data.transactions;
-                    console.log('Transactions count:', transactions ? transactions.length : 0);
                     
                     if (!transactions || transactions.length === 0) {
-                        console.warn('No transactions found');
                         statusEl.textContent = '✓ No transactions found for this period';
                         statusEl.style.color = '#059669';
                         setTimeout(() => { statusEl.textContent = ''; }, 5000);
                         return;
                     }
                     
-                    console.log('Creating drill-down sheet with', transactions.length, 'transaction(s)');
+                    console.log(`Drill-down: ${transactions.length} transactions for ${params.account}/${params.period}`);
                     
                     // Create new sheet with transaction details
                     await createDrillDownSheet(context, transactions, params);
@@ -11256,11 +11119,7 @@ export default {
                 });
                 
             } catch (error) {
-                console.error('=== DRILL-DOWN ERROR ===');
-                console.error('Error type:', error.constructor.name);
-                console.error('Error message:', error.message);
-                console.error('Error stack:', error.stack);
-                console.error('Full error:', error);
+                console.error('Drill-down error:', error.message);
                 
                 statusEl.textContent = '✗ Error: ' + error.message;
                 statusEl.style.color = '#dc2626';
@@ -11269,7 +11128,6 @@ export default {
                     statusEl.textContent = '';
                 }, 5000);
             } finally {
-                console.log('=== DRILL-DOWN DEBUG END ===');
                 btn.disabled = false;
                 btn.textContent = 'View Transactions';
             }
@@ -11354,7 +11212,6 @@ export default {
                     const textMatch = cleaned.match(/^TEXT\s*\(\s*([\$]?[A-Z]+[\$]?\d+)\s*,/i);
                     if (textMatch) {
                         const cellRef = textMatch[1];
-                        console.log(`  Detected TEXT formula, extracting cell ref: ${cellRef}`);
                         try {
                             const sheet = context.workbook.worksheets.getActiveWorksheet();
                             const refRange = sheet.getRange(cellRef);
@@ -11587,7 +11444,6 @@ export default {
                     return;
                 }
                 
-                console.log(`Found ${accounts.length} accounts, creating sheet...`);
                 
                 updateLoading(`Inserting ${accounts.length} accounts...`, 70);
                 
