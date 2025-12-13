@@ -2253,7 +2253,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.38</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.39</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5021,7 +5021,7 @@
                         await context.sync();
                         await writeSubtotalRow('Total Other Expense', othExpenseStartRow, othExpenseEndRow, currentRow);
                         othExpenseTotalRow = currentRow;
-                        await createNamedRange('_Total_Other_Expenses', currentRow);
+                        await createNamedRange('_Total_Other_Expense', currentRow);
                         currentRow += 2;
                     }
                     
@@ -5032,7 +5032,8 @@
                     
                     // NET INCOME - LET formula: cleaner, more efficient than INDIRECT
                     // Falls back: Operating Income → Gross Profit → Total Revenue → 0
-                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expenses,0),opInc+otherInc-ABS(otherExp))';
+                    // Note: We ADD otherExp because it's already signed correctly (negative for expenses, positive for credits)
+                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expense,0),opInc+otherInc+otherExp)';
                     
                     for (let m = 0; m < 13; m++) { // C through O
                         const colLetter = String.fromCharCode(67 + m);
@@ -6156,14 +6157,14 @@
                         await context.sync();
                         await writeSubtotalRow('Total Other Expense', startRow, currentRow - 1, currentRow);
                         othExpenseTotalRow = currentRow;
-                        await createNamedRange('_Total_Other_Expenses', currentRow);
+                        await createNamedRange('_Total_Other_Expense', currentRow);
                         currentRow++;
                         currentRow++;
                     }
                     
-                    // NET INCOME - LET formula: cleaner, more efficient than INDIRECT
+                    // NET INCOME - LET formula: ADD otherExp (already signed correctly)
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expenses,0),opInc+otherInc-ABS(otherExp))';
+                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expense,0),opInc+otherInc+otherExp)';
                     for (let m = 0; m < 13; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
@@ -8649,14 +8650,14 @@ export default {
                         await context.sync();
                         await writeSubtotalRow('Total Other Expense', startRow, currentRow - 1, currentRow);
                         othExpenseTotalRow = currentRow;
-                        await createNamedRange('_Total_Other_Expenses', currentRow);
+                        await createNamedRange('_Total_Other_Expense', currentRow);
                         currentRow++;
                         currentRow++;
                     }
                     
-                    // NET INCOME - LET formula: cleaner, more efficient than INDIRECT
+                    // NET INCOME - LET formula: ADD otherExp (already signed correctly)
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expenses,0),opInc+otherInc-ABS(otherExp))';
+                    const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expense,0),opInc+otherInc+otherExp)';
                     for (let m = 0; m < 13; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
@@ -9701,14 +9702,14 @@ export default {
                                 await context.sync();
                                 await writeSubtotalRow('Total Other Expense', startRow, currentRow - 1, currentRow);
                                 othExpenseTotalRow = currentRow;
-                                await createNamedRange('_Total_Other_Expenses', currentRow);
+                                await createNamedRange('_Total_Other_Expense', currentRow);
                                 currentRow++;
                                 currentRow++;
                             }
                             
-                            // NET INCOME - LET formula: cleaner, more efficient than INDIRECT
+                            // NET INCOME - LET formula: ADD otherExp (already signed correctly)
                             sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
-                            const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expenses,0),opInc+otherInc-ABS(otherExp))';
+                            const niFormula = '=LET(opInc,IFERROR(@_Operating_Income,IFERROR(@_Gross_Profit,IFERROR(@_Total_Revenue,0))),otherInc,IFERROR(@_Total_Other_Income,0),otherExp,IFERROR(@_Total_Other_Expense,0),opInc+otherInc+otherExp)';
                             for (let m = 0; m < 13; m++) {
                                 const col = String.fromCharCode(67 + m);
                                 sheet.getRange(`${col}${currentRow}`).formulas = [[niFormula]];
