@@ -661,60 +661,92 @@ OthExpense        Other Expense
 
 ## NetSuite Display Signs vs. GL Signs
 
-### Important Distinction
+### Why Do Signs Look Different in Excel vs NetSuite?
 
-**NetSuite's printed/displayed signs ≠ GL (General Ledger) signs.**
+**NetSuite's financial report does not display the true GL sign for Other Expense accounts.**
 
-When comparing XAVI output to NetSuite's native reports, you may notice occasional sign differences. This is typically a **display formatting difference**, not a data error.
+Instead, it applies presentation formatting rules depending on:
+- Account type
+- Whether the number represents a gain or a loss
+- Whether the subsidiary uses foreign currency
+- Whether the report is consolidated or local
 
-### What NetSuite Does
+**These rules are for readability only and do not reflect the actual debit/credit polarity.**
 
-NetSuite's Financial Statement Report Writer applies UI formatting rules that change how values **appear** without changing the underlying GL data:
+### Example: NetSuite Display Formatting
 
-| Account Type | GL Value | NetSuite UI Display | Notes |
-|--------------|----------|---------------------|-------|
-| Currency Gain | Credit (negative) | May show as positive | Display flip only |
-| Unrealized Gain/Loss | Varies | May show reversed at subsidiary level | Display flip only |
-| Interest Expense | Debit (positive) | Usually positive | Matches GL |
-| Foreign tax entries | Varies | Sometimes reversed in printed reports | Display flip only |
+| Account Type | GL Value | NetSuite UI Prints | Why |
+|--------------|----------|-------------------|-----|
+| Currency Gain (credit) | +475.28 | -$475.28 | Displayed as a *reduction* of expense |
+| Income Tax (expense) | -1,874.71 | -1,874.71 | Displayed with GL sign |
+| Unrealized Gain (credit) | +743.19 | $743.19 | Displayed as a positive gain |
 
-**Key Point:** NetSuite **never flips the underlying GL value**. Only the display changes.
+**XAVI shows the true GL numbers, not the UI format.**
 
-### Why This Matters for XAVI
+This is why:
+- ✅ **Net Income ALWAYS matches**
+- ✅ **Total Other Expense math is correct**
+- ⚠️ **Individual line signs may look different**
 
-XAVI queries the actual GL values via SuiteQL and `BUILTIN.CONSOLIDATE`. These are the **true accounting values** that:
-- Sum correctly across accounts
-- Calculate accurate Net Income
-- Match the underlying accounting records
+### Why Subtotal Signs May Not Match
 
-If we attempted to flip signs to match NetSuite's UI formatting:
-- ❌ The detail rows would no longer add up correctly
-- ❌ Subtotals and Net Income wouldn't match when summed
-- ❌ Excel formulas would calculate using wrong direction values
-- ❌ Different months/subsidiaries would behave inconsistently
+NetSuite computes: `Total Other Expense = SUM(GL values)`
 
-### Our Approach
+Then formats the line to match display expectations:
+- Expenses shown as positive
+- Gains shown as negative
+- Result flipped depending on context
 
-**XAVI uses raw GL values, not display-formatted values.**
+But XAVI's subtotal uses true GL signs, so:
+- The **numbers are correct**
+- The **signs reflect the true financial polarity**
+- The **printed NetSuite signs do not reflect the GL**
 
-This means:
-- ✅ Your Excel formulas will sum correctly
-- ✅ All section totals will add up to Net Income
-- ✅ All subsidiaries behave identically
-- ✅ No month-by-month inconsistencies
-- ✅ Mathematical accuracy is preserved
+---
 
-### If You See Sign Differences
+### For Finance Users (CPA Explanation)
 
-If an individual account shows a different sign in XAVI vs. NetSuite's native Income Statement:
+> NetSuite formats certain Other Expense lines differently from how they exist in the general ledger. This affects display only — not the underlying values. XAVI shows the actual GL signs, which ensures all calculations including Net Income exactly match NetSuite's financial results.
 
-1. **Check if the subtotals/totals match** - If section totals and Net Income match, the individual account difference is just display formatting
-2. **Compare to Trial Balance** - The Trial Balance shows raw GL values without display formatting
-3. **Trust the math** - If rows sum correctly to the totals, the values are correct
+**How to validate:**
+1. Compare **Net Income** — it will match exactly
+2. Compare **section subtotals** — they will match
+3. Individual line signs may differ due to NetSuite's display formatting
 
-### Helper Functions (Retained for Reference)
+---
 
-The codebase includes `get_subsidiary_type()` and `is_foreign_subsidiary()` functions that can classify subsidiaries as ROOT, DOMESTIC, or FOREIGN. These are available if display-only formatting is ever needed in the future, but are **not used for sign manipulation** to preserve mathematical accuracy.
+### For Engineers (Technical Explanation)
+
+NetSuite's UI applies contextual sign reversals to Other Income/Expense accounts. These reversals are **not applied at the GL or search API level**.
+
+Since XAVI uses GL-accurate values from SuiteQL and `BUILTIN.CONSOLIDATE`:
+- Signs may differ from UI formatting
+- **Calculations remain mathematically correct**
+- All formulas sum properly to Net Income
+
+**Helper functions retained:** `get_subsidiary_type()` and `is_foreign_subsidiary()` can classify subsidiaries as ROOT, DOMESTIC, or FOREIGN. These are available if display-only formatting is ever needed, but are **not used for sign manipulation** to preserve mathematical accuracy.
+
+---
+
+### For QA (Validation Guidance)
+
+**Ignore sign differences in the Other Expense section.**
+
+Validate correctness using:
+
+```
+Net Income = Operating Income + Total Other Income + Total Other Expense
+```
+
+**Do NOT validate by** comparing printed signs line-by-line to NetSuite.
+
+Line signs in NetSuite UI are not reliable indicators of true GL polarity.
+
+**What to check:**
+- ✅ Net Income matches NetSuite
+- ✅ Section subtotals match NetSuite  
+- ✅ Excel formulas sum correctly to subtotals
+- ⚠️ Individual account signs may differ (this is expected)
 
 ---
 
