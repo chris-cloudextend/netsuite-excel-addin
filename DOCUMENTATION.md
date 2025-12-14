@@ -10,9 +10,7 @@
 6. [SuiteQL Deep Dive](#suiteql-deep-dive)
 7. [BUILTIN.CONSOLIDATE Explained](#builtinconsolidate-explained)
 8. [Account Types & Sign Conventions](#account-types--sign-conventions)
-   - [Special Account Sign Handling (sspecacct)](#special-account-sign-handling-sspecacct)
    - [NetSuite Display Signs vs. GL Signs](#netsuite-display-signs-vs-gl-signs)
-   - [Single Sign Exception: MatchingUnrERV Account](#single-sign-exception-matchingunerv-account)
    - [Income Statement Formula Sign Conventions](#income-statement-formula-sign-conventions-auto-generated-reports)
 9. [AWS Migration Roadmap](#aws-migration-roadmap)
 10. [CEFI Integration (CloudExtend Federated Integration)](#cefi-integration-cloudextend-federated-integration)
@@ -725,7 +723,7 @@ Since XAVI uses GL-accurate values from SuiteQL and `BUILTIN.CONSOLIDATE`:
 - **Calculations remain mathematically correct**
 - All formulas sum properly to Net Income
 
-**Helper functions retained:** `get_subsidiary_type()` and `is_foreign_subsidiary()` can classify subsidiaries as ROOT, DOMESTIC, or FOREIGN. These are available if display-only formatting is ever needed, but are **not used for sign manipulation** to preserve mathematical accuracy.
+**No special sign manipulation:** XAVI uses raw GL values for all accounts. This ensures mathematical accuracy - Net Income always matches NetSuite exactly when using the correct formula (see Net Income formula below).
 
 ---
 
@@ -748,104 +746,6 @@ Line signs in NetSuite UI are not reliable indicators of true GL polarity.
 - ✅ Section subtotals match NetSuite  
 - ✅ Excel formulas sum correctly to subtotals
 - ⚠️ Individual account signs may differ (this is expected)
-
----
-
-## Single Sign Exception: MatchingUnrERV Account (89201)
-
-### Quick Summary
-
-NetSuite treats **account 89201 (Unrealized Matching Gain/Loss)** differently from all other accounts. For foreign subsidiaries, NetSuite reverses the display sign in financial statements without changing the underlying GL value. Because XAVI uses true GL values for accuracy, we must apply a small sign adjustment **only for this one account** to match NetSuite's totals.
-
-### The Exception
-
-There is **ONE exception** to our "use raw GL values" approach:
-
-**Account 89201 (Intercompany Unrealized Gain/Loss)** with `sspecacct = 'MatchingUnrERV'` requires a sign flip, but **ONLY** when:
-1. The subsidiary is a **foreign currency** subsidiary (different base currency than root)
-2. The report is **non-consolidated** (single subsidiary view)
-
----
-
-### For Finance Users (Customer-Safe Explanation)
-
-> NetSuite presents one specific FX adjustment (Unrealized Matching Gain/Loss - account 89201) with the opposite sign from how it exists in the ledger. XAVI uses the ledger value for accurate calculations, and we adjust this one account's sign so that **Net Income matches NetSuite exactly**.
-
-This is the only account that requires special handling. All other accounts use raw GL values.
-
----
-
-### For Engineers (Technical Explanation)
-
-Account 89201 has `sspecacct = 'MatchingUnrERV'`.
-
-- This classification means the account is a **currency-matching revaluation entry**
-- NetSuite reverses its polarity during report rendering for foreign-only subsidiary P&Ls
-- However, the **underlying ledger amount is not reversed**
-- To match NetSuite Net Income, we must multiply the GL value by -1 for 89201 when rendering a non-consolidated foreign subsidiary report
-
-**Implementation:**
-
-```python
-# Check if we need the MatchingUnrERV exception
-flip_matching = False
-if subsidiary and not use_hierarchy:  # Non-consolidated only
-    sub_type = get_subsidiary_type(subsidiary)
-    if sub_type == 'FOREIGN':
-        flip_matching = True
-
-# Sign SQL with conditional MatchingUnrERV flip
-if flip_matching:
-    sign_sql = "* CASE WHEN accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END * CASE WHEN sspecacct = 'MatchingUnrERV' THEN -1 ELSE 1 END"
-else:
-    sign_sql = "* CASE WHEN accttype IN ('Income','OthIncome') THEN -1 ELSE 1 END"
-```
-
-**Code locations:** `build_pl_query()`, `build_full_year_pl_query_pivoted()`, `batch_full_year_refresh()`, `batch_balance_year()`, `get_balance` endpoint
-
----
-
-### For QA (Validation & Testing)
-
-#### When the Exception Applies
-
-| Scenario | Apply MatchingUnrERV Flip? | Reason |
-|----------|---------------------------|--------|
-| Consolidated parent report | ❌ No | BUILTIN.CONSOLIDATE handles it |
-| Domestic subsidiary (same currency as root) | ❌ No | No currency translation |
-| Foreign subsidiary, **consolidated** view | ❌ No | Consolidation handles it |
-| Foreign subsidiary, **single-sub** view | ✅ Yes | Manual flip required |
-
-#### ⚠️ NetSuite Release Testing (CRITICAL)
-
-**Test this exception after every major NetSuite release.**
-
-NetSuite may change the `sspecacct` value or behavior in future releases. 
-
-**Step 1: Verify the sspecacct value hasn't changed**
-
-```sql
-SELECT acctnumber, fullname, sspecacct 
-FROM account 
-WHERE acctnumber = '89201'
-```
-
-Expected: `sspecacct = 'MatchingUnrERV'`
-
-**Step 2: If NetSuite changes this value**
-1. Update the SQL condition in `server.py` (search for `MatchingUnrERV`)
-2. Update this documentation
-3. Re-test all foreign subsidiary reports
-
-**Step 3: Test matrix for each release**
-
-| Test Case | Expected Result |
-|-----------|-----------------|
-| Foreign subsidiary (e.g., Celigo Europe B.V.) - single sub view | Account 89201 matches NetSuite |
-| Foreign subsidiary - consolidated view | Account 89201 matches NetSuite |
-| Domestic subsidiary - single sub view | Account 89201 matches NetSuite |
-| Parent consolidated view | Account 89201 matches NetSuite |
-| Net Income matches in all scenarios | ✅ |
 
 ---
 
@@ -940,22 +840,18 @@ This caused incorrect calculations in periods with:
   opInc, IFERROR(@_Operating_Income, IFERROR(@_Gross_Profit, IFERROR(@_Total_Revenue, 0))),
   otherInc, IFERROR(@_Total_Other_Income, 0),
   otherExp, IFERROR(@_Total_Other_Expense, 0),
-  
-  // Negative Other Income = debit to income = reduces income
-  adjOtherInc, IF(otherInc < 0, -ABS(otherInc), otherInc),
-  
-  // Negative Other Expense = credit to expense = benefits income
-  adjOtherExp, IF(otherExp < 0, ABS(otherExp), -ABS(otherExp)),
-  
-  opInc + adjOtherInc + adjOtherExp
+  opInc + otherInc - otherExp
 )
 ```
 
 **CPA Explanation:**
-- **Other Income (positive):** Interest earned, gains → add to operating income
-- **Other Income (negative):** Write-off of income, debit adjustment → reduces income
-- **Other Expense (positive):** Interest expense, losses → subtract from operating income  
-- **Other Expense (negative):** Expense reversal, credit adjustment → reduces expense, benefits income
+
+Simple formula: **Net Income = Operating Income + Other Income - Other Expense**
+
+This works because raw data already has correct accounting signs:
+- **Positive Other Expense** = normal costs (interest expense, losses) → **subtract** from income
+- **Negative Other Expense** = credits/reversals → subtracting a negative **adds** to income
+- **Other Income** follows natural sign (positive = income, negative = reduction)
 
 ### Sign Logic Truth Table (Complete Reference)
 
@@ -1318,10 +1214,11 @@ Backend prints detailed query information:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 3.0.5.42 | Dec 2025 | Added single exception: MatchingUnrERV (account 89201) sign flip for non-consolidated foreign subsidiaries |
-| 3.0.5.41 | Dec 2025 | Reverted broad OthExpense sign flip - use raw GL values for mathematical accuracy |
+| 3.0.5.44 | Dec 2025 | **Simplified Net Income formula** - `Operating Income + Other Income - Other Expense`. Removed complex sign-aware logic; raw GL data handles signs correctly. |
+| 3.0.5.43 | Dec 2025 | Removed MatchingUnrERV sign flip - sign-aware Excel formulas handle all cases |
+| 3.0.5.42 | Dec 2025 | Tested MatchingUnrERV exception (ultimately removed in 3.0.5.44) |
 | 3.0.5.40 | Dec 2025 | Sign-aware formulas for Income Statement (Gross Profit, Operating Income, Net Income) |
-| 3.0.5.39 | Dec 2025 | Renamed `_Total_Other_Expenses` to `_Total_Other_Expense`, simplified Net Income formula |
+| 3.0.5.39 | Dec 2025 | Renamed `_Total_Other_Expenses` to `_Total_Other_Expense` |
 | 3.0.5.38 | Dec 2025 | Cleaned up console.log debugging (257 → 153 statements) |
 | 3.0.5.37 | Dec 2025 | Auto-comments when inserting filter values from task pane |
 | 1.5.37.0 | Dec 2025 | Fix tooltips (lighter style), remove unnecessary error messages |
@@ -1334,5 +1231,5 @@ Backend prints detailed query information:
 
 ---
 
-*Document Version: 2.4*
-*Last Updated: December 13, 2025*
+*Document Version: 2.5*
+*Last Updated: December 14, 2025*

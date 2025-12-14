@@ -593,104 +593,8 @@ def is_root_subsidiary(sub_id):
         return False
 
 
-# Cache for subsidiary type lookups (avoids repeated API calls)
-_subsidiary_type_cache = {}
-
-def get_subsidiary_type(sub_id):
-    """
-    Determine the type of subsidiary for sign logic purposes.
-    
-    Returns one of:
-    - 'ROOT': This is the root/parent subsidiary (parent IS NULL)
-    - 'DOMESTIC': Child subsidiary with same base currency as root
-    - 'FOREIGN': Child subsidiary with different base currency than root
-    - 'UNKNOWN': Could not determine (defaults to domestic behavior)
-    
-    Args:
-        sub_id: Subsidiary ID (string or int) OR subsidiary name
-        
-    Returns:
-        str: 'ROOT', 'DOMESTIC', 'FOREIGN', or 'UNKNOWN'
-    """
-    if not sub_id:
-        return 'UNKNOWN'
-    
-    sub_id = str(sub_id).strip()
-    
-    # Remove "(Consolidated)" suffix if present - we're checking the base subsidiary
-    if '(Consolidated)' in sub_id:
-        sub_id = sub_id.replace('(Consolidated)', '').strip()
-    
-    # Check cache first
-    if sub_id in _subsidiary_type_cache:
-        cached = _subsidiary_type_cache[sub_id]
-        print(f"   📍 get_subsidiary_type (cached): {sub_id} -> {cached}", file=sys.stderr)
-        return cached
-    
-    try:
-        # Check if sub_id is numeric (ID) or string (name)
-        is_numeric = sub_id.isdigit()
-        
-        if is_numeric:
-            # Query by ID
-            where_clause = f"s.id = {sub_id}"
-        else:
-            # Query by name - escape single quotes
-            escaped_name = sub_id.replace("'", "''")
-            where_clause = f"s.name = '{escaped_name}'"
-        
-        # Single query to determine subsidiary type
-        # Compares this subsidiary's currency to the root subsidiary's currency
-        query = f"""
-            SELECT 
-                CASE 
-                    WHEN s.parent IS NULL THEN 'ROOT'
-                    WHEN s.currency = root.currency THEN 'DOMESTIC'
-                    ELSE 'FOREIGN'
-                END AS sub_type,
-                s.id AS sub_id,
-                s.name AS sub_name,
-                s.currency AS sub_currency,
-                root.currency AS root_currency
-            FROM Subsidiary s
-            CROSS JOIN Subsidiary root
-            WHERE {where_clause}
-              AND root.parent IS NULL
-        """
-        print(f"   🔍 get_subsidiary_type: input='{sub_id}', is_numeric={is_numeric}", file=sys.stderr)
-        result = query_netsuite(query)
-        print(f"   🔍 get_subsidiary_type result: {result}", file=sys.stderr)
-        
-        if isinstance(result, list) and len(result) > 0:
-            sub_type = result[0].get('sub_type', 'UNKNOWN')
-            _subsidiary_type_cache[sub_id] = sub_type
-            print(f"   📍 Subsidiary {sub_id} type: {sub_type}", file=sys.stderr)
-            return sub_type
-        
-        _subsidiary_type_cache[sub_id] = 'UNKNOWN'
-        return 'UNKNOWN'
-        
-    except Exception as e:
-        print(f"   ⚠️ Error determining subsidiary type: {e}", file=sys.stderr)
-        _subsidiary_type_cache[sub_id] = 'UNKNOWN'
-        return 'UNKNOWN'
-
-
-def is_foreign_subsidiary(sub_id):
-    """
-    Check if a subsidiary uses a different base currency than the root subsidiary.
-    
-    Args:
-        sub_id: Subsidiary ID (string or int)
-        
-    Returns:
-        True if foreign currency subsidiary, False otherwise
-    """
-    return get_subsidiary_type(sub_id) == 'FOREIGN'
-
-
 # ================================================================================
-# AUTO-CONSOLIDATION FEATURE
+# CONSOLIDATION DETECTION
 # ================================================================================
 # When enabled, if user queries the root subsidiary (parent IS NULL), 
 # automatically treat as consolidated even without "(Consolidated)" suffix.
@@ -1394,7 +1298,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     where_clause += f" AND tal.accountingbook = {accountingbook}"
     
     # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-    # NOTE: MatchingUnrERV flip was REMOVED - the sign-aware Excel formulas handle mixed signs correctly
     sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
     
     # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
@@ -2158,7 +2061,6 @@ def build_full_year_pl_query_pivoted(fiscal_year, target_sub, filters, accountin
     line_join = "JOIN transactionline tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_line_join else ""
     
     # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-    # NOTE: MatchingUnrERV flip was REMOVED - the sign-aware Excel formulas handle mixed signs correctly
     sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
     
     # Build the pivoted query with all 12 months as columns
@@ -2879,7 +2781,6 @@ def batch_periods_refresh():
         use_hierarchy = wants_consolidated
         
         # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-        # NOTE: MatchingUnrERV flip was REMOVED - the sign-aware Excel formulas handle mixed signs correctly
         sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
         
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
@@ -3569,7 +3470,6 @@ def batch_balance_year():
     account_filter = ", ".join([f"'{escape_sql(str(a))}'" for a in accounts])
     
     # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-    # NOTE: MatchingUnrERV flip was REMOVED - the sign-aware Excel formulas handle mixed signs correctly
     sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
     
     # Query all 12 monthly periods for the year and SUM to get annual total
@@ -4519,7 +4419,6 @@ def get_balance():
         use_hierarchy = wants_consolidated
         
         # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
-        # NOTE: MatchingUnrERV flip was REMOVED - the sign-aware Excel formulas handle mixed signs correctly
         sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
         
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
