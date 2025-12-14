@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.63</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.64</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3155,7 +3155,7 @@ For licensing inquiries, contact: legal@celigo.com
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.63</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.64</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -11702,22 +11702,17 @@ export default {
         }
         
         async function exportToExcel(context, scope, statusEl) {
-            statusEl.textContent = 'Reading worksheet data and formatting...';
+            statusEl.textContent = 'Reading worksheet data...';
             
             const wb = XLSX.utils.book_new();
             
-            // Helper function to convert RGB to hex
-            function rgbToHex(r, g, b) {
-                return ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
-            }
-            
-            // Helper function to process a single sheet with full formatting
+            // Helper function to process a single sheet
             async function processSheet(sheet, context) {
                 sheet.load('name');
                 const usedRange = sheet.getUsedRange();
                 
-                // Load all data including formatting
-                usedRange.load(['formulas', 'values', 'text', 'numberFormat', 'rowCount', 'columnCount', 'address']);
+                // Load data (skip formatting - basic XLSX doesn't support it well)
+                usedRange.load(['formulas', 'values', 'text', 'numberFormat', 'rowCount', 'columnCount']);
                 await context.sync();
                 
                 const rowCount = usedRange.rowCount;
@@ -11729,34 +11724,7 @@ export default {
                 
                 statusEl.textContent = `Processing ${rowCount} rows...`;
                 
-                // Load formatting for each row (batch for performance)
-                const formatData = [];
-                for (let r = 0; r < rowCount; r++) {
-                    const rowRange = usedRange.getRow(r);
-                    rowRange.load(['format/fill/color', 'format/font/color', 'format/font/bold']);
-                }
-                await context.sync();
-                
-                // Re-load to get the format data
-                const rowFormats = [];
-                for (let r = 0; r < rowCount; r++) {
-                    const rowRange = usedRange.getRow(r);
-                    rowRange.format.fill.load('color');
-                    rowRange.format.font.load(['color', 'bold']);
-                }
-                await context.sync();
-                
-                // Collect format info per row
-                for (let r = 0; r < rowCount; r++) {
-                    const rowRange = usedRange.getRow(r);
-                    rowFormats.push({
-                        fillColor: rowRange.format.fill.color,
-                        fontColor: rowRange.format.font.color,
-                        bold: rowRange.format.font.bold
-                    });
-                }
-                
-                // Create an empty worksheet first
+                // Create an empty worksheet
                 const ws = {};
                 ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rowCount - 1, c: colCount - 1 } });
                 
@@ -11767,7 +11735,6 @@ export default {
                         const formula = formulas[r][c];
                         const value = values[r][c];
                         const numFormat = numberFormats[r][c];
-                        const rowFormat = rowFormats[r];
                         
                         // Determine cell content
                         let cell = {};
@@ -11815,29 +11782,6 @@ export default {
                             } else if (Math.abs(value) >= 1000) {
                                 // Large number - add thousands separator
                                 cell.z = '#,##0';
-                            }
-                        }
-                        
-                        // Apply cell styling (SheetJS style format)
-                        // Note: Full styling requires xlsx-style library, but we can set basic properties
-                        const fillColor = rowFormat.fillColor;
-                        const fontColor = rowFormat.fontColor;
-                        const isBold = rowFormat.bold;
-                        
-                        if (fillColor || fontColor || isBold) {
-                            cell.s = {};
-                            if (fillColor && fillColor !== '#FFFFFF' && fillColor !== 'white') {
-                                // Convert color to ARGB format
-                                const hexColor = fillColor.replace('#', '');
-                                cell.s.fill = { fgColor: { rgb: hexColor } };
-                            }
-                            if (fontColor && fontColor !== '#000000' && fontColor !== 'black') {
-                                const hexColor = fontColor.replace('#', '');
-                                cell.s.font = { color: { rgb: hexColor } };
-                            }
-                            if (isBold) {
-                                cell.s.font = cell.s.font || {};
-                                cell.s.font.bold = true;
                             }
                         }
                         
