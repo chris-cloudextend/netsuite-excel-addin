@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.69</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.70</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -11705,178 +11705,155 @@ export default {
         
         // ================================================================
         // SAVE FOR DISTRIBUTION
-        // Reads sheet data + formatting, creates NEW Excel file, downloads
-        // DOES NOT modify the original workbook in any way
+        // Gets actual workbook file bytes, loads into ExcelJS (preserves ALL formatting),
+        // replaces XAVI formulas with values, exports new file
+        // DOES NOT modify the original workbook
         // ================================================================
         async function prepareForDistribution() {
             const statusEl = document.getElementById('shareStatus');
             
             try {
-                statusEl.textContent = 'Reading sheet data...';
+                statusEl.textContent = 'Getting workbook file...';
                 statusEl.style.color = '#0284c7';
+                
+                // First, get the computed values for XAVI formulas from the live workbook
+                let sheetName = '';
+                let xaviCellMap = new Map(); // Map of "A1" -> computed value
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     sheet.load('name');
-                    
-                    // Get the used range
                     const usedRange = sheet.getUsedRange();
-                    usedRange.load(['values', 'formulas', 'numberFormat', 'rowCount', 'columnCount', 'columnIndex', 'text']);
+                    usedRange.load(['formulas', 'values', 'rowCount', 'columnCount', 'address']);
                     await context.sync();
                     
-                    const sheetName = sheet.name;
+                    sheetName = sheet.name;
                     const rowCount = usedRange.rowCount;
                     const colCount = usedRange.columnCount;
-                    const values = usedRange.values;
                     const formulas = usedRange.formulas;
-                    const numberFormats = usedRange.numberFormat;
-                    const textValues = usedRange.text;
+                    const values = usedRange.values;
                     
-                    statusEl.textContent = 'Reading cell formatting...';
+                    // Get the starting cell address to calculate actual cell references
+                    const startAddress = usedRange.address.split('!')[1].split(':')[0];
+                    const startMatch = startAddress.match(/([A-Z]+)(\d+)/);
+                    const startCol = startMatch ? columnLetterToNumber(startMatch[1]) : 1;
+                    const startRow = startMatch ? parseInt(startMatch[2]) : 1;
                     
-                    // =====================================================
-                    // Read formatting row by row (more reliable than cell-by-cell)
-                    // =====================================================
-                    const rowFormats = [];
-                    
-                    for (let r = 0; r < Math.min(rowCount, 200); r++) { // Limit to 200 rows for performance
-                        const rowRange = usedRange.getRow(r);
-                        rowRange.load(['format/fill/color', 'format/font/bold', 'format/font/color']);
-                        try {
-                            await context.sync();
-                            rowFormats.push({
-                                fillColor: rowRange.format.fill.color,
-                                fontBold: rowRange.format.font.bold,
-                                fontColor: rowRange.format.font.color
-                            });
-                        } catch (e) {
-                            // If format read fails, use defaults
-                            rowFormats.push({ fillColor: null, fontBold: false, fontColor: null });
-                        }
-                    }
-                    
-                    // Fill remaining rows with defaults if > 200
-                    while (rowFormats.length < rowCount) {
-                        rowFormats.push({ fillColor: null, fontBold: false, fontColor: null });
-                    }
-                    
-                    statusEl.textContent = 'Creating Excel file with ExcelJS...';
-                    
-                    // =====================================================
-                    // Create new Excel file using ExcelJS
-                    // =====================================================
-                    const workbook = new ExcelJS.Workbook();
-                    workbook.creator = 'XAVI for NetSuite';
-                    workbook.created = new Date();
-                    
-                    const ws = workbook.addWorksheet(sheetName.substring(0, 31));
-                    
-                    // Track XAVI formulas replaced
-                    let xaviCount = 0;
-                    
-                    // Add data row by row
+                    // Build map of XAVI cells to their computed values
                     for (let r = 0; r < rowCount; r++) {
-                        const rowData = [];
-                        
                         for (let c = 0; c < colCount; c++) {
                             const formula = formulas[r][c];
-                            const value = values[r][c];
-                            
-                            // Replace XAVI formulas with values, keep other formulas
                             if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.')) {
-                                rowData.push(value);
-                                xaviCount++;
-                            } else if (typeof formula === 'string' && formula.startsWith('=')) {
-                                // Keep non-XAVI formulas
-                                rowData.push({ formula: formula.substring(1) });
-                            } else {
-                                rowData.push(value);
-                            }
-                        }
-                        
-                        const row = ws.addRow(rowData);
-                        
-                        // Apply row formatting
-                        const fmt = rowFormats[r];
-                        if (fmt) {
-                            // Apply fill color
-                            if (fmt.fillColor && fmt.fillColor !== '#FFFFFF' && fmt.fillColor !== 'transparent') {
-                                row.eachCell((cell) => {
-                                    cell.fill = {
-                                        type: 'pattern',
-                                        pattern: 'solid',
-                                        fgColor: { argb: fmt.fillColor.replace('#', 'FF') }
-                                    };
-                                });
-                            }
-                            
-                            // Apply bold
-                            if (fmt.fontBold) {
-                                row.eachCell((cell) => {
-                                    cell.font = { ...cell.font, bold: true };
-                                });
-                            }
-                            
-                            // Apply font color
-                            if (fmt.fontColor && fmt.fontColor !== '#000000') {
-                                row.eachCell((cell) => {
-                                    cell.font = { ...cell.font, color: { argb: fmt.fontColor.replace('#', 'FF') } };
-                                });
-                            }
-                        }
-                        
-                        // Apply number formats per cell
-                        for (let c = 0; c < colCount; c++) {
-                            const numFmt = numberFormats[r][c];
-                            if (numFmt && numFmt !== 'General') {
-                                row.getCell(c + 1).numFmt = numFmt;
+                                const cellRef = numberToColumnLetter(startCol + c) + (startRow + r);
+                                xaviCellMap.set(cellRef, values[r][c]);
                             }
                         }
                     }
                     
-                    // Auto-fit columns based on content
-                    ws.columns.forEach((column, idx) => {
-                        let maxWidth = 10;
-                        for (let r = 0; r < Math.min(rowCount, 50); r++) {
-                            const cellText = String(textValues[r][idx] || '');
-                            maxWidth = Math.max(maxWidth, Math.min(cellText.length + 2, 30));
-                        }
-                        column.width = maxWidth;
-                    });
-                    
-                    statusEl.textContent = 'Downloading file...';
-                    
-                    // =====================================================
-                    // Download the file
-                    // =====================================================
-                    const buffer = await workbook.xlsx.writeBuffer();
-                    const blob = new Blob([buffer], { 
-                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-                    });
-                    
-                    const timestamp = new Date().toISOString().slice(0, 10);
-                    const filename = `${sheetName}_${timestamp}.xlsx`;
-                    
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    
-                    statusEl.innerHTML = `
-                        <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #10b981;">
-                            <strong style="color: #059669; font-size: 13px;">✓ Downloaded: ${filename}</strong><br>
-                            <span style="font-size: 12px; color: #047857; display: block; margin-top: 6px;">
-                                Replaced ${xaviCount} XAVI formula(s) with values<br>
-                                Non-XAVI formulas preserved<br>
-                                Row formatting applied
-                            </span>
-                        </div>
-                    `;
+                    console.log(`Found ${xaviCellMap.size} XAVI formulas to replace`);
                 });
+                
+                statusEl.textContent = `Reading workbook file (${xaviCellMap.size} XAVI formulas found)...`;
+                
+                // Get the actual workbook file bytes using Office.js getFileAsync
+                const fileData = await new Promise((resolve, reject) => {
+                    Office.context.document.getFileAsync(
+                        Office.FileType.Compressed,
+                        { sliceSize: 65536 },
+                        async (result) => {
+                            if (result.status === Office.AsyncResultStatus.Failed) {
+                                reject(new Error(result.error.message));
+                                return;
+                            }
+                            
+                            const file = result.value;
+                            const sliceCount = file.sliceCount;
+                            const slices = [];
+                            
+                            // Read all slices
+                            for (let i = 0; i < sliceCount; i++) {
+                                const sliceData = await new Promise((resolveSlice, rejectSlice) => {
+                                    file.getSliceAsync(i, (sliceResult) => {
+                                        if (sliceResult.status === Office.AsyncResultStatus.Failed) {
+                                            rejectSlice(new Error(sliceResult.error.message));
+                                        } else {
+                                            resolveSlice(sliceResult.value.data);
+                                        }
+                                    });
+                                });
+                                slices.push(sliceData);
+                            }
+                            
+                            file.closeAsync();
+                            
+                            // Combine slices into single ArrayBuffer
+                            const totalLength = slices.reduce((sum, slice) => sum + slice.length, 0);
+                            const combined = new Uint8Array(totalLength);
+                            let offset = 0;
+                            for (const slice of slices) {
+                                combined.set(new Uint8Array(slice), offset);
+                                offset += slice.length;
+                            }
+                            
+                            resolve(combined.buffer);
+                        }
+                    );
+                });
+                
+                statusEl.textContent = 'Loading workbook with ExcelJS...';
+                
+                // Load the workbook into ExcelJS - this preserves ALL formatting!
+                const workbook = new ExcelJS.Workbook();
+                await workbook.xlsx.load(fileData);
+                
+                statusEl.textContent = 'Replacing XAVI formulas with values...';
+                
+                // Find the active sheet and replace XAVI formulas
+                let worksheet = workbook.getWorksheet(sheetName);
+                if (!worksheet) {
+                    // Fallback to first worksheet
+                    worksheet = workbook.worksheets[0];
+                }
+                
+                let replacedCount = 0;
+                
+                // Replace XAVI formulas with their computed values
+                for (const [cellRef, value] of xaviCellMap) {
+                    const cell = worksheet.getCell(cellRef);
+                    // Clear the formula and set the value
+                    cell.value = value;
+                    replacedCount++;
+                }
+                
+                statusEl.textContent = 'Downloading file...';
+                
+                // Export the modified workbook
+                const buffer = await workbook.xlsx.writeBuffer();
+                const blob = new Blob([buffer], { 
+                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                });
+                
+                const timestamp = new Date().toISOString().slice(0, 10);
+                const filename = `${sheetName}_${timestamp}.xlsx`;
+                
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                statusEl.innerHTML = `
+                    <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #10b981;">
+                        <strong style="color: #059669; font-size: 13px;">✓ Downloaded: ${filename}</strong><br>
+                        <span style="font-size: 12px; color: #047857; display: block; margin-top: 6px;">
+                            Replaced ${replacedCount} XAVI formula(s) with values<br>
+                            <strong>All formatting preserved!</strong>
+                        </span>
+                    </div>
+                `;
                 
             } catch (error) {
                 console.error('Save for distribution error:', error);
@@ -11886,6 +11863,25 @@ export default {
                     </div>
                 `;
             }
+        }
+        
+        // Helper functions for cell reference conversion
+        function columnLetterToNumber(letters) {
+            let result = 0;
+            for (let i = 0; i < letters.length; i++) {
+                result = result * 26 + (letters.charCodeAt(i) - 64);
+            }
+            return result;
+        }
+        
+        function numberToColumnLetter(num) {
+            let result = '';
+            while (num > 0) {
+                num--;
+                result = String.fromCharCode(65 + (num % 26)) + result;
+                num = Math.floor(num / 26);
+            }
+            return result;
         }
         
         async function emailReport() {
