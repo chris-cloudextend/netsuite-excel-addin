@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.56</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.57</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2360,6 +2360,9 @@ For licensing inquiries, contact: legal@celigo.com
 
             <!-- TAB PANEL: Financial Reporting -->
             <div class="tab-panel" id="panelFinancial" style="display: block;">
+                <!-- TOP NOTIFICATION BANNER - Shows warnings/errors prominently -->
+                <div id="topNotificationBanner" style="display: none;"></div>
+                
                 <div class="status-badge connected" id="connectionStatus" onclick="checkConnectionStatus()" title="Click to check connection">
                     <span id="connectionText">Checking connection...</span>
                 </div>
@@ -2834,15 +2837,15 @@ For licensing inquiries, contact: legal@celigo.com
                         </div>
                     </div>
                     
-                    <!-- Action Buttons -->
-                    <div style="display: flex; gap: 8px; margin-top: 12px;">
-                        <button class="btn-secondary" style="flex: 1; background: var(--tidal-wave);" onclick="exportReport()">
+                    <!-- Action Buttons - Stack vertically for reliability -->
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
+                        <button class="btn-secondary" style="width: 100%; background: var(--tidal-wave);" onclick="exportReport()">
                             <span style="display: flex; align-items: center; justify-content: center; gap: 6px;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 Download
                             </span>
                         </button>
-                        <button class="btn-secondary" style="flex: 1; background: var(--seafoam);" onclick="emailReport()">
+                        <button class="btn-secondary" style="width: 100%; background: var(--seafoam);" onclick="emailReport()">
                             <span style="display: flex; align-items: center; justify-content: center; gap: 6px;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                                 Email
@@ -3152,7 +3155,7 @@ For licensing inquiries, contact: legal@celigo.com
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.56</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.57</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -10670,8 +10673,9 @@ export default {
                 hideLoading();
                 hideCancelButton();
                 
-                // Check if data was actually loaded
-                const dataLoaded = Object.keys(allBalances).length > 0;
+                // Check if data was actually loaded - use multiple indicators for robustness
+                // Data is loaded if: accounts were fetched OR formulas were refreshed (meaning cache hit)
+                const dataLoaded = totalAccountsLoaded > 0 || formulasRefreshed > 0 || Object.keys(allBalances).length > 0;
                 
                 // Build summary message
                 let summaryParts = [];
@@ -10687,27 +10691,32 @@ export default {
                 
                 if (!dataLoaded) {
                     // WARNING: No data was loaded - likely connection issue
-                    statusEl.innerHTML = `
-                        <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #f59e0b; box-shadow: 0 2px 8px rgba(245,158,11,0.2);">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                <div>
-                                    <strong style="color: #b45309; font-size: 14px;">⚠️ Refresh Complete - No Data Loaded</strong><br>
-                                    <span style="font-size: 12px; color: #92400e; display: block; margin-top: 4px;">
-                                        Formulas were refreshed but no account data was retrieved.
-                                    </span>
-                                    <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 11px; color: #78350f;">
-                                        <strong>Possible causes:</strong><br>
-                                        • Cloudflare tunnel may have expired<br>
-                                        • Backend server may not be running<br>
-                                        • Network connectivity issues<br><br>
-                                        <strong>Try:</strong> Check connection status in Settings, then Refresh All again.
+                    // Show at TOP of add-in for visibility
+                    const topBanner = document.getElementById('topNotificationBanner');
+                    if (topBanner) {
+                        topBanner.style.display = 'block';
+                        topBanner.innerHTML = `
+                            <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 14px; border-radius: 8px; margin-bottom: 12px; border-left: 5px solid #f59e0b; box-shadow: 0 2px 8px rgba(245,158,11,0.2);">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                    <div>
+                                        <strong style="color: #b45309; font-size: 14px;">⚠️ Refresh Complete - No Data Loaded</strong><br>
+                                        <span style="font-size: 12px; color: #92400e; display: block; margin-top: 4px;">
+                                            Formulas were refreshed but no account data was retrieved.
+                                        </span>
+                                        <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 11px; color: #78350f;">
+                                            <strong>Possible causes:</strong><br>
+                                            • Cloudflare tunnel may have expired<br>
+                                            • Backend server may not be running<br>
+                                            • Network connectivity issues<br><br>
+                                            <strong>Try:</strong> Check connection status in Settings, then Refresh All again.
+                                        </div>
                                     </div>
+                                    <button onclick="this.parentElement.parentElement.parentElement.style.display='none'" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #b45309; padding: 0; margin-left: 8px;">&times;</button>
                                 </div>
-                                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #b45309; padding: 0; margin-left: 8px;">&times;</button>
                             </div>
-                        </div>
-                    `;
-                    // Warning stays until dismissed - no toast needed since inline message is prominent
+                        `;
+                    }
+                    statusEl.textContent = ''; // Clear inline status
                 } else {
                     let specialNote = '';
                     if (hasSpecialFormulas) {
@@ -10744,7 +10753,30 @@ export default {
                 localStorage.removeItem('netsuite_bulk_refresh');
                 localStorage.removeItem('netsuite_show_toasts');
                 
-                // Persistent error message with dismiss button
+                // Show error at TOP of add-in for visibility
+                const topBanner = document.getElementById('topNotificationBanner');
+                if (topBanner) {
+                    topBanner.style.display = 'block';
+                    topBanner.innerHTML = `
+                        <div style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 14px; border-radius: 8px; margin-bottom: 12px; border-left: 5px solid #dc2626; box-shadow: 0 2px 8px rgba(220,38,38,0.2);">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div>
+                                    <strong style="color: #dc2626; font-size: 14px;">🚨 Refresh Failed</strong><br>
+                                    <span style="font-size: 12px; color: #991b1b; display: block; margin-top: 4px;">${error.message}</span>
+                                    <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 11px; color: #7f1d1d;">
+                                        <strong>What to try:</strong><br>
+                                        1. Check if the tunnel is running (ask your admin)<br>
+                                        2. Click "Clear Cache" then try again<br>
+                                        3. Check the terminal for errors
+                                    </div>
+                                </div>
+                                <button onclick="this.parentElement.parentElement.parentElement.style.display='none'" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #dc2626; padding: 0; margin-left: 8px;">&times;</button>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Also show inline for legacy support
                 statusEl.innerHTML = `
                     <div style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #dc2626; box-shadow: 0 2px 8px rgba(220,38,38,0.2);">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -12191,22 +12223,21 @@ Best regards`
             console.log(`Inserted ${accounts.length} accounts at cursor position`);
         }
 
-        async function drillDownFromContextMenu(event) {
+        function drillDownFromContextMenu(event) {
             console.log('=== CONTEXT MENU DRILL-DOWN START ===');
             
-            try {
-                // Use the same drill-down logic as the button
-                await drillDownTransactions();
-                
-            } catch (error) {
+            // CRITICAL: Call event.completed() IMMEDIATELY to prevent developer window
+            // This tells Excel "I've received the command" - actual work continues async
+            if (event && event.completed) {
+                event.completed();
+                console.log('✅ event.completed() called immediately');
+            }
+            
+            // Now do the actual work asynchronously (after returning control to Excel)
+            drillDownTransactions().catch(error => {
                 console.error('=== CONTEXT MENU DRILL-DOWN ERROR ===');
                 console.error('Error:', error);
-            } finally {
-                // Signal to Excel that the command is complete
-                if (event && event.completed) {
-                    event.completed();
-                }
-            }
+            });
         }
 
         // Make function globally available for ExecuteFunction action
