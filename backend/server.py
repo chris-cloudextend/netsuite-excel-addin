@@ -3829,7 +3829,8 @@ def batch_balance():
         
         # Step 1: Get account types for all requested accounts (single quick query)
         # NOTE: This supports wildcards - if user passed '4*', this finds all accounts starting with 4
-        account_type_filter = build_account_filter(accounts)
+        # NOTE: Use 'acctnumber' not 'a.acctnumber' because Account table has no alias here
+        account_type_filter = build_account_filter(accounts, column='acctnumber')
         type_query = f"SELECT acctnumber, accttype FROM Account WHERE {account_type_filter}"
         type_result = query_netsuite(type_query, timeout=30)
         

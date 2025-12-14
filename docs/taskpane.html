@@ -2067,6 +2067,15 @@ For licensing inquiries, contact: legal@celigo.com
         .toast.success { border-left-color: #10b981; }
         .toast.warning { border-left-color: #f59e0b; }
         .toast.error { border-left-color: #ef4444; }
+        .toast.error.persistent-error {
+            border-left-width: 5px;
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.25);
+        }
+        .toast.error.persistent-error .toast-title {
+            color: #dc2626;
+            font-weight: 600;
+        }
         .toast.calculating { border-left-color: #8b5cf6; }
 
         .toast-icon {
@@ -3718,6 +3727,41 @@ For licensing inquiries, contact: legal@celigo.com
                 toast.classList.add('removing');
                 setTimeout(() => toast.remove(), 300);
             }
+        }
+        
+        /**
+         * Show a persistent error that requires user acknowledgment.
+         * Unlike regular toasts, these don't auto-dismiss.
+         * @param {string} title - Error title
+         * @param {string} message - Error details
+         * @param {string} [details] - Optional technical details (shown in smaller text)
+         */
+        function showPersistentError(title, message, details = null) {
+            const container = document.getElementById('toastContainer');
+            const toastId = `toast-${++toastCounter}`;
+            
+            let fullMessage = message;
+            if (details) {
+                fullMessage += `<div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.1); border-radius: 4px; font-size: 11px; font-family: monospace; max-height: 100px; overflow-y: auto;">${details}</div>`;
+            }
+            fullMessage += '<div style="margin-top: 8px; font-size: 11px; color: #6b7280;">Click ✕ to dismiss this message</div>';
+            
+            const toast = document.createElement('div');
+            toast.id = toastId;
+            toast.className = 'toast error persistent-error';
+            toast.innerHTML = `
+                <span class="toast-icon">🚨</span>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${fullMessage}</div>
+                </div>
+                <button class="toast-close" onclick="removeToast('${toastId}')">&times;</button>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Persistent - no auto-dismiss (duration = 0)
+            return toastId;
         }
         
         // Clear ALL toasts from the container
@@ -9447,9 +9491,11 @@ export default {
                     btn.disabled = false;
                     btn.innerHTML = '<span class="action-icon">⚡</span>Refresh Accounts';
                     
-                    showToast({ type: 'error', title: 'Connection Failed', 
-                        message: 'Cannot reach the backend server. The Cloudflare tunnel may have expired. ' +
-                        'Check the terminal for a new tunnel URL and update the Cloudflare Worker.', duration: 15000 });
+                    showPersistentError(
+                        'Connection Failed',
+                        'Cannot reach the backend server. The Cloudflare tunnel may have expired.',
+                        'Action Required:<br>1. Check the terminal for a new tunnel URL<br>2. Update the Cloudflare Worker with the new URL<br>3. Click "Refresh All" to retry'
+                    );
                     
                     if (statusEl) {
                         statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px; border-left: 4px solid #dc2626;">
@@ -10237,11 +10283,14 @@ export default {
                                 Object.assign(allBalances, data.balances || {});
                                 totalAccountsLoaded += Object.keys(data.balances || {}).length;
                                 console.log(`✅ Year ${year}: ${Object.keys(data.balances || {}).length} P&L accounts`);
-                            } else if (response.status === 502 || response.status === 524 || response.status === 522) {
+                            } else if (response.status === 502 || response.status === 524 || response.status === 522 || response.status === 530) {
                                 // Tunnel/proxy error - this is critical
                                 console.error(`❌ P&L fetch FAILED: Tunnel error ${response.status}`);
-                                showToast({ type: 'error', title: 'Connection Lost', 
-                                    message: `Tunnel error (${response.status}) while fetching P&L data. The tunnel may have expired.`, duration: 10000 });
+                                showPersistentError(
+                                    'Connection Lost - Tunnel Error',
+                                    'Could not connect to the backend server. The Cloudflare tunnel may have expired or restarted.',
+                                    `HTTP Status: ${response.status}<br>Action Required: Ask your administrator to check the tunnel and update the Cloudflare Worker with the new URL.`
+                                );
                                 // Update connection status
                                 await checkConnectionStatus(true);
                             } else {
@@ -10251,8 +10300,11 @@ export default {
                             }
                         } catch (e) {
                             console.error(`Error fetching year ${year}:`, e);
-                            showToast({ type: 'error', title: 'P&L Fetch Error', 
-                                message: `Failed to load P&L for ${year}: ${e.message}. Check connection.`, duration: 8000 });
+                            showPersistentError(
+                                'P&L Data Fetch Failed',
+                                `Could not load P&L data for ${year}. Your formulas may show $0 or stale values.`,
+                                `Error: ${e.message}<br>Try: Click "Clear Cache" then "Refresh All" to retry.`
+                            );
                             // Update connection status
                             await checkConnectionStatus(true);
                         }
@@ -10326,11 +10378,19 @@ export default {
                                 message: `BS query timed out (${response.status}). Use "Refresh Selected" on individual cells.`, duration: 10000 });
                         } else {
                             console.error(`❌ BS fetch error: ${response.status}`);
-                            showToast({ type: 'error', title: 'BS Fetch Error', message: `Error ${response.status} loading Balance Sheet data.`, duration: 8000 });
+                            showPersistentError(
+                                'Balance Sheet Fetch Failed',
+                                `Error ${response.status} loading Balance Sheet data. BS formulas may show incorrect values.`,
+                                `HTTP Status: ${response.status}<br>Try: Use "Refresh Selected" on individual cells, or "Clear Cache" then "Refresh All".`
+                            );
                             }
                     } catch (e) {
                         console.error(`Error fetching BS data:`, e);
-                        showToast({ type: 'error', title: 'BS Fetch Error', message: `Error loading Balance Sheet: ${e.message}. Check connection.`, duration: 8000 });
+                        showPersistentError(
+                            'Balance Sheet Fetch Failed',
+                            'Could not load Balance Sheet data. BS formulas may show incorrect values.',
+                            `Error: ${e.message}<br>Try: Click "Clear Cache" then "Refresh All" to retry.`
+                        );
                         // Update connection status
                         await checkConnectionStatus(true);
                     }
