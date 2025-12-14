@@ -2268,7 +2268,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.48</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.49</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2418,7 +2418,8 @@
                 <div class="collapsible-content">
                     <div class="help-tip">
                         <h4>💡 Quick Start</h4>
-                        <p>Type formulas directly in any Excel cell. Start with <code>=XAVI.BALANCE("4220", "Jan 2024", "Jan 2024")</code> to get account 4220's January balance!</p>
+                        <p>Type formulas directly in any Excel cell. Start with <code>=XAVI.BALANCE("4220", "Jan 2025", "Jan 2025")</code> to get account 4220's January balance!</p>
+                        <p style="margin-top: 8px;"><strong>New:</strong> Use wildcards like <code>"4*"</code> to sum all revenue accounts at once!</p>
                     </div>
                     
                     <h4 style="color: var(--deep-dive); margin: 16px 0 10px; font-size: 14px;">Available Formulas</h4>
@@ -2486,6 +2487,37 @@
                         2. Drag <strong>down</strong> for all accounts (B2:B50)<br>
                         3. Then drag <strong>right</strong> for all months<br>
                         <strong>The add-in automatically batches requests!</strong></p>
+                    </div>
+                    
+                    <h4 style="color: var(--deep-dive); margin: 20px 0 10px; font-size: 14px;">🔍 Wildcards: High-Level Summaries</h4>
+                    <p style="color: var(--bottlenose); font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
+                        Use <code>*</code> to sum multiple accounts at once — perfect for executive summaries without listing every account!
+                    </p>
+                    
+                    <div class="formula-example-box">
+                        <code>=XAVI.BALANCE("4*", "Jan 2025", "Dec 2025")</code>
+                        <span class="result">Total Revenue (all 4xxx accounts)</span>
+                    </div>
+                    
+                    <div class="formula-example-box">
+                        <code>=XAVI.BALANCE("5*", "2025", "2025")</code>
+                        <span class="result">Total COGS (all 5xxx accounts)</span>
+                    </div>
+                    
+                    <div class="formula-example-box">
+                        <code>=XAVI.BALANCE("6*", "Q1 2025", "Q1 2025")</code>
+                        <span class="result">Total Operating Expenses (all 6xxx)</span>
+                    </div>
+                    
+                    <div style="padding: 10px 12px; background: rgba(26, 90, 62, 0.08); border-radius: 6px; margin-top: 12px;">
+                        <p style="font-size: 11px; color: var(--deep-dive); margin: 0; line-height: 1.5;">
+                            <strong>💡 CFO Dashboard Example:</strong><br>
+                            • Row 1: <code>=XAVI.BALANCE("4*",...)</code> → Total Revenue<br>
+                            • Row 2: <code>=XAVI.BALANCE("5*",...)</code> → Total COGS<br>
+                            • Row 3: <code>=Row1-Row2</code> → Gross Profit<br>
+                            • Row 4: <code>=XAVI.BALANCE("6*",...)</code> → OpEx<br>
+                            <em>Build a full P&L summary in 4 formulas!</em>
+                        </p>
                     </div>
                     
                     <h4 style="color: var(--deep-dive); margin: 20px 0 10px; font-size: 14px;">🏢 Using Filters (Optional)</h4>

@@ -238,6 +238,95 @@ def build_account_filter(accounts, column='a.acctnumber'):
 - `"60*"` - Sum operating expense accounts (60xx)
 - `"1*"` - Sum all asset accounts (Balance Sheet)
 
+### Performance Optimization
+
+Wildcards are fully optimized for batch operations:
+
+| Operation | Without Batching | With Batching |
+|-----------|------------------|---------------|
+| 5 wildcards × 12 months | 60 API calls | **1 API call** |
+| Latency | ~30+ seconds | **~2-3 seconds** |
+
+The frontend automatically:
+1. Detects rapid formula creation (drag/paste)
+2. Collects all formulas into a batch
+3. Sends ONE request with all wildcards + periods
+4. Distributes results to all waiting formulas
+
+---
+
+# Wildcard Accounts - Executive Reporting
+
+## For Finance Users (CPA Perspective)
+
+### Build High-Level Reports in Minutes
+
+Wildcards let you create executive dashboards without manually listing every account. This is ideal for:
+
+- **Board presentations** - Show only top-level numbers
+- **Monthly flash reports** - Quick P&L summaries
+- **Variance analysis** - Compare totals without detail clutter
+- **Multi-subsidiary consolidations** - High-level views across entities
+
+### Common Wildcard Patterns
+
+| Pattern | What It Captures | Typical Use |
+|---------|------------------|-------------|
+| `"4*"` | All 4xxx accounts | **Total Revenue** |
+| `"5*"` | All 5xxx accounts | **Total COGS** |
+| `"6*"` | All 6xxx accounts | **Operating Expenses** |
+| `"7*"` | All 7xxx accounts | **Other Operating Expenses** |
+| `"8*"` | All 8xxx accounts | **Other Income/Expense** |
+| `"1*"` | All 1xxx accounts | **Total Assets** |
+| `"2*"` | All 2xxx accounts | **Total Liabilities** |
+| `"3*"` | All 3xxx accounts | **Total Equity** |
+
+### Real-World Examples
+
+**Example 1: CFO Flash Report (4 rows)**
+```
+A               B                                           C
+Revenue         =XAVI.BALANCE("4*", "Jan 2025", "Jan 2025") $8,289,880
+COGS            =XAVI.BALANCE("5*", "Jan 2025", "Jan 2025") $1,234,567
+Gross Profit    =B1-B2                                      $7,055,313
+Operating Exp   =XAVI.BALANCE("6*", "Jan 2025", "Jan 2025") $4,500,000
+```
+
+**Example 2: Departmental Expense Summary**
+```
+=XAVI.BALANCE("6*", "Q1 2025", "Q1 2025", "", "Sales")       → Sales Dept OpEx
+=XAVI.BALANCE("6*", "Q1 2025", "Q1 2025", "", "Engineering") → Engineering OpEx
+=XAVI.BALANCE("6*", "Q1 2025", "Q1 2025", "", "Marketing")   → Marketing OpEx
+```
+
+**Example 3: Subsidiary Comparison**
+```
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Inc.")           → US Revenue
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Europe B.V.")    → Europe Revenue
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Australia")      → Australia Revenue
+```
+
+### Granular Control with Sub-Patterns
+
+Need more granularity? Use longer patterns:
+
+| Pattern | Matches | Use Case |
+|---------|---------|----------|
+| `"40*"` | 4000-4099 | Product Revenue only |
+| `"41*"` | 4100-4199 | Service Revenue only |
+| `"60*"` | 6000-6099 | Payroll & Benefits |
+| `"61*"` | 6100-6199 | Professional Services |
+| `"62*"` | 6200-6299 | Facilities & Equipment |
+
+### Important: Wildcards Return SUMS
+
+When you use `"4*"`, you get the **sum of all matching accounts** — not a list. This is intentional for summary reporting.
+
+If you need individual account detail:
+- Use exact account numbers: `"4010"`, `"4020"`, etc.
+- Use the **Build Income Statement** feature for full detail
+- Combine: Detail rows with specific accounts + Summary row with wildcard
+
 ---
 
 # Why SuiteQL (REST API) Over ODBC
@@ -1260,7 +1349,8 @@ Backend prints detailed query information:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 3.0.5.48 | Dec 2025 | **Wildcard account support** - Use `"4*"` to sum all revenue accounts, `"6*"` for expenses, etc. Works in XAVI.BALANCE and XAVI.BUDGET. |
+| 3.0.5.49 | Dec 2025 | **Wildcard documentation** - Added comprehensive CPA guide for executive reporting with wildcards, in-app examples, and performance optimization details. |
+| 3.0.5.48 | Dec 2025 | **Wildcard account support** - Use `"4*"` to sum all revenue accounts, `"6*"` for expenses, etc. Works in XAVI.BALANCE and XAVI.BUDGET. Fully batched for performance. |
 | 3.0.5.44 | Dec 2025 | **Simplified Net Income formula** - `Operating Income + Other Income - Other Expense`. Removed complex sign-aware logic; raw GL data handles signs correctly. |
 | 3.0.5.43 | Dec 2025 | Removed MatchingUnrERV sign flip - sign-aware Excel formulas handle all cases |
 | 3.0.5.42 | Dec 2025 | Tested MatchingUnrERV exception (ultimately removed in 3.0.5.44) |
