@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.68</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.69</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -11704,98 +11704,182 @@ export default {
         }
         
         // ================================================================
-        // PREPARE FOR DISTRIBUTION
-        // Creates a copy of the sheet with XAVI formulas replaced by values
-        // User can then Save As to preserve ALL formatting
+        // SAVE FOR DISTRIBUTION
+        // Reads sheet data + formatting, creates NEW Excel file, downloads
+        // DOES NOT modify the original workbook in any way
         // ================================================================
         async function prepareForDistribution() {
             const statusEl = document.getElementById('shareStatus');
             
             try {
-                statusEl.textContent = 'Preparing sheet for distribution...';
+                statusEl.textContent = 'Reading sheet data...';
                 statusEl.style.color = '#0284c7';
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     sheet.load('name');
                     
-                    // =====================================================
-                    // STEP 1: Get values from ORIGINAL sheet FIRST
-                    // (where XAVI formulas are computed and working)
-                    // =====================================================
-                    statusEl.textContent = 'Reading computed values from original...';
-                    const originalRange = sheet.getUsedRange();
-                    originalRange.load(['formulas', 'values', 'rowCount', 'columnCount', 'address']);
+                    // Get the used range
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load(['values', 'formulas', 'numberFormat', 'rowCount', 'columnCount', 'columnIndex', 'text']);
                     await context.sync();
                     
-                    const originalName = sheet.name;
-                    const rowCount = originalRange.rowCount;
-                    const colCount = originalRange.columnCount;
-                    const originalFormulas = originalRange.formulas;
-                    const originalValues = originalRange.values;  // These are the WORKING values!
+                    const sheetName = sheet.name;
+                    const rowCount = usedRange.rowCount;
+                    const colCount = usedRange.columnCount;
+                    const values = usedRange.values;
+                    const formulas = usedRange.formulas;
+                    const numberFormats = usedRange.numberFormat;
+                    const textValues = usedRange.text;
                     
-                    // Find all XAVI formula positions and their values
-                    const xaviCells = [];
+                    statusEl.textContent = 'Reading cell formatting...';
+                    
+                    // =====================================================
+                    // Read formatting row by row (more reliable than cell-by-cell)
+                    // =====================================================
+                    const rowFormats = [];
+                    
+                    for (let r = 0; r < Math.min(rowCount, 200); r++) { // Limit to 200 rows for performance
+                        const rowRange = usedRange.getRow(r);
+                        rowRange.load(['format/fill/color', 'format/font/bold', 'format/font/color']);
+                        try {
+                            await context.sync();
+                            rowFormats.push({
+                                fillColor: rowRange.format.fill.color,
+                                fontBold: rowRange.format.font.bold,
+                                fontColor: rowRange.format.font.color
+                            });
+                        } catch (e) {
+                            // If format read fails, use defaults
+                            rowFormats.push({ fillColor: null, fontBold: false, fontColor: null });
+                        }
+                    }
+                    
+                    // Fill remaining rows with defaults if > 200
+                    while (rowFormats.length < rowCount) {
+                        rowFormats.push({ fillColor: null, fontBold: false, fontColor: null });
+                    }
+                    
+                    statusEl.textContent = 'Creating Excel file with ExcelJS...';
+                    
+                    // =====================================================
+                    // Create new Excel file using ExcelJS
+                    // =====================================================
+                    const workbook = new ExcelJS.Workbook();
+                    workbook.creator = 'XAVI for NetSuite';
+                    workbook.created = new Date();
+                    
+                    const ws = workbook.addWorksheet(sheetName.substring(0, 31));
+                    
+                    // Track XAVI formulas replaced
+                    let xaviCount = 0;
+                    
+                    // Add data row by row
                     for (let r = 0; r < rowCount; r++) {
+                        const rowData = [];
+                        
                         for (let c = 0; c < colCount; c++) {
-                            const formula = originalFormulas[r][c];
+                            const formula = formulas[r][c];
+                            const value = values[r][c];
+                            
+                            // Replace XAVI formulas with values, keep other formulas
                             if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.')) {
-                                xaviCells.push({
-                                    row: r,
-                                    col: c,
-                                    value: originalValues[r][c]  // Computed value from original
+                                rowData.push(value);
+                                xaviCount++;
+                            } else if (typeof formula === 'string' && formula.startsWith('=')) {
+                                // Keep non-XAVI formulas
+                                rowData.push({ formula: formula.substring(1) });
+                            } else {
+                                rowData.push(value);
+                            }
+                        }
+                        
+                        const row = ws.addRow(rowData);
+                        
+                        // Apply row formatting
+                        const fmt = rowFormats[r];
+                        if (fmt) {
+                            // Apply fill color
+                            if (fmt.fillColor && fmt.fillColor !== '#FFFFFF' && fmt.fillColor !== 'transparent') {
+                                row.eachCell((cell) => {
+                                    cell.fill = {
+                                        type: 'pattern',
+                                        pattern: 'solid',
+                                        fgColor: { argb: fmt.fillColor.replace('#', 'FF') }
+                                    };
                                 });
+                            }
+                            
+                            // Apply bold
+                            if (fmt.fontBold) {
+                                row.eachCell((cell) => {
+                                    cell.font = { ...cell.font, bold: true };
+                                });
+                            }
+                            
+                            // Apply font color
+                            if (fmt.fontColor && fmt.fontColor !== '#000000') {
+                                row.eachCell((cell) => {
+                                    cell.font = { ...cell.font, color: { argb: fmt.fontColor.replace('#', 'FF') } };
+                                });
+                            }
+                        }
+                        
+                        // Apply number formats per cell
+                        for (let c = 0; c < colCount; c++) {
+                            const numFmt = numberFormats[r][c];
+                            if (numFmt && numFmt !== 'General') {
+                                row.getCell(c + 1).numFmt = numFmt;
                             }
                         }
                     }
                     
-                    console.log(`Found ${xaviCells.length} XAVI formulas to replace`);
+                    // Auto-fit columns based on content
+                    ws.columns.forEach((column, idx) => {
+                        let maxWidth = 10;
+                        for (let r = 0; r < Math.min(rowCount, 50); r++) {
+                            const cellText = String(textValues[r][idx] || '');
+                            maxWidth = Math.max(maxWidth, Math.min(cellText.length + 2, 30));
+                        }
+                        column.width = maxWidth;
+                    });
+                    
+                    statusEl.textContent = 'Downloading file...';
                     
                     // =====================================================
-                    // STEP 2: Copy the sheet (preserves ALL formatting)
+                    // Download the file
                     // =====================================================
-                    statusEl.textContent = 'Creating copy with formatting...';
-                    const timestamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-                    const copyName = `${originalName}_Share_${timestamp}`.substring(0, 31);
+                    const buffer = await workbook.xlsx.writeBuffer();
+                    const blob = new Blob([buffer], { 
+                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                    });
                     
-                    const copiedSheet = sheet.copy();
-                    copiedSheet.name = copyName;
-                    await context.sync();
+                    const timestamp = new Date().toISOString().slice(0, 10);
+                    const filename = `${sheetName}_${timestamp}.xlsx`;
                     
-                    // =====================================================
-                    // STEP 3: Replace XAVI formulas in COPY with original values
-                    // =====================================================
-                    statusEl.textContent = `Replacing ${xaviCells.length} XAVI formulas with values...`;
-                    
-                    const copyRange = copiedSheet.getUsedRange();
-                    
-                    // Replace each XAVI formula with its pre-computed value
-                    for (const cellInfo of xaviCells) {
-                        const cell = copyRange.getCell(cellInfo.row, cellInfo.col);
-                        cell.values = [[cellInfo.value]];
-                    }
-                    await context.sync();
-                    
-                    // =====================================================
-                    // STEP 4: Activate the copied sheet and show success
-                    // =====================================================
-                    copiedSheet.activate();
-                    await context.sync();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
                     
                     statusEl.innerHTML = `
                         <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #10b981;">
-                            <strong style="color: #059669; font-size: 13px;">✓ Sheet Ready for Distribution!</strong><br>
+                            <strong style="color: #059669; font-size: 13px;">✓ Downloaded: ${filename}</strong><br>
                             <span style="font-size: 12px; color: #047857; display: block; margin-top: 6px;">
-                                Created: <strong>${copyName}</strong><br>
-                                Replaced: ${xaviCells.length} XAVI formula(s) with values<br><br>
-                                <strong>Next step:</strong> File → Save As → Choose location
+                                Replaced ${xaviCount} XAVI formula(s) with values<br>
+                                Non-XAVI formulas preserved<br>
+                                Row formatting applied
                             </span>
                         </div>
                     `;
                 });
                 
             } catch (error) {
-                console.error('Prepare for distribution error:', error);
+                console.error('Save for distribution error:', error);
                 statusEl.innerHTML = `
                     <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #dc2626;">
                         <strong style="color: #dc2626;">✗ Error:</strong> ${error.message}
