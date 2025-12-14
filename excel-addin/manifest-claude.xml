@@ -19,7 +19,7 @@ For licensing inquiries, contact: legal@celigo.com
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-5678-90ab-cdef-123456789abc</Id>
-  <Version>3.0.5.53</Version>
+  <Version>3.0.5.54</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="XAVI for NetSuite"/>
@@ -34,7 +34,7 @@ For licensing inquiries, contact: legal@celigo.com
 
   <!-- Task Pane -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.53"/>
+    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.54"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -161,9 +161,9 @@ For licensing inquiries, contact: legal@celigo.com
 
       <!-- External Files (cache-busted) - Update ?v= when version changes -->
       <bt:Urls>
-        <bt:Url id="Commands.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/commands.html?v=3.0.5.53"/>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.53"/>
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.53"/>
+        <bt:Url id="Commands.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/commands.html?v=3.0.5.54"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.54"/>
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.54"/>
         <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.1.0"/>
         <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=3.0.1.0"/>
       </bt:Urls>
@@ -173,13 +173,13 @@ For licensing inquiries, contact: legal@celigo.com
         <bt:String id="Functions.Namespace" DefaultValue="XAVI"/>
         <bt:String id="CloudExtend.Group.Label" DefaultValue="CloudExtend"/>
         <bt:String id="Taskpane.Button.Label" DefaultValue="XAVI"/>
-        <bt:String id="ContextMenu.Label" DefaultValue="NetSuite"/>
+        <bt:String id="ContextMenu.Label" DefaultValue="CloudExtend"/>
         <bt:String id="DrillDown.Label" DefaultValue="View Transactions"/>
       </bt:ShortStrings>
 
       <bt:LongStrings>
         <bt:String id="Taskpane.Button.Description" DefaultValue="Open the CloudExtend task pane for NetSuite formulas"/>
-        <bt:String id="ContextMenu.Description" DefaultValue="NetSuite formula tools"/>
+        <bt:String id="ContextMenu.Description" DefaultValue="CloudExtend formula tools"/>
         <bt:String id="DrillDown.Description" DefaultValue="View underlying transactions for this balance"/>
       </bt:LongStrings>
 

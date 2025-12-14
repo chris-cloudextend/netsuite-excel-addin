@@ -24,12 +24,14 @@ console.log('   SERVER_URL:', SERVER_URL);
 
 /**
  * Drill down from context menu (right-click)
+ * This is an ExecuteFunction action - must call event.completed() when done
  */
-async function drillDownFromContextMenu(event) {
+function drillDownFromContextMenu(event) {
     console.log('=== CONTEXT MENU DRILL-DOWN START ===');
     
-    try {
-        await Excel.run(async (context) => {
+    // Wrap everything in a try-catch to ensure event.completed() is always called
+    Excel.run(async (context) => {
+        try {
             const range = context.workbook.getSelectedRange();
             range.load(['formulas', 'values', 'address']);
             await context.sync();
@@ -43,8 +45,7 @@ async function drillDownFromContextMenu(event) {
 
             // Check for XAVI.BALANCE formula
             if (!formula || !formula.toUpperCase().includes('XAVI.BALANCE')) {
-                console.warn('Not an XAVI.BALANCE formula');
-                if (event && event.completed) event.completed();
+                console.warn('Not an XAVI.BALANCE formula - skipping drill-down');
                 return;
             }
 
@@ -52,13 +53,17 @@ async function drillDownFromContextMenu(event) {
             const cellRefs = parseFormulaCellRefs(formula);
             console.log('Cell references found:', cellRefs);
 
+            if (!cellRefs) {
+                console.error('Could not parse formula parameters');
+                return;
+            }
+
             // Resolve cell references to actual values
             const params = await resolveFormulaParams(context, cellRefs);
             console.log('Resolved parameters:', params);
 
             if (!params.account || !params.period) {
-                console.error('Missing account or period');
-                if (event && event.completed) event.completed();
+                console.error('Missing account or period - cannot drill down');
                 return;
             }
 
@@ -82,7 +87,6 @@ async function drillDownFromContextMenu(event) {
             
             if (!response.ok) {
                 console.error('API error:', response.status);
-                if (event && event.completed) event.completed();
                 return;
             }
 
@@ -90,25 +94,27 @@ async function drillDownFromContextMenu(event) {
             console.log('Transactions received:', data.transactions?.length || 0);
 
             if (!data.transactions || data.transactions.length === 0) {
-                console.log('No transactions found');
-                if (event && event.completed) event.completed();
+                console.log('No transactions found for this period');
                 return;
             }
 
             // Create drill-down sheet
             await createDrillDownSheet(context, data.transactions, params);
+            console.log('✅ Drill-down sheet created successfully');
             
-        });
-        
-    } catch (error) {
-        console.error('=== CONTEXT MENU DRILL-DOWN ERROR ===');
-        console.error('Error:', error);
-    } finally {
+        } catch (innerError) {
+            console.error('Error inside Excel.run:', innerError);
+        }
+    }).catch((outerError) => {
+        console.error('Excel.run failed:', outerError);
+    }).finally(() => {
+        // CRITICAL: Always call event.completed() for ExecuteFunction actions
         if (event && event.completed) {
+            console.log('Calling event.completed()');
             event.completed();
         }
         console.log('=== CONTEXT MENU DRILL-DOWN END ===');
-    }
+    });
 }
 
 /**
@@ -275,7 +281,11 @@ async function resolveFormulaParams(context, cellRefs) {
  * Create drill-down sheet with transactions
  */
 async function createDrillDownSheet(context, transactions, params) {
-    const sheetName = `Drill_${params.account}_${params.period.replace(/\s+/g, '')}`.substring(0, 31);
+    // Sanitize account for sheet name (Excel doesn't allow * in sheet names)
+    const sanitizedAccount = params.account.replace(/\*/g, 'ALL');
+    const periodShort = params.period.replace(/\s+/g, '');
+    const sheetName = `Drill_${sanitizedAccount}_${periodShort}`.substring(0, 31);
+    const isWildcard = params.account.includes('*');
     
     // Delete existing sheet if it exists
     const sheets = context.workbook.worksheets;
@@ -293,18 +303,34 @@ async function createDrillDownSheet(context, transactions, params) {
     newSheet.activate();
     await context.sync();
     
-    // Prepare data
-    const headers = ['Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount'];
-    const rows = transactions.map(t => [
-        t.transaction_date || '',
-        t.transaction_type || '',
-        t.transaction_number || '',
-        t.entity_name || '',
-        t.memo || '',
-        t.debit || 0,
-        t.credit || 0,
-        t.net_amount || 0
-    ]);
+    // Prepare headers - include Account column for wildcard drill-downs
+    const headers = isWildcard
+        ? ['Account', 'Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount']
+        : ['Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount'];
+    
+    // Prepare data rows
+    const rows = isWildcard
+        ? transactions.map(t => [
+            t.account_number || '',
+            t.transaction_date || '',
+            t.transaction_type || '',
+            t.transaction_number || '',
+            t.entity_name || '',
+            t.memo || '',
+            t.debit || 0,
+            t.credit || 0,
+            t.net_amount || 0
+        ])
+        : transactions.map(t => [
+            t.transaction_date || '',
+            t.transaction_type || '',
+            t.transaction_number || '',
+            t.entity_name || '',
+            t.memo || '',
+            t.debit || 0,
+            t.credit || 0,
+            t.net_amount || 0
+        ]);
     
     const allData = [headers, ...rows];
     
@@ -318,10 +344,11 @@ async function createDrillDownSheet(context, transactions, params) {
     headerRange.format.font.color = 'white';
     headerRange.format.font.bold = true;
     
-    // Add hyperlinks to transaction numbers
+    // Add hyperlinks to transaction numbers (column varies based on wildcard)
+    const linkColIndex = isWildcard ? 3 : 2;  // Number column
     for (let i = 0; i < transactions.length; i++) {
         if (transactions[i].netsuite_url) {
-            const cell = newSheet.getRangeByIndexes(i + 1, 2, 1, 1);
+            const cell = newSheet.getRangeByIndexes(i + 1, linkColIndex, 1, 1);
             cell.hyperlink = {
                 address: transactions[i].netsuite_url,
                 screenTip: 'Open in NetSuite'
@@ -331,9 +358,12 @@ async function createDrillDownSheet(context, transactions, params) {
         }
     }
     
-    // Format number columns
-    const debitCreditRange = newSheet.getRangeByIndexes(1, 5, transactions.length, 3);
-    debitCreditRange.numberFormat = [['#,##0.00']];
+    // Format number columns (last 3 columns are Debit, Credit, Net Amount)
+    const numColStartIndex = headers.length - 3;
+    if (transactions.length > 0) {
+        const numberRange = newSheet.getRangeByIndexes(1, numColStartIndex, transactions.length, 3);
+        numberRange.numberFormat = [['#,##0.00']];
+    }
     
     // Auto-fit columns
     dataRange.format.autofitColumns();
@@ -342,18 +372,27 @@ async function createDrillDownSheet(context, transactions, params) {
     console.log('✅ Drill-down sheet created:', sheetName);
 }
 
-// Make function globally available for Office.js ExecuteFunction
+// Register the function for Office.js ExecuteFunction
+Office.onReady((info) => {
+    console.log('✅ Office.onReady fired in commands.js');
+    console.log('   Host:', info.host);
+    console.log('   Platform:', info.platform);
+    
+    // Register the function at global scope
+    if (typeof Office !== 'undefined' && Office.actions) {
+        Office.actions.associate("drillDownFromContextMenu", drillDownFromContextMenu);
+        console.log('✅ Function registered via Office.actions.associate');
+    } else {
+        console.log('⚠️ Office.actions not available, using window assignment');
+    }
+});
+
+// Also make function globally available as fallback
 if (typeof window !== 'undefined') {
     window.drillDownFromContextMenu = drillDownFromContextMenu;
 }
-
-// Also expose at global scope for ExecuteFunction
 if (typeof globalThis !== 'undefined') {
     globalThis.drillDownFromContextMenu = drillDownFromContextMenu;
 }
 
-// Initialize Office.js
-Office.onReady(() => {
-    console.log('✅ commands.js ready - context menu function registered');
-    console.log('   drillDownFromContextMenu available:', typeof drillDownFromContextMenu);
-});
+console.log('✅ drillDownFromContextMenu registered:', typeof drillDownFromContextMenu);
