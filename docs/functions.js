@@ -22,7 +22,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.18';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.52';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -1176,14 +1176,26 @@ async function runBuildModeBatch() {
             let value = 0;
             let foundAny = false;
             
-            // WILDCARD SUPPORT: If account contains *, sum all matching accounts
+            // WILDCARD SUPPORT: If account contains *, check if pre-summed result exists
             const isWildcard = account && account.includes('*');
             const wildcardPrefix = isWildcard ? account.replace('*', '') : null;
             
             // Get the list of accounts to sum (single account or all matching wildcard)
-            const accountsToSum = isWildcard
-                ? Object.keys(allBalances).filter(acct => acct.startsWith(wildcardPrefix))
-                : (allBalances[account] ? [account] : []);
+            // IMPORTANT: If the wildcard key itself exists (e.g., "4*"), use it directly!
+            // This handles the case where /batch/balance returns a pre-summed wildcard.
+            // Don't sum individual accounts again or we'll double-count.
+            let accountsToSum;
+            if (isWildcard && allBalances[account]) {
+                // Pre-summed wildcard exists - use it directly
+                accountsToSum = [account];
+                console.log(`   🎯 Wildcard ${account}: using pre-summed value from backend`);
+            } else if (isWildcard) {
+                // No pre-summed value - sum matching accounts manually
+                accountsToSum = Object.keys(allBalances).filter(acct => acct.startsWith(wildcardPrefix) && !acct.includes('*'));
+                console.log(`   🔍 Wildcard ${account}: summing ${accountsToSum.length} matching accounts`);
+            } else {
+                accountsToSum = (allBalances[account] ? [account] : []);
+            }
             
             if (fromPeriod && toPeriod && fromPeriod !== toPeriod) {
                 // SUM all months in the range for all matching accounts
