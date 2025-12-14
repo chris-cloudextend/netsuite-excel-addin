@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.67</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.68</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -11718,54 +11718,76 @@ export default {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     sheet.load('name');
+                    
+                    // =====================================================
+                    // STEP 1: Get values from ORIGINAL sheet FIRST
+                    // (where XAVI formulas are computed and working)
+                    // =====================================================
+                    statusEl.textContent = 'Reading computed values from original...';
+                    const originalRange = sheet.getUsedRange();
+                    originalRange.load(['formulas', 'values', 'rowCount', 'columnCount', 'address']);
                     await context.sync();
                     
                     const originalName = sheet.name;
+                    const rowCount = originalRange.rowCount;
+                    const colCount = originalRange.columnCount;
+                    const originalFormulas = originalRange.formulas;
+                    const originalValues = originalRange.values;  // These are the WORKING values!
+                    
+                    // Find all XAVI formula positions and their values
+                    const xaviCells = [];
+                    for (let r = 0; r < rowCount; r++) {
+                        for (let c = 0; c < colCount; c++) {
+                            const formula = originalFormulas[r][c];
+                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.')) {
+                                xaviCells.push({
+                                    row: r,
+                                    col: c,
+                                    value: originalValues[r][c]  // Computed value from original
+                                });
+                            }
+                        }
+                    }
+                    
+                    console.log(`Found ${xaviCells.length} XAVI formulas to replace`);
+                    
+                    // =====================================================
+                    // STEP 2: Copy the sheet (preserves ALL formatting)
+                    // =====================================================
+                    statusEl.textContent = 'Creating copy with formatting...';
                     const timestamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
                     const copyName = `${originalName}_Share_${timestamp}`.substring(0, 31);
                     
-                    // Step 1: Copy the entire sheet (preserves ALL formatting)
-                    statusEl.textContent = 'Creating copy with formatting...';
                     const copiedSheet = sheet.copy();
                     copiedSheet.name = copyName;
                     await context.sync();
                     
-                    // Step 2: Find and replace XAVI formulas with values
-                    statusEl.textContent = 'Converting XAVI formulas to values...';
-                    const usedRange = copiedSheet.getUsedRange();
-                    usedRange.load(['formulas', 'values', 'rowCount', 'columnCount']);
-                    await context.sync();
+                    // =====================================================
+                    // STEP 3: Replace XAVI formulas in COPY with original values
+                    // =====================================================
+                    statusEl.textContent = `Replacing ${xaviCells.length} XAVI formulas with values...`;
                     
-                    const rowCount = usedRange.rowCount;
-                    const colCount = usedRange.columnCount;
-                    const formulas = usedRange.formulas;
-                    const values = usedRange.values;
+                    const copyRange = copiedSheet.getUsedRange();
                     
-                    // Replace XAVI formulas with their computed values
-                    let replacedCount = 0;
-                    for (let r = 0; r < rowCount; r++) {
-                        for (let c = 0; c < colCount; c++) {
-                            const formula = formulas[r][c];
-                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.')) {
-                                const cell = usedRange.getCell(r, c);
-                                cell.values = [[values[r][c]]];
-                                replacedCount++;
-                            }
-                        }
+                    // Replace each XAVI formula with its pre-computed value
+                    for (const cellInfo of xaviCells) {
+                        const cell = copyRange.getCell(cellInfo.row, cellInfo.col);
+                        cell.values = [[cellInfo.value]];
                     }
                     await context.sync();
                     
-                    // Step 3: Activate the copied sheet
+                    // =====================================================
+                    // STEP 4: Activate the copied sheet and show success
+                    // =====================================================
                     copiedSheet.activate();
                     await context.sync();
                     
-                    // Step 4: Show success message with instructions
                     statusEl.innerHTML = `
                         <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #10b981;">
                             <strong style="color: #059669; font-size: 13px;">✓ Sheet Ready for Distribution!</strong><br>
                             <span style="font-size: 12px; color: #047857; display: block; margin-top: 6px;">
                                 Created: <strong>${copyName}</strong><br>
-                                Replaced: ${replacedCount} XAVI formula(s) with values<br><br>
+                                Replaced: ${xaviCells.length} XAVI formula(s) with values<br><br>
                                 <strong>Next step:</strong> File → Save As → Choose location
                             </span>
                         </div>
