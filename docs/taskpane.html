@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.59</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.60</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3155,7 +3155,7 @@ For licensing inquiries, contact: legal@celigo.com
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.59</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.60</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -11520,8 +11520,36 @@ export default {
             
             statusEl.textContent = 'Generating PDF...';
             
-            // Create PDF using jsPDF
+            // Create PDF using jsPDF - use larger page for wide tables
             const { jsPDF } = window.jspdf;
+            
+            // Prepare all sheet data first to determine optimal page size
+            const allSheetData = sheets.map(sheet => {
+                const headers = sheet.data[0] || [];
+                const body = sheet.data.slice(1);
+                
+                // Format currency values - remove .00 decimals
+                const formatCurrency = (val) => {
+                    if (typeof val !== 'string') return val;
+                    const currencyMatch = val.match(/^[\(\-]?\$?([\d,]+)\.(\d{2})[\)]?$/);
+                    if (currencyMatch && currencyMatch[2] === '00') {
+                        return val.replace(/\.00/, '');
+                    }
+                    return val;
+                };
+                
+                const formattedBody = body.map(row => row.map(cell => formatCurrency(cell)));
+                return { name: sheet.name, headers, body: formattedBody, colCount: headers.length };
+            });
+            
+            // Determine font size based on number of columns (more columns = smaller font)
+            const maxCols = Math.max(...allSheetData.map(s => s.colCount));
+            let fontSize = 8;
+            let cellPadding = 2;
+            if (maxCols > 10) { fontSize = 7; cellPadding = 1.5; }
+            if (maxCols > 14) { fontSize = 6; cellPadding = 1; }
+            if (maxCols > 18) { fontSize = 5; cellPadding = 0.8; }
+            
             const doc = new jsPDF({
                 orientation: 'landscape',
                 unit: 'mm',
@@ -11530,117 +11558,62 @@ export default {
             
             let isFirstPage = true;
             
-            for (const sheet of sheets) {
+            for (const sheetData of allSheetData) {
                 if (!isFirstPage) {
                     doc.addPage();
                 }
                 isFirstPage = false;
                 
                 // Add header
-                doc.setFontSize(16);
-                doc.setTextColor(9, 35, 92);  // Deep sea blue
-                doc.text(sheet.name, 14, 15);
+                doc.setFontSize(14);
+                doc.setTextColor(9, 35, 92);
+                doc.text(sheetData.name, 10, 12);
                 
                 // Add timestamp
-                doc.setFontSize(8);
+                doc.setFontSize(7);
                 doc.setTextColor(100);
-                doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 21);
+                doc.text(`Generated: ${new Date().toLocaleString()}`, 10, 17);
                 
-                // Prepare table data
-                const headers = sheet.data[0] || [];
-                const body = sheet.data.slice(1);
-                
-                // Format currency values - remove decimals for whole numbers
-                const formatCurrency = (val) => {
-                    if (typeof val !== 'string') return val;
-                    // Match currency patterns like $1,234.00 or ($1,234.00) or -$1,234.00
-                    const currencyMatch = val.match(/^[\(\-]?\$?([\d,]+)\.(\d{2})[\)]?$/);
-                    if (currencyMatch && currencyMatch[2] === '00') {
-                        // Remove .00 decimals
-                        return val.replace(/\.00/, '');
-                    }
-                    return val;
-                };
-                
-                // Process body data to format currencies
-                const formattedBody = body.map(row => 
-                    row.map(cell => formatCurrency(cell))
-                );
-                
-                // Calculate optimal column widths based on content
-                const pageWidth = doc.internal.pageSize.width - 28; // Account for margins
-                const colCount = headers.length;
-                
-                // Find max content length per column
-                const colMaxLengths = headers.map((h, i) => {
-                    let maxLen = String(h || '').length;
-                    formattedBody.forEach(row => {
-                        const cellLen = String(row[i] || '').length;
-                        if (cellLen > maxLen) maxLen = cellLen;
-                    });
-                    return maxLen;
-                });
-                
-                // First column (labels) needs more space, others are data
-                const isFirstColLabel = colMaxLengths[0] > 5 && !headers[0].match(/\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/i);
-                
-                // Build column styles with calculated widths
-                const columnStyles = {};
-                const totalChars = colMaxLengths.reduce((a, b) => a + b, 0);
-                
-                colMaxLengths.forEach((len, i) => {
-                    // First column (labels) gets minimum 25mm, max 40mm
-                    if (i === 0 && isFirstColLabel) {
-                        columnStyles[i] = { 
-                            cellWidth: Math.min(40, Math.max(25, (len / totalChars) * pageWidth * 1.5)),
-                            halign: 'left',
-                            overflow: 'visible'  // Don't wrap labels
-                        };
-                    } else {
-                        // Data columns - equal width, right-aligned
-                        const dataColWidth = (pageWidth - (isFirstColLabel ? 35 : 0)) / (colCount - (isFirstColLabel ? 1 : 0));
-                        columnStyles[i] = { 
-                            cellWidth: Math.max(15, dataColWidth),
-                            halign: 'right'
-                        };
-                    }
-                });
-                
-                // Generate table with improved settings
+                // Generate table - let autoTable handle column widths automatically
                 doc.autoTable({
-                    head: [headers],
-                    body: formattedBody,
-                    startY: 25,
+                    head: [sheetData.headers],
+                    body: sheetData.body,
+                    startY: 20,
                     theme: 'striped',
                     headStyles: {
                         fillColor: [9, 35, 92],
                         textColor: 255,
                         fontStyle: 'bold',
-                        fontSize: 7,
+                        fontSize: fontSize,
                         halign: 'center',
-                        cellPadding: 2
+                        cellPadding: cellPadding
                     },
                     bodyStyles: {
-                        fontSize: 7,
-                        cellPadding: 1.5
+                        fontSize: fontSize,
+                        cellPadding: cellPadding
                     },
                     alternateRowStyles: {
-                        fillColor: [245, 247, 250]
+                        fillColor: [248, 250, 252]
                     },
-                    margin: { left: 14, right: 14 },
+                    margin: { left: 10, right: 10, top: 20, bottom: 15 },
                     styles: {
-                        overflow: 'ellipsize',  // Don't wrap text awkwardly
-                        cellPadding: 1.5,
-                        fontSize: 7,
-                        lineWidth: 0.1
+                        overflow: 'linebreak',  // Wrap text if needed, don't truncate
+                        cellPadding: cellPadding,
+                        fontSize: fontSize,
+                        lineWidth: 0.1,
+                        minCellWidth: 12  // Minimum column width
                     },
-                    columnStyles: columnStyles,
-                    tableWidth: 'auto',
+                    tableWidth: 'wrap',  // Auto-fit columns to content
                     didParseCell: function(data) {
                         const value = String(data.cell.raw || '');
                         // Right-align cells that look like currency or numbers
                         if (/^[\(\-]?\$?[\d,]+\.?\d*[\)]?$/.test(value.replace(/\s/g, ''))) {
                             data.cell.styles.halign = 'right';
+                        }
+                        // First column (row labels) left-aligned
+                        if (data.column.index === 0 && data.section === 'body') {
+                            data.cell.styles.halign = 'left';
+                            data.cell.styles.fontStyle = 'normal';
                         }
                         // Highlight negative values in red
                         if (value.startsWith('(') || value.startsWith('-$') || value.startsWith('-')) {
@@ -11648,7 +11621,7 @@ export default {
                         }
                         // Bold for total/summary rows
                         const firstCol = String(data.row.raw[0] || '').toLowerCase();
-                        if (firstCol.includes('total') || firstCol.includes('net income') || firstCol.includes('gross')) {
+                        if (firstCol.includes('total') || firstCol.includes('net income') || firstCol.includes('gross margin')) {
                             data.cell.styles.fontStyle = 'bold';
                         }
                     }
