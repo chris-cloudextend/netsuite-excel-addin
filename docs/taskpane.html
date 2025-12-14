@@ -856,7 +856,9 @@
             font-size: 13px;
             opacity: 0.7;
             margin-bottom: 24px;
-            max-width: 300px;
+            max-width: 400px;
+            text-align: center;
+            word-wrap: break-word;
         }
 
         .guide-me-overlay .progress-container {
@@ -899,7 +901,9 @@
             font-size: 12px;
             opacity: 0.7;
             margin-top: 6px;
-            max-width: 280px;
+            max-width: 400px;
+            text-align: center;
+            word-wrap: break-word;
         }
 
         .guide-me-overlay .tips-section {
@@ -907,8 +911,8 @@
             padding: 20px 24px;
             background: rgba(255,255,255,0.08);
             border-radius: 12px;
-            width: 100%;
-            max-width: 380px;
+            width: calc(100% - 48px);
+            max-width: 450px;
             min-height: 80px;
         }
 
@@ -918,6 +922,7 @@
             letter-spacing: 1px;
             opacity: 0.6;
             margin-bottom: 8px;
+            text-align: center;
         }
 
         .guide-me-overlay .loading-tip {
@@ -926,10 +931,14 @@
             transition: opacity 0.3s ease;
             min-height: 48px;
             font-weight: 500;
-            line-height: 1.5;
+            line-height: 1.6;
             display: flex;
             align-items: center;
             justify-content: center;
+            text-align: center;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            padding: 4px 0;
         }
 
         /* Settings Panel (inline view, not modal) */
@@ -1805,8 +1814,9 @@
         .loading-content {
             text-align: center;
             color: white;
-            max-width: 420px;
-            padding: 40px 32px;
+            max-width: 90%;
+            width: 420px;
+            padding: 40px 24px;
         }
         
         .loading-funfact {
@@ -1820,6 +1830,8 @@
             gap: 12px;
             align-items: flex-start;
             min-height: 80px;
+            width: 100%;
+            box-sizing: border-box;
         }
         
         .funfact-icon {
@@ -1831,6 +1843,9 @@
             font-size: 13px;
             line-height: 1.6;
             color: rgba(255, 255, 255, 0.95);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            flex: 1;
         }
         
         .funfact-text strong {
@@ -2253,7 +2268,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.45</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.46</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
