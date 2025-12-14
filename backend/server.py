@@ -3924,6 +3924,25 @@ def batch_balance():
         
         print(f"DEBUG - Final merged balances: {list(all_balances.keys())}", file=sys.stderr)
         
+        # WILDCARD SUPPORT: Sum results for wildcard patterns
+        # The query expands "4*" to all 4xxx accounts, but we need to return a single sum
+        for original_account in accounts:
+            if '*' in str(original_account):
+                # This is a wildcard - sum all matching account balances
+                pattern = str(original_account).replace('*', '')  # "4*" -> "4"
+                wildcard_totals = {}
+                
+                for account_num, period_balances in all_balances.items():
+                    if str(account_num).startswith(pattern):
+                        for period, balance in period_balances.items():
+                            if period not in wildcard_totals:
+                                wildcard_totals[period] = 0
+                            wildcard_totals[period] += balance
+                
+                # Store the sum under the wildcard key
+                all_balances[original_account] = wildcard_totals
+                print(f"DEBUG - Wildcard '{original_account}' summed: {wildcard_totals}", file=sys.stderr)
+        
         # Fill in zeros for missing account/period combinations
         for account_num in accounts:
             if account_num not in all_balances:
