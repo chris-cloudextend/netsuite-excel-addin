@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.70</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.71</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -11711,41 +11711,62 @@ export default {
         // ================================================================
         async function prepareForDistribution() {
             const statusEl = document.getElementById('shareStatus');
+            const scope = document.querySelector('input[name="exportScope"]:checked').value;
+            const exportCurrentSheetOnly = (scope === 'worksheet');
             
             try {
                 statusEl.textContent = 'Getting workbook file...';
                 statusEl.style.color = '#0284c7';
                 
                 // First, get the computed values for XAVI formulas from the live workbook
-                let sheetName = '';
-                let xaviCellMap = new Map(); // Map of "A1" -> computed value
+                let activeSheetName = '';
+                let xaviCellMap = new Map(); // Map of "SheetName!A1" -> computed value
+                let allSheetNames = [];
                 
                 await Excel.run(async (context) => {
-                    const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    sheet.load('name');
-                    const usedRange = sheet.getUsedRange();
-                    usedRange.load(['formulas', 'values', 'rowCount', 'columnCount', 'address']);
+                    const sheets = context.workbook.worksheets;
+                    sheets.load('items/name');
+                    const activeSheet = context.workbook.worksheets.getActiveWorksheet();
+                    activeSheet.load('name');
                     await context.sync();
                     
-                    sheetName = sheet.name;
-                    const rowCount = usedRange.rowCount;
-                    const colCount = usedRange.columnCount;
-                    const formulas = usedRange.formulas;
-                    const values = usedRange.values;
+                    activeSheetName = activeSheet.name;
+                    allSheetNames = sheets.items.map(s => s.name);
                     
-                    // Get the starting cell address to calculate actual cell references
-                    const startAddress = usedRange.address.split('!')[1].split(':')[0];
-                    const startMatch = startAddress.match(/([A-Z]+)(\d+)/);
-                    const startCol = startMatch ? columnLetterToNumber(startMatch[1]) : 1;
-                    const startRow = startMatch ? parseInt(startMatch[2]) : 1;
+                    // Determine which sheets to process
+                    const sheetsToProcess = exportCurrentSheetOnly 
+                        ? [activeSheet] 
+                        : sheets.items;
                     
-                    // Build map of XAVI cells to their computed values
-                    for (let r = 0; r < rowCount; r++) {
-                        for (let c = 0; c < colCount; c++) {
-                            const formula = formulas[r][c];
-                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.')) {
-                                const cellRef = numberToColumnLetter(startCol + c) + (startRow + r);
-                                xaviCellMap.set(cellRef, values[r][c]);
+                    // Process each sheet
+                    for (const sheet of sheetsToProcess) {
+                        sheet.load('name');
+                        const usedRange = sheet.getUsedRange();
+                        usedRange.load(['formulas', 'values', 'rowCount', 'columnCount', 'address']);
+                        await context.sync();
+                        
+                        const sheetName = sheet.name;
+                        const rowCount = usedRange.rowCount;
+                        const colCount = usedRange.columnCount;
+                        const formulas = usedRange.formulas;
+                        const values = usedRange.values;
+                        
+                        // Get the starting cell address
+                        const addressParts = usedRange.address.split('!');
+                        const rangeRef = addressParts.length > 1 ? addressParts[1] : addressParts[0];
+                        const startAddress = rangeRef.split(':')[0];
+                        const startMatch = startAddress.match(/([A-Z]+)(\d+)/);
+                        const startCol = startMatch ? columnLetterToNumber(startMatch[1]) : 1;
+                        const startRow = startMatch ? parseInt(startMatch[2]) : 1;
+                        
+                        // Build map of XAVI cells to their computed values
+                        for (let r = 0; r < rowCount; r++) {
+                            for (let c = 0; c < colCount; c++) {
+                                const formula = formulas[r][c];
+                                if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.')) {
+                                    const cellRef = numberToColumnLetter(startCol + c) + (startRow + r);
+                                    xaviCellMap.set(`${sheetName}!${cellRef}`, values[r][c]);
+                                }
                             }
                         }
                     }
@@ -11753,7 +11774,7 @@ export default {
                     console.log(`Found ${xaviCellMap.size} XAVI formulas to replace`);
                 });
                 
-                statusEl.textContent = `Reading workbook file (${xaviCellMap.size} XAVI formulas found)...`;
+                statusEl.textContent = `Reading workbook (${xaviCellMap.size} XAVI formulas)...`;
                 
                 // Get the actual workbook file bytes using Office.js getFileAsync
                 const fileData = await new Promise((resolve, reject) => {
@@ -11800,32 +11821,42 @@ export default {
                     );
                 });
                 
-                statusEl.textContent = 'Loading workbook with ExcelJS...';
+                statusEl.textContent = 'Processing with ExcelJS...';
                 
                 // Load the workbook into ExcelJS - this preserves ALL formatting!
                 const workbook = new ExcelJS.Workbook();
                 await workbook.xlsx.load(fileData);
                 
-                statusEl.textContent = 'Replacing XAVI formulas with values...';
-                
-                // Find the active sheet and replace XAVI formulas
-                let worksheet = workbook.getWorksheet(sheetName);
-                if (!worksheet) {
-                    // Fallback to first worksheet
-                    worksheet = workbook.worksheets[0];
+                // If exporting current sheet only, remove all other sheets
+                if (exportCurrentSheetOnly) {
+                    const sheetsToRemove = [];
+                    workbook.eachSheet((ws, id) => {
+                        if (ws.name !== activeSheetName) {
+                            sheetsToRemove.push(id);
+                        }
+                    });
+                    // Remove sheets in reverse order to avoid index issues
+                    sheetsToRemove.reverse().forEach(id => {
+                        workbook.removeWorksheet(id);
+                    });
                 }
+                
+                statusEl.textContent = 'Replacing XAVI formulas...';
                 
                 let replacedCount = 0;
                 
                 // Replace XAVI formulas with their computed values
-                for (const [cellRef, value] of xaviCellMap) {
-                    const cell = worksheet.getCell(cellRef);
-                    // Clear the formula and set the value
-                    cell.value = value;
-                    replacedCount++;
+                for (const [fullRef, value] of xaviCellMap) {
+                    const [sheetName, cellRef] = fullRef.split('!');
+                    const worksheet = workbook.getWorksheet(sheetName);
+                    if (worksheet) {
+                        const cell = worksheet.getCell(cellRef);
+                        cell.value = value;
+                        replacedCount++;
+                    }
                 }
                 
-                statusEl.textContent = 'Downloading file...';
+                statusEl.textContent = 'Downloading...';
                 
                 // Export the modified workbook
                 const buffer = await workbook.xlsx.writeBuffer();
@@ -11834,7 +11865,7 @@ export default {
                 });
                 
                 const timestamp = new Date().toISOString().slice(0, 10);
-                const filename = `${sheetName}_${timestamp}.xlsx`;
+                const filename = `${activeSheetName}_${timestamp}.xlsx`;
                 
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -11846,11 +11877,13 @@ export default {
                 URL.revokeObjectURL(url);
                 
                 statusEl.innerHTML = `
-                    <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #10b981;">
-                        <strong style="color: #059669; font-size: 13px;">✓ Downloaded: ${filename}</strong><br>
-                        <span style="font-size: 12px; color: #047857; display: block; margin-top: 6px;">
-                            Replaced ${replacedCount} XAVI formula(s) with values<br>
-                            <strong>All formatting preserved!</strong>
+                    <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #10b981; word-wrap: break-word; overflow-wrap: break-word;">
+                        <strong style="color: #059669; font-size: 13px;">✓ Downloaded</strong><br>
+                        <span style="font-size: 11px; color: #047857; display: block; margin-top: 4px; word-break: break-all;">
+                            ${filename}
+                        </span>
+                        <span style="font-size: 11px; color: #047857; display: block; margin-top: 4px;">
+                            ${replacedCount} XAVI formula(s) → values
                         </span>
                     </div>
                 `;
