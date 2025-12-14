@@ -1176,22 +1176,39 @@ async function runBuildModeBatch() {
             let value = 0;
             let foundAny = false;
             
+            // WILDCARD SUPPORT: If account contains *, sum all matching accounts
+            const isWildcard = account && account.includes('*');
+            const wildcardPrefix = isWildcard ? account.replace('*', '') : null;
+            
+            // Get the list of accounts to sum (single account or all matching wildcard)
+            const accountsToSum = isWildcard
+                ? Object.keys(allBalances).filter(acct => acct.startsWith(wildcardPrefix))
+                : (allBalances[account] ? [account] : []);
+            
             if (fromPeriod && toPeriod && fromPeriod !== toPeriod) {
-                // SUM all months in the range
+                // SUM all months in the range for all matching accounts
                 const periodsToSum = expandPeriodRangeFromTo(fromPeriod, toPeriod);
-                for (const period of periodsToSum) {
-                    if (allBalances[account] && allBalances[account][period] !== undefined) {
-                        value += allBalances[account][period];
-                        foundAny = true;
+                for (const acct of accountsToSum) {
+                    for (const period of periodsToSum) {
+                        if (allBalances[acct] && allBalances[acct][period] !== undefined) {
+                            value += allBalances[acct][period];
+                            foundAny = true;
+                        }
                     }
                 }
             } else {
-                // Single period lookup
+                // Single period lookup - sum all matching accounts for this period
                 const lookupPeriod = (fromPeriod && fromPeriod !== '') ? fromPeriod : toPeriod;
-                if (allBalances[account] && allBalances[account][lookupPeriod] !== undefined) {
-                    value = allBalances[account][lookupPeriod];
-                    foundAny = true;
+                for (const acct of accountsToSum) {
+                    if (allBalances[acct] && allBalances[acct][lookupPeriod] !== undefined) {
+                        value += allBalances[acct][lookupPeriod];
+                        foundAny = true;
+                    }
                 }
+            }
+            
+            if (isWildcard && foundAny) {
+                console.log(`   🔍 Wildcard ${account} for ${fromPeriod}: summed ${accountsToSum.length} accounts = ${value.toFixed(2)}`);
             }
             
             if (foundAny) {
