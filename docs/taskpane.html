@@ -2839,10 +2839,10 @@ For licensing inquiries, contact: legal@celigo.com
                     
                     <!-- Action Buttons - Side by side -->
                     <div style="display: flex; gap: 8px; margin-top: 12px;">
-                        <button class="btn-secondary" style="flex: 1; background: var(--tidal-wave);" onclick="exportReport()">
+                        <button class="btn-secondary" style="flex: 1; background: var(--tidal-wave);" onclick="prepareForDistribution()">
                             <span style="display: flex; align-items: center; justify-content: center; gap: 6px;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Download
+                                Save for Distribution
                             </span>
                         </button>
                         <button class="btn-secondary" style="flex: 1; background: #10b981;" onclick="emailReport()">
@@ -11703,167 +11703,82 @@ export default {
             setTimeout(() => { statusEl.textContent = ''; }, 5000);
         }
         
-        async function exportToExcel(context, scope, statusEl) {
-            statusEl.textContent = 'Creating copy with formatting...';
+        // ================================================================
+        // PREPARE FOR DISTRIBUTION
+        // Creates a copy of the sheet with XAVI formulas replaced by values
+        // User can then Save As to preserve ALL formatting
+        // ================================================================
+        async function prepareForDistribution() {
+            const statusEl = document.getElementById('shareStatus');
             
             try {
-                // =====================================================
-                // APPROACH: Copy sheet within Excel, replace XAVI formulas, 
-                // then read values (preserves ALL original formatting)
-                // =====================================================
+                statusEl.textContent = 'Preparing sheet for distribution...';
+                statusEl.style.color = '#0284c7';
                 
-                const sheet = context.workbook.worksheets.getActiveWorksheet();
-                sheet.load('name');
-                await context.sync();
-                
-                const originalName = sheet.name;
-                const tempName = `_TEMP_EXPORT_${Date.now()}`;
-                
-                // Step 1: Copy the entire sheet (preserves all formatting)
-                statusEl.textContent = 'Copying sheet with formatting...';
-                const copiedSheet = sheet.copy();
-                copiedSheet.name = tempName;
-                await context.sync();
-                
-                // Step 2: Find and replace XAVI formulas with values in the copy
-                statusEl.textContent = 'Converting XAVI formulas to values...';
-                const usedRange = copiedSheet.getUsedRange();
-                usedRange.load(['formulas', 'values', 'rowCount', 'columnCount']);
-                await context.sync();
-                
-                const rowCount = usedRange.rowCount;
-                const colCount = usedRange.columnCount;
-                const formulas = usedRange.formulas;
-                const values = usedRange.values;
-                
-                // Find cells with XAVI formulas and replace with values
-                let replacedCount = 0;
-                for (let r = 0; r < rowCount; r++) {
-                    for (let c = 0; c < colCount; c++) {
-                        const formula = formulas[r][c];
-                        if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.')) {
-                            // Replace XAVI formula with its computed value
-                            const cell = usedRange.getCell(r, c);
-                            cell.values = [[values[r][c]]];
-                            replacedCount++;
-                        }
-                    }
-                }
-                await context.sync();
-                
-                statusEl.textContent = `Replaced ${replacedCount} XAVI formulas. Reading data...`;
-                
-                // Step 3: Now use Excel's built-in copy to get the formatted data
-                // We'll read the copied sheet and use it
-                
-                // Unfortunately, we can't directly export from Excel API
-                // So we need to read the data and create a file
-                // But the good news is: non-XAVI formulas are preserved, values are in place
-                
-                // Read all data from the temp sheet
-                const finalRange = copiedSheet.getUsedRange();
-                finalRange.load(['values', 'text', 'formulas', 'numberFormat', 'rowCount', 'columnCount']);
-                await context.sync();
-                
-                const finalRowCount = finalRange.rowCount;
-                const finalColCount = finalRange.columnCount;
-                const finalFormulas = finalRange.formulas;
-                const finalValues = finalRange.values;
-                const finalText = finalRange.text;
-                const finalNumberFormats = finalRange.numberFormat;
-                
-                // Step 4: Create Excel file using basic XLSX (for reliability)
-                // Since formatting is lost in export anyway with basic XLSX,
-                // let's at least get formulas and number formats right
-                statusEl.textContent = 'Creating Excel file...';
-                
-                const ws = {};
-                ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: finalRowCount - 1, c: finalColCount - 1 } });
-                
-                for (let r = 0; r < finalRowCount; r++) {
-                    for (let c = 0; c < finalColCount; c++) {
-                        const cellRef = XLSX.utils.encode_cell({ r, c });
-                        const formula = finalFormulas[r][c];
-                        const value = finalValues[r][c];
-                        const numFormat = finalNumberFormats[r][c];
-                        
-                        let cell = {};
-                        
-                        // Handle formulas (non-XAVI ones that remain)
-                        if (typeof formula === 'string' && formula.startsWith('=')) {
-                            cell = { t: 'n', f: formula.substring(1) };
-                            if (typeof value === 'number') {
-                                cell.v = value;
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    sheet.load('name');
+                    await context.sync();
+                    
+                    const originalName = sheet.name;
+                    const timestamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+                    const copyName = `${originalName}_Share_${timestamp}`.substring(0, 31);
+                    
+                    // Step 1: Copy the entire sheet (preserves ALL formatting)
+                    statusEl.textContent = 'Creating copy with formatting...';
+                    const copiedSheet = sheet.copy();
+                    copiedSheet.name = copyName;
+                    await context.sync();
+                    
+                    // Step 2: Find and replace XAVI formulas with values
+                    statusEl.textContent = 'Converting XAVI formulas to values...';
+                    const usedRange = copiedSheet.getUsedRange();
+                    usedRange.load(['formulas', 'values', 'rowCount', 'columnCount']);
+                    await context.sync();
+                    
+                    const rowCount = usedRange.rowCount;
+                    const colCount = usedRange.columnCount;
+                    const formulas = usedRange.formulas;
+                    const values = usedRange.values;
+                    
+                    // Replace XAVI formulas with their computed values
+                    let replacedCount = 0;
+                    for (let r = 0; r < rowCount; r++) {
+                        for (let c = 0; c < colCount; c++) {
+                            const formula = formulas[r][c];
+                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.')) {
+                                const cell = usedRange.getCell(r, c);
+                                cell.values = [[values[r][c]]];
+                                replacedCount++;
                             }
-                        } else if (typeof value === 'number') {
-                            cell = { t: 'n', v: value };
-                        } else if (typeof value === 'boolean') {
-                            cell = { t: 'b', v: value };
-                        } else if (value === null || value === undefined || value === '') {
-                            continue;
-                        } else {
-                            cell = { t: 's', v: String(value) };
                         }
-                        
-                        // Apply number format
-                        if (numFormat && numFormat !== 'General') {
-                            cell.z = numFormat;
-                        }
-                        
-                        ws[cellRef] = cell;
                     }
-                }
-                
-                // Set column widths
-                const colWidths = [];
-                for (let c = 0; c < finalColCount; c++) {
-                    let maxWidth = 10;
-                    for (let r = 0; r < Math.min(finalRowCount, 50); r++) {
-                        const cellText = String(finalText[r][c] || '');
-                        maxWidth = Math.max(maxWidth, Math.min(cellText.length + 2, 18));
-                    }
-                    colWidths.push({ wch: maxWidth });
-                }
-                ws['!cols'] = colWidths;
-                
-                // Create workbook and add sheet
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, originalName.substring(0, 31));
-                
-                // Step 5: Delete the temporary sheet
-                statusEl.textContent = 'Cleaning up...';
-                copiedSheet.delete();
-                await context.sync();
-                
-                // Step 6: Download the file
-                const timestamp = new Date().toISOString().slice(0, 10);
-                const filename = `${originalName}_${timestamp}.xlsx`;
-                
-                XLSX.writeFile(wb, filename);
-                
-                statusEl.textContent = `✓ Excel downloaded: ${filename}`;
-                statusEl.style.color = '#059669';
-                setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                    await context.sync();
+                    
+                    // Step 3: Activate the copied sheet
+                    copiedSheet.activate();
+                    await context.sync();
+                    
+                    // Step 4: Show success message with instructions
+                    statusEl.innerHTML = `
+                        <div style="background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding: 14px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #10b981;">
+                            <strong style="color: #059669; font-size: 13px;">✓ Sheet Ready for Distribution!</strong><br>
+                            <span style="font-size: 12px; color: #047857; display: block; margin-top: 6px;">
+                                Created: <strong>${copyName}</strong><br>
+                                Replaced: ${replacedCount} XAVI formula(s) with values<br><br>
+                                <strong>Next step:</strong> File → Save As → Choose location
+                            </span>
+                        </div>
+                    `;
+                });
                 
             } catch (error) {
-                console.error('Export error:', error);
-                statusEl.textContent = `✗ Error: ${error.message}`;
-                statusEl.style.color = '#dc2626';
-                
-                // Try to clean up temp sheet if it exists
-                try {
-                    const sheets = context.workbook.worksheets;
-                    sheets.load('items/name');
-                    await context.sync();
-                    for (const s of sheets.items) {
-                        if (s.name.startsWith('_TEMP_EXPORT_')) {
-                            s.delete();
-                        }
-                    }
-                    await context.sync();
-                } catch (cleanupError) {
-                    console.log('Cleanup failed:', cleanupError);
-                }
+                console.error('Prepare for distribution error:', error);
+                statusEl.innerHTML = `
+                    <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #dc2626;">
+                        <strong style="color: #dc2626;">✗ Error:</strong> ${error.message}
+                    </div>
+                `;
             }
         }
         
