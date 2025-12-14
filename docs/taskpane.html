@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.52</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.53</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -11619,7 +11619,10 @@ export default {
 
         async function createDrillDownSheet(context, transactions, params) {
             // Create or get drill-down sheet
-            const sheetName = `DrillDown_${params.account}`;
+            // Sanitize account name for sheet name (Excel doesn't allow * in sheet names)
+            const sanitizedAccount = params.account.replace(/\*/g, 'ALL');
+            const sheetName = `DrillDown_${sanitizedAccount}`;
+            const isWildcard = params.account.includes('*');
             
             let drillSheet;
             try {
@@ -11638,43 +11641,62 @@ export default {
             drillSheet.getRange('A1').format.font.bold = true;
             drillSheet.getRange('A1').format.font.size = 14;
             
-            drillSheet.getRange('A2').values = [[`Account: ${params.account} | Period: ${params.period}`]];
+            const accountLabel = isWildcard ? `Accounts: ${params.account} (wildcard)` : `Account: ${params.account}`;
+            drillSheet.getRange('A2').values = [[`${accountLabel} | Period: ${params.period}`]];
             drillSheet.getRange('A2').format.font.bold = true;
             
-            // Add column headers
-            const headers = [
-                ['Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount']
-            ];
-            drillSheet.getRange('A4:H4').values = headers;
-            drillSheet.getRange('A4:H4').format.font.bold = true;
-            drillSheet.getRange('A4:H4').format.fill.color = '#667eea';
-            drillSheet.getRange('A4:H4').format.font.color = 'white';
+            // Add column headers - include Account column for wildcard drill-downs
+            const headers = isWildcard
+                ? [['Account', 'Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount']]
+                : [['Date', 'Type', 'Number', 'Entity', 'Memo', 'Debit', 'Credit', 'Net Amount']];
             
-            // Add transaction data (without NetSuite Link column)
-            const dataRows = transactions.map(txn => [
-                txn.transaction_date || '',
-                txn.transaction_type || '',
-                txn.transaction_number || '',
-                txn.entity_name || '',
-                txn.memo || '',
-                txn.debit ? parseFloat(txn.debit) : 0,
-                txn.credit ? parseFloat(txn.credit) : 0,
-                txn.net_amount ? parseFloat(txn.net_amount) : 0
-            ]);
+            const headerRange = isWildcard ? 'A4:I4' : 'A4:H4';
+            drillSheet.getRange(headerRange).values = headers;
+            drillSheet.getRange(headerRange).format.font.bold = true;
+            drillSheet.getRange(headerRange).format.fill.color = '#667eea';
+            drillSheet.getRange(headerRange).format.font.color = 'white';
             
-            const dataRange = drillSheet.getRange(`A5:H${4 + dataRows.length}`);
+            // Add transaction data - include Account column for wildcard drill-downs
+            const dataRows = isWildcard
+                ? transactions.map(txn => [
+                    txn.account_number || '',
+                    txn.transaction_date || '',
+                    txn.transaction_type || '',
+                    txn.transaction_number || '',
+                    txn.entity_name || '',
+                    txn.memo || '',
+                    txn.debit ? parseFloat(txn.debit) : 0,
+                    txn.credit ? parseFloat(txn.credit) : 0,
+                    txn.net_amount ? parseFloat(txn.net_amount) : 0
+                ])
+                : transactions.map(txn => [
+                    txn.transaction_date || '',
+                    txn.transaction_type || '',
+                    txn.transaction_number || '',
+                    txn.entity_name || '',
+                    txn.memo || '',
+                    txn.debit ? parseFloat(txn.debit) : 0,
+                    txn.credit ? parseFloat(txn.credit) : 0,
+                    txn.net_amount ? parseFloat(txn.net_amount) : 0
+                ]);
+            
+            const lastCol = isWildcard ? 'I' : 'H';
+            const debitCol = isWildcard ? 'G' : 'F';
+            const linkCol = isWildcard ? 'D' : 'C';
+            
+            const dataRange = drillSheet.getRange(`A5:${lastCol}${4 + dataRows.length}`);
             dataRange.values = dataRows;
             
             // Format numbers as currency
-            drillSheet.getRange(`F5:H${4 + dataRows.length}`).numberFormat = [['#,##0.00']];
+            drillSheet.getRange(`${debitCol}5:${lastCol}${4 + dataRows.length}`).numberFormat = [['#,##0.00']];
             
             // Add hyperlinks to NetSuite URLs
             for (let i = 0; i < transactions.length; i++) {
                 const txn = transactions[i];
                 const row = 5 + i;
                 
-                // Add hyperlink for transaction number
-                const linkCell = drillSheet.getRange(`C${row}`);
+                // Add hyperlink for transaction number (column varies based on wildcard)
+                const linkCell = drillSheet.getRange(`${linkCol}${row}`);
                 const hyperlink = {
                     address: txn.netsuite_url,
                     textToDisplay: txn.transaction_number
@@ -11685,23 +11707,33 @@ export default {
             }
             
             // Auto-fit columns
-            drillSheet.getRange('A:H').format.autofitColumns();
+            const autoFitRange = isWildcard ? 'A:I' : 'A:H';
+            drillSheet.getRange(autoFitRange).format.autofitColumns();
             
             // Add summary at bottom
             const summaryRow = 5 + dataRows.length + 2;
             drillSheet.getRange(`A${summaryRow}`).values = [[`Total Transactions: ${transactions.length}`]];
             drillSheet.getRange(`A${summaryRow}`).format.font.bold = true;
             
-            const totalDebit = dataRows.reduce((sum, row) => sum + row[5], 0);
-            const totalCredit = dataRows.reduce((sum, row) => sum + row[6], 0);
-            const totalNet = dataRows.reduce((sum, row) => sum + row[7], 0);
+            // Column indices vary based on wildcard (wildcard adds Account column at start)
+            const debitIdx = isWildcard ? 6 : 5;
+            const creditIdx = isWildcard ? 7 : 6;
+            const netIdx = isWildcard ? 8 : 7;
+            const totalsLabelCol = isWildcard ? 'F' : 'E';
+            const totalsDebitCol = isWildcard ? 'G' : 'F';
+            const totalsCreditCol = isWildcard ? 'H' : 'G';
+            const totalsNetCol = isWildcard ? 'I' : 'H';
             
-            drillSheet.getRange(`E${summaryRow}`).values = [['Totals:']];
-            drillSheet.getRange(`F${summaryRow}`).values = [[totalDebit]];
-            drillSheet.getRange(`G${summaryRow}`).values = [[totalCredit]];
-            drillSheet.getRange(`H${summaryRow}`).values = [[totalNet]];
-            drillSheet.getRange(`E${summaryRow}:H${summaryRow}`).format.font.bold = true;
-            drillSheet.getRange(`F${summaryRow}:H${summaryRow}`).numberFormat = [['#,##0.00']];
+            const totalDebit = dataRows.reduce((sum, row) => sum + row[debitIdx], 0);
+            const totalCredit = dataRows.reduce((sum, row) => sum + row[creditIdx], 0);
+            const totalNet = dataRows.reduce((sum, row) => sum + row[netIdx], 0);
+            
+            drillSheet.getRange(`${totalsLabelCol}${summaryRow}`).values = [['Totals:']];
+            drillSheet.getRange(`${totalsDebitCol}${summaryRow}`).values = [[totalDebit]];
+            drillSheet.getRange(`${totalsCreditCol}${summaryRow}`).values = [[totalCredit]];
+            drillSheet.getRange(`${totalsNetCol}${summaryRow}`).values = [[totalNet]];
+            drillSheet.getRange(`${totalsLabelCol}${summaryRow}:${totalsNetCol}${summaryRow}`).format.font.bold = true;
+            drillSheet.getRange(`${totalsDebitCol}${summaryRow}:${totalsNetCol}${summaryRow}`).numberFormat = [['#,##0.00']];
             
             await context.sync();
         }

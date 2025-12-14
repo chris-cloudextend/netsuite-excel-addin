@@ -5212,8 +5212,9 @@ def get_transactions():
         if not account or not period:
             return jsonify({'error': 'Missing required parameters: account and period'}), 400
         
+        is_wildcard = '*' in str(account)
         print(f"DEBUG - Transaction drill-down request:", file=sys.stderr)
-        print(f"  Account: {account}", file=sys.stderr)
+        print(f"  Account: {account} {'(WILDCARD)' if is_wildcard else ''}", file=sys.stderr)
         print(f"  Period: {period}", file=sys.stderr)
         print(f"  Subsidiary: {subsidiary}", file=sys.stderr)
         print(f"  Department: {department}", file=sys.stderr)
@@ -5221,10 +5222,13 @@ def get_transactions():
         print(f"  Location: {location}", file=sys.stderr)
         
         # Build WHERE clause with filters
+        # Use build_account_filter to support wildcards like '4*'
+        account_filter = build_account_filter([account])
+        
         where_conditions = [
             "t.posting = 'T'",
             "tal.posting = 'T'",
-            f"a.acctnumber = '{escape_sql(account)}'",
+            account_filter,  # Supports wildcards like '4*' → LIKE '4%'
             f"ap.periodname = '{escape_sql(period)}'"
         ]
         
