@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.65</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.66</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3155,7 +3155,7 @@ For licensing inquiries, contact: legal@celigo.com
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.65</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.66</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -11803,42 +11803,92 @@ export default {
                                 cell.numFmt = '#,##0';
                             }
                         }
-                        
-                        // Apply formatting based on heuristics (since API loading is unreliable)
-                        const firstColText = String(values[r][0] || '').toLowerCase();
-                        const isHeaderRow = r < 5 && textVal && !textVal.includes('$') && 
-                            (textVal.match(/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|total/i) ||
-                             c === 0 && textVal.length > 0);
-                        const isTotalRow = firstColText.includes('total') || 
-                            firstColText.includes('net income') || 
-                            firstColText.includes('gross margin') ||
-                            firstColText.includes('net operating');
-                        const isSubtotalRow = firstColText.includes('gross') || 
-                            firstColText.includes('operating expense');
-                        
-                        // Detect if row has a header-like pattern (text in first col, dates across)
-                        if (r === 3 && c >= 1 && textVal && textVal.match(/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i)) {
-                            // This is the date header row - style it
-                            ws.getRow(r + 1).eachCell(c => {
-                                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF09235C' } };
-                                c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                            });
+                    }
+                }
+                
+                // ======================================
+                // APPLY ROW STYLING (after all cells are set)
+                // ======================================
+                statusEl.textContent = 'Applying formatting...';
+                
+                for (let r = 0; r < rowCount; r++) {
+                    const firstColText = String(values[r][0] || '').toLowerCase().trim();
+                    const firstColRaw = String(values[r][0] || '').trim();
+                    
+                    // Check if this row has date headers (Jan-25, Feb-25, etc.)
+                    let isDateHeaderRow = false;
+                    for (let c = 1; c < Math.min(colCount, 5); c++) {
+                        const cellText = String(text[r][c] || '');
+                        if (cellText.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i)) {
+                            isDateHeaderRow = true;
+                            break;
                         }
-                        
-                        // Style total rows
-                        if (isTotalRow && c === 0) {
-                            ws.getRow(r + 1).eachCell(c => {
-                                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
-                                c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                            });
-                        }
-                        
-                        // Style subtotal rows
-                        if (isSubtotalRow && !isTotalRow && c === 0) {
-                            ws.getRow(r + 1).eachCell(c => {
-                                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
-                                c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                            });
+                    }
+                    
+                    // Identify row types
+                    const isNetIncome = firstColText === 'net income';
+                    const isGrossMargin = firstColText === 'gross margin';
+                    const isNetOperatingIncome = firstColText.includes('net operating income') || 
+                                                  firstColText === 'net operating income';
+                    const isTotalRevenue = firstColText.includes('total revenue');
+                    const isTotalRow = firstColText.startsWith('total ');
+                    
+                    // Style: Date header row (darkest blue)
+                    if (isDateHeaderRow) {
+                        const row = ws.getRow(r + 1);
+                        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF09235C' } };
+                            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                            cell.alignment = { horizontal: 'center' };
+                        });
+                    }
+                    // Style: Net Income (darkest blue - bottom line)
+                    else if (isNetIncome) {
+                        const row = ws.getRow(r + 1);
+                        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF09235C' } };
+                            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                        });
+                    }
+                    // Style: Gross Margin, Net Operating Income (medium blue)
+                    else if (isGrossMargin || isNetOperatingIncome) {
+                        const row = ws.getRow(r + 1);
+                        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+                            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                        });
+                    }
+                    // Style: Total rows (if any other totals)
+                    else if (isTotalRow && !isTotalRevenue) {
+                        const row = ws.getRow(r + 1);
+                        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+                            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                        });
+                    }
+                }
+                
+                // Style the "Total" column (last column with data) if it exists
+                // Find the Total column
+                let totalColIndex = -1;
+                for (let c = colCount - 1; c >= 0; c--) {
+                    const headerText = String(text[0][c] || text[1][c] || text[2][c] || text[3][c] || '').toLowerCase();
+                    if (headerText === 'total') {
+                        totalColIndex = c;
+                        break;
+                    }
+                }
+                
+                // Apply darker styling to Total column for styled rows
+                if (totalColIndex >= 0) {
+                    for (let r = 0; r < rowCount; r++) {
+                        const cell = ws.getCell(r + 1, totalColIndex + 1);
+                        if (cell.fill && cell.fill.fgColor) {
+                            // Make Total column slightly darker for styled rows
+                            const currentColor = cell.fill.fgColor.argb;
+                            if (currentColor === 'FF1E3A5F') {
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF152D4A' } };
+                            }
                         }
                     }
                 }
