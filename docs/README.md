@@ -44,4 +44,4 @@ Files are served from GitHub Pages. After pushing changes:
 
 ---
 
-*Current Version: 1.5.37.0*
+*Current Version: 3.0.5.74*

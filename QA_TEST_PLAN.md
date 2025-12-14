@@ -1,7 +1,7 @@
 # NetSuite Excel Add-in - QA Test Plan
 
-**Version:** 3.0.5.16  
-**Date:** December 12, 2025  
+**Version:** 3.0.5.74  
+**Date:** December 14, 2025  
 **Tested By:** QA Engineer (AI)
 
 ---
