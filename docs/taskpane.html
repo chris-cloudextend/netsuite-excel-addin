@@ -2268,7 +2268,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.46</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.47</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4730,6 +4730,24 @@
                         await context.sync();
                     } catch (e) {}
                     
+                    // ========== ADD COMMENTS TO FILTER CELLS ==========
+                    try {
+                        const comments = context.workbook.comments;
+                        const filterComments = {
+                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
+                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
+                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
+                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
+                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
+                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
+                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
+                        };
+                        for (const [cell, text] of Object.entries(filterComments)) {
+                            comments.add(sheet.getRange(cell).address, text);
+                        }
+                        await context.sync();
+                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                    
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     // Set row height for KPI cards
                     try {
@@ -5404,19 +5422,22 @@
                     
                     // ========== ROW 2: PARAMETER LABELS ==========
                     sheet.getRange("P2").values = [["YEAR"]];
-                    sheet.getRange("Q2").values = [["Subsidiary Context"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
                     sheet.getRange("R2").values = [["Budget Category"]];
                     sheet.getRange("S2").values = [["Department"]];
-                    sheet.getRange("T2").values = [["Class"]];
-                    sheet.getRange("U2").values = [["Location"]];
+                    sheet.getRange("T2").values = [["Location"]];
+                    sheet.getRange("U2").values = [["Class"]];
+                    sheet.getRange("V2").values = [["Acct Book"]];
                     await context.sync();
                     
                     // Style parameter labels
                     try {
-                        const labelRange = sheet.getRange("P2:U2");
-                        labelRange.format.font.bold = true;
-                        labelRange.format.font.color = "#8B5CF6";
-                        labelRange.format.font.size = 10;
+                        const labelCells = ["P2", "Q2", "R2", "S2", "T2", "U2", "V2"];
+                        for (const cell of labelCells) {
+                            sheet.getRange(cell).format.font.bold = true;
+                            sheet.getRange(cell).format.font.color = "#8B5CF6";
+                            sheet.getRange(cell).format.font.size = 10;
+                        }
                         await context.sync();
                     } catch (e) {}
                     
@@ -5429,18 +5450,39 @@
                     sheet.getRange("Q3").values = [[defaultSubsidiary]];
                     sheet.getRange("R3").values = [[budgetCategory || 'All Categories']];
                     sheet.getRange("S3").values = [[""]];  // Department - empty by default
-                    sheet.getRange("T3").values = [[""]];  // Class - empty by default
-                    sheet.getRange("U3").values = [[""]];  // Location - empty by default
+                    sheet.getRange("T3").values = [[""]];  // Location - empty by default
+                    sheet.getRange("U3").values = [[""]];  // Class - empty by default
+                    sheet.getRange("V3").values = [[""]];  // Accounting Book - empty by default
                     await context.sync();
                     
                     // Style parameter value cells
                     try {
-                        const valueRange = sheet.getRange("P3:U3");
-                        valueRange.format.fill.color = "#DDD6FE";  // Light purple
-                        valueRange.format.font.bold = true;
-                        valueRange.format.font.color = "#5B21B6";
+                        const valueCells = ["P3", "Q3", "R3", "S3", "T3", "U3", "V3"];
+                        for (const cell of valueCells) {
+                            sheet.getRange(cell).format.fill.color = "#DDD6FE";  // Light purple
+                            sheet.getRange(cell).format.font.bold = true;
+                            sheet.getRange(cell).format.font.color = "#5B21B6";
+                        }
                         await context.sync();
                     } catch (e) {}
+                    
+                    // ========== ADD COMMENTS TO FILTER CELLS ==========
+                    try {
+                        const comments = context.workbook.comments;
+                        const budgetComments = {
+                            'P3': 'YEAR: Enter the fiscal year for the budget report. Change this value to view different budget years.',
+                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter by subsidiary. Add "(Consolidated)" to include child subsidiaries.',
+                            'R3': 'BUDGET CATEGORY: Select a budget category name to filter. Leave empty for all categories.',
+                            'S3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
+                            'T3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
+                            'U3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
+                            'V3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.'
+                        };
+                        for (const [cell, text] of Object.entries(budgetComments)) {
+                            comments.add(sheet.getRange(cell).address, text);
+                        }
+                        await context.sync();
+                    } catch (e) { console.warn('Could not add budget comments:', e.message); }
                     
                     // ========== ROW 4: BLANK ==========
                     currentRow = 4;
@@ -5498,11 +5540,12 @@
                         
                         // BUDGET formulas for each month
                         // =XAVI.BUDGET(account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook, budgetCategory)
+                        // Cell refs: Q3=Subsidiary, S3=Dept, T3=Location, U3=Class, V3=AcctBook, R3=BudgetCategory
                         for (let m = 0; m < 12; m++) {
                             const colLetter = String.fromCharCode(67 + m);
                             const cell = sheet.getRange(`${colLetter}${row}`);
                             // Full formula with all parameters as cell references
-                            cell.formulas = [[`=XAVI.BUDGET($A${row},${colLetter}$5,${colLetter}$5,$Q$3,$S$3,$U$3,$T$3,"",$R$3)`]];
+                            cell.formulas = [[`=XAVI.BUDGET($A${row},${colLetter}$5,${colLetter}$5,$Q$3,$S$3,$T$3,$U$3,$V$3,$R$3)`]];
                         }
                         
                         // YTD formula
@@ -5979,6 +6022,24 @@
                         }
                         await context.sync();
                     } catch (e) {}
+                    
+                    // ========== ADD COMMENTS TO FILTER CELLS ==========
+                    try {
+                        const comments = context.workbook.comments;
+                        const filterComments = {
+                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
+                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
+                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
+                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
+                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
+                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
+                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
+                        };
+                        for (const [cell, text] of Object.entries(filterComments)) {
+                            comments.add(sheet.getRange(cell).address, text);
+                        }
+                        await context.sync();
+                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     try {
@@ -8493,6 +8554,24 @@ export default {
                         await context.sync();
                     } catch (e) {}
                     
+                    // ADD COMMENTS TO FILTER CELLS
+                    try {
+                        const comments = context.workbook.comments;
+                        const filterComments = {
+                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
+                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
+                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
+                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
+                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
+                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
+                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
+                        };
+                        for (const [cell, text] of Object.entries(filterComments)) {
+                            comments.add(sheet.getRange(cell).address, text);
+                        }
+                        await context.sync();
+                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                    
                     // ROW 4: KPI METRICS DASHBOARD
                     try {
                         sheet.getRange("4:4").format.rowHeight = 50;
@@ -9544,6 +9623,24 @@ export default {
                                 }
                                 await context.sync();
                             } catch (e) {}
+                            
+                            // ADD COMMENTS TO FILTER CELLS
+                            try {
+                                const comments = context.workbook.comments;
+                                const filterComments = {
+                                    'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
+                                    'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
+                                    'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
+                                    'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
+                                    'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
+                                    'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
+                                    'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
+                                };
+                                for (const [cell, text] of Object.entries(filterComments)) {
+                                    comments.add(sheet.getRange(cell).address, text);
+                                }
+                                await context.sync();
+                            } catch (e) { console.warn('Could not add filter comments:', e.message); }
                             
                             // ===== ROW 4: KPI METRICS =====
                             try {
