@@ -1030,7 +1030,7 @@ def check_permissions():
     
     try:
         # Try to query accounting books directly
-        mb_query = "SELECT id, name, isprimary FROM accountingbook WHERE isinactive = 'F' ORDER BY isprimary DESC"
+        mb_query = "SELECT id, name, isprimary FROM AccountingBook WHERE isinactive = 'F' ORDER BY isprimary DESC"
         multibook_result['query_used'] = mb_query
         mb_response = query_netsuite(mb_query)
         
@@ -5476,7 +5476,7 @@ def get_accounting_books():
                 id,
                 name,
                 isprimary
-            FROM accountingbook
+            FROM AccountingBook
             WHERE isinactive = 'F'
             ORDER BY isprimary DESC, name
         """
@@ -5658,37 +5658,37 @@ def get_all_lookups():
                 lookups['locations'].append({'id': id_val, 'name': name})
         
         # Fetch accounting books (Multi-Book Accounting)
+        # Try multiple approaches since different NetSuite versions/permissions may vary
+        books_loaded = False
         try:
+            # Approach 1: Try to get distinct accounting books from transactions
+            # This works even without direct AccountingBook table access
             books_query = """
-                SELECT id, name, isprimary
-                FROM accountingbook
-                WHERE isinactive = 'F'
-                ORDER BY isprimary DESC, name
+                SELECT DISTINCT tal.accountingbook AS id
+                FROM TransactionAccountingLine tal
+                WHERE tal.accountingbook IS NOT NULL
             """
-            books_result = query_netsuite(books_query)
+            books_result = query_netsuite(books_query, timeout=15)
             
             if isinstance(books_result, list) and len(books_result) > 0:
+                print(f"✓ Found {len(books_result)} accounting books from transactions", file=sys.stderr)
                 for row in books_result:
-                    book_name = row.get('name', '')
-                    is_primary = row.get('isprimary', 'F') == 'T'
-                    if is_primary:
-                        book_name = f"{book_name} (Primary)"
+                    book_id = str(row.get('id', ''))
+                    # ID 1 is always Primary Book in NetSuite
+                    is_primary = book_id == '1'
+                    book_name = f"Book {book_id}" if book_id != '1' else "Primary Book"
                     lookups['accountingBooks'].append({
-                        'id': str(row.get('id', '')),
+                        'id': book_id,
                         'name': book_name,
                         'isPrimary': is_primary
                     })
-            else:
-                # Query failed or returned empty - default to Primary Book
-                print(f"Accounting books query returned: {books_result}", file=sys.stderr)
-                lookups['accountingBooks'].append({
-                    'id': '1',
-                    'name': 'Primary Book',
-                    'isPrimary': True
-                })
+                books_loaded = True
         except Exception as e:
-            print(f"Error loading accounting books: {e}", file=sys.stderr)
-            # Default to Primary Book (ID 1) if query fails
+            print(f"Approach 1 (distinct from TAL) failed: {e}", file=sys.stderr)
+        
+        if not books_loaded:
+            # Approach 2: Default to Primary Book (always exists)
+            print(f"Using default Primary Book (ID 1)", file=sys.stderr)
             lookups['accountingBooks'].append({
                 'id': '1',
                 'name': 'Primary Book',
