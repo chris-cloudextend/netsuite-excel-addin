@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.57</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.58</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2837,15 +2837,15 @@ For licensing inquiries, contact: legal@celigo.com
                         </div>
                     </div>
                     
-                    <!-- Action Buttons - Stack vertically for reliability -->
-                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
-                        <button class="btn-secondary" style="width: 100%; background: var(--tidal-wave);" onclick="exportReport()">
+                    <!-- Action Buttons - Side by side -->
+                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                        <button class="btn-secondary" style="flex: 1; background: var(--tidal-wave);" onclick="exportReport()">
                             <span style="display: flex; align-items: center; justify-content: center; gap: 6px;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 Download
                             </span>
                         </button>
-                        <button class="btn-secondary" style="width: 100%; background: var(--seafoam);" onclick="emailReport()">
+                        <button class="btn-secondary" style="flex: 1; background: #10b981;" onclick="emailReport()">
                             <span style="display: flex; align-items: center; justify-content: center; gap: 6px;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                                 Email
@@ -3155,7 +3155,7 @@ For licensing inquiries, contact: legal@celigo.com
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.57</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.58</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -11664,37 +11664,55 @@ export default {
             const format = document.querySelector('input[name="exportFormat"]:checked').value;
             
             try {
-                statusEl.textContent = 'Preparing email...';
+                // Step 1: Download the file first
+                statusEl.textContent = '📥 Downloading file...';
                 statusEl.style.color = '#0284c7';
                 
+                let filename = '';
                 await Excel.run(async (context) => {
-                    // Get worksheet name for email subject
+                    // Get worksheet name for filename and email
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     sheet.load('name');
                     await context.sync();
                     
                     const scopeText = scope === 'worksheet' ? sheet.name : 'Workbook';
-                    const formatText = format === 'pdf' ? 'PDF' : 'Excel';
+                    const timestamp = new Date().toISOString().slice(0, 10);
+                    filename = `${scopeText}_${timestamp}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
                     
-                    // Create mailto link
+                    // Export the file
+                    if (format === 'pdf') {
+                        await exportToPDF(context, scope, statusEl);
+                    } else {
+                        await exportToExcel(context, scope, statusEl);
+                    }
+                    
+                    // Step 2: Open email client with instructions
+                    statusEl.textContent = '📧 Opening email...';
+                    
+                    const formatText = format === 'pdf' ? 'PDF' : 'Excel';
                     const subject = encodeURIComponent(`Financial Report: ${scopeText}`);
                     const body = encodeURIComponent(
 `Hi,
 
-Please find attached the ${formatText} export of "${scopeText}".
+Please find the attached ${formatText} report: "${filename}"
 
 This report was generated by XAVI for NetSuite on ${new Date().toLocaleString()}.
-
-Note: Please download the ${formatText} file using the "Download" button and attach it to this email.
 
 Best regards`
                     );
                     
+                    // Small delay to ensure download started
+                    await new Promise(r => setTimeout(r, 500));
+                    
                     // Open email client
                     window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
                     
-                    statusEl.innerHTML = `<span style="color: #059669;">✓ Email opened!</span><br><span style="font-size: 10px; color: #666;">Click "Download" first, then attach the file to your email.</span>`;
-                    setTimeout(() => { statusEl.textContent = ''; }, 8000);
+                    statusEl.innerHTML = `
+                        <div style="background: #d1fae5; padding: 10px; border-radius: 6px; margin-top: 8px;">
+                            <strong style="color: #059669;">✓ File downloaded & email opened!</strong><br>
+                            <span style="font-size: 11px; color: #047857;">Attach <strong>${filename}</strong> from your Downloads folder.</span>
+                        </div>`;
+                    setTimeout(() => { statusEl.textContent = ''; }, 10000);
                 });
                 
             } catch (error) {
