@@ -4064,7 +4064,8 @@ def batch_get_account_types():
             return jsonify({'types': {}})
         
         # Build account filter (supports wildcards like '4*')
-        account_filter = build_account_filter(accounts)
+        # NOTE: Use 'acctnumber' not 'a.acctnumber' because Account table has no alias here
+        account_filter = build_account_filter(accounts, column='acctnumber')
         
         query = f"""
             SELECT acctnumber, accttype
@@ -4084,6 +4085,20 @@ def batch_get_account_types():
                 acct_type = row.get('accttype', '')
                 if acct:
                     types[acct] = acct_type
+        
+        # WILDCARD SUPPORT: For wildcard patterns, determine a type based on matched accounts
+        # If all matched accounts have the same type, use that; otherwise use the most common
+        for original_account in accounts:
+            if '*' in str(original_account):
+                pattern = str(original_account).replace('*', '')
+                matched_types = [types[acct] for acct in types if str(acct).startswith(pattern)]
+                
+                if matched_types:
+                    # Use the most common type among matched accounts
+                    from collections import Counter
+                    most_common_type = Counter(matched_types).most_common(1)[0][0]
+                    types[original_account] = most_common_type
+                    print(f"   📊 Wildcard '{original_account}' → type '{most_common_type}' (from {len(matched_types)} accounts)", file=sys.stderr)
         
         print(f"📊 Batch account types: {len(types)} accounts classified", file=sys.stderr)
         return jsonify({'types': types})
