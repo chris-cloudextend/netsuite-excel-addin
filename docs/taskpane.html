@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.61</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.62</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3155,7 +3155,7 @@ For licensing inquiries, contact: legal@celigo.com
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.61</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.62</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -3491,14 +3491,41 @@ For licensing inquiries, contact: legal@celigo.com
                         showToast({ type: 'success', title: 'Connection OK', message: 'Backend and tunnel are working.', duration: 3000 });
                     }
                     return true;
-                } else if (response.status === 502 || response.status === 524 || response.status === 522) {
-                    // Tunnel/proxy error
+                } else if (response.status === 502 || response.status === 524 || response.status === 522 || response.status === 530) {
+                    // Tunnel/proxy error - show detailed diagnosis
                     statusBadge.className = 'status-badge disconnected';
-                    statusText.textContent = 'Tunnel Down';
+                    
+                    let errorTitle = 'Tunnel Disconnected';
+                    let errorMsg = '';
+                    
+                    if (response.status === 530 || response.status === 522) {
+                        // 530 = Origin DNS error, 522 = Connection timed out
+                        statusText.textContent = 'Tunnel Expired';
+                        errorTitle = '🔌 Tunnel Expired';
+                        errorMsg = `Error ${response.status}: The Cloudflare tunnel has expired and needs to be restarted.\n\n` +
+                            `To fix:\n` +
+                            `1. Run: cloudflared tunnel --url http://localhost:5002\n` +
+                            `2. Copy the new trycloudflare.com URL\n` +
+                            `3. Update the Worker at dash.cloudflare.com`;
+                    } else if (response.status === 502) {
+                        // 502 = Bad Gateway - server might be down
+                        statusText.textContent = 'Server Down';
+                        errorTitle = '🖥️ Server Not Responding';
+                        errorMsg = `Error 502: The backend server may not be running.\n\n` +
+                            `To fix:\n` +
+                            `1. Check if server.py is running on port 5002\n` +
+                            `2. Run: cd backend && python3 server.py`;
+                    } else {
+                        // 524 = Timeout
+                        statusText.textContent = 'Tunnel Timeout';
+                        errorTitle = '⏱️ Connection Timeout';
+                        errorMsg = `Error ${response.status}: The tunnel connection timed out.\n\n` +
+                            `The server may be overloaded or the tunnel may need restarting.`;
+                    }
+                    
                     lastConnectionCheck = { status: 'disconnected', time: Date.now(), error: `HTTP ${response.status}` };
                     if (!silent) {
-                        showToast({ type: 'error', title: 'Tunnel Disconnected', 
-                            message: `Error ${response.status}: The Cloudflare tunnel may have expired. Check the terminal for a new tunnel URL and update the Worker.`, duration: 10000 });
+                        showToast({ type: 'error', title: errorTitle, message: errorMsg, duration: 15000 });
                     }
                     return false;
                 } else {
@@ -10364,11 +10391,33 @@ export default {
                             } else if (response.status === 502 || response.status === 524 || response.status === 522 || response.status === 530) {
                                 // Tunnel/proxy error - this is critical
                                 console.error(`❌ P&L fetch FAILED: Tunnel error ${response.status}`);
-                                showPersistentError(
-                                    'Connection Lost - Tunnel Error',
-                                    'Could not connect to the backend server. The Cloudflare tunnel may have expired or restarted.',
-                                    `HTTP Status: ${response.status}<br>Action Required: Ask your administrator to check the tunnel and update the Cloudflare Worker with the new URL.`
-                                );
+                                
+                                let errorTitle = 'Connection Lost';
+                                let errorDesc = '';
+                                let errorAction = '';
+                                
+                                if (response.status === 530 || response.status === 522) {
+                                    errorTitle = '🔌 Tunnel Expired (Error ' + response.status + ')';
+                                    errorDesc = 'The Cloudflare tunnel has expired and needs to be restarted.';
+                                    errorAction = `
+                                        <strong>To fix:</strong><br>
+                                        1. Run in terminal: <code>cloudflared tunnel --url http://localhost:5002</code><br>
+                                        2. Copy the new <code>*.trycloudflare.com</code> URL<br>
+                                        3. Go to <a href="https://dash.cloudflare.com" target="_blank">dash.cloudflare.com</a> → Workers → Update TUNNEL_URL`;
+                                } else if (response.status === 502) {
+                                    errorTitle = '🖥️ Server Not Running (Error 502)';
+                                    errorDesc = 'The backend server is not responding.';
+                                    errorAction = `
+                                        <strong>To fix:</strong><br>
+                                        1. Check if server.py is running on port 5002<br>
+                                        2. Run: <code>cd backend && python3 server.py</code>`;
+                                } else {
+                                    errorTitle = '⏱️ Connection Timeout (Error ' + response.status + ')';
+                                    errorDesc = 'The connection timed out. Server may be overloaded.';
+                                    errorAction = 'Try again in a moment, or check the terminal for errors.';
+                                }
+                                
+                                showPersistentError(errorTitle, errorDesc, errorAction);
                                 // Update connection status
                                 await checkConnectionStatus(true);
                             } else {

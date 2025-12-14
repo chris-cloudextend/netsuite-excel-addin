@@ -20,15 +20,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://lopez-valves-premiere-bridges.trycloudflare.com
+// CURRENT TUNNEL URL: https://enhanced-msg-pretty-memo.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 12, 2025
+// Last Updated: Dec 14, 2025
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://stops-guam-quotes-reflection.trycloudflare.com';
+    const TUNNEL_URL = 'https://enhanced-msg-pretty-memo.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
