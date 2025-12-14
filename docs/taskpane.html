@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.62</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.63</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3155,7 +3155,7 @@ For licensing inquiries, contact: legal@celigo.com
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.62</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.63</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -11702,16 +11702,22 @@ export default {
         }
         
         async function exportToExcel(context, scope, statusEl) {
-            statusEl.textContent = 'Reading worksheet data...';
+            statusEl.textContent = 'Reading worksheet data and formatting...';
             
             const wb = XLSX.utils.book_new();
             
-            // Helper function to process a single sheet
+            // Helper function to convert RGB to hex
+            function rgbToHex(r, g, b) {
+                return ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+            }
+            
+            // Helper function to process a single sheet with full formatting
             async function processSheet(sheet, context) {
                 sheet.load('name');
                 const usedRange = sheet.getUsedRange();
-                // Load formulas, values, text (formatted), and number formats
-                usedRange.load(['formulas', 'values', 'text', 'numberFormat', 'rowCount', 'columnCount']);
+                
+                // Load all data including formatting
+                usedRange.load(['formulas', 'values', 'text', 'numberFormat', 'rowCount', 'columnCount', 'address']);
                 await context.sync();
                 
                 const rowCount = usedRange.rowCount;
@@ -11721,71 +11727,132 @@ export default {
                 const text = usedRange.text;
                 const numberFormats = usedRange.numberFormat;
                 
-                // Build the output data - keep non-XAVI formulas, replace XAVI with values
-                const outputData = [];
+                statusEl.textContent = `Processing ${rowCount} rows...`;
                 
+                // Load formatting for each row (batch for performance)
+                const formatData = [];
                 for (let r = 0; r < rowCount; r++) {
-                    const row = [];
-                    for (let c = 0; c < colCount; c++) {
-                        const formula = formulas[r][c];
-                        const value = values[r][c];
-                        const textVal = text[r][c];
-                        const numFormat = numberFormats[r][c];
-                        
-                        // Check if cell has a formula
-                        if (typeof formula === 'string' && formula.startsWith('=')) {
-                            // Check if it's an XAVI formula
-                            if (formula.toUpperCase().includes('XAVI.')) {
-                                // XAVI formula - replace with computed value
-                                row.push(value);
-                            } else {
-                                // Non-XAVI formula (SUM, custom calcs, etc.) - keep formula
-                                row.push(formula);
-                            }
-                        } else {
-                            // Not a formula - use the value
-                            row.push(value);
-                        }
-                    }
-                    outputData.push(row);
+                    const rowRange = usedRange.getRow(r);
+                    rowRange.load(['format/fill/color', 'format/font/color', 'format/font/bold']);
+                }
+                await context.sync();
+                
+                // Re-load to get the format data
+                const rowFormats = [];
+                for (let r = 0; r < rowCount; r++) {
+                    const rowRange = usedRange.getRow(r);
+                    rowRange.format.fill.load('color');
+                    rowRange.format.font.load(['color', 'bold']);
+                }
+                await context.sync();
+                
+                // Collect format info per row
+                for (let r = 0; r < rowCount; r++) {
+                    const rowRange = usedRange.getRow(r);
+                    rowFormats.push({
+                        fillColor: rowRange.format.fill.color,
+                        fontColor: rowRange.format.font.color,
+                        bold: rowRange.format.font.bold
+                    });
                 }
                 
-                // Create worksheet from the processed data
-                const ws = XLSX.utils.aoa_to_sheet(outputData);
+                // Create an empty worksheet first
+                const ws = {};
+                ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rowCount - 1, c: colCount - 1 } });
                 
-                // Apply number formatting to cells
+                // Process each cell
                 for (let r = 0; r < rowCount; r++) {
                     for (let c = 0; c < colCount; c++) {
                         const cellRef = XLSX.utils.encode_cell({ r, c });
+                        const formula = formulas[r][c];
+                        const value = values[r][c];
                         const numFormat = numberFormats[r][c];
+                        const rowFormat = rowFormats[r];
                         
-                        if (ws[cellRef] && numFormat && numFormat !== 'General') {
-                            // Apply the original number format
-                            ws[cellRef].z = numFormat;
-                        }
+                        // Determine cell content
+                        let cell = {};
                         
-                        // Detect currency columns and apply formatting if not already set
-                        const val = outputData[r][c];
-                        if (ws[cellRef] && typeof val === 'number' && !ws[cellRef].z) {
-                            // Check if this looks like currency (large numbers or row has $ in text)
-                            const textVal = text[r][c];
-                            if (textVal && (textVal.includes('$') || textVal.includes('('))) {
-                                ws[cellRef].z = '_("$"* #,##0_);_("$"* (#,##0);_("$"* "-"??_);_(@_)';
-                            } else if (Math.abs(val) >= 1000) {
-                                // Large number - add thousands separator
-                                ws[cellRef].z = '#,##0';
+                        if (typeof formula === 'string' && formula.startsWith('=')) {
+                            if (formula.toUpperCase().includes('XAVI.')) {
+                                // XAVI formula - replace with computed value
+                                if (typeof value === 'number') {
+                                    cell = { t: 'n', v: value };
+                                } else if (value === null || value === '') {
+                                    cell = { t: 's', v: '' };
+                                } else {
+                                    cell = { t: 's', v: String(value) };
+                                }
+                            } else {
+                                // Non-XAVI formula - keep as FORMULA (remove leading =)
+                                const formulaText = formula.substring(1); // Remove the '='
+                                cell = { t: 'n', f: formulaText };
+                                // Also set a value for apps that don't recalculate
+                                if (typeof value === 'number') {
+                                    cell.v = value;
+                                }
+                            }
+                        } else {
+                            // Not a formula - use value with appropriate type
+                            if (typeof value === 'number') {
+                                cell = { t: 'n', v: value };
+                            } else if (typeof value === 'boolean') {
+                                cell = { t: 'b', v: value };
+                            } else if (value === null || value === undefined || value === '') {
+                                continue; // Skip empty cells
+                            } else {
+                                cell = { t: 's', v: String(value) };
                             }
                         }
+                        
+                        // Apply number format
+                        if (numFormat && numFormat !== 'General') {
+                            cell.z = numFormat;
+                        } else if (cell.t === 'n' && typeof value === 'number') {
+                            // Auto-detect currency from text representation
+                            const textVal = text[r][c];
+                            if (textVal && (textVal.includes('$') || textVal.startsWith('('))) {
+                                cell.z = '_("$"* #,##0_);_("$"* (#,##0);_("$"* "-"??_);_(@_)';
+                            } else if (Math.abs(value) >= 1000) {
+                                // Large number - add thousands separator
+                                cell.z = '#,##0';
+                            }
+                        }
+                        
+                        // Apply cell styling (SheetJS style format)
+                        // Note: Full styling requires xlsx-style library, but we can set basic properties
+                        const fillColor = rowFormat.fillColor;
+                        const fontColor = rowFormat.fontColor;
+                        const isBold = rowFormat.bold;
+                        
+                        if (fillColor || fontColor || isBold) {
+                            cell.s = {};
+                            if (fillColor && fillColor !== '#FFFFFF' && fillColor !== 'white') {
+                                // Convert color to ARGB format
+                                const hexColor = fillColor.replace('#', '');
+                                cell.s.fill = { fgColor: { rgb: hexColor } };
+                            }
+                            if (fontColor && fontColor !== '#000000' && fontColor !== 'black') {
+                                const hexColor = fontColor.replace('#', '');
+                                cell.s.font = { color: { rgb: hexColor } };
+                            }
+                            if (isBold) {
+                                cell.s.font = cell.s.font || {};
+                                cell.s.font.bold = true;
+                            }
+                        }
+                        
+                        // Add cell to worksheet
+                        ws[cellRef] = cell;
                     }
                 }
                 
                 // Set column widths based on content
                 const colWidths = [];
                 for (let c = 0; c < colCount; c++) {
-                    let maxWidth = 8; // minimum
-                    for (let r = 0; r < Math.min(rowCount, 50); r++) { // Sample first 50 rows
+                    let maxWidth = 10; // minimum
+                    for (let r = 0; r < Math.min(rowCount, 50); r++) {
                         const cellText = String(text[r][c] || '');
-                        maxWidth = Math.max(maxWidth, Math.min(cellText.length + 2, 20));
+                        maxWidth = Math.max(maxWidth, Math.min(cellText.length + 2, 25));
                     }
                     colWidths.push({ wch: maxWidth });
                 }
