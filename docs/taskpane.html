@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.60</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.61</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3155,7 +3155,7 @@ For licensing inquiries, contact: legal@celigo.com
         <div class="footer">
             <div class="footer-content">
                 <p><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> Financial Reporting Engine</p>
-                <p class="footer-version">v<span id="footerVersion">3.0.5.60</span></p>
+                <p class="footer-version">v<span id="footerVersion">3.0.5.61</span></p>
             </div>
             <!-- Fake Intercom chat button -->
             <button class="intercom-chat-btn" onclick="alert('Chat support coming soon!')" title="Chat with us">
@@ -11657,17 +11657,99 @@ export default {
             
             const wb = XLSX.utils.book_new();
             
+            // Helper function to process a single sheet
+            async function processSheet(sheet, context) {
+                sheet.load('name');
+                const usedRange = sheet.getUsedRange();
+                // Load formulas, values, text (formatted), and number formats
+                usedRange.load(['formulas', 'values', 'text', 'numberFormat', 'rowCount', 'columnCount']);
+                await context.sync();
+                
+                const rowCount = usedRange.rowCount;
+                const colCount = usedRange.columnCount;
+                const formulas = usedRange.formulas;
+                const values = usedRange.values;
+                const text = usedRange.text;
+                const numberFormats = usedRange.numberFormat;
+                
+                // Build the output data - keep non-XAVI formulas, replace XAVI with values
+                const outputData = [];
+                
+                for (let r = 0; r < rowCount; r++) {
+                    const row = [];
+                    for (let c = 0; c < colCount; c++) {
+                        const formula = formulas[r][c];
+                        const value = values[r][c];
+                        const textVal = text[r][c];
+                        const numFormat = numberFormats[r][c];
+                        
+                        // Check if cell has a formula
+                        if (typeof formula === 'string' && formula.startsWith('=')) {
+                            // Check if it's an XAVI formula
+                            if (formula.toUpperCase().includes('XAVI.')) {
+                                // XAVI formula - replace with computed value
+                                row.push(value);
+                            } else {
+                                // Non-XAVI formula (SUM, custom calcs, etc.) - keep formula
+                                row.push(formula);
+                            }
+                        } else {
+                            // Not a formula - use the value
+                            row.push(value);
+                        }
+                    }
+                    outputData.push(row);
+                }
+                
+                // Create worksheet from the processed data
+                const ws = XLSX.utils.aoa_to_sheet(outputData);
+                
+                // Apply number formatting to cells
+                for (let r = 0; r < rowCount; r++) {
+                    for (let c = 0; c < colCount; c++) {
+                        const cellRef = XLSX.utils.encode_cell({ r, c });
+                        const numFormat = numberFormats[r][c];
+                        
+                        if (ws[cellRef] && numFormat && numFormat !== 'General') {
+                            // Apply the original number format
+                            ws[cellRef].z = numFormat;
+                        }
+                        
+                        // Detect currency columns and apply formatting if not already set
+                        const val = outputData[r][c];
+                        if (ws[cellRef] && typeof val === 'number' && !ws[cellRef].z) {
+                            // Check if this looks like currency (large numbers or row has $ in text)
+                            const textVal = text[r][c];
+                            if (textVal && (textVal.includes('$') || textVal.includes('('))) {
+                                ws[cellRef].z = '_("$"* #,##0_);_("$"* (#,##0);_("$"* "-"??_);_(@_)';
+                            } else if (Math.abs(val) >= 1000) {
+                                // Large number - add thousands separator
+                                ws[cellRef].z = '#,##0';
+                            }
+                        }
+                    }
+                }
+                
+                // Set column widths based on content
+                const colWidths = [];
+                for (let c = 0; c < colCount; c++) {
+                    let maxWidth = 8; // minimum
+                    for (let r = 0; r < Math.min(rowCount, 50); r++) { // Sample first 50 rows
+                        const cellText = String(text[r][c] || '');
+                        maxWidth = Math.max(maxWidth, Math.min(cellText.length + 2, 20));
+                    }
+                    colWidths.push({ wch: maxWidth });
+                }
+                ws['!cols'] = colWidths;
+                
+                return { ws, name: sheet.name };
+            }
+            
             if (scope === 'worksheet') {
                 // Current worksheet only
                 const sheet = context.workbook.worksheets.getActiveWorksheet();
-                sheet.load('name');
-                const usedRange = sheet.getUsedRange();
-                usedRange.load(['values', 'text']);
-                await context.sync();
-                
-                // Use text values (formatted) instead of raw values (which would include formulas)
-                const ws = XLSX.utils.aoa_to_sheet(usedRange.text);
-                XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+                const result = await processSheet(sheet, context);
+                XLSX.utils.book_append_sheet(wb, result.ws, result.name);
             } else {
                 // All worksheets
                 const allSheets = context.workbook.worksheets;
@@ -11676,12 +11758,8 @@ export default {
                 
                 for (const sheet of allSheets.items) {
                     statusEl.textContent = `Processing: ${sheet.name}...`;
-                    const usedRange = sheet.getUsedRange();
-                    usedRange.load(['text']);
-                    await context.sync();
-                    
-                    const ws = XLSX.utils.aoa_to_sheet(usedRange.text);
-                    XLSX.utils.book_append_sheet(wb, ws, sheet.name.substring(0, 31));
+                    const result = await processSheet(sheet, context);
+                    XLSX.utils.book_append_sheet(wb, result.ws, result.name.substring(0, 31));
                 }
             }
             
