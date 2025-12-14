@@ -1,5 +1,16 @@
 /**
- * NetSuite Custom Functions - SIMPLIFIED & BULLETPROOF
+ * XAVI for NetSuite - Excel Custom Functions
+ * 
+ * Copyright (c) 2025 Celigo, Inc.
+ * All rights reserved.
+ * 
+ * This source code is proprietary and confidential. Unauthorized copying,
+ * modification, distribution, or use of this software, via any medium,
+ * is strictly prohibited without the express written permission of Celigo, Inc.
+ * 
+ * For licensing inquiries, contact: legal@celigo.com
+ * 
+ * ---
  * 
  * KEY DESIGN PRINCIPLES:
  * 1. Cache AGGRESSIVELY - never clear unless user clicks button

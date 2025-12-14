@@ -1,6 +1,15 @@
 """
-NetSuite Excel Formulas - Backend Server
+XAVI for NetSuite - Backend Server
 Flask server that provides REST API for NetSuite SuiteQL queries
+
+Copyright (c) 2025 Celigo, Inc.
+All rights reserved.
+
+This source code is proprietary and confidential. Unauthorized copying,
+modification, distribution, or use of this software, via any medium,
+is strictly prohibited without the express written permission of Celigo, Inc.
+
+For licensing inquiries, contact: legal@celigo.com
 """
 
 from flask import Flask, jsonify, request

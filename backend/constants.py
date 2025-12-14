@@ -1,5 +1,16 @@
 """
-NetSuite Account Types and Constants
+XAVI for NetSuite - Account Types and Constants
+
+Copyright (c) 2025 Celigo, Inc.
+All rights reserved.
+
+This source code is proprietary and confidential. Unauthorized copying,
+modification, distribution, or use of this software, via any medium,
+is strictly prohibited without the express written permission of Celigo, Inc.
+
+For licensing inquiries, contact: legal@celigo.com
+
+---
 
 This module defines all account type constants used throughout the application.
 Using constants instead of "magic strings" provides:

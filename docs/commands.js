@@ -1,6 +1,19 @@
 /**
- * Commands.js - Handles ribbon and context menu actions
- * This file is loaded separately from the task pane for ExecuteFunction actions
+ * XAVI for NetSuite - Ribbon and Context Menu Commands
+ * 
+ * Copyright (c) 2025 Celigo, Inc.
+ * All rights reserved.
+ * 
+ * This source code is proprietary and confidential. Unauthorized copying,
+ * modification, distribution, or use of this software, via any medium,
+ * is strictly prohibited without the express written permission of Celigo, Inc.
+ * 
+ * For licensing inquiries, contact: legal@celigo.com
+ * 
+ * ---
+ * 
+ * This file handles ribbon and context menu actions.
+ * It is loaded separately from the task pane for ExecuteFunction actions.
  */
 
 // Use Cloudflare Worker URL (not tunnel directly)
