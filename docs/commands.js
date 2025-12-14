@@ -24,14 +24,29 @@ console.log('   SERVER_URL:', SERVER_URL);
 
 /**
  * Drill down from context menu (right-click)
- * This is an ExecuteFunction action - must call event.completed() when done
+ * This is an ExecuteFunction action - must call event.completed() IMMEDIATELY
+ * The debug window appears if event.completed() is delayed
  */
 function drillDownFromContextMenu(event) {
     console.log('=== CONTEXT MENU DRILL-DOWN START ===');
     
-    // Wrap everything in a try-catch to ensure event.completed() is always called
-    Excel.run(async (context) => {
-        try {
+    // CRITICAL: Call event.completed() IMMEDIATELY to close the function dialog
+    // This tells Office "I've received the command" - actual work continues async
+    if (event && event.completed) {
+        event.completed();
+        console.log('✅ event.completed() called immediately');
+    }
+    
+    // Now do the actual work asynchronously
+    performDrillDown();
+}
+
+/**
+ * Perform the actual drill-down work (called after event.completed)
+ */
+async function performDrillDown() {
+    try {
+        await Excel.run(async (context) => {
             const range = context.workbook.getSelectedRange();
             range.load(['formulas', 'values', 'address']);
             await context.sync();
@@ -101,20 +116,11 @@ function drillDownFromContextMenu(event) {
             // Create drill-down sheet
             await createDrillDownSheet(context, data.transactions, params);
             console.log('✅ Drill-down sheet created successfully');
-            
-        } catch (innerError) {
-            console.error('Error inside Excel.run:', innerError);
-        }
-    }).catch((outerError) => {
-        console.error('Excel.run failed:', outerError);
-    }).finally(() => {
-        // CRITICAL: Always call event.completed() for ExecuteFunction actions
-        if (event && event.completed) {
-            console.log('Calling event.completed()');
-            event.completed();
-        }
-        console.log('=== CONTEXT MENU DRILL-DOWN END ===');
-    });
+        });
+    } catch (error) {
+        console.error('Drill-down error:', error);
+    }
+    console.log('=== CONTEXT MENU DRILL-DOWN END ===');
 }
 
 /**
