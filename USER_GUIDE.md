@@ -1,0 +1,416 @@
+# XAVI for NetSuite - User Guide
+
+**Version 3.0.5.49** | Last Updated: December 2025
+
+---
+
+## Table of Contents
+
+1. [What is XAVI?](#what-is-xavi)
+2. [Getting Started](#getting-started)
+3. [Formula Reference](#formula-reference)
+4. [Using Wildcards for Summary Reports](#using-wildcards-for-summary-reports)
+5. [Filtering by Subsidiary, Department, Class, Location](#filtering-by-subsidiary-department-class-location)
+6. [Pre-Built Reports](#pre-built-reports)
+7. [Performance Tips](#performance-tips)
+8. [Troubleshooting](#troubleshooting)
+9. [FAQ](#faq)
+
+---
+
+## What is XAVI?
+
+XAVI is an Excel add-in that connects directly to your NetSuite account, allowing you to pull live financial data into Excel using simple formulas. No more exporting CSVs or copying/pasting from NetSuite reports!
+
+### Key Benefits
+
+| Traditional Approach | With XAVI |
+|---------------------|-----------|
+| Export CSV from NetSuite | Live formulas pull data on demand |
+| Manual copy/paste | Auto-refresh with one click |
+| Stale data within hours | Real-time accuracy |
+| Breaking links when structure changes | Dynamic account references |
+
+---
+
+## Getting Started
+
+### Step 1: Open the Task Pane
+
+In Excel, go to the **Home** ribbon and click the **XAVI** button to open the task pane.
+
+### Step 2: Enter Your First Formula
+
+In any Excel cell, type:
+
+```
+=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025")
+```
+
+This returns the balance for account 4010 for January 2025.
+
+### Step 3: Make It Dynamic
+
+Instead of hardcoding values, use cell references:
+
+| | A | B |
+|---|---|---|
+| **1** | **Account** | **Jan 2025** |
+| **2** | 4010 | `=XAVI.BALANCE($A2, B$1, B$1)` |
+| **3** | 5000 | `=XAVI.BALANCE($A3, B$1, B$1)` |
+
+Now you can:
+- Drag the formula **down** to add more accounts
+- Drag the formula **right** to add more months
+- XAVI automatically batches requests for speed!
+
+---
+
+## Formula Reference
+
+### XAVI.BALANCE
+
+Get the GL account balance for a specific period or date range.
+
+**Syntax:**
+```
+=XAVI.BALANCE(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class], [accountingBook])
+```
+
+**Parameters:**
+
+| Parameter | Required | Description | Example |
+|-----------|----------|-------------|---------|
+| account | Yes | Account number or wildcard pattern | `"4010"` or `"4*"` |
+| fromPeriod | Yes | Start period | `"Jan 2025"` or `"2025"` |
+| toPeriod | Yes | End period | `"Dec 2025"` or `"2025"` |
+| subsidiary | No | Subsidiary name or ID | `"Celigo Inc."` |
+| department | No | Department name or ID | `"Sales"` |
+| location | No | Location name or ID | `"US"` |
+| class | No | Class name or ID | `"Enterprise"` |
+| accountingBook | No | Accounting book ID | `"1"` |
+
+**Examples:**
+```
+=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025")
+=XAVI.BALANCE("4010", "2025", "2025")                    ← Full year (faster!)
+=XAVI.BALANCE("4*", "Jan 2025", "Dec 2025")             ← All revenue accounts
+=XAVI.BALANCE("4010", "Q1 2025", "Q1 2025", "Celigo Inc.")
+=XAVI.BALANCE(A2, B$1, B$1, $P$3, $Q$3, $R$3, $S$3)    ← With cell references
+```
+
+---
+
+### XAVI.BUDGET
+
+Get the budget amount for an account and period.
+
+**Syntax:**
+```
+=XAVI.BUDGET(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class], [accountingBook], [budgetCategory])
+```
+
+**Examples:**
+```
+=XAVI.BUDGET("5000", "Jan 2025", "Dec 2025")
+=XAVI.BUDGET("6*", "2025", "2025")                      ← All expense budgets
+=XAVI.BUDGET("5000", "Q1 2025", "Q1 2025", "Celigo Inc.", "Sales")
+```
+
+---
+
+### XAVI.NAME
+
+Get the account name from an account number.
+
+**Syntax:**
+```
+=XAVI.NAME(account)
+```
+
+**Example:**
+```
+=XAVI.NAME("4010")     → "Product Revenue"
+```
+
+---
+
+### XAVI.TYPE
+
+Get the account type (Income, Expense, Bank, etc.).
+
+**Syntax:**
+```
+=XAVI.TYPE(account)
+```
+
+**Example:**
+```
+=XAVI.TYPE("4010")     → "Income"
+=XAVI.TYPE("1000")     → "Bank"
+```
+
+---
+
+### XAVI.PARENT
+
+Get the parent account number for a sub-account.
+
+**Syntax:**
+```
+=XAVI.PARENT(account)
+```
+
+**Example:**
+```
+=XAVI.PARENT("4010-1")  → "4010"
+```
+
+---
+
+### Special Formulas
+
+These formulas calculate values that NetSuite computes dynamically (not stored as account balances):
+
+| Formula | Purpose | Example |
+|---------|---------|---------|
+| `XAVI.RETAINEDEARNINGS` | Cumulative P&L through prior year-end | `=XAVI.RETAINEDEARNINGS("Dec 2024")` |
+| `XAVI.NETINCOME` | YTD Net Income | `=XAVI.NETINCOME("Mar 2025")` |
+| `XAVI.CTA` | Cumulative Translation Adjustment | `=XAVI.CTA("Dec 2024")` |
+
+---
+
+## Using Wildcards for Summary Reports
+
+### What Are Wildcards?
+
+Use `*` in the account number to sum multiple accounts at once. This is perfect for executive summaries!
+
+### Common Patterns
+
+| Pattern | What It Sums | Typical Use |
+|---------|--------------|-------------|
+| `"4*"` | All 4xxx accounts | **Total Revenue** |
+| `"5*"` | All 5xxx accounts | **Total COGS** |
+| `"6*"` | All 6xxx accounts | **Operating Expenses** |
+| `"7*"` | All 7xxx accounts | **Other Operating** |
+| `"8*"` | All 8xxx accounts | **Other Income/Expense** |
+| `"40*"` | All 40xx accounts | Product Revenue only |
+| `"41*"` | All 41xx accounts | Service Revenue only |
+| `"60*"` | All 60xx accounts | Payroll & Benefits |
+
+### Example: CFO Flash Report
+
+Build a complete P&L summary in just 4 formulas:
+
+| | A | B |
+|---|---|---|
+| **1** | | **Jan 2025** |
+| **2** | Revenue | `=XAVI.BALANCE("4*", B$1, B$1)` |
+| **3** | COGS | `=XAVI.BALANCE("5*", B$1, B$1)` |
+| **4** | Gross Profit | `=B2-B3` |
+| **5** | Operating Expenses | `=XAVI.BALANCE("6*", B$1, B$1)` |
+| **6** | Operating Income | `=B4-B5` |
+
+### Example: Departmental Expense Comparison
+
+```
+=XAVI.BALANCE("6*", "Q1 2025", "Q1 2025", "", "Sales")        → Sales OpEx
+=XAVI.BALANCE("6*", "Q1 2025", "Q1 2025", "", "Engineering")  → Engineering OpEx
+=XAVI.BALANCE("6*", "Q1 2025", "Q1 2025", "", "Marketing")    → Marketing OpEx
+```
+
+### Example: Subsidiary Revenue Comparison
+
+```
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Inc.")            → US Revenue
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Europe B.V.")     → Europe Revenue
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Australia")       → Australia Revenue
+```
+
+---
+
+## Filtering by Subsidiary, Department, Class, Location
+
+### Using the Filters Panel
+
+1. Open the XAVI task pane
+2. Expand the **Filters** section
+3. Select a filter type (Subsidiary, Department, etc.)
+4. Click **Insert** to add the filter value to your current cell
+
+### Dynamic Filters with Cell References
+
+**Best Practice:** Put filter values in cells and reference them in formulas:
+
+| | P | Q | R | S |
+|---|---|---|---|---|
+| **2** | **Subsidiary** | **Department** | **Location** | **Class** |
+| **3** | Celigo Inc. | Sales | | |
+
+Then use in formulas:
+```
+=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025", $P$3, $Q$3, $R$3, $S$3)
+```
+
+This lets you change filters in ONE place and update the entire report!
+
+### Consolidated vs. Individual Subsidiary
+
+- **Individual:** `"Celigo Inc."` → Only that subsidiary's transactions
+- **Consolidated:** `"Celigo Inc. (Consolidated)"` → Includes all child subsidiaries
+
+---
+
+## Pre-Built Reports
+
+### Build Income Statement
+
+1. Click **Build Income Statement** in the task pane
+2. Select the year and (optionally) subsidiary
+3. Click **Build**
+4. XAVI creates a complete P&L with all your accounts!
+
+The report includes:
+- All revenue accounts (4xxx)
+- Cost of Goods Sold (5xxx)
+- Operating Expenses (6xxx)
+- Other Income/Expense (7xxx, 8xxx)
+- Calculated rows: Gross Profit, Operating Income, Net Income
+
+### Build Budget Report
+
+1. Click **Build Budget Report**
+2. Select the year, subsidiary, and budget category
+3. Click **Build**
+4. Compare actuals vs. budget side-by-side!
+
+---
+
+## Performance Tips
+
+### Use Year-Only Format
+
+Instead of:
+```
+=XAVI.BALANCE("4010", "Jan 2025", "Dec 2025")   ← 12 separate queries
+```
+
+Use:
+```
+=XAVI.BALANCE("4010", "2025", "2025")           ← 1 optimized query
+```
+
+### Prep Data First
+
+Before entering many formulas:
+1. Click **Prep Data** in the task pane
+2. XAVI pre-loads all account data
+3. Your formulas fill instantly!
+
+### Drag, Don't Type
+
+When adding multiple formulas:
+1. Enter ONE formula with proper cell references
+2. Drag down/right to copy
+3. XAVI batches all requests automatically (60+ formulas → 1 API call)
+
+### Clear Cache When Needed
+
+If data seems stale:
+1. Click **Clear Cache** in the task pane
+2. Formulas will refresh with latest NetSuite data
+
+---
+
+## Troubleshooting
+
+### Formula Returns 0
+
+**Possible causes:**
+1. Account number doesn't exist in NetSuite
+2. No transactions for that account/period
+3. Filters are too restrictive (wrong subsidiary/department)
+
+**Solution:** Verify the account exists in NetSuite and has activity for the period.
+
+### Formula Shows #BUSY
+
+**Cause:** XAVI is fetching data from NetSuite.
+
+**Solution:** Wait a few seconds. If it persists, check your internet connection.
+
+### Formula Shows #VALUE!
+
+**Cause:** Invalid parameter format.
+
+**Solution:** Check that:
+- Account is a number or valid wildcard (e.g., `"4010"` or `"4*"`)
+- Period format is correct (e.g., `"Jan 2025"` or `"2025"`)
+- Filter parameters use `""` for empty, not missing
+
+### All Formulas Return 0 Suddenly
+
+**Possible causes:**
+1. Server connection issue
+2. Tunnel URL changed
+
+**Solution:** 
+1. Click **Clear Cache** in the task pane
+2. If that doesn't work, contact your administrator
+
+### Slow Performance
+
+**Solution:**
+1. Use **Prep Data** before entering many formulas
+2. Use year-only format (`"2025"`) instead of month ranges
+3. Use wildcards for summary rows instead of many individual accounts
+
+---
+
+## FAQ
+
+### Q: How often does data refresh?
+
+Data is cached for 5 minutes. Click **Clear Cache** to force a refresh, or **Refresh All** to recalculate all formulas.
+
+### Q: Can I use XAVI offline?
+
+No, XAVI requires an internet connection to communicate with NetSuite.
+
+### Q: Why do some account signs look different than NetSuite?
+
+XAVI shows the true GL (General Ledger) values. NetSuite sometimes displays different signs for presentation purposes. The **totals always match** - only individual line signs may differ.
+
+### Q: Can I use wildcards with budgets?
+
+Yes! `=XAVI.BUDGET("6*", "2025", "2025")` returns the sum of all 6xxx expense budgets.
+
+### Q: How do I report on multiple subsidiaries?
+
+Use `"(Consolidated)"` suffix:
+```
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Inc. (Consolidated)")
+```
+
+Or create separate rows for each subsidiary and sum them.
+
+### Q: Can I mix wildcards with exact accounts?
+
+In a single formula, use one pattern. But you can have different formulas:
+- Row 1: `=XAVI.BALANCE("4*",...)` → Total Revenue
+- Row 2: `=XAVI.BALANCE("4010",...)` → Product Revenue (detail)
+- Row 3: `=XAVI.BALANCE("4020",...)` → Service Revenue (detail)
+
+---
+
+## Need Help?
+
+- **Task Pane:** Expand "Getting Started Guide" for quick tips
+- **Formula Reference:** Expand "Formula Reference" in the task pane
+- **Support:** Contact your XAVI administrator
+
+---
+
+*Copyright © 2025 Celigo, Inc. All rights reserved.*
+
