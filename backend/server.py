@@ -150,6 +150,56 @@ def escape_sql(text):
     return str(text).replace("'", "''")
 
 
+def build_account_filter(accounts, column='a.acctnumber'):
+    """
+    Build SQL filter clause for account numbers, supporting wildcards.
+    
+    If an account contains '*', it's treated as a wildcard pattern:
+    - '4*' becomes LIKE '4%' (all accounts starting with 4)
+    - '40*' becomes LIKE '40%' (all accounts starting with 40)
+    - '4010' (no asterisk) uses exact match with IN clause
+    
+    Args:
+        accounts: List of account numbers (may include wildcards with *)
+        column: SQL column name to filter (default: 'a.acctnumber')
+    
+    Returns:
+        SQL clause string like "(a.acctnumber IN ('4010','4020') OR a.acctnumber LIKE '5%')"
+    
+    Example:
+        build_account_filter(['4010', '4020', '5*'])
+        → "(a.acctnumber IN ('4010','4020') OR a.acctnumber LIKE '5%')"
+    """
+    if not accounts:
+        return "1=0"  # No accounts = no results
+    
+    exact_matches = []
+    wildcard_patterns = []
+    
+    for acc in accounts:
+        acc_str = str(acc).strip()
+        if '*' in acc_str:
+            # Convert * to % for SQL LIKE
+            pattern = escape_sql(acc_str.replace('*', '%'))
+            wildcard_patterns.append(f"{column} LIKE '{pattern}'")
+        else:
+            # Exact match
+            exact_matches.append(f"'{escape_sql(acc_str)}'")
+    
+    clauses = []
+    
+    if exact_matches:
+        clauses.append(f"{column} IN ({','.join(exact_matches)})")
+    
+    if wildcard_patterns:
+        clauses.extend(wildcard_patterns)
+    
+    if len(clauses) == 1:
+        return clauses[0]
+    else:
+        return f"({' OR '.join(clauses)})"
+
+
 def is_balance_sheet_account(accttype):
     """
     Determine if an account type is a Balance Sheet account.
@@ -1285,11 +1335,12 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
     if accountingbook is None:
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
-    accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+    # Build account filter (supports wildcards like '4*' for all revenue accounts)
+    account_filter = build_account_filter(accounts)
     periods_in = ','.join([f"'{escape_sql(p)}'" for p in periods])
     
     # Add account and period filters
-    where_clause = f"{base_where} AND a.acctnumber IN ({accounts_in}) AND apf.periodname IN ({periods_in})"
+    where_clause = f"{base_where} AND {account_filter} AND apf.periodname IN ({periods_in})"
     
     # Only include P&L account types (using constants)
     where_clause += f" AND a.accttype IN ({PL_TYPES_SQL})"
@@ -1384,7 +1435,8 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
     if accountingbook is None:
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
-    accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+    # Build account filter (supports wildcards like '4*')
+    account_filter = build_account_filter(accounts)
     
     enddate = period_info['enddate']
     period_id = period_info['id']
@@ -1396,8 +1448,8 @@ def build_bs_query_single_period(accounts, period_name, period_info, base_where,
     except:
         end_date_str = enddate
     
-    # Build WHERE clause
-    where_clause = f"{base_where} AND a.acctnumber IN ({accounts_in})"
+    # Build WHERE clause (account_filter supports wildcards like '4*')
+    where_clause = f"{base_where} AND {account_filter}"
     # Exclude P&L types - Balance Sheet only (using constants)
     where_clause += f" AND a.accttype NOT IN ({PL_TYPES_SQL})"
     # CUMULATIVE: All transactions through period end (no lower bound)
@@ -1473,7 +1525,8 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
     if accountingbook is None:
         accountingbook = DEFAULT_ACCOUNTING_BOOK
     
-    accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+    # Build account filter (supports wildcards like '4*')
+    account_filter = build_account_filter(accounts)
     
     # Find the earliest period to determine fiscal year start
     earliest_enddate = min([info['enddate'] for info in period_info.values()])
@@ -1501,8 +1554,8 @@ def build_bs_query(accounts, period_info, base_where, target_sub, needs_line_joi
         except:
             end_date_str = enddate
         
-        # Build WHERE clause for this period
-        period_where = f"{base_where} AND a.acctnumber IN ({accounts_in})"
+        # Build WHERE clause for this period (account_filter supports wildcards)
+        period_where = f"{base_where} AND {account_filter}"
         # Exclude P&L types - Balance Sheet only (using constants)
         period_where += f" AND a.accttype NOT IN ({PL_TYPES_SQL})"
         # CRITICAL: Balance Sheet is CUMULATIVE - ALL transactions through period end (like user's reference)
@@ -3683,9 +3736,9 @@ def batch_balance():
             "tal.posting = 'T'"
         ]
         
-        # Add accounts IN clause
-        accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
-        where_clauses.append(f"a.acctnumber IN ({accounts_in})")
+        # Add account filter (supports wildcards like '4*' for all revenue accounts)
+        account_filter = build_account_filter(accounts)
+        where_clauses.append(account_filter)
         
         # ========================================================================
         # SUBSIDIARY FILTERING - Critical for correct subsidiary-level reporting
@@ -3766,8 +3819,9 @@ def batch_balance():
         all_balances = {}
         
         # Step 1: Get account types for all requested accounts (single quick query)
-        accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
-        type_query = f"SELECT acctnumber, accttype FROM Account WHERE acctnumber IN ({accounts_in})"
+        # NOTE: This supports wildcards - if user passed '4*', this finds all accounts starting with 4
+        account_type_filter = build_account_filter(accounts)
+        type_query = f"SELECT acctnumber, accttype FROM Account WHERE {account_type_filter}"
         type_result = query_netsuite(type_query, timeout=30)
         
         # Classify accounts into P&L vs BS
@@ -3797,12 +3851,12 @@ def batch_balance():
         
         # Step 2: ONLY run P&L query if there are P&L accounts
         if pl_accounts:
-            # Build WHERE clause specifically for P&L accounts
-            pl_accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in pl_accounts])
+            # Build WHERE clause specifically for P&L accounts (exact matches only - wildcards already expanded)
+            pl_account_filter = build_account_filter(pl_accounts)
             pl_where_clauses = where_clauses.copy()
-            # Replace the accounts IN clause with just P&L accounts
-            pl_where_clauses = [c for c in pl_where_clauses if 'a.acctnumber IN' not in c]
-            pl_where_clauses.append(f"a.acctnumber IN ({pl_accounts_in})")
+            # Replace the account filter clause with just P&L accounts
+            pl_where_clauses = [c for c in pl_where_clauses if 'a.acctnumber' not in c]
+            pl_where_clauses.append(pl_account_filter)
             pl_base_where = " AND ".join(pl_where_clauses)
             
             pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join, accountingbook,
@@ -3829,12 +3883,12 @@ def batch_balance():
         if bs_accounts and period_info:
             print(f"DEBUG - Querying {len(period_info)} periods for {len(bs_accounts)} Balance Sheet accounts...", file=sys.stderr)
             
-            # Build WHERE clause specifically for BS accounts
-            bs_accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in bs_accounts])
+            # Build WHERE clause specifically for BS accounts (exact matches only - wildcards already expanded)
+            bs_account_filter = build_account_filter(bs_accounts)
             bs_where_clauses = where_clauses.copy()
-            # Replace the accounts IN clause with just BS accounts
-            bs_where_clauses = [c for c in bs_where_clauses if 'a.acctnumber IN' not in c]
-            bs_where_clauses.append(f"a.acctnumber IN ({bs_accounts_in})")
+            # Replace the account filter clause with just BS accounts
+            bs_where_clauses = [c for c in bs_where_clauses if 'a.acctnumber' not in c]
+            bs_where_clauses.append(bs_account_filter)
             bs_base_where = " AND ".join(bs_where_clauses)
             
             for period, info in period_info.items():
@@ -3990,13 +4044,13 @@ def batch_get_account_types():
         if not accounts:
             return jsonify({'types': {}})
         
-        # Build IN clause
-        accounts_in = ','.join([f"'{escape_sql(acc)}'" for acc in accounts])
+        # Build account filter (supports wildcards like '4*')
+        account_filter = build_account_filter(accounts)
         
         query = f"""
             SELECT acctnumber, accttype
             FROM Account
-            WHERE acctnumber IN ({accounts_in})
+            WHERE {account_filter}
         """
         
         result = query_netsuite(query)
@@ -4777,10 +4831,9 @@ def batch_budget():
         # Build WHERE clauses for filters
         where_clauses = []
         
-        # Account filter - use IN clause for efficiency
-        escaped_accounts = [escape_sql(acc) for acc in accounts]
-        accounts_in = ", ".join([f"'{acc}'" for acc in escaped_accounts])
-        where_clauses.append(f"a.acctnumber IN ({accounts_in})")
+        # Account filter (supports wildcards like '4*' for all revenue accounts)
+        account_filter = build_account_filter(accounts)
+        where_clauses.append(account_filter)
         
         # Period filter - use IN clause
         escaped_periods = [escape_sql(p) for p in periods]

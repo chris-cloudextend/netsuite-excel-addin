@@ -2268,7 +2268,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.47</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.48</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2823,7 +2823,7 @@
             <div class="formula-card">
                 <div class="formula-name">XAVI.BALANCE</div>
                 <div class="formula-description">
-                    Get the GL account balance for a specific period or range, with optional filtering by subsidiary, department, location, and class.
+                    Get the GL account balance for a specific period or range, with optional filtering by subsidiary, department, location, and class. <strong>Supports wildcards!</strong>
                 </div>
                 <div class="formula-syntax">
                     =XAVI.BALANCE(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])
@@ -2831,7 +2831,7 @@
                 <div class="parameters">
                     <div class="param-title">Required Parameters</div>
                     <div class="param-item">
-                        <span class="param-name">account</span> - Account number or ID
+                        <span class="param-name">account</span> - Account number, ID, or <strong>wildcard pattern</strong> (e.g., "4*" for all revenue)
                     </div>
                     <div class="param-item">
                         <span class="param-name">fromPeriod</span> - Starting period (e.g., "Jan 2025" or just "2025" for full year)
@@ -2861,7 +2861,13 @@
                     <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025", "", "13", "", "")</div>
                 </div>
                 <div class="tip" style="margin-top: 12px; padding: 10px; background: #f0fdf4; border-left: 3px solid #22c55e; font-size: 12px;">
-                    <strong>💡 Tip:</strong> Use year-only format (e.g., "2025", "2025") for annual reports - it uses an optimized single query instead of 12 monthly queries, making it significantly faster.
+                    <strong>💡 Tip:</strong> Use year-only format (e.g., "2025", "2025") for annual reports - it uses an optimized single query instead of 12 monthly queries.
+                </div>
+                <div class="tip" style="margin-top: 8px; padding: 10px; background: #eff6ff; border-left: 3px solid #3b82f6; font-size: 12px;">
+                    <strong>🔍 Wildcards:</strong> Use <code>*</code> to match multiple accounts:<br>
+                    • <code>"4*"</code> = all accounts starting with 4 (revenue)<br>
+                    • <code>"60*"</code> = all accounts starting with 60<br>
+                    • <code>"4010"</code> = exact match only (no 40100, 40101, etc.)
                 </div>
     </div>
     
@@ -2869,7 +2875,7 @@
             <div class="formula-card">
                 <div class="formula-name">XAVI.BUDGET</div>
                 <div class="formula-description">
-                    Get the budget amount for an account and period, with optional filtering by subsidiary, department, location, and class.
+                    Get the budget amount for an account and period, with optional filtering by subsidiary, department, location, and class. <strong>Supports wildcards!</strong>
                 </div>
                 <div class="formula-syntax">
                     =XAVI.BUDGET(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])
@@ -2877,7 +2883,7 @@
                 <div class="parameters">
                     <div class="param-title">Required Parameters</div>
                     <div class="param-item">
-                        <span class="param-name">account</span> - Account number or ID
+                        <span class="param-name">account</span> - Account number, ID, or <strong>wildcard pattern</strong> (e.g., "5*" for all COGS)
                     </div>
                     <div class="param-item">
                         <span class="param-name">fromPeriod</span> - Starting period (e.g., "Jan 2025" or "2025" for full year)
@@ -2904,6 +2910,7 @@
                     <div class="example-code">=XAVI.BUDGET("5000", "Jan 2025", "Dec 2025")</div>
                     <div class="example-code">=XAVI.BUDGET("5000", "2025", "2025")  <span style="color:#6b7280;">← Year-only format</span></div>
                     <div class="example-code">=XAVI.BUDGET(A4, B1, C1)</div>
+                    <div class="example-code">=XAVI.BUDGET("6*", "2025", "2025")  <span style="color:#6b7280;">← All expense budgets</span></div>
                 </div>
             </div>
 

@@ -59,6 +59,25 @@ This is your primary formula for building financial statements. It retrieves the
 =XAVI.BALANCE(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class], [accountingBook])
 ```
 
+**Wildcard Support:**
+The `account` parameter supports wildcards using `*` to match multiple accounts at once:
+
+| Pattern | Matches | Use Case |
+|---------|---------|----------|
+| `"4*"` | All accounts starting with 4 | Total Revenue (all 4xxx accounts) |
+| `"40*"` | All accounts starting with 40 | Product Revenue only |
+| `"5*"` | All accounts starting with 5 | Total COGS |
+| `"6*"` | All accounts starting with 6 | Total Operating Expenses |
+| `"4010"` | Account 4010 only | Exact match (no 40100, 40101, etc.) |
+
+**Example:**
+```
+=XAVI.BALANCE("4*", "Jan 2025", "Dec 2025")  → Sum of ALL revenue accounts
+=XAVI.BALANCE("60*", "Q1 2025", "Q1 2025")  → Sum of 60xx expense accounts
+```
+
+This is particularly useful for creating summary rows without listing every account individually.
+
 **For Balance Sheet accounts** (Assets, Liabilities, Equity):
 - The formula returns the **cumulative balance** as of period end
 - This matches how NetSuite displays Balance Sheet balances
@@ -191,6 +210,33 @@ When running consolidated reports across subsidiaries:
 | `/account/name` | POST | Get account name |
 | `/account/type` | POST | Get account type |
 | `/lookups/all` | GET | Get filter lookups |
+
+## Wildcard Account Support
+
+All account-related endpoints support wildcard patterns using `*`:
+
+**Implementation (`server.py`):**
+```python
+def build_account_filter(accounts, column='a.acctnumber'):
+    """
+    Build SQL filter clause for account numbers, supporting wildcards.
+    - '4*' becomes LIKE '4%' (all accounts starting with 4)
+    - '4010' (no asterisk) uses exact match with IN clause
+    
+    Returns SQL like "(a.acctnumber IN ('4010','4020') OR a.acctnumber LIKE '5%')"
+    """
+```
+
+**Key behavior:**
+- Wildcards are converted to SQL LIKE patterns (`*` → `%`)
+- Mixed queries work: `['4010', '5*']` → `IN ('4010') OR LIKE '5%'`
+- Account type detection expands wildcards first, then classifies into P&L vs BS
+- Results are **summed** across all matched accounts
+
+**Use cases:**
+- `"4*"` - Sum all revenue accounts (4xxx)
+- `"60*"` - Sum operating expense accounts (60xx)
+- `"1*"` - Sum all asset accounts (Balance Sheet)
 
 ---
 
@@ -1214,6 +1260,7 @@ Backend prints detailed query information:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.0.5.48 | Dec 2025 | **Wildcard account support** - Use `"4*"` to sum all revenue accounts, `"6*"` for expenses, etc. Works in XAVI.BALANCE and XAVI.BUDGET. |
 | 3.0.5.44 | Dec 2025 | **Simplified Net Income formula** - `Operating Income + Other Income - Other Expense`. Removed complex sign-aware logic; raw GL data handles signs correctly. |
 | 3.0.5.43 | Dec 2025 | Removed MatchingUnrERV sign flip - sign-aware Excel formulas handle all cases |
 | 3.0.5.42 | Dec 2025 | Tested MatchingUnrERV exception (ultimately removed in 3.0.5.44) |
