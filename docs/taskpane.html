@@ -2253,7 +2253,7 @@
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.44</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.45</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4671,21 +4671,22 @@
                     
                     // ========== ROW 2: PARAMETER LABELS (above values) ==========
                     sheet.getRange("P2").values = [["YEAR"]];
-                    sheet.getRange("Q2").values = [["Subsidiary Context"]];
-                    sheet.getRange("R2").values = [["Structure Sync"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("R2").values = [["Department"]];
+                    sheet.getRange("S2").values = [["Location"]];
+                    sheet.getRange("T2").values = [["Class"]];
+                    sheet.getRange("U2").values = [["Acct Book"]];
+                    sheet.getRange("V2").values = [["Structure Sync"]];
                     await context.sync();
                     
                     // Style parameter labels
                     try {
-                        sheet.getRange("P2").format.font.bold = true;
-                        sheet.getRange("P2").format.font.color = "#09235C";
-                        sheet.getRange("P2").format.font.size = 10;
-                        sheet.getRange("Q2").format.font.bold = true;
-                        sheet.getRange("Q2").format.font.color = "#09235C";
-                        sheet.getRange("Q2").format.font.size = 10;
-                        sheet.getRange("R2").format.font.bold = true;
-                        sheet.getRange("R2").format.font.color = "#09235C";
-                        sheet.getRange("R2").format.font.size = 10;
+                        const labelCells = ["P2", "Q2", "R2", "S2", "T2", "U2", "V2"];
+                        for (const cell of labelCells) {
+                            sheet.getRange(cell).format.font.bold = true;
+                            sheet.getRange(cell).format.font.color = "#09235C";
+                            sheet.getRange(cell).format.font.size = 10;
+                        }
                         await context.sync();
                     } catch (e) {}
                     
@@ -4696,20 +4697,21 @@
                     
                     sheet.getRange("P3").values = [[currentYear]];
                     sheet.getRange("Q3").values = [[defaultSubsidiary]];
-                    sheet.getRange("R3").values = [["TRUE"]];
+                    sheet.getRange("R3").values = [[""]];  // Department - empty by default
+                    sheet.getRange("S3").values = [[""]];  // Location - empty by default
+                    sheet.getRange("T3").values = [[""]];  // Class - empty by default
+                    sheet.getRange("U3").values = [[""]];  // Accounting Book - empty by default (uses Primary Book)
+                    sheet.getRange("V3").values = [["TRUE"]];
                     await context.sync();
                     
                     // Style parameter value cells
                     try {
-                        sheet.getRange("P3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("P3").format.font.bold = true;
-                        sheet.getRange("P3").format.font.color = "#09235C";
-                        sheet.getRange("Q3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("Q3").format.font.bold = true;
-                        sheet.getRange("Q3").format.font.color = "#09235C";
-                        sheet.getRange("R3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("R3").format.font.bold = true;
-                        sheet.getRange("R3").format.font.color = "#09235C";
+                        const valueCells = ["P3", "Q3", "R3", "S3", "T3", "U3", "V3"];
+                        for (const cell of valueCells) {
+                            sheet.getRange(cell).format.fill.color = "#0AE2C1";
+                            sheet.getRange(cell).format.font.bold = true;
+                            sheet.getRange(cell).format.font.color = "#09235C";
+                        }
                         await context.sync();
                     } catch (e) {}
                     
@@ -4837,7 +4839,7 @@
                         for (let m = 0; m < 12; m++) {
                             const colLetter = String.fromCharCode(67 + m);
                             const cell = sheet.getRange(`${colLetter}${row}`);
-                            cell.formulas = [[`=XAVI.BALANCE($A${row},${colLetter}$5,${colLetter}$5,$Q$3)`]];
+                            cell.formulas = [[`=XAVI.BALANCE($A${row},${colLetter}$5,${colLetter}$5,$Q$3,$R$3,$S$3,$T$3,$U$3)`]];
                         }
                         
                         // YTD formula
@@ -5706,12 +5708,12 @@
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Read R2 to check for sync marker label
-                    const markerCell = sheet.getRange("R2");
+                    // Read V2 to check for sync marker label (Structure Sync is now in column V)
+                    const markerCell = sheet.getRange("V2");
                     markerCell.load("values");
                     
-                    // Read R3 for sync flag value
-                    const syncCell = sheet.getRange("R3");
+                    // Read V3 for sync flag value
+                    const syncCell = sheet.getRange("V3");
                     syncCell.load("values");
                     
                     // Read P3 for year
@@ -5920,20 +5922,21 @@
                     
                     // ========== ROW 2: PARAMETER LABELS (above values) ==========
                     sheet.getRange("P2").values = [["YEAR"]];
-                    sheet.getRange("Q2").values = [["Subsidiary Context"]];
-                    sheet.getRange("R2").values = [["Structure Sync"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("R2").values = [["Department"]];
+                    sheet.getRange("S2").values = [["Location"]];
+                    sheet.getRange("T2").values = [["Class"]];
+                    sheet.getRange("U2").values = [["Acct Book"]];
+                    sheet.getRange("V2").values = [["Structure Sync"]];
                     await context.sync();
                     
                     try {
-                        sheet.getRange("P2").format.font.bold = true;
-                        sheet.getRange("P2").format.font.color = "#09235C";
-                        sheet.getRange("P2").format.font.size = 10;
-                        sheet.getRange("Q2").format.font.bold = true;
-                        sheet.getRange("Q2").format.font.color = "#09235C";
-                        sheet.getRange("Q2").format.font.size = 10;
-                        sheet.getRange("R2").format.font.bold = true;
-                        sheet.getRange("R2").format.font.color = "#09235C";
-                        sheet.getRange("R2").format.font.size = 10;
+                        const labelCells = ["P2", "Q2", "R2", "S2", "T2", "U2", "V2"];
+                        for (const cell of labelCells) {
+                            sheet.getRange(cell).format.font.bold = true;
+                            sheet.getRange(cell).format.font.color = "#09235C";
+                            sheet.getRange(cell).format.font.size = 10;
+                        }
                         await context.sync();
                     } catch (e) {}
                     
@@ -5944,20 +5947,21 @@
                     
                     sheet.getRange("P3").values = [[targetYear]];
                     sheet.getRange("Q3").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
-                    sheet.getRange("R3").values = [["TRUE"]];
+                    sheet.getRange("R3").values = [[""]];  // Department - empty by default
+                    sheet.getRange("S3").values = [[""]];  // Location - empty by default
+                    sheet.getRange("T3").values = [[""]];  // Class - empty by default
+                    sheet.getRange("U3").values = [[""]];  // Accounting Book - empty by default
+                    sheet.getRange("V3").values = [["TRUE"]];
                     await context.sync();
                     
                     try {
                         // Style input cells with teal background
-                        sheet.getRange("P3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("P3").format.font.bold = true;
-                        sheet.getRange("P3").format.font.color = "#09235C";
-                        sheet.getRange("Q3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("Q3").format.font.bold = true;
-                        sheet.getRange("Q3").format.font.color = "#09235C";
-                        sheet.getRange("R3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("R3").format.font.bold = true;
-                        sheet.getRange("R3").format.font.color = "#09235C";
+                        const valueCells = ["P3", "Q3", "R3", "S3", "T3", "U3", "V3"];
+                        for (const cell of valueCells) {
+                            sheet.getRange(cell).format.fill.color = "#0AE2C1";
+                            sheet.getRange(cell).format.font.bold = true;
+                            sheet.getRange(cell).format.font.color = "#09235C";
+                        }
                         await context.sync();
                     } catch (e) {}
                     
@@ -6058,7 +6062,7 @@
                         sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                         for (let m = 0; m < 12; m++) {
                             const col = String.fromCharCode(67 + m);
-                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3)`]];
+                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3,$R$3,$S$3,$T$3,$U$3)`]];
                         }
                         sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                     };
@@ -7677,18 +7681,26 @@ export default {
                     
                     // Add a comment to explain the cell's purpose
                     try {
-                        // Try to delete existing comment first
+                        // Get the cell address to work with comments collection
+                        range.load('address');
+                        await context.sync();
+                        const cellAddress = range.address;
+                        
+                        // Try to delete existing comment first using the comments collection
                         try {
-                            const existingComment = range.getComment();
+                            const comments = context.workbook.comments;
+                            const existingComment = comments.getItemByCell(cellAddress);
+                            existingComment.load('id');
                             await context.sync();
                             existingComment.delete();
                             await context.sync();
-                        } catch (e) { /* No existing comment */ }
+                        } catch (e) { /* No existing comment - that's fine */ }
                         
-                        // Add new comment
-                        range.addComment(commentText);
+                        // Add new comment using the comments collection
+                        const comments = context.workbook.comments;
+                        comments.add(cellAddress, commentText);
                         await context.sync();
-                        console.log(`✓ Added comment for ${typeName} filter`);
+                        console.log(`✓ Added comment for ${typeName} filter at ${cellAddress}`);
                     } catch (commentError) {
                         console.warn('Could not add comment:', commentError.message);
                     }
@@ -8192,10 +8204,10 @@ export default {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Check for sync marker (R2 = label, R3 = value)
-                    const markerCell = sheet.getRange("R2");
+                    // Check for sync marker (V2 = label, V3 = value - Structure Sync is now in column V)
+                    const markerCell = sheet.getRange("V2");
                     markerCell.load("values");
-                    const syncCell = sheet.getRange("R3");
+                    const syncCell = sheet.getRange("V3");
                     syncCell.load("values");
                     const yearCell = sheet.getRange("P3");
                     yearCell.load("values");
@@ -8266,10 +8278,10 @@ export default {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Check for sync marker (R2 = label, R3 = value)
-                    const markerCell = sheet.getRange("R2");
+                    // Check for sync marker (V2 = label, V3 = value - Structure Sync is now in column V)
+                    const markerCell = sheet.getRange("V2");
                     markerCell.load("values");
-                    const syncCell = sheet.getRange("R3");
+                    const syncCell = sheet.getRange("V3");
                     syncCell.load("values");
                     const yearCell = sheet.getRange("P3");
                     yearCell.load("values");
@@ -8424,20 +8436,21 @@ export default {
                     
                     // ROW 2: PARAMETER LABELS (above values)
                     sheet.getRange("P2").values = [["YEAR"]];
-                    sheet.getRange("Q2").values = [["Subsidiary Context"]];
-                    sheet.getRange("R2").values = [["Structure Sync"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("R2").values = [["Department"]];
+                    sheet.getRange("S2").values = [["Location"]];
+                    sheet.getRange("T2").values = [["Class"]];
+                    sheet.getRange("U2").values = [["Acct Book"]];
+                    sheet.getRange("V2").values = [["Structure Sync"]];
                     await context.sync();
                     
                     try {
-                        sheet.getRange("P2").format.font.bold = true;
-                        sheet.getRange("P2").format.font.color = "#09235C";
-                        sheet.getRange("P2").format.font.size = 10;
-                        sheet.getRange("Q2").format.font.bold = true;
-                        sheet.getRange("Q2").format.font.color = "#09235C";
-                        sheet.getRange("Q2").format.font.size = 10;
-                        sheet.getRange("R2").format.font.bold = true;
-                        sheet.getRange("R2").format.font.color = "#09235C";
-                        sheet.getRange("R2").format.font.size = 10;
+                        const labelCells = ["P2", "Q2", "R2", "S2", "T2", "U2", "V2"];
+                        for (const cell of labelCells) {
+                            sheet.getRange(cell).format.font.bold = true;
+                            sheet.getRange(cell).format.font.color = "#09235C";
+                            sheet.getRange(cell).format.font.size = 10;
+                        }
                         await context.sync();
                     } catch (e) {}
                     
@@ -8448,19 +8461,20 @@ export default {
                     
                     sheet.getRange("P3").values = [[targetYear]];
                     sheet.getRange("Q3").values = [[currentSubsidiary || 'Celigo Inc. (Consolidated)']];
-                    sheet.getRange("R3").values = [["TRUE"]];
+                    sheet.getRange("R3").values = [[""]];  // Department
+                    sheet.getRange("S3").values = [[""]];  // Location
+                    sheet.getRange("T3").values = [[""]];  // Class
+                    sheet.getRange("U3").values = [[""]];  // Accounting Book
+                    sheet.getRange("V3").values = [["TRUE"]];
                     await context.sync();
                     
                     try {
-                        sheet.getRange("P3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("P3").format.font.bold = true;
-                        sheet.getRange("P3").format.font.color = "#09235C";
-                        sheet.getRange("Q3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("Q3").format.font.bold = true;
-                        sheet.getRange("Q3").format.font.color = "#09235C";
-                        sheet.getRange("R3").format.fill.color = "#0AE2C1";
-                        sheet.getRange("R3").format.font.bold = true;
-                        sheet.getRange("R3").format.font.color = "#09235C";
+                        const valueCells = ["P3", "Q3", "R3", "S3", "T3", "U3", "V3"];
+                        for (const cell of valueCells) {
+                            sheet.getRange(cell).format.fill.color = "#0AE2C1";
+                            sheet.getRange(cell).format.font.bold = true;
+                            sheet.getRange(cell).format.font.color = "#09235C";
+                        }
                         await context.sync();
                     } catch (e) {}
                     
@@ -8560,7 +8574,7 @@ export default {
                         sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                         for (let m = 0; m < 12; m++) {
                             const col = String.fromCharCode(67 + m);
-                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3)`]];
+                            sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3,$R$3,$S$3,$T$3,$U$3)`]];
                         }
                         sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                     };
@@ -9315,12 +9329,12 @@ export default {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Check R2 for sync marker label
-                    const markerCell = sheet.getRange("R2");
+                    // Check V2 for sync marker label (Structure Sync is now in column V)
+                    const markerCell = sheet.getRange("V2");
                     markerCell.load("values");
                     
-                    // Check R3 for sync flag value
-                    const syncCell = sheet.getRange("R3");
+                    // Check V3 for sync flag value
+                    const syncCell = sheet.getRange("V3");
                     syncCell.load("values");
                     
                     // Get year and subsidiary if this is an auto-generated sheet
@@ -9336,8 +9350,8 @@ export default {
                     const syncValue = String(syncCell.values[0][0] || '').toUpperCase();
                     
                     // DEBUG: Show exactly what values we're reading
-                    console.log(`🔍 SYNC CHECK - R2 raw: "${markerCell.values[0][0]}", lowercased: "${markerValue}"`);
-                    console.log(`🔍 SYNC CHECK - R3 raw: "${syncCell.values[0][0]}", uppercased: "${syncValue}"`);
+                    console.log(`🔍 SYNC CHECK - V2 raw: "${markerCell.values[0][0]}", lowercased: "${markerValue}"`);
+                    console.log(`🔍 SYNC CHECK - V3 raw: "${syncCell.values[0][0]}", uppercased: "${syncValue}"`);
                     console.log(`🔍 SYNC CHECK - includes 'structure sync': ${markerValue.includes('structure sync')}`);
                     console.log(`🔍 SYNC CHECK - syncValue === 'TRUE': ${syncValue === 'TRUE'}`);
                     
@@ -9474,20 +9488,21 @@ export default {
                             
                             // ===== ROW 2: PARAMETER LABELS =====
                             sheet.getRange("P2").values = [["YEAR"]];
-                            sheet.getRange("Q2").values = [["Subsidiary Context"]];
-                            sheet.getRange("R2").values = [["Structure Sync"]];
+                            sheet.getRange("Q2").values = [["Subsidiary"]];
+                            sheet.getRange("R2").values = [["Department"]];
+                            sheet.getRange("S2").values = [["Location"]];
+                            sheet.getRange("T2").values = [["Class"]];
+                            sheet.getRange("U2").values = [["Acct Book"]];
+                            sheet.getRange("V2").values = [["Structure Sync"]];
                             await context.sync();
                             
                             try {
-                                sheet.getRange("P2").format.font.bold = true;
-                                sheet.getRange("P2").format.font.color = "#09235C";
-                                sheet.getRange("P2").format.font.size = 10;
-                                sheet.getRange("Q2").format.font.bold = true;
-                                sheet.getRange("Q2").format.font.color = "#09235C";
-                                sheet.getRange("Q2").format.font.size = 10;
-                                sheet.getRange("R2").format.font.bold = true;
-                                sheet.getRange("R2").format.font.color = "#09235C";
-                                sheet.getRange("R2").format.font.size = 10;
+                                const labelCells = ["P2", "Q2", "R2", "S2", "T2", "U2", "V2"];
+                                for (const cell of labelCells) {
+                                    sheet.getRange(cell).format.font.bold = true;
+                                    sheet.getRange(cell).format.font.color = "#09235C";
+                                    sheet.getRange(cell).format.font.size = 10;
+                                }
                                 await context.sync();
                             } catch (e) {}
                             
@@ -9498,19 +9513,20 @@ export default {
                             
                             sheet.getRange("P3").values = [[syncYear]];
                             sheet.getRange("Q3").values = [[syncSubsidiary || 'Celigo Inc. (Consolidated)']];
-                            sheet.getRange("R3").values = [["TRUE"]];
+                            sheet.getRange("R3").values = [[""]];  // Department
+                            sheet.getRange("S3").values = [[""]];  // Location
+                            sheet.getRange("T3").values = [[""]];  // Class
+                            sheet.getRange("U3").values = [[""]];  // Accounting Book
+                            sheet.getRange("V3").values = [["TRUE"]];
                             await context.sync();
                             
                             try {
-                                sheet.getRange("P3").format.fill.color = "#0AE2C1";
-                                sheet.getRange("P3").format.font.bold = true;
-                                sheet.getRange("P3").format.font.color = "#09235C";
-                                sheet.getRange("Q3").format.fill.color = "#0AE2C1";
-                                sheet.getRange("Q3").format.font.bold = true;
-                                sheet.getRange("Q3").format.font.color = "#09235C";
-                                sheet.getRange("R3").format.fill.color = "#0AE2C1";
-                                sheet.getRange("R3").format.font.bold = true;
-                                sheet.getRange("R3").format.font.color = "#09235C";
+                                const valueCells = ["P3", "Q3", "R3", "S3", "T3", "U3", "V3"];
+                                for (const cell of valueCells) {
+                                    sheet.getRange(cell).format.fill.color = "#0AE2C1";
+                                    sheet.getRange(cell).format.font.bold = true;
+                                    sheet.getRange(cell).format.font.color = "#09235C";
+                                }
                                 await context.sync();
                             } catch (e) {}
                             
@@ -9611,7 +9627,7 @@ export default {
                                 sheet.getRange(`B${row}`).formulas = [[`=XAVI.NAME($A${row})`]];  // Reference account number for drag-ability
                                 for (let m = 0; m < 12; m++) {
                                     const col = String.fromCharCode(67 + m);
-                                    sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3)`]];
+                                    sheet.getRange(`${col}${row}`).formulas = [[`=XAVI.BALANCE($A${row},${col}$5,${col}$5,$Q$3,$R$3,$S$3,$T$3,$U$3)`]];
                                 }
                                 sheet.getRange(`O${row}`).formulas = [[`=SUM(C${row}:N${row})`]];
                             };
