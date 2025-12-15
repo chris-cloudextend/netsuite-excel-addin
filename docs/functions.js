@@ -1712,7 +1712,8 @@ function convertToMonthYear(value, isFromPeriod = true) {
         return value.trim();
     }
     
-    // YEAR-ONLY FORMAT: "2025" -> expand to "Jan 2025" or "Dec 2025"
+    // YEAR-ONLY FORMAT: "2025" or 2025 -> expand to "Jan 2025" or "Dec 2025"
+    // Handle both string "2025" and number 2025 (Excel often passes numbers)
     // This avoids timezone bugs where new Date("2025") becomes Dec 31, 2024 in local time
     if (typeof value === 'string') {
         const trimmed = value.trim();
@@ -1720,9 +1721,18 @@ function convertToMonthYear(value, isFromPeriod = true) {
             const year = parseInt(trimmed, 10);
             if (year >= 1900 && year <= 2100) {
                 // For fromPeriod, use Jan; for toPeriod, use Dec
+                console.log(`   📅 Year-only string "${value}" → ${isFromPeriod ? 'Jan' : 'Dec'} ${year}`);
                 return isFromPeriod ? `Jan ${year}` : `Dec ${year}`;
             }
         }
+    }
+    
+    // IMPORTANT: Handle numeric year (Excel passes cell value 2024 as number, not string)
+    // Check if the number looks like a year (1900-2100) rather than an Excel date serial
+    // Excel date serial for year 2024 would be around 45,000+
+    if (typeof value === 'number' && value >= 1900 && value <= 2100 && Number.isInteger(value)) {
+        console.log(`   📅 Year-only number ${value} → ${isFromPeriod ? 'Jan' : 'Dec'} ${value}`);
+        return isFromPeriod ? `Jan ${value}` : `Dec ${value}`;
     }
     
     let date;

@@ -146,5 +146,5 @@ This is the only way to get 100% accuracy because NetSuite calculates additional
 
 ---
 
-*Current Version: 3.0.5.77*
+*Current Version: 3.0.5.78*
 *Last Updated: December 2025*

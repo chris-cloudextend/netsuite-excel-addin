@@ -82,4 +82,4 @@ See [DOCUMENTATION.md](DOCUMENTATION.md) for detailed troubleshooting.
 
 ---
 
-*Current Version: 3.0.5.77*
+*Current Version: 3.0.5.78*
