@@ -4431,10 +4431,12 @@ def get_balance():
         accounting_book = request.args.get('accountingBook', '') or request.args.get('accountingbook', '') or '1'
         
         # Build WHERE clause
+        # Use build_account_filter to support wildcards like '4*' for all revenue accounts
+        account_filter = build_account_filter([account])
         where_clauses = [
             "t.posting = 'T'",
             "tal.posting = 'T'",
-            f"a.acctnumber = '{escape_sql(account)}'",
+            account_filter,
             f"tal.accountingbook = {accounting_book}"  # Always filter to specific accounting book
         ]
         
