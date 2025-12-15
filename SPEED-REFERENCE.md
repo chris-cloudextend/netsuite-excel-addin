@@ -294,5 +294,5 @@ const CACHE_TTL_MS = 5 * 60 * 1000;   // 5 minute cache TTL
 ---
 
 *Document created: December 2024*
-*Add-in Version: 3.0.5.74*
+*Add-in Version: 3.0.5.75*
 

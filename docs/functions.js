@@ -33,35 +33,103 @@ function expandPeriodRangeFromTo(fromPeriod, toPeriod) {
     if (!fromPeriod) {
         return [];
     }
-    if (!toPeriod || fromPeriod === toPeriod) {
-        return [fromPeriod];
-    }
+    
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    // Helper: Check if a period is year-only (e.g., "2024")
+    const isYearOnly = (period) => {
+        if (!period) return false;
+        const str = String(period).trim();
+        return /^\d{4}$/.test(str);
+    };
+    
+    // Helper: Expand year-only to (Jan YYYY, Dec YYYY)
+    const expandYear = (year) => {
+        return { fromMonth: 0, toMonth: 11, year: parseInt(year) };
+    };
+    
+    // Helper: Parse "Mon YYYY" format
+    const parseMonthYear = (period) => {
+        const match = String(period).match(/^([A-Za-z]+)\s+(\d{4})$/);
+        if (!match) return null;
+        const monthIndex = monthNames.findIndex(m => m === match[1]);
+        if (monthIndex === -1) return null;
+        return { month: monthIndex, year: parseInt(match[2]) };
+    };
     
     try {
-        // Parse month and year from "Jan 2025" format
-        const parseMonthYear = (period) => {
-            const match = period.match(/^([A-Za-z]+)\s+(\d{4})$/);
-            if (!match) return null;
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const monthIndex = monthNames.findIndex(m => m === match[1]);
-            if (monthIndex === -1) return null;
-            return { month: monthIndex, year: parseInt(match[2]) };
-        };
+        // CASE 1: Both are year-only (e.g., "2024", "2024" or "2023", "2025")
+        if (isYearOnly(fromPeriod) && isYearOnly(toPeriod)) {
+            const fromYear = parseInt(fromPeriod);
+            const toYear = parseInt(toPeriod);
+            const result = [];
+            
+            for (let y = fromYear; y <= toYear; y++) {
+                for (let m = 0; m <= 11; m++) {
+                    result.push(`${monthNames[m]} ${y}`);
+                }
+            }
+            console.log(`   📅 Year-only expansion: ${fromPeriod} to ${toPeriod} → ${result.length} months`);
+            return result;
+        }
         
+        // CASE 2: From is year-only, to is month (expand from Jan of year to the to month)
+        if (isYearOnly(fromPeriod) && !isYearOnly(toPeriod)) {
+            const fromYear = parseInt(fromPeriod);
+            const to = parseMonthYear(toPeriod);
+            if (to) {
+                const result = [];
+                let y = fromYear, m = 0;
+                while (y < to.year || (y === to.year && m <= to.month)) {
+                    result.push(`${monthNames[m]} ${y}`);
+                    m++;
+                    if (m > 11) { m = 0; y++; }
+                }
+                return result;
+            }
+        }
+        
+        // CASE 3: From is month, to is year-only (expand from month to Dec of year)
+        if (!isYearOnly(fromPeriod) && isYearOnly(toPeriod)) {
+            const from = parseMonthYear(fromPeriod);
+            const toYear = parseInt(toPeriod);
+            if (from) {
+                const result = [];
+                let y = from.year, m = from.month;
+                while (y < toYear || (y === toYear && m <= 11)) {
+                    result.push(`${monthNames[m]} ${y}`);
+                    m++;
+                    if (m > 11) { m = 0; y++; }
+                }
+                return result;
+            }
+        }
+        
+        // CASE 4: Same period (single period or same year)
+        if (!toPeriod || fromPeriod === toPeriod) {
+            // If it's year-only, expand to 12 months
+            if (isYearOnly(fromPeriod)) {
+                const year = parseInt(fromPeriod);
+                const result = monthNames.map(m => `${m} ${year}`);
+                console.log(`   📅 Single year expansion: ${fromPeriod} → ${result.length} months`);
+                return result;
+            }
+            return [fromPeriod];
+        }
+        
+        // CASE 5: Both are "Mon YYYY" format
         const from = parseMonthYear(fromPeriod);
         const to = parseMonthYear(toPeriod);
         
         if (!from || !to) {
             // Can't parse - return original periods
+            console.warn(`   ⚠️ Could not parse period range: ${fromPeriod} to ${toPeriod}`);
             return [fromPeriod, toPeriod];
         }
         
         // Generate all months in range
         const result = [];
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        
         let currentMonth = from.month;
         let currentYear = from.year;
         
