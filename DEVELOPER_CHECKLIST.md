@@ -52,12 +52,17 @@ fy_start = fy_info['fy_start']
 | `docs/functions.js` | `__CLEARCACHE__` handler | If formula has special cache needs |
 | `docs/functions.js` | Build mode | If formula should batch with others |
 
-### 2. Frontend - Excel Registration
+### 2. Frontend - Excel Registration ⚠️ CRITICAL
 | File | Location | What to Update |
 |------|----------|----------------|
 | `docs/functions.json` | Function entry | `id`, `name`, `description` |
 | `docs/functions.json` | Parameters array | Names, descriptions, types, optional flags |
 | `docs/functions.json` | Options | `stream`, `cancelable`, `volatile` settings |
+| `docs/functions.js` | **`CustomFunctions.associate()`** | **MUST add function binding (~line 4986)** |
+
+> ⚠️ **CRITICAL**: Missing `CustomFunctions.associate('FUNCTIONNAME', FUNCTIONNAME)` will cause  
+> the entire add-in to fail with "We can't start this add-in because it isn't set up properly."  
+> This is the #1 cause of add-in load failures after adding new functions!
 
 ### 3. Frontend - Taskpane Integration
 | File | Location | What to Update |
