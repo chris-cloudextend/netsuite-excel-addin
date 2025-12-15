@@ -4990,6 +4990,7 @@ if (typeof CustomFunctions !== 'undefined') {
     CustomFunctions.associate('BUDGET', BUDGET);
     CustomFunctions.associate('RETAINEDEARNINGS', RETAINEDEARNINGS);
     CustomFunctions.associate('NETINCOME', NETINCOME);
+    CustomFunctions.associate('TYPEBALANCE', TYPEBALANCE);
     CustomFunctions.associate('CTA', CTA);
     CustomFunctions.associate('CLEARCACHE', CLEARCACHE);
     console.log('✅ Custom functions registered with Excel');
