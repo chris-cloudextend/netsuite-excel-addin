@@ -1334,12 +1334,14 @@ def search_accounts():
         
         # Build SuiteQL query
         # Use accountsearchdisplaynamecopy for clean name (without number prefix)
+        # sspecacct = Special Account Type (e.g., Retained Earnings, Unbilled Receivable)
         query = f"""
             SELECT 
                 id,
                 acctnumber,
                 accountsearchdisplaynamecopy AS accountname,
-                accttype
+                accttype,
+                sspecacct
             FROM 
                 Account
             WHERE 
@@ -1362,7 +1364,8 @@ def search_accounts():
                 'id': row.get('id'),
                 'accountnumber': row.get('acctnumber'),
                 'accountname': row.get('accountname'),
-                'accttype': row.get('accttype')
+                'accttype': row.get('accttype'),
+                'sspecacct': row.get('sspecacct') or ''  # Special Account Type
             })
         
         return jsonify({
