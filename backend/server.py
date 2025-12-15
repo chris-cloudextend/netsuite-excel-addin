@@ -152,6 +152,62 @@ def query_netsuite(sql_query, timeout=30):
             return {'error': str(e)}
 
 
+def query_netsuite_paginated(sql_query, timeout=30, page_size=1000):
+    """Execute a SuiteQL query with pagination to get ALL results.
+    
+    SuiteQL has a default limit of 1000 rows per query. This function
+    automatically paginates through all results using OFFSET/FETCH.
+    
+    Args:
+        sql_query: The SuiteQL query to execute (without ORDER BY/OFFSET/FETCH)
+        timeout: Request timeout in seconds per page
+        page_size: Number of rows per page (max 1000)
+    
+    Returns:
+        List of all result rows, or error dict
+    """
+    all_results = []
+    offset = 0
+    
+    # Ensure page_size doesn't exceed NetSuite's limit
+    page_size = min(page_size, 1000)
+    
+    while True:
+        # Add ORDER BY (required for pagination) and pagination clauses
+        # We order by account and period to ensure consistent pagination
+        paginated_query = f"{sql_query} ORDER BY acctnumber, periodname OFFSET {offset} ROWS FETCH NEXT {page_size} ROWS ONLY"
+        
+        print(f"DEBUG - Paginated query (offset={offset})...", file=sys.stderr)
+        
+        result = query_netsuite(paginated_query, timeout)
+        
+        if isinstance(result, dict) and 'error' in result:
+            print(f"ERROR - Pagination failed at offset {offset}: {result}", file=sys.stderr)
+            return result
+        
+        if not isinstance(result, list):
+            print(f"ERROR - Unexpected result type: {type(result)}", file=sys.stderr)
+            return {'error': f'Unexpected result type: {type(result)}'}
+        
+        rows_returned = len(result)
+        all_results.extend(result)
+        print(f"DEBUG - Page returned {rows_returned} rows (total so far: {len(all_results)})", file=sys.stderr)
+        
+        # If we got fewer rows than page_size, we've reached the end
+        if rows_returned < page_size:
+            break
+        
+        offset += page_size
+        
+        # Safety limit to prevent infinite loops
+        if offset > 100000:
+            print(f"WARNING - Pagination safety limit reached at {offset} rows", file=sys.stderr)
+            break
+    
+    print(f"DEBUG - Pagination complete: {len(all_results)} total rows", file=sys.stderr)
+    return all_results
+
+
 def escape_sql(text):
     """Escape single quotes in SQL strings"""
     if text is None:
@@ -1397,7 +1453,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
             JOIN Account a ON a.id = x.account
             JOIN AccountingPeriod ap ON ap.id = x.postingperiod
             GROUP BY a.acctnumber, ap.periodname
-            ORDER BY a.acctnumber, ap.periodname
         """
     else:
         return f"""
@@ -1421,7 +1476,6 @@ def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, a
             JOIN Account a ON a.id = x.account
             JOIN AccountingPeriod ap ON ap.id = x.postingperiod
             GROUP BY a.acctnumber, ap.periodname
-            ORDER BY a.acctnumber, ap.periodname
         """
 
 
@@ -3869,23 +3923,63 @@ def batch_balance():
             pl_where_clauses.append(pl_account_filter)
             pl_base_where = " AND ".join(pl_where_clauses)
             
-            pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join, accountingbook,
-                                      subsidiary_id=subsidiary, use_hierarchy=wants_consolidated)
-            
-            print(f"DEBUG - P&L Query (for {len(pl_accounts)} accounts, book={accountingbook}):\n{pl_query[:500]}...", file=sys.stderr)
-            
-            pl_result = query_netsuite(pl_query)
-            
-            if isinstance(pl_result, list):
-                print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
-                for row in pl_result:
-                    account_num = row['acctnumber']
-                    period_name = row['periodname']
-                    balance = float(row['balance']) if row['balance'] else 0
+            # OPTIMIZATION: Split by year to avoid SuiteQL's 1000 row limit
+            # Instead of pagination (slow), run separate queries per year (faster)
+            expected_rows = len(pl_accounts) * len(periods)
+            if expected_rows > 800:
+                # Group periods by year
+                periods_by_year = {}
+                for p in periods:
+                    # Extract year from "Mon YYYY" format
+                    parts = p.split()
+                    if len(parts) == 2:
+                        year = parts[1]
+                        if year not in periods_by_year:
+                            periods_by_year[year] = []
+                        periods_by_year[year].append(p)
+                
+                print(f"DEBUG - Splitting P&L query by year ({len(periods_by_year)} years) to avoid 1000 row limit", file=sys.stderr)
+                
+                # Run separate query for each year
+                for year, year_periods in periods_by_year.items():
+                    year_query = build_pl_query(pl_accounts, year_periods, pl_base_where, target_sub, needs_line_join, accountingbook,
+                                              subsidiary_id=subsidiary, use_hierarchy=wants_consolidated)
                     
-                    if account_num not in all_balances:
-                        all_balances[account_num] = {}
-                    all_balances[account_num][period_name] = balance
+                    print(f"DEBUG - P&L Query for {year} ({len(year_periods)} periods, {len(pl_accounts)} accounts)...", file=sys.stderr)
+                    
+                    year_result = query_netsuite(year_query)
+                    
+                    if isinstance(year_result, list):
+                        print(f"DEBUG - P&L {year} returned {len(year_result)} rows", file=sys.stderr)
+                        for row in year_result:
+                            account_num = row['acctnumber']
+                            period_name = row['periodname']
+                            balance = float(row['balance']) if row['balance'] else 0
+                            
+                            if account_num not in all_balances:
+                                all_balances[account_num] = {}
+                            all_balances[account_num][period_name] = balance
+                    elif isinstance(year_result, dict) and 'error' in year_result:
+                        print(f"ERROR - P&L {year} query failed: {year_result['error']}", file=sys.stderr)
+            else:
+                # Small query - run as single request
+                pl_query = build_pl_query(pl_accounts, periods, pl_base_where, target_sub, needs_line_join, accountingbook,
+                                          subsidiary_id=subsidiary, use_hierarchy=wants_consolidated)
+                
+                print(f"DEBUG - P&L Query (for {len(pl_accounts)} accounts, book={accountingbook}):\n{pl_query[:500]}...", file=sys.stderr)
+                
+                pl_result = query_netsuite(pl_query)
+                
+                if isinstance(pl_result, list):
+                    print(f"DEBUG - P&L returned {len(pl_result)} rows", file=sys.stderr)
+                    for row in pl_result:
+                        account_num = row['acctnumber']
+                        period_name = row['periodname']
+                        balance = float(row['balance']) if row['balance'] else 0
+                        
+                        if account_num not in all_balances:
+                            all_balances[account_num] = {}
+                        all_balances[account_num][period_name] = balance
         else:
             print(f"DEBUG - Skipping P&L query (no P&L accounts requested)", file=sys.stderr)
         
