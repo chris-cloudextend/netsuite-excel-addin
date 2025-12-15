@@ -22,7 +22,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.106';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.107';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -4467,7 +4467,7 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
  * @param {any} [accountingBook] Accounting Book ID (optional)
  * @returns {Promise<number>} Total balance for all accounts of the specified type
  */
-async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook) {
+async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook, useSpecialAccount) {
     try {
         // Normalize account type
         const normalizedType = String(accountType || '').trim();
@@ -4476,17 +4476,49 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
             return 0;
         }
         
-        // Valid NetSuite account types
+        // Check if using special account type (sspecacct) - parameter is 1 or "1" or true
+        const useSpecial = useSpecialAccount === 1 || useSpecialAccount === '1' || useSpecialAccount === true;
+        
+        // Valid NetSuite account types (accttype)
         const BS_TYPES = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense', 'AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue', 'Equity', 'RetainedEarnings', 'UnbilledRec'];
         const PL_TYPES = ['Income', 'COGS', 'Expense', 'OthIncome', 'OthExpense', 'NonPosting'];
         const ALL_TYPES = [...BS_TYPES, ...PL_TYPES];
         
-        if (!ALL_TYPES.includes(normalizedType)) {
-            console.error(`❌ TYPEBALANCE: Invalid account type "${normalizedType}". Valid types: ${ALL_TYPES.join(', ')}`);
-            return 0;
+        // Valid Special Account Types (sspecacct) - for cash flow statements
+        const BS_SPECIAL_TYPES = [
+            'AcctRec', 'UnbilledRec', 'CustDep', 'CustAuth', 'RefundPay',
+            'AcctPay', 'AdvPaid', 'RecvNotBill',
+            'InvtAsset', 'InvInTransit', 'InvInTransitExt', 'RtnNotCredit',
+            'DeferRevenue', 'DeferExpense', 'DeferRevClearing',
+            'OpeningBalEquity', 'RetEarnings', 'CumulTransAdj', 'CTA-E',
+            'SalesTaxPay', 'Tax', 'TaxLiability', 'PSTPay',
+            'CommPay', 'PayrollLiab', 'PayrollFloat', 'PayAdjst',
+            'UndepFunds', 'Tegata', 'DirectLabor', 'IndirectLabor'
+        ];
+        const PL_SPECIAL_TYPES = [
+            'COGS', 'FxRateVariance', 'RealizedERV', 'UnrERV', 'MatchingUnrERV', 'RndERV',
+            'PSTExp', 'PayrollExp', 'PayWage', 'JobCostVariance'
+        ];
+        const ALL_SPECIAL_TYPES = [...BS_SPECIAL_TYPES, ...PL_SPECIAL_TYPES];
+        
+        // Validate type based on mode
+        if (useSpecial) {
+            // Using special account type - warn if not recognized but allow
+            if (!ALL_SPECIAL_TYPES.includes(normalizedType)) {
+                console.warn(`⚠️ TYPEBALANCE: Unknown special account type "${normalizedType}" - assuming BS. See SPECIAL_ACCOUNT_TYPES.md for valid types.`);
+            }
+        } else {
+            // Using regular account type - strict validation
+            if (!ALL_TYPES.includes(normalizedType)) {
+                console.error(`❌ TYPEBALANCE: Invalid account type "${normalizedType}". Valid types: ${ALL_TYPES.join(', ')}`);
+                return 0;
+            }
         }
         
-        const isBalanceSheet = BS_TYPES.includes(normalizedType);
+        // Determine if Balance Sheet based on type
+        const isBalanceSheet = useSpecial 
+            ? BS_SPECIAL_TYPES.includes(normalizedType) || !PL_SPECIAL_TYPES.includes(normalizedType)
+            : BS_TYPES.includes(normalizedType);
         
         // Convert periods
         let convertedToPeriod = convertToMonthYear(toPeriod, false); // false = use Dec for year-only
@@ -4498,7 +4530,8 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
         let convertedFromPeriod = '';
         if (isBalanceSheet) {
             // BS types: cumulative from inception, ignore fromPeriod
-            console.log(`📊 TYPEBALANCE: BS type "${normalizedType}" - cumulative through ${convertedToPeriod}`);
+            const modeLabel = useSpecial ? 'special account' : 'account';
+            console.log(`📊 TYPEBALANCE: BS ${modeLabel} type "${normalizedType}" - cumulative through ${convertedToPeriod}`);
         } else {
             // P&L types: need fromPeriod
             convertedFromPeriod = convertToMonthYear(fromPeriod, true); // true = use Jan for year-only
@@ -4506,16 +4539,18 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
                 console.error('❌ TYPEBALANCE: fromPeriod is required for P&L account types');
                 return 0;
             }
-            console.log(`📊 TYPEBALANCE: P&L type "${normalizedType}" - range ${convertedFromPeriod} → ${convertedToPeriod}`);
+            const modeLabel = useSpecial ? 'special account' : 'account';
+            console.log(`📊 TYPEBALANCE: P&L ${modeLabel} type "${normalizedType}" - range ${convertedFromPeriod} → ${convertedToPeriod}`);
         }
         
-        // Build cache key
+        // Build cache key (include useSpecial flag)
         const subsidiaryStr = String(subsidiary || '').trim();
         const departmentStr = String(department || '').trim();
         const locationStr = String(location || '').trim();
         const classStr = String(classId || '').trim();
         const bookStr = String(accountingBook || '').trim();
-        const cacheKey = `typebalance:${normalizedType}:${convertedFromPeriod}:${convertedToPeriod}:${subsidiaryStr}:${departmentStr}:${locationStr}:${classStr}:${bookStr}`;
+        const specialFlag = useSpecial ? '1' : '0';
+        const cacheKey = `typebalance:${normalizedType}:${convertedFromPeriod}:${convertedToPeriod}:${subsidiaryStr}:${departmentStr}:${locationStr}:${classStr}:${bookStr}:${specialFlag}`;
         
         // Check cache
         if (cache.typebalance && cache.typebalance[cacheKey] !== undefined) {
@@ -4548,7 +4583,8 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
                         department: departmentStr,
                         location: locationStr,
                         classId: classStr,
-                        accountingBook: bookStr
+                        accountingBook: bookStr,
+                        useSpecialAccount: useSpecial
                     })
                 });
                 

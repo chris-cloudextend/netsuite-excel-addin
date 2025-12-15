@@ -367,7 +367,7 @@
     {
       "id": "TYPEBALANCE",
       "name": "TYPEBALANCE",
-      "description": "Get total balance for all accounts of a specific type (e.g., OthAsset, Expense). BS types use cumulative; P&L types use period range.",
+      "description": "Get total balance for all accounts of a specific type. Use useSpecialAccount=1 for special types (AcctRec, InvtAsset, etc.) for cash flow statements.",
       "helpUrl": "https://www.example.com/help",
       "result": {
         "type": "number",
@@ -376,7 +376,7 @@
       "parameters": [
         {
           "name": "accountType",
-          "description": "NetSuite account type (e.g., \"OthAsset\", \"Expense\", \"Income\")",
+          "description": "Account type (e.g., \"OthAsset\") or special type (e.g., \"AcctRec\", \"InvtAsset\")",
           "type": "any",
           "dimensionality": "scalar"
         },
@@ -425,6 +425,13 @@
         {
           "name": "accountingBook",
           "description": "Accounting Book ID (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "useSpecialAccount",
+          "description": "Set to 1 to filter by special account type (sspecacct) instead of regular type. For cash flow: AcctRec, AcctPay, InvtAsset, etc.",
           "type": "any",
           "dimensionality": "scalar",
           "optional": true

@@ -6868,7 +6868,7 @@ def calculate_net_income():
 @app.route('/type-balance', methods=['POST'])
 def calculate_type_balance():
     """
-    Calculate balance for a specific Account Type (e.g., "OthAsset", "Expense").
+    Calculate balance for a specific Account Type OR Special Account Type.
     
     This is like XAVI.BALANCE but filters by account TYPE instead of account NUMBER.
     
@@ -6876,22 +6876,46 @@ def calculate_type_balance():
     For P&L types: Returns sum for the period range (fromPeriod to toPeriod)
     
     Request body: {
-        accountType: "OthAsset",           # Required - NetSuite account type
+        accountType: "OthAsset",           # Required - NetSuite account type or special account type
         fromPeriod: "Jan 2025",            # Optional for BS, required for P&L
         toPeriod: "Dec 2025",              # Required - end period
         subsidiary: "1" or "Celigo Inc.",  # Optional
         accountingBook: "1",               # Optional
         classId: "1",                      # Optional
         department: "1",                   # Optional
-        location: "1"                      # Optional
+        location: "1",                     # Optional
+        useSpecialAccount: false           # Optional - if true, filter by sspecacct instead of accttype
     }
     
-    Valid account types:
+    Valid account types (accttype):
     - BS Assets: Bank, AcctRec, OthCurrAsset, FixedAsset, OthAsset, DeferExpense, UnbilledRec
     - BS Liabilities: AcctPay, CredCard, OthCurrLiab, LongTermLiab, DeferRevenue
     - BS Equity: Equity, RetainedEarnings
     - P&L: Income, OthIncome, COGS, Expense, OthExpense
+    
+    Valid special account types (sspecacct):
+    - BS: AcctRec, AcctPay, InvtAsset, UndepFunds, DeferRevenue, DeferExpense, RetEarnings, etc.
+    - P&L: COGS, RealizedERV, UnrERV, PayrollExp, etc.
     """
+    # Special Account Types that are Balance Sheet (cumulative from inception)
+    BS_SPECIAL_TYPES = {
+        'AcctRec', 'UnbilledRec', 'CustDep', 'CustAuth', 'RefundPay',
+        'AcctPay', 'AdvPaid', 'RecvNotBill',
+        'InvtAsset', 'InvInTransit', 'InvInTransitExt', 'RtnNotCredit',
+        'DeferRevenue', 'DeferExpense', 'DeferRevClearing',
+        'OpeningBalEquity', 'RetEarnings', 'CumulTransAdj', 'CTA-E',
+        'SalesTaxPay', 'Tax', 'TaxLiability', 'PSTPay',
+        'CommPay', 'PayrollLiab', 'PayrollFloat', 'PayAdjst',
+        'UndepFunds', 'Tegata',
+        'DirectLabor', 'IndirectLabor'
+    }
+    
+    # Special Account Types that are P&L (period range)
+    PL_SPECIAL_TYPES = {
+        'COGS', 'FxRateVariance', 'RealizedERV', 'UnrERV', 'MatchingUnrERV', 'RndERV',
+        'PSTExp', 'PayrollExp', 'PayWage', 'JobCostVariance'
+    }
+    
     try:
         params = request.json or {}
         account_type = params.get('accountType', '').strip()
@@ -6902,6 +6926,7 @@ def calculate_type_balance():
         classId = params.get('classId', '')
         department = params.get('department', '')
         location = params.get('location', '')
+        use_special_account = params.get('useSpecialAccount', False)
         
         # Validate account type
         if not account_type:
@@ -6913,15 +6938,31 @@ def calculate_type_balance():
         # DEBUG: Log all incoming parameters
         print(f"=" * 60, file=sys.stderr)
         print(f"📊 TYPE BALANCE REQUEST:", file=sys.stderr)
-        print(f"   accountType:    '{account_type}'", file=sys.stderr)
-        print(f"   fromPeriod:     '{from_period}'", file=sys.stderr)
-        print(f"   toPeriod:       '{to_period}'", file=sys.stderr)
-        print(f"   subsidiary:     '{subsidiary_param}'", file=sys.stderr)
-        print(f"   accountingBook: '{accountingbook}'", file=sys.stderr)
+        print(f"   accountType:       '{account_type}'", file=sys.stderr)
+        print(f"   useSpecialAcct:    {use_special_account}", file=sys.stderr)
+        print(f"   fromPeriod:        '{from_period}'", file=sys.stderr)
+        print(f"   toPeriod:          '{to_period}'", file=sys.stderr)
+        print(f"   subsidiary:        '{subsidiary_param}'", file=sys.stderr)
+        print(f"   accountingBook:    '{accountingbook}'", file=sys.stderr)
         
         # Determine if this is a BS or P&L account type
-        is_bs = is_balance_sheet_account(account_type)
-        print(f"   Account type '{account_type}' is BS: {is_bs}", file=sys.stderr)
+        if use_special_account:
+            # Using special account type (sspecacct field)
+            is_bs = account_type in BS_SPECIAL_TYPES
+            is_pl = account_type in PL_SPECIAL_TYPES
+            if not is_bs and not is_pl:
+                # Unknown special type - assume BS if not in P&L list
+                is_bs = True
+                print(f"   ⚠️ Unknown special type '{account_type}' - assuming BS", file=sys.stderr)
+            print(f"   Special account type '{account_type}' is BS: {is_bs}", file=sys.stderr)
+        else:
+            # Using regular account type (accttype field)
+            is_bs = is_balance_sheet_account(account_type)
+            print(f"   Account type '{account_type}' is BS: {is_bs}", file=sys.stderr)
+        
+        # Determine which field to filter on
+        account_field = 'a.sspecacct' if use_special_account else 'a.accttype'
+        print(f"   Filtering on: {account_field} = '{account_type}'", file=sys.stderr)
         
         # For BS types, ignore fromPeriod (cumulative from inception)
         if is_bs:
@@ -6993,7 +7034,7 @@ def calculate_type_balance():
                 JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
                 WHERE t.posting = 'T'
                   AND tal.posting = 'T'
-                  AND a.accttype = '{escape_sql(account_type)}'
+                  AND {account_field} = '{escape_sql(account_type)}'
                   AND t.trandate <= TO_DATE('{to_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
                   AND {segment_where}
@@ -7027,7 +7068,7 @@ def calculate_type_balance():
                 JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
                 WHERE t.posting = 'T'
                   AND tal.posting = 'T'
-                  AND a.accttype = '{escape_sql(account_type)}'
+                  AND {account_field} = '{escape_sql(account_type)}'
                   AND ap.startdate >= TO_DATE('{from_start_date}', 'YYYY-MM-DD')
                   AND ap.enddate <= TO_DATE('{to_end_date}', 'YYYY-MM-DD')
                   AND tal.accountingbook = {accountingbook}
@@ -7055,6 +7096,7 @@ def calculate_type_balance():
             'value': balance,
             'accountType': account_type,
             'isBalanceSheet': is_bs,
+            'useSpecialAccount': use_special_account,
             'fromPeriod': from_period if not is_bs else None,
             'toPeriod': to_period
         })
