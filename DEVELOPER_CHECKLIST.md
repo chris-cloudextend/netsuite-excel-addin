@@ -85,12 +85,20 @@ fy_start = fy_info['fy_start']
 | `backend/server.py` | Name-to-ID conversion | `convert_name_to_id()` for filters |
 | `backend/server.py` | Response format | JSON structure returned |
 
-### 5. Manifest & Versioning
+### 5. Manifest & Versioning ⚠️ CRITICAL SHARED RUNTIME
 | File | Location | What to Update |
 |------|----------|----------------|
 | `excel-addin/manifest-claude.xml` | `<Version>` tag | Main version (line ~22) |
 | `excel-addin/manifest-claude.xml` | ALL `?v=X.X.X.X` URLs | Cache-busting parameters |
 | `docs/taskpane.html` | Footer version | Hardcoded display (~line 2292) |
+
+> ⚠️ **CRITICAL SHARED RUNTIME CONFIGURATION:**  
+> - `<Runtime resid>` MUST point to `Taskpane.Url` (NOT a separate functions.html)  
+> - CustomFunctions `<Page>` MUST also use `Taskpane.Url`  
+> - `taskpane.html` MUST include `<script src="functions.js">` tag  
+> - All components (taskpane, functions, commands) use the SAME HTML file  
+> 
+> **Violating this causes "We can't start this add-in because it isn't set up properly" error.**
 
 ### 6. Documentation
 | File | What to Update |
@@ -145,6 +153,8 @@ Update this file when:
 |------|---------|---------|
 | 2025-12-15 | 3.0.5.81 | Initial checklist created |
 | 2025-12-15 | 3.0.5.90 | Added "Universal NetSuite Compatibility" section |
+| 2025-12-15 | 3.0.5.96 | Added CustomFunctions.associate() warning |
+| 2025-12-15 | 3.0.5.98 | Added CRITICAL shared runtime configuration notes |
 
 ---
 
