@@ -3589,13 +3589,16 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
  */
 async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, department, location) {
     try {
-        // Convert date values to "Mon YYYY" format
-        period = convertToMonthYear(period);
+        // RETAINEDEARNINGS is a point-in-time balance - use end of year for year-only values
+        // This ensures "2025" calculates RE as of Dec 31, 2025
+        period = convertToMonthYear(period, false);  // false = use Dec for year-only
         
         if (!period) {
             console.error('RETAINEDEARNINGS: period is required');
             return 0;
         }
+        
+        console.log(`📊 RETAINEDEARNINGS: Calculating as of ${period}`);
         
         // Normalize optional parameters
         subsidiary = String(subsidiary || '').trim();
@@ -3774,13 +3777,17 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
  */
 async function NETINCOME(period, subsidiary, accountingBook, classId, department, location) {
     try {
-        // Convert date values to "Mon YYYY" format
-        period = convertToMonthYear(period);
+        // NETINCOME is a YTD calculation - period should be the END of the range
+        // For year-only values like "2025" or 2025, use Dec (end of year) not Jan
+        // This ensures full year calculation (Jan through Dec)
+        period = convertToMonthYear(period, false);  // false = use Dec for year-only
         
         if (!period) {
             console.error('NETINCOME: period is required');
             return 0;
         }
+        
+        console.log(`📊 NETINCOME: Calculating through ${period}`);
         
         // Normalize optional parameters
         subsidiary = String(subsidiary || '').trim();
@@ -3952,13 +3959,16 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
  */
 async function CTA(period, subsidiary, accountingBook) {
     try {
-        // Convert date values to "Mon YYYY" format
-        period = convertToMonthYear(period);
+        // CTA is a point-in-time balance - use end of year for year-only values
+        // This ensures "2025" calculates CTA as of Dec 31, 2025
+        period = convertToMonthYear(period, false);  // false = use Dec for year-only
         
         if (!period) {
             console.error('CTA: period is required');
             return 0;
         }
+        
+        console.log(`📊 CTA: Calculating as of ${period}`);
         
         // Normalize optional parameters
         subsidiary = String(subsidiary || '').trim();
