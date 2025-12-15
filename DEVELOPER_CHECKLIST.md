@@ -4,6 +4,43 @@
 
 ---
 
+## ⚠️ CRITICAL: Universal NetSuite Compatibility
+
+**All code MUST work across ALL NetSuite accounts.** Never make assumptions about:
+
+| ❌ DON'T Assume | ✅ DO Instead |
+|-----------------|---------------|
+| Account number prefixes indicate type (1xxx=BS, 4xxx=P&L) | Query NetSuite for actual `accttype` field |
+| Specific account numbers exist | Use wildcards or let users specify |
+| Subsidiary structure (OneWorld vs non-OneWorld) | Use `BUILTIN.CONSOLIDATE` which works universally |
+| Chart of accounts numbering scheme | Query account metadata from NetSuite |
+| Fiscal year starts in January | Query `get_fiscal_year_for_period()` |
+| Currency is USD | Use subsidiary's currency or consolidate |
+| Specific period names exist | Validate periods exist before querying |
+
+### Examples of Universal vs Non-Universal Code:
+
+```python
+# ❌ BAD - Assumes account prefix indicates type
+if account.startswith('1') or account.startswith('2'):
+    is_bs_account = True
+
+# ✅ GOOD - Queries actual account type from NetSuite
+type_result = query_netsuite("SELECT accttype FROM Account WHERE acctnumber = '...'")
+is_bs_account = is_balance_sheet_account(type_result['accttype'])
+```
+
+```python
+# ❌ BAD - Assumes fiscal year starts January 1
+fy_start = f"Jan {year}"
+
+# ✅ GOOD - Queries actual fiscal year boundaries
+fy_info = get_fiscal_year_for_period(period_name, accounting_book)
+fy_start = fy_info['fy_start']
+```
+
+---
+
 ## 🔧 Adding or Modifying a Formula
 
 ### 1. Frontend - Function Implementation
@@ -102,6 +139,7 @@ Update this file when:
 | Date | Version | Changes |
 |------|---------|---------|
 | 2025-12-15 | 3.0.5.81 | Initial checklist created |
+| 2025-12-15 | 3.0.5.90 | Added "Universal NetSuite Compatibility" section |
 
 ---
 

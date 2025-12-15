@@ -4524,6 +4524,59 @@ def get_balance():
         # Get accounting book parameter (default to Primary Book = 1)
         accounting_book = request.args.get('accountingBook', '') or request.args.get('accountingbook', '') or '1'
         
+        # ========================================================================
+        # AUTO-DETECT BALANCE SHEET ACCOUNTS
+        # BS accounts need CUMULATIVE balance (inception through to_period)
+        # P&L accounts need PERIOD RANGE balance (from_period through to_period)
+        # ========================================================================
+        is_bs_account = False
+        if account and not '*' in account:  # Can't auto-detect for wildcards
+            try:
+                type_query = f"SELECT accttype FROM Account WHERE acctnumber = '{escape_sql(account)}'"
+                type_result = query_netsuite(type_query)
+                if isinstance(type_result, list) and len(type_result) > 0:
+                    acct_type = type_result[0].get('accttype', '')
+                    is_bs_account = is_balance_sheet_account(acct_type)
+                    print(f"DEBUG - Account {account} type: {acct_type}, is_bs: {is_bs_account}", file=sys.stderr)
+            except Exception as e:
+                print(f"DEBUG - Could not determine account type for {account}: {e}", file=sys.stderr)
+        
+        # For wildcards, query NetSuite to determine account types (don't assume based on prefix!)
+        # Different NetSuite accounts use different numbering schemes
+        if '*' in account:
+            try:
+                # Query all matching accounts and their types
+                # Use 'acctnumber' (no alias) since we're querying Account table directly
+                wildcard_filter = build_account_filter([account], column='acctnumber')
+                type_query = f"SELECT DISTINCT accttype FROM Account WHERE {wildcard_filter}"
+                type_result = query_netsuite(type_query, timeout=15)
+                
+                if isinstance(type_result, list) and len(type_result) > 0:
+                    # Check if ALL matching accounts are the same type (BS or P&L)
+                    account_types = [r.get('accttype', '') for r in type_result]
+                    bs_types = [t for t in account_types if is_balance_sheet_account(t)]
+                    pl_types = [t for t in account_types if not is_balance_sheet_account(t)]
+                    
+                    if len(bs_types) > 0 and len(pl_types) == 0:
+                        is_bs_account = True
+                        print(f"DEBUG - Wildcard {account}: ALL matching accounts are BS ({account_types})", file=sys.stderr)
+                    elif len(pl_types) > 0 and len(bs_types) == 0:
+                        is_bs_account = False
+                        print(f"DEBUG - Wildcard {account}: ALL matching accounts are P&L ({account_types})", file=sys.stderr)
+                    else:
+                        # Mixed types - default to P&L behavior (safer)
+                        is_bs_account = False
+                        print(f"DEBUG - Wildcard {account}: MIXED account types ({account_types}) - using P&L behavior", file=sys.stderr)
+                else:
+                    print(f"DEBUG - Wildcard {account}: Could not determine types, using P&L behavior", file=sys.stderr)
+            except Exception as e:
+                print(f"DEBUG - Wildcard {account}: Error querying types ({e}), using P&L behavior", file=sys.stderr)
+        
+        # For BS accounts, ignore from_period (use cumulative from inception)
+        if is_bs_account and from_period and to_period:
+            print(f"DEBUG - BS account detected: using cumulative through {to_period} (ignoring from_period={from_period})", file=sys.stderr)
+            from_period = ''  # Clear from_period for cumulative calculation
+        
         # Build WHERE clause
         # Use build_account_filter to support wildcards like '4*' for all revenue accounts
         account_filter = build_account_filter([account])
@@ -4540,15 +4593,25 @@ def get_balance():
         if subsidiary and subsidiary != '':
             use_hierarchy = wants_consolidated
             
-            if use_hierarchy:
+            # OPTIMIZATION: For root consolidated subsidiary, skip the filter entirely
+            # (includes all subs anyway - avoids expensive TransactionLine join for BS queries)
+            print(f"DEBUG - subsidiary={subsidiary}, default_subsidiary_id={default_subsidiary_id}, wants_consolidated={wants_consolidated}", file=sys.stderr)
+            is_root_consolidated = (subsidiary == str(default_subsidiary_id)) and use_hierarchy
+            print(f"DEBUG - is_root_consolidated={is_root_consolidated}", file=sys.stderr)
+            
+            if is_root_consolidated:
+                print(f"DEBUG - Root consolidated subsidiary (ID={subsidiary}) - skipping filter (includes all subs)", file=sys.stderr)
+                # Don't add filter, don't need TransactionLine join
+            elif use_hierarchy:
                 hierarchy_subs = get_subsidiaries_in_hierarchy(subsidiary)
                 sub_filter = ', '.join(hierarchy_subs)
                 where_clauses.append(f"tl.subsidiary IN ({sub_filter})")
                 print(f"DEBUG - Consolidated subsidiary filter: {len(hierarchy_subs)} subsidiaries in hierarchy")
+                needs_line_join_for_subsidiary = True
             else:
                 where_clauses.append(f"tl.subsidiary = {subsidiary}")
                 print(f"DEBUG - Single subsidiary filter: {subsidiary}")
-            needs_line_join_for_subsidiary = True
+                needs_line_join_for_subsidiary = True
         
         # Handle period filters - support both period IDs and names
         if from_period and to_period:
@@ -4576,12 +4639,21 @@ def get_balance():
         elif to_period:
             # BALANCE SHEET CASE: Empty from_period, only to_period provided
             # This means "cumulative from beginning of time through to_period"
+            # Use t.trandate (transaction date) for better performance - no need to join AccountingPeriod
             if to_period.isdigit():
                 where_clauses.append(f"t.postingperiod <= {to_period}")
             else:
                 _, to_end, _ = get_period_dates_from_name(to_period)
                 if to_end:
-                    where_clauses.append(f"ap.enddate <= '{to_end}'")
+                    # Convert MM/DD/YYYY to YYYY-MM-DD for TO_DATE function
+                    try:
+                        from datetime import datetime
+                        end_date_obj = datetime.strptime(to_end, '%m/%d/%Y')
+                        end_date_str = end_date_obj.strftime('%Y-%m-%d')
+                    except:
+                        end_date_str = to_end
+                    # Use t.trandate for cumulative BS - more efficient than ap.enddate
+                    where_clauses.append(f"t.trandate <= TO_DATE('{end_date_str}', 'YYYY-MM-DD')")
                 else:
                     where_clauses.append(f"ap.periodname = '{escape_sql(to_period)}'")
         
@@ -4615,8 +4687,63 @@ def get_balance():
         # Sign multiplier: flip Income/OthIncome from credits (negative) to positive display
         sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
         
+        # Check if this is a cumulative BS query (no from_period, only to_period with t.trandate)
+        is_cumulative_bs = is_bs_account and not from_period and to_period and not to_period.isdigit()
+        
         # Always use BUILTIN.CONSOLIDATE - works for both OneWorld and non-OneWorld
-        if (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):
+        if is_cumulative_bs:
+            # OPTIMIZED BS QUERY: No AccountingPeriod join needed - use t.trandate directly
+            print(f"DEBUG - Using optimized cumulative BS query (no AP join)", file=sys.stderr)
+            if needs_line_join:
+                query = f"""
+                    SELECT SUM(x.cons_amt) AS balance
+                    FROM (
+                        SELECT
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
+                            {sign_sql}
+ AS cons_amt
+                        FROM TransactionAccountingLine tal
+                            JOIN Transaction t ON t.id = tal.transaction
+                            JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                            JOIN Account a ON a.id = tal.account
+                        WHERE {where_clause}
+                    ) x
+                """
+            else:
+                query = f"""
+                    SELECT SUM(x.cons_amt) AS balance
+                    FROM (
+                        SELECT
+                                    TO_NUMBER(
+                                        BUILTIN.CONSOLIDATE(
+                                            tal.amount,
+                                            'LEDGER',
+                                            'DEFAULT',
+                                            'DEFAULT',
+                                            {target_sub},
+                                            t.postingperiod,
+                                            'DEFAULT'
+                                        )
+                                    )
+                            {sign_sql}
+ AS cons_amt
+                        FROM TransactionAccountingLine tal
+                            JOIN Transaction t ON t.id = tal.transaction
+                            JOIN Account a ON a.id = tal.account
+                        WHERE {where_clause}
+                    ) x
+                """
+        elif (from_period and not from_period.isdigit()) or (to_period and not to_period.isdigit()):
             if needs_line_join:
                 query = f"""
                     SELECT SUM(x.cons_amt) AS balance
@@ -4720,7 +4847,12 @@ def get_balance():
                 """
         
         print(f"DEBUG - Full query:\n{query}", file=sys.stderr)
-        result = query_netsuite(query)
+        
+        # Use longer timeout for cumulative BS queries (they scan all historical data)
+        query_timeout = 90 if is_cumulative_bs else 30
+        print(f"DEBUG - Query timeout: {query_timeout}s (is_cumulative_bs={is_cumulative_bs})", file=sys.stderr)
+        
+        result = query_netsuite(query, timeout=query_timeout)
         
         # Check for errors
         if isinstance(result, dict) and 'error' in result:

@@ -2327,14 +2327,25 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
                 // Clear SPECIFIC items - parse format:
                 // Old: "60032:May 2025,60032:Jun 2025"
                 // New: "balance:60032:May 2025,budget:60032:Jun 2025"
+                // With subsidiary: "balance:111*:Dec 2025:Celigo Inc. (Consolidated)"
                 const items = itemsStr.split(',').map(s => {
                     const parts = s.trim().split(':');
                     if (parts.length >= 3 && (parts[0] === 'balance' || parts[0] === 'budget')) {
                         // New format with type prefix
-                        return { type: parts[0], account: parts[1], period: parts.slice(2).join(':') };
+                        // Could be: type:account:period or type:account:period:subsidiary
+                        const type = parts[0];
+                        const account = parts[1];
+                        // Remaining parts could be "Dec 2025" or "Dec 2025:Celigo Inc. (Consolidated)"
+                        // Period format is always "Mon YYYY", so extract that
+                        const periodMatch = parts.slice(2).join(':').match(/^([A-Za-z]{3}\s+\d{4})/);
+                        const period = periodMatch ? periodMatch[1] : parts[2];
+                        // Subsidiary is everything after the period
+                        const afterPeriod = parts.slice(2).join(':').substring(period.length + 1);
+                        const subsidiary = afterPeriod || '';
+                        return { type, account, period, subsidiary };
                     } else {
                         // Old format without type prefix - assume balance
-                        return { type: 'balance', account: parts[0], period: parts.slice(1).join(':') };
+                        return { type: 'balance', account: parts[0], period: parts.slice(1).join(':'), subsidiary: '' };
                     }
                 });
                 
@@ -2395,30 +2406,41 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
                 }
                 
                 // Clear from in-memory caches
+                // IMPORTANT: Clear ALL cache entries matching account+period, regardless of other params
+                // This handles the case where subsidiary/dept/class might vary
                 for (const item of items) {
                     const cacheToUse = item.type === 'budget' ? cache.budget : cache.balance;
-                    const cacheKey = getCacheKey(item.type, {
-                        account: item.account,
-                        fromPeriod: item.period,
-                        toPeriod: item.period,
-                        subsidiary: '',
-                        department: '',
-                        location: '',
-                        classId: ''
-                    });
+                    const normalizedAccount = normalizeAccountNumber(item.account);
                     
-                    if (cacheToUse.has(cacheKey)) {
-                        cacheToUse.delete(cacheKey);
-                        cleared++;
-                        console.log(`   ✓ Cleared cache.${item.type}: ${item.account}/${item.period}`);
+                    // Clear by pattern matching - check all cache entries
+                    // Cache keys are JSON strings, so we parse and check
+                    for (const [key, _] of cacheToUse) {
+                        try {
+                            const parsed = JSON.parse(key);
+                            // Match if account and period match (fromPeriod OR toPeriod)
+                            if (parsed.account === normalizedAccount && 
+                                (parsed.fromPeriod === item.period || parsed.toPeriod === item.period || 
+                                 // Also match for BS accounts where fromPeriod is empty
+                                 (parsed.fromPeriod === '' && parsed.toPeriod === item.period))) {
+                                // If subsidiary was specified, also check that matches
+                                if (!item.subsidiary || parsed.subsidiary === '' || 
+                                    parsed.subsidiary.toLowerCase() === item.subsidiary.toLowerCase()) {
+                                    cacheToUse.delete(key);
+                                    cleared++;
+                                    console.log(`   ✓ Cleared cache.${item.type}: ${normalizedAccount}/${item.period} (sub=${parsed.subsidiary || 'any'})`);
+                                }
+                            }
+                        } catch (e) {
+                            // Key might not be JSON (e.g., title:xxx) - skip
+                        }
                     }
                     
                     // Clear from fullYearCache (only for balance)
-                    if (item.type === 'balance' && fullYearCache && fullYearCache[item.account]) {
-                        if (fullYearCache[item.account][item.period] !== undefined) {
-                            delete fullYearCache[item.account][item.period];
+                    if (item.type === 'balance' && fullYearCache && fullYearCache[normalizedAccount]) {
+                        if (fullYearCache[normalizedAccount][item.period] !== undefined) {
+                            delete fullYearCache[normalizedAccount][item.period];
                             cleared++;
-                            console.log(`   ✓ Cleared fullYearCache: ${item.account}/${item.period}`);
+                            console.log(`   ✓ Cleared fullYearCache: ${normalizedAccount}/${item.period}`);
                         }
                     }
                 }

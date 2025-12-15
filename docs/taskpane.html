@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.87</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.91</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3613,29 +3613,40 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         // Poll for status updates from custom functions (via localStorage)
+        // NOTE: Polling is started in Office.onReady to avoid showing stale statuses
         let lastStatusTimestamp = 0;
-        setInterval(() => {
-            try {
-                const statusJson = localStorage.getItem('netsuite_status');
-                if (statusJson) {
-                    const status = JSON.parse(statusJson);
-                    // Only show if timestamp is newer than last shown
-                    if (status.timestamp > lastStatusTimestamp) {
-                        lastStatusTimestamp = status.timestamp;
-                        const icon = status.type === 'success' ? '✅' : 
-                                     status.type === 'error' ? '❌' : '⏳';
-                        showStatus(status.message, icon, status.progress, status.type);
-                        
-                        // Auto-hide success/error after delay
-                        if (status.type === 'success' || status.type === 'error') {
-                            hideStatus(3000);
+        let taskpaneReady = false;  // Flag to prevent polling before init cleanup
+        
+        function startStatusPolling() {
+            // Set the initial timestamp to "now" so we ignore any stale statuses
+            // Only show statuses that are created AFTER the taskpane loads
+            lastStatusTimestamp = Date.now();
+            taskpaneReady = true;
+            
+            setInterval(() => {
+                if (!taskpaneReady) return;  // Don't poll until ready
+                try {
+                    const statusJson = localStorage.getItem('netsuite_status');
+                    if (statusJson) {
+                        const status = JSON.parse(statusJson);
+                        // Only show if timestamp is newer than when taskpane loaded
+                        if (status.timestamp > lastStatusTimestamp) {
+                            lastStatusTimestamp = status.timestamp;
+                            const icon = status.type === 'success' ? '✅' : 
+                                         status.type === 'error' ? '❌' : '⏳';
+                            showStatus(status.message, icon, status.progress, status.type);
+                            
+                            // Auto-hide success/error after delay
+                            if (status.type === 'success' || status.type === 'error') {
+                                hideStatus(3000);
+                            }
                         }
                     }
+                } catch (e) {
+                    // Ignore parsing errors
                 }
-            } catch (e) {
-                // Ignore parsing errors
-            }
-        }, 500);  // Check every 500ms
+            }, 500);  // Check every 500ms
+        }
 
         // Poll for toast notifications from custom functions (via localStorage)
         let lastToastTimestamp = 0;
@@ -8159,6 +8170,22 @@ export default {
         Office.onReady((info) => {
             console.log('NetSuite Excel Add-in task pane loaded');
             
+            // SAFETY: Hide any stale loading overlays from previous sessions/crashes
+            const staleOverlay = document.getElementById('loadingOverlay');
+            if (staleOverlay) {
+                staleOverlay.classList.remove('active');
+            }
+            
+            // SAFETY: Hide status bar and clear stale status from localStorage
+            const staleStatusBar = document.getElementById('statusBar');
+            if (staleStatusBar) {
+                staleStatusBar.style.display = 'none';
+            }
+            localStorage.removeItem('netsuite_status');
+            
+            // Start status polling AFTER cleanup - ignores any stale statuses
+            startStatusPolling();
+            
             // Set version in UI elements
             initializeVersion();
             
@@ -11324,60 +11351,134 @@ export default {
                     
                     updateLoading(`Resolving cell references for ${formulaCount} formulas...`, 30);
                     
-                    // For each formula, we need to resolve the cell references
-                    // Parse the formula to extract cell references, then get their values
+                    // For each formula, we need to resolve the parameters
+                    // Parse formula to extract BOTH quoted literals AND cell references
                     for (const cell of cellsWithFormulas) {
                         const formula = cell.formula;
                         
-                        // Extract all cell references from the formula
-                        // Pattern matches: $A$1, A1, $A1, A$1, etc.
-                        const cellRefPattern = /\$?[A-Z]+\$?\d+/gi;
-                        const refs = formula.match(cellRefPattern);
-                        
-                        if (refs && refs.length >= 2) {
-                            // First ref is account, second is fromPeriod (third is toPeriod, usually same)
-                            try {
-                                const accountRef = refs[0];
-                                const periodRef = refs[1];
+                        try {
+                            // Parse XAVI.BALANCE/BUDGET formula: (account, fromPeriod, toPeriod, subsidiary, ...)
+                            // Parameters can be: "literal", CellRef, or empty
+                            const args = parseFormulaArgs(formula);
+                            console.log(`   🔍 Parsed formula args:`, args);
+                            
+                            if (args.length < 1) continue;
+                            
+                            // Extract: account (arg 0), fromPeriod (arg 1), toPeriod (arg 2), subsidiary (arg 3)
+                            let account = null;
+                            let fromPeriod = null;
+                            let toPeriod = null;
+                            let subsidiary = null;
+                            
+                            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                            
+                            // Helper to resolve a parameter (cell ref or literal)
+                            async function resolveParam(param, context) {
+                                if (!param || param === '') return null;
                                 
-                                // Get the values of these cells
-                                const accountCell = context.workbook.worksheets.getActiveWorksheet().getRange(accountRef);
-                                const periodCell = context.workbook.worksheets.getActiveWorksheet().getRange(periodRef);
-                                accountCell.load('values');
-                                periodCell.load('values');
-                                await context.sync();
+                                // Quoted string literal
+                                if (param.startsWith('"') && param.endsWith('"')) {
+                                    return param.slice(1, -1); // Remove quotes
+                                }
                                 
-                                const account = String(accountCell.values[0][0]).trim();
-                                let period = periodCell.values[0][0];
+                                // Cell reference - resolve it
+                                const cellRefPattern = /^\$?[A-Z]+\$?\d+$/i;
+                                if (cellRefPattern.test(param)) {
+                                    const cellRange = context.workbook.worksheets.getActiveWorksheet().getRange(param);
+                                    cellRange.load('values');
+                                    await context.sync();
+                                    return cellRange.values[0][0];
+                                }
                                 
-                                // Convert date to "Mon YYYY" format
-                                // Excel stores dates as serial numbers (days since Jan 1, 1900)
-                                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                // Literal number or text without quotes
+                                return param;
+                            }
+                            
+                            // Helper to convert value to "Mon YYYY" period format
+                            function toPeriodFormat(value) {
+                                if (!value && value !== 0) return null;
                                 
-                                if (typeof period === 'number' && period > 1000) {
-                                    // Excel serial number - convert to JS date
-                                    // Excel epoch is Jan 1, 1900, JS epoch is Jan 1, 1970
-                                    // Excel serial 1 = Jan 1, 1900
+                                // Excel serial number (> 1000, typically 40000+)
+                                if (typeof value === 'number' && value > 40000) {
                                     const excelEpoch = new Date(1900, 0, 1);
-                                    const d = new Date(excelEpoch.getTime() + (period - 2) * 24 * 60 * 60 * 1000);
-                                    period = `${months[d.getMonth()]} ${d.getFullYear()}`;
-                                } else if (period instanceof Date) {
-                                    period = `${months[period.getMonth()]} ${period.getFullYear()}`;
-                                } else if (typeof period === 'string') {
-                                    // Already a string like "Jan 2025" - use as-is
-                                    period = period.trim();
-                } else {
-                                    period = String(period).trim();
+                                    const d = new Date(excelEpoch.getTime() + (value - 2) * 24 * 60 * 60 * 1000);
+                                    return `${months[d.getMonth()]} ${d.getFullYear()}`;
                                 }
                                 
-                                if (account && period) {
-                                    itemsToClear.push({ account, period, formulaType: cell.formulaType });
-                                    console.log(`   📌 Resolved: ${account} / ${period} (${cell.formulaType})`);
+                                // Year only (1900-2100)
+                                if (typeof value === 'number' && value >= 1900 && value <= 2100) {
+                                    return `Dec ${value}`; // Use Dec for toPeriod (cumulative through end of year)
                                 }
-                            } catch (e) {
-                                console.warn(`   ⚠️ Could not resolve refs for formula: ${formula}`, e);
+                                
+                                // String period like "Jan 2025" or "2025"
+                                if (typeof value === 'string') {
+                                    const v = value.trim();
+                                    // Year only string
+                                    if (/^\d{4}$/.test(v)) {
+                                        return `Dec ${v}`;
+                                    }
+                                    return v;
+                                }
+                                
+                                return String(value).trim();
+                            }
+                            
+                            // Resolve parameters
+                            account = await resolveParam(args[0], context);
+                            if (args.length > 1) fromPeriod = await resolveParam(args[1], context);
+                            if (args.length > 2) toPeriod = await resolveParam(args[2], context);
+                            if (args.length > 3) subsidiary = await resolveParam(args[3], context);
+                            
+                            // For BS accounts with empty fromPeriod, use toPeriod
+                            const period = toPeriodFormat(toPeriod || fromPeriod);
+                            
+                            console.log(`   📌 Resolved: account="${account}", from="${fromPeriod}", to="${toPeriod}", period="${period}"`);
+                            
+                            if (account && period) {
+                                // Include subsidiary in cache key if specified
+                                const subsidiaryStr = subsidiary ? String(subsidiary).trim() : '';
+                                itemsToClear.push({ account: String(account).trim(), period, formulaType: cell.formulaType, subsidiary: subsidiaryStr });
+                                console.log(`   ✅ Will clear: ${account} / ${period} / sub="${subsidiaryStr}" (${cell.formulaType})`);
+                            }
+                        } catch (e) {
+                            console.warn(`   ⚠️ Could not parse formula: ${formula}`, e);
+                        }
+                    }
+                    
+                    // Helper function to parse formula arguments (handles quotes, cell refs, empty args)
+                    function parseFormulaArgs(formula) {
+                        // Extract content between parentheses
+                        const match = formula.match(/\((.+)\)/);
+                        if (!match) return [];
+                        
+                        const content = match[1];
+                        const args = [];
+                        let current = '';
+                        let inQuotes = false;
+                        let depth = 0;
+                        
+                        for (let i = 0; i < content.length; i++) {
+                            const char = content[i];
+                            
+                            if (char === '"' && content[i-1] !== '\\') {
+                                inQuotes = !inQuotes;
+                                current += char;
+                            } else if (char === '(' && !inQuotes) {
+                                depth++;
+                                current += char;
+                            } else if (char === ')' && !inQuotes) {
+                                depth--;
+                                current += char;
+                            } else if (char === ',' && !inQuotes && depth === 0) {
+                                args.push(current.trim());
+                                current = '';
+                            } else {
+                                current += char;
                             }
                         }
+                        args.push(current.trim());
+                        
+                        return args;
                     }
                     
                     console.log(`   Items to clear: ${itemsToClear.length}, Special formulas: ${specialFormulas.length}`);
@@ -11512,7 +11613,10 @@ export default {
                         // Set cache invalidation signal - functions.js will check this
                         // and clear its in-memory caches when it sees items to invalidate
                         const invalidateKey = 'netsuite_cache_invalidate';
-                        const invalidateItems = itemsToClear.map(i => `${i.formulaType}:${i.account}:${i.period}`);
+                        // Include subsidiary if specified: "balance:111*:Dec 2025:Celigo Inc. (Consolidated)"
+                        const invalidateItems = itemsToClear.map(i => 
+                            i.subsidiary ? `${i.formulaType}:${i.account}:${i.period}:${i.subsidiary}` 
+                                         : `${i.formulaType}:${i.account}:${i.period}`);
                         localStorage.setItem(invalidateKey, JSON.stringify({
                             items: invalidateItems,
                             timestamp: Date.now()
@@ -11529,8 +11633,10 @@ export default {
                     // Pass specific items as "balance:60032:May 2025,budget:60032:Jun 2025" format
                     updateLoading('Clearing in-memory cache...', 60);
                     try {
-                        // Build list with formula type prefix: "balance:60032:May 2025,budget:60032:Jun 2025"
-                        const itemsList = itemsToClear.map(i => `${i.formulaType}:${i.account}:${i.period}`).join(',');
+                        // Build list with formula type prefix and subsidiary: "balance:111*:Dec 2025:Celigo Inc. (Consolidated)"
+                        const itemsList = itemsToClear.map(i => 
+                            i.subsidiary ? `${i.formulaType}:${i.account}:${i.period}:${i.subsidiary}` 
+                                         : `${i.formulaType}:${i.account}:${i.period}`).join(',');
                         console.log(`   Items: ${itemsList}`);
                         
                         // Use a temporary cell to evaluate the BALANCE function with __CLEARCACHE__ command
