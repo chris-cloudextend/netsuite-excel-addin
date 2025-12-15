@@ -20,7 +20,7 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://teddy-adjust-examination-clerk.trycloudflare.com
+// CURRENT TUNNEL URL: https://adipex-collar-disclaimers-festivals.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
 // Last Updated: Dec 15, 2025
 // ════════════════════════════════════════════════════════════════════
@@ -28,7 +28,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://teddy-adjust-examination-clerk.trycloudflare.com';
+    const TUNNEL_URL = 'https://adipex-collar-disclaimers-festivals.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
