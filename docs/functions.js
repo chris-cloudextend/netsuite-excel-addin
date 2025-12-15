@@ -855,9 +855,77 @@ async function runBuildModeBatch() {
     console.log(`🔄 Processing ${pending.length} formulas...`);
     broadcastStatus(`Processing ${pending.length} formulas...`, 5, 'info');
     
+    // ================================================================
+    // CUMULATIVE BS QUERIES: Handle empty fromPeriod separately
+    // These need direct /balance API calls (cumulative from inception)
+    // ================================================================
+    const cumulativeItems = [];
+    const regularItems = [];
+    
+    for (const item of pending) {
+        const { fromPeriod, toPeriod } = item.params;
+        if ((!fromPeriod || fromPeriod === '') && toPeriod && toPeriod !== '') {
+            cumulativeItems.push(item);
+        } else {
+            regularItems.push(item);
+        }
+    }
+    
+    if (cumulativeItems.length > 0) {
+        console.log(`📊 BUILD MODE: Processing ${cumulativeItems.length} CUMULATIVE (BS) requests...`);
+        broadcastStatus(`Processing ${cumulativeItems.length} cumulative balance(s)...`, 10, 'info');
+        
+        for (const item of cumulativeItems) {
+            const { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook } = item.params;
+            
+            try {
+                const params = new URLSearchParams({
+                    account: account,
+                    from_period: '',
+                    to_period: toPeriod,
+                    subsidiary: subsidiary || '',
+                    department: department || '',
+                    location: location || '',
+                    class: classId || '',
+                    accountingbook: accountingBook || ''
+                });
+                
+                console.log(`   📤 Cumulative: ${account} through ${toPeriod}`);
+                
+                const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    const value = parseFloat(text) || 0;
+                    console.log(`   ✅ Cumulative result: ${account} = ${value.toLocaleString()}`);
+                    
+                    const cacheKey = getCacheKey('balance', item.params);
+                    cache.balance.set(cacheKey, value);
+                    item.resolve(value);
+                } else {
+                    console.error(`   ❌ Cumulative API error: ${response.status}`);
+                    item.resolve(0);
+                }
+            } catch (error) {
+                console.error(`   ❌ Cumulative fetch error:`, error);
+                item.resolve(0);
+            }
+        }
+    }
+    
+    // If no regular items, we're done
+    if (regularItems.length === 0) {
+        const elapsed = ((Date.now() - batchStartTime) / 1000).toFixed(2);
+        console.log(`✅ BUILD MODE COMPLETE in ${elapsed}s (${cumulativeItems.length} cumulative only)`);
+        broadcastStatus(`Complete!`, 100, 'success');
+        return;
+    }
+    
+    console.log(`📦 BUILD MODE: Processing ${regularItems.length} regular (period-based) requests...`);
+    
     // Group pending formulas by their filter combination
     const filterGroups = new Map();
-    for (const item of pending) {
+    for (const item of regularItems) {
         const filterKey = getFilterKey(item.params);
         if (!filterGroups.has(filterKey)) {
             filterGroups.set(filterKey, []);
@@ -869,7 +937,7 @@ async function runBuildModeBatch() {
     
     // Collect ALL unique accounts to detect types
     const allAccountsSet = new Set();
-    for (const item of pending) {
+    for (const item of regularItems) {
         allAccountsSet.add(item.params.account);
     }
     const allAccountsArray = Array.from(allAccountsSet);
@@ -3166,12 +3234,82 @@ async function processBatchQueue() {
     const requests = Array.from(pendingRequests.balance.entries());
     pendingRequests.balance.clear();
     
+    // ================================================================
+    // CUMULATIVE BS QUERIES: Handle empty fromPeriod separately
+    // These need direct /balance API calls (cumulative from inception)
+    // The batch endpoint only returns period activity, not cumulative totals
+    // ================================================================
+    const cumulativeRequests = [];
+    const regularRequests = [];
+    
+    for (const [cacheKey, request] of requests) {
+        const { fromPeriod, toPeriod } = request.params;
+        // Cumulative = empty fromPeriod with a toPeriod
+        if ((!fromPeriod || fromPeriod === '') && toPeriod && toPeriod !== '') {
+            cumulativeRequests.push([cacheKey, request]);
+        } else {
+            regularRequests.push([cacheKey, request]);
+        }
+    }
+    
+    if (cumulativeRequests.length > 0) {
+        console.log(`📊 Processing ${cumulativeRequests.length} CUMULATIVE (BS) requests separately...`);
+        
+        // Process cumulative requests with direct /balance API calls
+        for (const [cacheKey, request] of cumulativeRequests) {
+            const { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook } = request.params;
+            
+            try {
+                const params = new URLSearchParams({
+                    account: account,
+                    from_period: '',  // Empty = cumulative from inception
+                    to_period: toPeriod,
+                    subsidiary: subsidiary || '',
+                    department: department || '',
+                    location: location || '',
+                    class: classId || '',
+                    accountingbook: accountingBook || ''
+                });
+                
+                console.log(`   📤 Cumulative: ${account} through ${toPeriod}`);
+                
+                const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    const value = parseFloat(text) || 0;
+                    console.log(`   ✅ Cumulative result: ${account} = ${value.toLocaleString()}`);
+                    
+                    // Cache and resolve
+                    cache.balance.set(cacheKey, value);
+                    request.resolve(value);
+                } else {
+                    console.error(`   ❌ Cumulative API error: ${response.status}`);
+                    request.resolve(0);
+                }
+            } catch (error) {
+                console.error(`   ❌ Cumulative fetch error:`, error);
+                request.resolve(0);
+            }
+        }
+    }
+    
+    // If no regular requests, we're done
+    if (regularRequests.length === 0) {
+        const elapsed = ((Date.now() - batchStartTime) / 1000).toFixed(2);
+        console.log(`\n✅ BATCH COMPLETE in ${elapsed}s (${cumulativeRequests.length} cumulative only)`);
+        return;
+    }
+    
+    // Continue with regular batch processing for period-based requests
+    console.log(`📦 Processing ${regularRequests.length} regular (period-based) requests...`);
+    
     // Group by filters ONLY (not periods) - this allows smart batching
     // Example: 1 account × 12 months = 1 batch (not 12 batches)
     // Example: 100 accounts × 1 month = 2 batches (chunked by accounts)
     // Example: 100 accounts × 12 months = 2 batches (all periods together)
     const groups = new Map();
-    for (const [cacheKey, request] of requests) {
+    for (const [cacheKey, request] of regularRequests) {
         const {params} = request;
         const filterKey = JSON.stringify({
             subsidiary: params.subsidiary || '',
