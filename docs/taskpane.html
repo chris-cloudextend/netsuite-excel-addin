@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.82</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.83</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3079,17 +3079,20 @@ For licensing inquiries, contact: legal@celigo.com
             <div class="formula-card">
                 <div class="formula-name">XAVI.NETINCOME</div>
                 <div class="formula-description">
-                    Calculate Year-to-Date Net Income (sum of P&L from fiscal year start through target period). This value is computed dynamically—there is no account to query.
+                    Calculate Net Income for a period range (sum of P&L activity). Specify both from and to periods explicitly.
                 </div>
                 <div class="formula-syntax">
-                    =XAVI.NETINCOME(period, [subsidiary], [accountingBook], [class], [department], [location])
+                    =XAVI.NETINCOME(fromPeriod, [toPeriod], [subsidiary], [accountingBook], [class], [department], [location])
                 </div>
                 <div class="parameters">
                     <div class="param-title">Required Parameters</div>
                     <div class="param-item">
-                        <span class="param-name">period</span> - Target period (e.g., "Jan 2025")
+                        <span class="param-name">fromPeriod</span> - Start period (e.g., "Jan 2025", "2025", or cell reference)
                     </div>
                     <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
+                    <div class="param-item">
+                        <span class="param-name">toPeriod</span> - End period (defaults to fromPeriod if empty). For year-only, expands to Dec.
+                    </div>
                     <div class="param-item">
                         <span class="param-name">subsidiary</span> - Subsidiary Context (ID or name, add "(Consolidated)" for children)
                     </div>
@@ -3102,11 +3105,13 @@ For licensing inquiries, contact: legal@celigo.com
                 </div>
                 <div class="example">
                     <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.NETINCOME("Jan 2025")</div>
-                    <div class="example-code">=XAVI.NETINCOME(B1, "Celigo Inc.")</div>
+                    <div class="example-code">=XAVI.NETINCOME("Jan 2025", "Dec 2025")</div>
+                    <div class="example-code">=XAVI.NETINCOME("2025", "2025")</div>
+                    <div class="example-code">=XAVI.NETINCOME("Jan 2025",, "Celigo Inc.")</div>
+                    <div class="example-code">=XAVI.NETINCOME(C4, D4, E4)</div>
                 </div>
                 <div class="help-tip" style="margin-top: 10px; font-size: 11px; color: var(--bottlenose);">
-                    ⏱️ Takes 10–20 seconds due to P&L aggregation
+                    ⏱️ Takes 10–20 seconds due to P&L aggregation. Use comma to skip toPeriod: =NETINCOME("Jan 2025",,"Sub")
                 </div>
             </div>
 
