@@ -4858,14 +4858,170 @@ def get_balance():
         if isinstance(result, dict) and 'error' in result:
             return jsonify({'error': result['error']}), 500
         
-        # Return balance (default to 0 if no data)
+        # Get total balance
+        total_balance = 0.0
         if result and len(result) > 0:
             balance = result[0].get('balance')
-            if balance is None:
-                return '0'
-            return str(float(balance))
-        else:
-            return '0'
+            if balance is not None:
+                total_balance = float(balance)
+        
+        # ================================================================
+        # WILDCARD BREAKDOWN: For patterns like "100*", also return
+        # individual account balances so frontend can cache them
+        # This enables instant resolution of subsequent wildcards from cache
+        # ================================================================
+        include_breakdown = request.args.get('include_breakdown', 'false').lower() == 'true'
+        
+        if '*' in account and include_breakdown:
+            print(f"DEBUG - Wildcard with breakdown requested: {account}", file=sys.stderr)
+            
+            # Query individual account balances
+            # Modify query to GROUP BY account number
+            breakdown_sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+            
+            if is_cumulative_bs:
+                if needs_line_join:
+                    breakdown_query = f"""
+                        SELECT a.acctnumber, SUM(x.cons_amt) AS balance
+                        FROM (
+                            SELECT
+                                tal.account,
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        t.postingperiod,
+                                        'DEFAULT'
+                                    )
+                                )
+                                {breakdown_sign_sql}
+                                AS cons_amt
+                            FROM TransactionAccountingLine tal
+                                JOIN Transaction t ON t.id = tal.transaction
+                                JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                                JOIN Account a ON a.id = tal.account
+                            WHERE {where_clause}
+                        ) x
+                        JOIN Account a ON a.id = x.account
+                        GROUP BY a.acctnumber
+                    """
+                else:
+                    breakdown_query = f"""
+                        SELECT a.acctnumber, SUM(x.cons_amt) AS balance
+                        FROM (
+                            SELECT
+                                tal.account,
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        t.postingperiod,
+                                        'DEFAULT'
+                                    )
+                                )
+                                {breakdown_sign_sql}
+                                AS cons_amt
+                            FROM TransactionAccountingLine tal
+                                JOIN Transaction t ON t.id = tal.transaction
+                                JOIN Account a ON a.id = tal.account
+                            WHERE {where_clause}
+                        ) x
+                        JOIN Account a ON a.id = x.account
+                        GROUP BY a.acctnumber
+                    """
+            else:
+                # Non-cumulative (P&L) query with breakdown
+                if needs_line_join:
+                    breakdown_query = f"""
+                        SELECT a.acctnumber, SUM(x.cons_amt) AS balance
+                        FROM (
+                            SELECT
+                                tal.account,
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        t.postingperiod,
+                                        'DEFAULT'
+                                    )
+                                )
+                                {breakdown_sign_sql}
+                                AS cons_amt
+                            FROM TransactionAccountingLine tal
+                                JOIN Transaction t ON t.id = tal.transaction
+                                JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                                JOIN Account a ON a.id = tal.account
+                                JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                            WHERE {where_clause}
+                        ) x
+                        JOIN Account a ON a.id = x.account
+                        GROUP BY a.acctnumber
+                    """
+                else:
+                    breakdown_query = f"""
+                        SELECT a.acctnumber, SUM(x.cons_amt) AS balance
+                        FROM (
+                            SELECT
+                                tal.account,
+                                TO_NUMBER(
+                                    BUILTIN.CONSOLIDATE(
+                                        tal.amount,
+                                        'LEDGER',
+                                        'DEFAULT',
+                                        'DEFAULT',
+                                        {target_sub},
+                                        t.postingperiod,
+                                        'DEFAULT'
+                                    )
+                                )
+                                {breakdown_sign_sql}
+                                AS cons_amt
+                            FROM TransactionAccountingLine tal
+                                JOIN Transaction t ON t.id = tal.transaction
+                                JOIN Account a ON a.id = tal.account
+                                JOIN AccountingPeriod ap ON ap.id = t.postingperiod
+                            WHERE {where_clause}
+                        ) x
+                        JOIN Account a ON a.id = x.account
+                        GROUP BY a.acctnumber
+                    """
+            
+            print(f"DEBUG - Breakdown query:\n{breakdown_query}", file=sys.stderr)
+            
+            try:
+                breakdown_result = query_netsuite(breakdown_query, timeout=query_timeout)
+                
+                if isinstance(breakdown_result, list):
+                    accounts = {}
+                    for row in breakdown_result:
+                        acct_num = row.get('acctnumber', '')
+                        acct_bal = row.get('balance', 0)
+                        if acct_num:
+                            accounts[acct_num] = float(acct_bal) if acct_bal else 0.0
+                    
+                    print(f"DEBUG - Breakdown: {len(accounts)} individual accounts", file=sys.stderr)
+                    
+                    return jsonify({
+                        'total': total_balance,
+                        'accounts': accounts,
+                        'pattern': account,
+                        'period': to_period or from_period
+                    })
+            except Exception as e:
+                print(f"DEBUG - Breakdown query failed: {e}", file=sys.stderr)
+                # Fall through to return just the total
+        
+        # Return balance as plain string (default format for backward compatibility)
+        return str(total_balance)
             
     except Exception as e:
         print(f"Error in get_balance: {str(e)}", file=sys.stderr)

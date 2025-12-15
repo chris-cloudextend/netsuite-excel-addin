@@ -899,8 +899,10 @@ async function runBuildModeBatch() {
             
             // ================================================================
             // CACHE MISS - Call API
+            // For wildcards, request breakdown so we can cache individual accounts
             // ================================================================
             try {
+                const isWildcard = account.includes('*');
                 const params = new URLSearchParams({
                     account: account,
                     from_period: '',
@@ -912,18 +914,45 @@ async function runBuildModeBatch() {
                     accountingbook: accountingBook || ''
                 });
                 
-                console.log(`   📤 Cumulative API: ${account} through ${toPeriod}`);
+                // Request breakdown for wildcards so we can cache individual accounts
+                if (isWildcard) {
+                    params.append('include_breakdown', 'true');
+                }
+                
+                console.log(`   📤 Cumulative API: ${account} through ${toPeriod}${isWildcard ? ' (with breakdown)' : ''}`);
                 apiCalls++;
                 
                 const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
                 
                 if (response.ok) {
-                    const text = await response.text();
-                    const value = parseFloat(text) || 0;
-                    console.log(`   ✅ Cumulative result: ${account} = ${value.toLocaleString()}`);
+                    const contentType = response.headers.get('content-type') || '';
                     
-                    cache.balance.set(cacheKey, value);
-                    item.resolve(value);
+                    if (isWildcard && contentType.includes('application/json')) {
+                        // Parse JSON response with breakdown
+                        const data = await response.json();
+                        const total = data.total || 0;
+                        const accounts = data.accounts || {};
+                        const period = data.period || toPeriod;
+                        
+                        console.log(`   ✅ Wildcard result: ${account} = ${total.toLocaleString()} (${Object.keys(accounts).length} accounts)`);
+                        
+                        // Cache the total for this wildcard pattern
+                        cache.balance.set(cacheKey, total);
+                        
+                        // CRITICAL: Cache individual accounts for future wildcard resolution!
+                        // This enables other wildcards like "101*" to resolve from cache
+                        cacheIndividualAccounts(accounts, period, subsidiary);
+                        
+                        item.resolve(total);
+                    } else {
+                        // Plain text response (non-wildcard or breakdown not available)
+                        const text = await response.text();
+                        const value = parseFloat(text) || 0;
+                        console.log(`   ✅ Cumulative result: ${account} = ${value.toLocaleString()}`);
+                        
+                        cache.balance.set(cacheKey, value);
+                        item.resolve(value);
+                    }
                 } else {
                     console.error(`   ❌ Cumulative API error: ${response.status}`);
                     item.resolve(0);
@@ -934,7 +963,7 @@ async function runBuildModeBatch() {
             }
         }
         
-        if (cacheHits > 0) {
+        if (cacheHits > 0 || apiCalls > 0) {
             console.log(`   📊 Cumulative summary: ${cacheHits} cache hits, ${apiCalls} API calls`);
         }
     }
@@ -1775,6 +1804,57 @@ function resolveWildcardFromCache(accountPattern, fromPeriod, toPeriod, subsidia
     }
     
     return null;
+}
+
+// ============================================================================
+// CACHE INDIVIDUAL ACCOUNTS FROM WILDCARD BREAKDOWN
+// When a wildcard query returns individual account balances, cache them
+// so future wildcards can resolve from cache
+// ============================================================================
+function cacheIndividualAccounts(accounts, period, subsidiary = '') {
+    if (!accounts || typeof accounts !== 'object') return;
+    
+    const accountCount = Object.keys(accounts).length;
+    if (accountCount === 0) return;
+    
+    console.log(`   💾 Caching ${accountCount} individual accounts for period ${period}`);
+    
+    // Add to localStorage cache (if no subsidiary filter - localStorage is not subsidiary-aware)
+    if (!subsidiary || subsidiary === '') {
+        try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            const balanceData = stored ? JSON.parse(stored) : {};
+            
+            for (const [acct, value] of Object.entries(accounts)) {
+                if (!balanceData[acct]) {
+                    balanceData[acct] = {};
+                }
+                balanceData[acct][period] = value;
+            }
+            
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(balanceData));
+            localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
+            
+            console.log(`   ✅ Saved to localStorage`);
+        } catch (e) {
+            console.warn(`   ⚠️ localStorage save failed:`, e.message);
+        }
+    }
+    
+    // Also add to fullYearCache for in-memory access
+    if (!fullYearCache) {
+        fullYearCache = {};
+        fullYearCacheTimestamp = Date.now();
+    }
+    
+    for (const [acct, value] of Object.entries(accounts)) {
+        if (!fullYearCache[acct]) {
+            fullYearCache[acct] = {};
+        }
+        fullYearCache[acct][period] = value;
+    }
+    
+    console.log(`   ✅ Cached to fullYearCache`);
 }
 
 // Save balances to localStorage (called by taskpane via window function)
@@ -3414,8 +3494,10 @@ async function processBatchQueue() {
             
             // ================================================================
             // CACHE MISS - Call API
+            // For wildcards, request breakdown so we can cache individual accounts
             // ================================================================
             try {
+                const isWildcard = account.includes('*');
                 const params = new URLSearchParams({
                     account: account,
                     from_period: '',  // Empty = cumulative from inception
@@ -3427,19 +3509,44 @@ async function processBatchQueue() {
                     accountingbook: accountingBook || ''
                 });
                 
-                console.log(`   📤 Cumulative API: ${account} through ${toPeriod}`);
+                // Request breakdown for wildcards so we can cache individual accounts
+                if (isWildcard) {
+                    params.append('include_breakdown', 'true');
+                }
+                
+                console.log(`   📤 Cumulative API: ${account} through ${toPeriod}${isWildcard ? ' (with breakdown)' : ''}`);
                 apiCalls++;
                 
                 const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
                 
                 if (response.ok) {
-                    const text = await response.text();
-                    const value = parseFloat(text) || 0;
-                    console.log(`   ✅ Cumulative result: ${account} = ${value.toLocaleString()}`);
+                    const contentType = response.headers.get('content-type') || '';
                     
-                    // Cache and resolve
-                    cache.balance.set(cacheKey, value);
-                    request.resolve(value);
+                    if (isWildcard && contentType.includes('application/json')) {
+                        // Parse JSON response with breakdown
+                        const data = await response.json();
+                        const total = data.total || 0;
+                        const accounts = data.accounts || {};
+                        const period = data.period || toPeriod;
+                        
+                        console.log(`   ✅ Wildcard result: ${account} = ${total.toLocaleString()} (${Object.keys(accounts).length} accounts)`);
+                        
+                        // Cache the total for this wildcard pattern
+                        cache.balance.set(cacheKey, total);
+                        
+                        // CRITICAL: Cache individual accounts for future wildcard resolution!
+                        cacheIndividualAccounts(accounts, period, subsidiary);
+                        
+                        request.resolve(total);
+                    } else {
+                        // Plain text response (non-wildcard or breakdown not available)
+                        const text = await response.text();
+                        const value = parseFloat(text) || 0;
+                        console.log(`   ✅ Cumulative result: ${account} = ${value.toLocaleString()}`);
+                        
+                        cache.balance.set(cacheKey, value);
+                        request.resolve(value);
+                    }
                 } else {
                     console.error(`   ❌ Cumulative API error: ${response.status}`);
                     request.resolve(0);
