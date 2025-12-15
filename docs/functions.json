@@ -305,7 +305,7 @@
       "description": "Get net income for a period range. Use fromPeriod and toPeriod explicitly.",
       "helpUrl": "https://www.example.com/help",
       "result": {
-        "type": "any",
+        "type": "number",
         "dimensionality": "scalar"
       },
       "parameters": [
@@ -317,39 +317,45 @@
         },
         {
           "name": "toPeriod",
-          "description": "End period (if empty, defaults to fromPeriod). Use comma to skip: =NETINCOME(\"Jan 2025\",,\"Sub\")",
+          "description": "End period (defaults to fromPeriod if empty)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "subsidiary",
           "description": "Subsidiary name or ID (optional)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "accountingBook",
           "description": "Accounting Book ID (optional)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "classId",
           "description": "Class filter (optional)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "department",
           "description": "Department filter (optional)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "location",
           "description": "Location filter (optional)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         }
       ],
       "options": {

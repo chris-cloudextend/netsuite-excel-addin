@@ -3828,7 +3828,7 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
         // Validate fromPeriod is provided
         if (fromPeriod === undefined || fromPeriod === null || fromPeriod === '') {
             console.error('❌ NETINCOME: fromPeriod is required');
-            return '#VALUE!';
+            return 0;  // Return 0 instead of string error
         }
         
         // Convert fromPeriod - for year-only, use Jan (start of year)
@@ -3855,12 +3855,12 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
         
         if (!convertedFromPeriod) {
             console.error('❌ NETINCOME: Could not parse fromPeriod:', rawFromPeriod);
-            return '#VALUE!';
+            return 0;  // Return 0 instead of string error
         }
         
         if (!convertedToPeriod) {
             console.error('❌ NETINCOME: Could not parse toPeriod:', rawToPeriod);
-            return '#VALUE!';
+            return 0;  // Return 0 instead of string error
         }
         
         // Normalize optional parameters - NO guessing, just clean strings
