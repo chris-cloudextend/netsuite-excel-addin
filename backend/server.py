@@ -6512,8 +6512,11 @@ def calculate_net_income():
         else:
             cons_amount = "tal.amount"
         
-        # Sign SQL - standard Income flip only (consolidated view, no OthExpense flip)
-        ni_sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+        # Sign SQL - flip ALL P&L amounts by -1
+        # NetSuite stores: Income/OthIncome as NEGATIVE (credit), Expenses as POSITIVE (debit)
+        # For Net Income calculation: Revenue - COGS - OpEx + OthIncome - OthExpense
+        # Flipping all by -1: Income becomes positive, Expenses become negative (subtracted)
+        ni_sign_sql = "* -1"
         
         # Simplified Net Income query - no CROSS JOIN, directly uses BUILTIN.CONSOLIDATE
         # Uses range_start_date which is either FY start (YTD) or custom fromPeriod start
