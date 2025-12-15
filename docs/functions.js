@@ -22,7 +22,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.107';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.108';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -878,6 +878,11 @@ async function runBuildModeBatch() {
         let cacheHits = 0;
         let apiCalls = 0;
         
+        // Rate limiting to avoid NetSuite 429 CONCURRENCY_LIMIT_EXCEEDED errors
+        // NetSuite allows ~5-10 concurrent requests; we serialize to be safe
+        const RATE_LIMIT_DELAY = 150; // ms between API calls
+        const rateLimitSleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        
         for (const item of cumulativeItems) {
             const { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook } = item.params;
             const cacheKey = getCacheKey('balance', item.params);
@@ -920,6 +925,12 @@ async function runBuildModeBatch() {
                 }
                 
                 console.log(`   📤 Cumulative API: ${account} through ${toPeriod}${isWildcard ? ' (with breakdown)' : ''}`);
+                
+                // Rate limit: wait before making request if we've already made calls
+                // Prevents NetSuite 429 CONCURRENCY_LIMIT_EXCEEDED errors
+                if (apiCalls > 0) {
+                    await rateLimitSleep(RATE_LIMIT_DELAY);
+                }
                 apiCalls++;
                 
                 const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
@@ -3473,6 +3484,10 @@ async function processBatchQueue() {
         let cacheHits = 0;
         let apiCalls = 0;
         
+        // Rate limiting to avoid NetSuite 429 CONCURRENCY_LIMIT_EXCEEDED errors
+        const RATE_LIMIT_DELAY_BATCH = 150; // ms between API calls
+        const rateLimitSleepBatch = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        
         // Process cumulative requests - try cache first, then API
         for (const [cacheKey, request] of cumulativeRequests) {
             const { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook } = request.params;
@@ -3515,6 +3530,12 @@ async function processBatchQueue() {
                 }
                 
                 console.log(`   📤 Cumulative API: ${account} through ${toPeriod}${isWildcard ? ' (with breakdown)' : ''}`);
+                
+                // Rate limit: wait before making request if we've already made calls
+                // Prevents NetSuite 429 CONCURRENCY_LIMIT_EXCEEDED errors
+                if (apiCalls > 0) {
+                    await rateLimitSleepBatch(RATE_LIMIT_DELAY_BATCH);
+                }
                 apiCalls++;
                 
                 const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
