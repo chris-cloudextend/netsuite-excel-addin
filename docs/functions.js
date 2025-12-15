@@ -3816,6 +3816,8 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
  */
 async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, classId, department, location) {
     try {
+        console.log(`📊 NETINCOME called with: fromPeriod=${fromPeriod} (type: ${typeof fromPeriod}), toPeriod=${toPeriod} (type: ${typeof toPeriod}), subsidiary=${subsidiary}`);
+        
         const rawFromPeriod = fromPeriod;
         const rawToPeriod = toPeriod;
         
@@ -3831,6 +3833,7 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
         
         // Convert fromPeriod - for year-only, use Jan (start of year)
         const convertedFromPeriod = convertToMonthYear(fromPeriod, true);  // true = use Jan
+        console.log(`   📅 fromPeriod conversion: ${fromPeriod} → "${convertedFromPeriod}"`);
         
         // Convert toPeriod - if empty/skipped, default to fromPeriod; for year-only use Dec
         let convertedToPeriod;
@@ -3844,9 +3847,10 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
             } else {
                 convertedToPeriod = convertedFromPeriod; // Same period
             }
-            console.log(`📊 NETINCOME: toPeriod not specified, defaulting to ${convertedToPeriod}`);
+            console.log(`   📅 toPeriod not specified, defaulting to ${convertedToPeriod}`);
         } else {
             convertedToPeriod = convertToMonthYear(toPeriod, false);  // false = use Dec for year-only
+            console.log(`   📅 toPeriod conversion: ${toPeriod} → "${convertedToPeriod}"`);
         }
         
         if (!convertedFromPeriod) {
