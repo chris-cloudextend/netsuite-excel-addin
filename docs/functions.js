@@ -34,8 +34,8 @@ function expandPeriodRangeFromTo(fromPeriod, toPeriod) {
         return [];
     }
     
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     // Helper: Check if a period is year-only (e.g., "2024")
     const isYearOnly = (period) => {
@@ -53,11 +53,11 @@ function expandPeriodRangeFromTo(fromPeriod, toPeriod) {
     const parseMonthYear = (period) => {
         const match = String(period).match(/^([A-Za-z]+)\s+(\d{4})$/);
         if (!match) return null;
-        const monthIndex = monthNames.findIndex(m => m === match[1]);
-        if (monthIndex === -1) return null;
-        return { month: monthIndex, year: parseInt(match[2]) };
-    };
-    
+            const monthIndex = monthNames.findIndex(m => m === match[1]);
+            if (monthIndex === -1) return null;
+            return { month: monthIndex, year: parseInt(match[2]) };
+        };
+        
     try {
         // CASE 1: Both are year-only (e.g., "2024", "2024" or "2023", "2025")
         if (isYearOnly(fromPeriod) && isYearOnly(toPeriod)) {
@@ -875,9 +875,31 @@ async function runBuildModeBatch() {
         console.log(`📊 BUILD MODE: Processing ${cumulativeItems.length} CUMULATIVE (BS) requests...`);
         broadcastStatus(`Processing ${cumulativeItems.length} cumulative balance(s)...`, 10, 'info');
         
+        let cacheHits = 0;
+        let apiCalls = 0;
+        
         for (const item of cumulativeItems) {
             const { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook } = item.params;
+            const cacheKey = getCacheKey('balance', item.params);
             
+            // ================================================================
+            // TRY WILDCARD CACHE RESOLUTION FIRST
+            // If account has *, try to sum matching accounts from cache
+            // ================================================================
+            if (account.includes('*')) {
+                const wildcardResult = resolveWildcardFromCache(account, fromPeriod, toPeriod, subsidiary);
+                if (wildcardResult !== null) {
+                    console.log(`   🎯 Wildcard cache hit: ${account} = ${wildcardResult.total.toLocaleString()} (${wildcardResult.matchCount} accounts)`);
+                    cache.balance.set(cacheKey, wildcardResult.total);
+                    item.resolve(wildcardResult.total);
+                    cacheHits++;
+                    continue; // Skip API call
+                }
+            }
+            
+            // ================================================================
+            // CACHE MISS - Call API
+            // ================================================================
             try {
                 const params = new URLSearchParams({
                     account: account,
@@ -890,7 +912,8 @@ async function runBuildModeBatch() {
                     accountingbook: accountingBook || ''
                 });
                 
-                console.log(`   📤 Cumulative: ${account} through ${toPeriod}`);
+                console.log(`   📤 Cumulative API: ${account} through ${toPeriod}`);
+                apiCalls++;
                 
                 const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
                 
@@ -899,7 +922,6 @@ async function runBuildModeBatch() {
                     const value = parseFloat(text) || 0;
                     console.log(`   ✅ Cumulative result: ${account} = ${value.toLocaleString()}`);
                     
-                    const cacheKey = getCacheKey('balance', item.params);
                     cache.balance.set(cacheKey, value);
                     item.resolve(value);
                 } else {
@@ -910,6 +932,10 @@ async function runBuildModeBatch() {
                 console.error(`   ❌ Cumulative fetch error:`, error);
                 item.resolve(0);
             }
+        }
+        
+        if (cacheHits > 0) {
+            console.log(`   📊 Cumulative summary: ${cacheHits} cache hits, ${apiCalls} API calls`);
         }
     }
     
@@ -986,8 +1012,8 @@ async function runBuildModeBatch() {
                         periods.add(period);
                     }
                 } else {
-                    console.log(`   📅 Single period (from): ${p.fromPeriod}`);
-                    periods.add(p.fromPeriod);
+                console.log(`   📅 Single period (from): ${p.fromPeriod}`);
+                periods.add(p.fromPeriod);
                 }
             } else if (p.toPeriod && p.toPeriod !== '') {
                 // Check if it's a year-only period that needs expansion
@@ -998,8 +1024,8 @@ async function runBuildModeBatch() {
                         periods.add(period);
                     }
                 } else {
-                    console.log(`   📅 Single period (to): ${p.toPeriod}`);
-                    periods.add(p.toPeriod);
+                console.log(`   📅 Single period (to): ${p.toPeriod}`);
+                periods.add(p.toPeriod);
                 }
             }
         }
@@ -1656,6 +1682,98 @@ function checkFullYearCache(account, period, subsidiary = '') {
     if (fullYearCache[account] && fullYearCache[account][period] !== undefined) {
         return fullYearCache[account][period];
     }
+    return null;
+}
+
+// ============================================================================
+// WILDCARD RESOLUTION FROM CACHE
+// For patterns like "100*", find all matching accounts and sum their values
+// Returns { total, matchCount } if ALL matching accounts are in cache, null otherwise
+// ============================================================================
+function resolveWildcardFromCache(accountPattern, fromPeriod, toPeriod, subsidiary = '') {
+    // Extract prefix (everything before *)
+    const prefix = accountPattern.replace('*', '').trim();
+    if (!prefix) return null; // Can't resolve "*" alone
+    
+    // Determine which period to look up
+    // For cumulative BS queries (empty fromPeriod), use toPeriod
+    const lookupPeriod = (fromPeriod && fromPeriod !== '') ? fromPeriod : toPeriod;
+    if (!lookupPeriod) return null;
+    
+    // For period ranges, we'd need to sum multiple periods - skip for now
+    // (This handles the simple cumulative BS case)
+    if (fromPeriod && toPeriod && fromPeriod !== toPeriod && fromPeriod !== '') {
+        console.log(`   📭 Wildcard range queries not yet supported from cache`);
+        return null;
+    }
+    
+    let total = 0;
+    let matchCount = 0;
+    let cacheSource = null;
+    
+    // Try localStorage first (has account structure we can iterate)
+    try {
+        // Skip localStorage when subsidiary filter is specified (not subsidiary-aware)
+        if (!subsidiary || subsidiary === '') {
+            const timestamp = localStorage.getItem(STORAGE_TIMESTAMP_KEY);
+            if (timestamp) {
+                const age = Date.now() - parseInt(timestamp);
+                if (age < 300000) { // 5 minute expiry
+                    const stored = localStorage.getItem(STORAGE_KEY);
+                    if (stored) {
+                        const balanceData = JSON.parse(stored);
+                        
+                        // Find all accounts matching the prefix
+                        for (const acct in balanceData) {
+                            if (acct.startsWith(prefix)) {
+                                const periodData = balanceData[acct];
+                                if (periodData && periodData[lookupPeriod] !== undefined) {
+                                    total += periodData[lookupPeriod];
+                                    matchCount++;
+                                }
+                            }
+                        }
+                        
+                        if (matchCount > 0) {
+                            cacheSource = 'localStorage';
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('   ⚠️ Wildcard localStorage check failed:', e.message);
+    }
+    
+    // If localStorage didn't have it, try fullYearCache
+    if (matchCount === 0 && fullYearCache && fullYearCacheTimestamp) {
+        // Skip when subsidiary filter is specified (not subsidiary-aware)
+        if (!subsidiary || subsidiary === '') {
+            const age = Date.now() - fullYearCacheTimestamp;
+            if (age < 300000) { // 5 minute expiry
+                for (const acct in fullYearCache) {
+                    if (acct.startsWith(prefix)) {
+                        const periodData = fullYearCache[acct];
+                        if (periodData && periodData[lookupPeriod] !== undefined) {
+                            total += periodData[lookupPeriod];
+                            matchCount++;
+                        }
+                    }
+                }
+                
+                if (matchCount > 0) {
+                    cacheSource = 'fullYearCache';
+                }
+            }
+        }
+    }
+    
+    // If we found matches, return the result
+    if (matchCount > 0) {
+        console.log(`   ✅ Wildcard "${accountPattern}" → ${matchCount} accounts from ${cacheSource}`);
+        return { total, matchCount };
+    }
+    
     return null;
 }
 
@@ -2494,7 +2612,7 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
                                 if (!item.subsidiary || parsed.subsidiary === '' || 
                                     parsed.subsidiary.toLowerCase() === item.subsidiary.toLowerCase()) {
                                     cacheToUse.delete(key);
-                                    cleared++;
+                        cleared++;
                                     console.log(`   ✓ Cleared cache.${item.type}: ${normalizedAccount}/${item.period} (sub=${parsed.subsidiary || 'any'})`);
                                 }
                             }
@@ -2716,6 +2834,23 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
             cacheStats.hits++;
             cache.balance.set(cacheKey, fullYearValue);
             return fullYearValue;
+        }
+        
+        // ================================================================
+        // WILDCARD RESOLUTION FROM CACHE
+        // For patterns like "100*", sum all matching accounts from cache
+        // This avoids backend calls if precache already has the data
+        // ================================================================
+        if (account.includes('*')) {
+            const wildcardResult = resolveWildcardFromCache(account, fromPeriod, toPeriod, subsidiary);
+            if (wildcardResult !== null) {
+                console.log(`🎯 WILDCARD CACHE HIT: ${account} = ${wildcardResult.toLocaleString()} (${wildcardResult.matchCount} accounts)`);
+                cacheStats.hits++;
+                cache.balance.set(cacheKey, wildcardResult.total);
+                return wildcardResult.total;
+            } else {
+                console.log(`📭 WILDCARD CACHE MISS: ${account} - will query backend`);
+            }
         }
         
         // ================================================================
@@ -3142,9 +3277,9 @@ async function processFullRefresh() {
                 // - Single month periods (returns same period)
                 // - Date ranges (expands to all months)
                 const periodRange = expandPeriodRangeFromTo(fromPeriod, toPeriod || fromPeriod);
-                for (const period of periodRange) {
-                    if (balances[account] && balances[account][period] !== undefined) {
-                        total += balances[account][period];
+                    for (const period of periodRange) {
+                        if (balances[account] && balances[account][period] !== undefined) {
+                            total += balances[account][period];
                     }
                 }
                 
@@ -3255,10 +3390,31 @@ async function processBatchQueue() {
     if (cumulativeRequests.length > 0) {
         console.log(`📊 Processing ${cumulativeRequests.length} CUMULATIVE (BS) requests separately...`);
         
-        // Process cumulative requests with direct /balance API calls
+        let cacheHits = 0;
+        let apiCalls = 0;
+        
+        // Process cumulative requests - try cache first, then API
         for (const [cacheKey, request] of cumulativeRequests) {
             const { account, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook } = request.params;
             
+            // ================================================================
+            // TRY WILDCARD CACHE RESOLUTION FIRST
+            // If account has *, try to sum matching accounts from cache
+            // ================================================================
+            if (account.includes('*')) {
+                const wildcardResult = resolveWildcardFromCache(account, fromPeriod, toPeriod, subsidiary);
+                if (wildcardResult !== null) {
+                    console.log(`   🎯 Wildcard cache hit: ${account} = ${wildcardResult.total.toLocaleString()} (${wildcardResult.matchCount} accounts)`);
+                    cache.balance.set(cacheKey, wildcardResult.total);
+                    request.resolve(wildcardResult.total);
+                    cacheHits++;
+                    continue; // Skip API call
+                }
+            }
+            
+            // ================================================================
+            // CACHE MISS - Call API
+            // ================================================================
             try {
                 const params = new URLSearchParams({
                     account: account,
@@ -3271,7 +3427,8 @@ async function processBatchQueue() {
                     accountingbook: accountingBook || ''
                 });
                 
-                console.log(`   📤 Cumulative: ${account} through ${toPeriod}`);
+                console.log(`   📤 Cumulative API: ${account} through ${toPeriod}`);
+                apiCalls++;
                 
                 const response = await fetch(`${SERVER_URL}/balance?${params.toString()}`);
                 
@@ -3291,6 +3448,10 @@ async function processBatchQueue() {
                 console.error(`   ❌ Cumulative fetch error:`, error);
                 request.resolve(0);
             }
+        }
+        
+        if (cacheHits > 0 || apiCalls > 0) {
+            console.log(`   📊 Cumulative summary: ${cacheHits} cache hits, ${apiCalls} API calls`);
         }
     }
     
@@ -3367,7 +3528,7 @@ async function processBatchQueue() {
                     console.log(`  📅 Year-only expansion: ${fromPeriod} → ${expanded.length} months`);
                     expanded.forEach(p => periods.add(p));
                 } else {
-                    periods.add(fromPeriod);
+                periods.add(fromPeriod);
                 }
             } else if (toPeriod) {
                 isFullYearRequest = false;
@@ -3377,7 +3538,7 @@ async function processBatchQueue() {
                     console.log(`  📅 Year-only expansion: ${toPeriod} → ${expanded.length} months`);
                     expanded.forEach(p => periods.add(p));
                 } else {
-                    periods.add(toPeriod);
+                periods.add(toPeriod);
                 }
             }
         }
