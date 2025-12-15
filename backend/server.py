@@ -6412,10 +6412,16 @@ def calculate_net_income():
         department = params.get('department', '')
         location = params.get('location', '')
         
-        if from_period_name:
-            print(f"📊 Calculating Net Income: {from_period_name} → {period_name}")
-        else:
-            print(f"📊 Calculating Net Income: FY start → {period_name}")
+        # DEBUG: Log all incoming parameters
+        print(f"=" * 60)
+        print(f"📊 NET INCOME REQUEST:")
+        print(f"   period (to):    '{period_name}'")
+        print(f"   fromPeriod:     '{from_period_name}'")
+        print(f"   subsidiary:     '{subsidiary_param}'")
+        print(f"   accountingBook: '{accountingbook}'")
+        print(f"   classId:        '{classId}'")
+        print(f"   department:     '{department}'")
+        print(f"   location:       '{location}'")
         
         # Resolve subsidiary name to ID if needed
         subsidiary = resolve_subsidiary_id(subsidiary_param) if subsidiary_param else None
@@ -6482,6 +6488,11 @@ def calculate_net_income():
             period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
         except:
             period_end_date = period_end
+        
+        # DEBUG: Show exact date range being queried
+        print(f"   📅 DATE RANGE: {range_start_date} to {period_end_date}")
+        print(f"   🏢 Target subsidiary ID: {target_sub} (default: {default_subsidiary_id})")
+        print(f"   🔗 Hierarchy includes: {len(hierarchy_subs)} subsidiaries")
         
         # Step 2: Sum current FY P&L with consolidation
         # From FY start through target period end
