@@ -109,9 +109,64 @@ fy_start = fy_info['fy_start']
 |------|----------------|
 | `README.md` | Version number, feature list |
 | `docs/README.md` | Version number |
-| `USER_GUIDE.md` | Usage examples, version |
+| `docs/USER_GUIDE_TYPEBALANCE.md` | TYPEBALANCE usage, account types |
+| `docs/SPECIAL_ACCOUNT_TYPES.md` | Special account type reference |
 | `QA_TEST_PLAN.md` | Test cases for new feature |
 | `PROJECT_SUMMARY.md` | Version number |
+
+---
+
+## 🏷️ Account Type vs Special Account Type (TYPEBALANCE)
+
+When building formulas that filter by account classification, understand the difference:
+
+### Account Type (`accttype` field)
+Standard financial categories used in financial statements:
+- `Bank`, `AcctRec`, `OthCurrAsset`, `FixedAsset`, `OthAsset`
+- `AcctPay`, `CredCard`, `OthCurrLiab`, `LongTermLiab`
+- `Equity`, `RetainedEarnings`
+- `Income`, `COGS`, `Expense`, `OthIncome`, `OthExpense`
+
+**Use for:** Broad financial reporting, standard Balance Sheet/P&L
+
+### Special Account Type (`sspecacct` field)
+System-defined control accounts NetSuite creates automatically:
+- `AcctRec`, `AcctPay` - True AR/AP control accounts
+- `InvtAsset` - System inventory asset account
+- `UndepFunds` - Undeposited funds clearing
+- `DeferRevenue`, `DeferExpense` - Deferred items
+- `RetEarnings`, `CumulTransAdj` - Equity system accounts
+- `RealizedERV`, `UnrERV` - FX gain/loss accounts
+
+**Use for:** Cash flow statements, working capital analysis, precise control account totals
+
+### Backend Implementation Pattern
+
+```python
+# Determine which field to filter on
+account_field = 'a.sspecacct' if use_special_account else 'a.accttype'
+
+# Query uses the dynamic field
+query = f"... WHERE {account_field} = '{account_type}' ..."
+```
+
+### Frontend Implementation Pattern
+
+```javascript
+// Parameter at position 9 controls which field
+const useSpecial = useSpecialAccount === 1 || useSpecialAccount === '1';
+
+// Different validation sets for each mode
+if (useSpecial) {
+    // Validate against BS_SPECIAL_TYPES and PL_SPECIAL_TYPES
+} else {
+    // Validate against BS_TYPES and PL_TYPES
+}
+```
+
+### Documentation
+- User guide: `docs/USER_GUIDE_TYPEBALANCE.md`
+- Reference: `docs/SPECIAL_ACCOUNT_TYPES.md`
 
 ---
 
@@ -159,6 +214,7 @@ Update this file when:
 | 2025-12-15 | 3.0.5.90 | Added "Universal NetSuite Compatibility" section |
 | 2025-12-15 | 3.0.5.96 | Added CustomFunctions.associate() warning |
 | 2025-12-15 | 3.0.5.98 | Added CRITICAL shared runtime configuration notes |
+| 2025-12-15 | 3.0.5.107 | Added Account Type vs Special Account Type section |
 
 ---
 
