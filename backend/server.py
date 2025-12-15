@@ -6862,6 +6862,207 @@ def calculate_net_income():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/type-balance', methods=['POST'])
+def calculate_type_balance():
+    """
+    Calculate balance for a specific Account Type (e.g., "OthAsset", "Expense").
+    
+    This is like XAVI.BALANCE but filters by account TYPE instead of account NUMBER.
+    
+    For Balance Sheet types: Returns cumulative balance from inception through toPeriod
+    For P&L types: Returns sum for the period range (fromPeriod to toPeriod)
+    
+    Request body: {
+        accountType: "OthAsset",           # Required - NetSuite account type
+        fromPeriod: "Jan 2025",            # Optional for BS, required for P&L
+        toPeriod: "Dec 2025",              # Required - end period
+        subsidiary: "1" or "Celigo Inc.",  # Optional
+        accountingBook: "1",               # Optional
+        classId: "1",                      # Optional
+        department: "1",                   # Optional
+        location: "1"                      # Optional
+    }
+    
+    Valid account types:
+    - BS Assets: Bank, AcctRec, OthCurrAsset, FixedAsset, OthAsset, DeferExpense, UnbilledRec
+    - BS Liabilities: AcctPay, CredCard, OthCurrLiab, LongTermLiab, DeferRevenue
+    - BS Equity: Equity, RetainedEarnings
+    - P&L: Income, OthIncome, COGS, Expense, OthExpense
+    """
+    try:
+        params = request.json or {}
+        account_type = params.get('accountType', '').strip()
+        from_period = params.get('fromPeriod', '')
+        to_period = params.get('toPeriod', '')
+        subsidiary_param = params.get('subsidiary', '')
+        accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
+        classId = params.get('classId', '')
+        department = params.get('department', '')
+        location = params.get('location', '')
+        
+        # Validate account type
+        if not account_type:
+            return jsonify({'error': 'accountType is required'}), 400
+        
+        if not to_period:
+            return jsonify({'error': 'toPeriod is required'}), 400
+        
+        # DEBUG: Log all incoming parameters
+        print(f"=" * 60, file=sys.stderr)
+        print(f"📊 TYPE BALANCE REQUEST:", file=sys.stderr)
+        print(f"   accountType:    '{account_type}'", file=sys.stderr)
+        print(f"   fromPeriod:     '{from_period}'", file=sys.stderr)
+        print(f"   toPeriod:       '{to_period}'", file=sys.stderr)
+        print(f"   subsidiary:     '{subsidiary_param}'", file=sys.stderr)
+        print(f"   accountingBook: '{accountingbook}'", file=sys.stderr)
+        
+        # Determine if this is a BS or P&L account type
+        is_bs = is_balance_sheet_account(account_type)
+        print(f"   Account type '{account_type}' is BS: {is_bs}", file=sys.stderr)
+        
+        # For BS types, ignore fromPeriod (cumulative from inception)
+        if is_bs:
+            if from_period:
+                print(f"   ⚠️ BS account type - ignoring fromPeriod '{from_period}'", file=sys.stderr)
+            from_period = ''
+        elif not from_period:
+            # P&L requires fromPeriod - default to same as toPeriod for single month
+            from_period = to_period
+            print(f"   P&L account - defaulting fromPeriod to '{to_period}'", file=sys.stderr)
+        
+        # Resolve subsidiary name to ID if needed
+        subsidiary = resolve_subsidiary_id(subsidiary_param) if subsidiary_param else None
+        if subsidiary_param and not subsidiary:
+            print(f"   ⚠️ Could not resolve subsidiary: {subsidiary_param}", file=sys.stderr)
+        else:
+            print(f"   Subsidiary: {subsidiary_param} → ID {subsidiary}", file=sys.stderr)
+        
+        # Use default subsidiary if none specified (for consolidation)
+        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
+        
+        # Get subsidiary hierarchy for consolidated view
+        hierarchy_subs = get_subsidiaries_in_hierarchy(target_sub)
+        sub_filter = ', '.join(hierarchy_subs)
+        print(f"   Subsidiary hierarchy: {len(hierarchy_subs)} subsidiaries", file=sys.stderr)
+        
+        # Build segment filters - use tl.subsidiary for GL line-level filtering
+        segment_filters = []
+        segment_filters.append(f"tl.subsidiary IN ({sub_filter})")
+        if department:
+            segment_filters.append(f"tl.department = {department}")
+        if location:
+            segment_filters.append(f"tl.location = {location}")
+        if classId:
+            segment_filters.append(f"tl.class = {classId}")
+        
+        segment_where = ' AND '.join(segment_filters)
+        
+        # Get period dates
+        to_period_info = get_fiscal_year_for_period(to_period, accountingbook)
+        if not to_period_info:
+            return jsonify({'error': f'Could not find period: {to_period}'}), 400
+        
+        to_end = to_period_info['period_end']
+        target_period_id = to_period_info['period_id']
+        
+        # Parse end date
+        from datetime import datetime
+        try:
+            to_end_date = datetime.strptime(to_end, '%m/%d/%Y').strftime('%Y-%m-%d')
+        except:
+            to_end_date = to_end
+        
+        if is_bs:
+            # BALANCE SHEET: Cumulative from inception through toPeriod
+            print(f"   📅 BS CUMULATIVE: inception → {to_end_date}", file=sys.stderr)
+            
+            # Sign flip for liabilities and equity
+            sign_sql = f"* CASE WHEN a.accttype IN ({SIGN_FLIP_TYPES_SQL}) THEN -1 ELSE 1 END"
+            
+            # Use BUILTIN.CONSOLIDATE with target period for exchange rates
+            cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, {target_period_id}, 'DEFAULT'))"""
+            
+            query = f"""
+                SELECT SUM({cons_amount} {sign_sql}) AS balance
+                FROM transactionaccountingline tal
+                JOIN transaction t ON t.id = tal.transaction
+                JOIN account a ON a.id = tal.account
+                JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                WHERE t.posting = 'T'
+                  AND tal.posting = 'T'
+                  AND a.accttype = '{escape_sql(account_type)}'
+                  AND t.trandate <= TO_DATE('{to_end_date}', 'YYYY-MM-DD')
+                  AND tal.accountingbook = {accountingbook}
+                  AND {segment_where}
+            """
+        else:
+            # P&L: Period range from fromPeriod to toPeriod
+            from_period_info = get_fiscal_year_for_period(from_period, accountingbook)
+            if not from_period_info:
+                return jsonify({'error': f'Could not find period: {from_period}'}), 400
+            
+            from_start = from_period_info['period_start']
+            try:
+                from_start_date = datetime.strptime(from_start, '%m/%d/%Y').strftime('%Y-%m-%d')
+            except:
+                from_start_date = from_start
+            
+            print(f"   📅 P&L RANGE: {from_start_date} → {to_end_date}", file=sys.stderr)
+            
+            # Sign flip for Income/OthIncome (credits stored negative)
+            sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
+            
+            # Use BUILTIN.CONSOLIDATE
+            cons_amount = f"""TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, t.postingperiod, 'DEFAULT'))"""
+            
+            query = f"""
+                SELECT SUM({cons_amount} {sign_sql}) AS balance
+                FROM transactionaccountingline tal
+                JOIN transaction t ON t.id = tal.transaction
+                JOIN account a ON a.id = tal.account
+                JOIN accountingperiod ap ON ap.id = t.postingperiod
+                JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+                WHERE t.posting = 'T'
+                  AND tal.posting = 'T'
+                  AND a.accttype = '{escape_sql(account_type)}'
+                  AND ap.startdate >= TO_DATE('{from_start_date}', 'YYYY-MM-DD')
+                  AND ap.enddate <= TO_DATE('{to_end_date}', 'YYYY-MM-DD')
+                  AND tal.accountingbook = {accountingbook}
+                  AND {segment_where}
+            """
+        
+        print(f"   Query:\n{query}", file=sys.stderr)
+        
+        # Execute query with appropriate timeout
+        query_timeout = 90 if is_bs else 60
+        result = query_netsuite(query, timeout=query_timeout)
+        
+        balance = 0.0
+        if isinstance(result, dict) and 'error' in result:
+            error_msg = result.get('details', result.get('error', 'Unknown error'))
+            print(f"   ❌ Query ERROR: {error_msg}", file=sys.stderr)
+            return jsonify({'error': f'Query failed: {error_msg}'}), 500
+        elif isinstance(result, list) and len(result) > 0:
+            raw_value = result[0].get('balance')
+            balance = float(raw_value) if raw_value is not None else 0.0
+        
+        print(f"   ✅ Balance: {balance:,.2f}", file=sys.stderr)
+        
+        return jsonify({
+            'value': balance,
+            'accountType': account_type,
+            'isBalanceSheet': is_bs,
+            'fromPeriod': from_period if not is_bs else None,
+            'toPeriod': to_period
+        })
+        
+    except Exception as e:
+        print(f"❌ Error calculating type balance: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/cta', methods=['POST'])
 def calculate_cta():
     """

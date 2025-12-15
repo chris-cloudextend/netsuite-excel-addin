@@ -365,6 +365,77 @@
       }
     },
     {
+      "id": "TYPEBALANCE",
+      "name": "TYPEBALANCE",
+      "description": "Get total balance for all accounts of a specific type (e.g., OthAsset, Expense). BS types use cumulative; P&L types use period range.",
+      "helpUrl": "https://www.example.com/help",
+      "result": {
+        "type": "number",
+        "dimensionality": "scalar"
+      },
+      "parameters": [
+        {
+          "name": "accountType",
+          "description": "NetSuite account type (e.g., \"OthAsset\", \"Expense\", \"Income\")",
+          "type": "any",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "fromPeriod",
+          "description": "Start period (required for P&L, ignored for BS)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "toPeriod",
+          "description": "End period (required)",
+          "type": "any",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "subsidiary",
+          "description": "Subsidiary name or ID (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "department",
+          "description": "Department filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "location",
+          "description": "Location filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "classId",
+          "description": "Class filter (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "accountingBook",
+          "description": "Accounting Book ID (optional)",
+          "type": "any",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "options": {
+        "stream": false,
+        "cancelable": false,
+        "volatile": false
+      }
+    },
+    {
       "id": "CTA",
       "name": "CTA",
       "description": "Get cumulative translation adjustment for consolidated multi-currency reports. This is a 'plug' figure that balances the Balance Sheet after currency translation.",
