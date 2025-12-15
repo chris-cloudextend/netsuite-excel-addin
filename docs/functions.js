@@ -22,7 +22,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.105';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.106';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -4556,6 +4556,7 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
                     const errorText = await response.text();
                     console.error(`❌ TYPEBALANCE API error: ${response.status} - ${errorText}`);
                     releaseSpecialFormulaLock(cacheKey);
+                    inFlightRequests.delete(cacheKey);  // MUST delete or future calls hang forever
                     return 0;
                 }
                 
