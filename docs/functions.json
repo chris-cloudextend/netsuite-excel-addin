@@ -389,9 +389,10 @@
         },
         {
           "name": "toPeriod",
-          "description": "End period (required)",
+          "description": "End period (required for calculation)",
           "type": "any",
-          "dimensionality": "scalar"
+          "dimensionality": "scalar",
+          "optional": true
         },
         {
           "name": "subsidiary",
