@@ -6386,12 +6386,15 @@ def calculate_retained_earnings():
 @app.route('/net-income', methods=['POST'])
 def calculate_net_income():
     """
-    Calculate Net Income (current fiscal year P&L through target period)
+    Calculate Net Income for a period or range of periods.
     
-    NI = Sum of all P&L transactions from FY start through target period end
+    Modes:
+    1. YTD (default): Sum from FY start through target period
+    2. Custom range: Sum from fromPeriod through toPeriod (period param)
     
     Request body: {
-        period: "Mar 2025",
+        period: "Mar 2025",            # End period (required)
+        fromPeriod: "Jan 2025",        # Start period (optional - defaults to FY start)
         subsidiary: "1" or "Celigo Inc." (optional),
         accountingBook: "1" (optional),
         classId: "1" (optional),
@@ -6402,13 +6405,17 @@ def calculate_net_income():
     try:
         params = request.json or {}
         period_name = params.get('period', '')
+        from_period_name = params.get('fromPeriod', '')  # NEW: Optional start period
         subsidiary_param = params.get('subsidiary', '')
         accountingbook = params.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
         classId = params.get('classId', '')
         department = params.get('department', '')
         location = params.get('location', '')
         
-        print(f"📊 Calculating Net Income for {period_name}")
+        if from_period_name:
+            print(f"📊 Calculating Net Income: {from_period_name} → {period_name}")
+        else:
+            print(f"📊 Calculating Net Income: FY start → {period_name}")
         
         # Resolve subsidiary name to ID if needed
         subsidiary = resolve_subsidiary_id(subsidiary_param) if subsidiary_param else None
@@ -6417,14 +6424,25 @@ def calculate_net_income():
         else:
             print(f"   Subsidiary: {subsidiary_param} → ID {subsidiary}")
         
-        # Step 1: Get fiscal year boundaries for this period
+        # Step 1: Get fiscal year boundaries for the target period
         fy_info = get_fiscal_year_for_period(period_name, accountingbook)
         if not fy_info:
             return jsonify({'error': f'Could not find fiscal year for period {period_name}'}), 400
         
-        fy_start = fy_info['fy_start']
         period_end = fy_info['period_end']
-        print(f"   FY start: {fy_start}, Period end: {period_end}")
+        
+        # Determine start date - use fromPeriod if specified, otherwise FY start
+        if from_period_name:
+            # Get the start date of the from period
+            from_period_info = get_fiscal_year_for_period(from_period_name, accountingbook)
+            if not from_period_info:
+                return jsonify({'error': f'Could not find period: {from_period_name}'}), 400
+            range_start = from_period_info['period_start']  # Start of the from period
+            print(f"   Custom range: {from_period_name} ({range_start}) → {period_name} ({period_end})")
+        else:
+            # Default to FY start
+            range_start = fy_info['fy_start']
+            print(f"   YTD range: FY start ({range_start}) → {period_name} ({period_end})")
         
         # Use default subsidiary if none specified (for consolidation)
         target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
@@ -6454,12 +6472,12 @@ def calculate_net_income():
         needs_tl_join = True  # Required for tl.subsidiary filter
         tl_join = "JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id" if needs_tl_join else ""
         
-        # Parse dates
+        # Parse dates - use range_start (either FY start or custom fromPeriod start)
         from datetime import datetime
         try:
-            fy_start_date = datetime.strptime(fy_start, '%m/%d/%Y').strftime('%Y-%m-%d')
+            range_start_date = datetime.strptime(range_start, '%m/%d/%Y').strftime('%Y-%m-%d')
         except:
-            fy_start_date = fy_start
+            range_start_date = range_start
         try:
             period_end_date = datetime.strptime(period_end, '%m/%d/%Y').strftime('%Y-%m-%d')
         except:
@@ -6487,6 +6505,7 @@ def calculate_net_income():
         ni_sign_sql = f"* CASE WHEN a.accttype IN ({INCOME_TYPES_SQL}) THEN -1 ELSE 1 END"
         
         # Simplified Net Income query - no CROSS JOIN, directly uses BUILTIN.CONSOLIDATE
+        # Uses range_start_date which is either FY start (YTD) or custom fromPeriod start
         net_income_query = f"""
             SELECT SUM({cons_amount} {ni_sign_sql} ) AS net_income
             FROM transactionaccountingline tal
@@ -6497,7 +6516,7 @@ def calculate_net_income():
             WHERE t.posting = 'T'
               AND tal.posting = 'T'
               AND a.accttype IN ({PL_TYPES_SQL})
-              AND ap.startdate >= TO_DATE('{fy_start_date}', 'YYYY-MM-DD')
+              AND ap.startdate >= TO_DATE('{range_start_date}', 'YYYY-MM-DD')
               AND ap.enddate <= TO_DATE('{period_end_date}', 'YYYY-MM-DD')
               AND tal.accountingbook = {accountingbook}
               {segment_where}
@@ -6523,8 +6542,13 @@ def calculate_net_income():
         return jsonify({
             'value': net_income,
             'period': period_name,
+            'fromPeriod': from_period_name if from_period_name else None,
+            'range': {
+                'start': range_start,
+                'end': period_end
+            },
             'fiscal_year': {
-                'start': fy_start,
+                'start': fy_info['fy_start'],
                 'end': fy_info['fy_end']
             }
         })

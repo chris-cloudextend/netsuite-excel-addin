@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.80</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.81</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -11280,9 +11280,10 @@ export default {
                     const formulas = range.formulas;
                     const values = range.values;
                     
-                    // Check if any cell contains XAVI.BALANCE or XAVI.BUDGET formula
+                    // Check if any cell contains XAVI formulas (BALANCE, BUDGET, NETINCOME, RETAINEDEARNINGS, CTA)
                     let formulaCount = 0;
                     const cellsWithFormulas = [];
+                    const specialFormulas = []; // NETINCOME, RETAINEDEARNINGS, CTA
                     
                     for (let r = 0; r < range.rowCount; r++) {
                         for (let c = 0; c < range.columnCount; c++) {
@@ -11293,12 +11294,21 @@ export default {
                                     const formulaType = upperFormula.includes('XAVI.BUDGET') ? 'budget' : 'balance';
                                     formulaCount++;
                                     cellsWithFormulas.push({ row: r, col: c, formula, formulaType });
+                                } else if (upperFormula.includes('XAVI.NETINCOME') || 
+                                           upperFormula.includes('XAVI.RETAINEDEARNINGS') || 
+                                           upperFormula.includes('XAVI.CTA')) {
+                                    // Special formulas - need different handling
+                                    let formulaType = 'netincome';
+                                    if (upperFormula.includes('RETAINEDEARNINGS')) formulaType = 'retainedearnings';
+                                    if (upperFormula.includes('CTA')) formulaType = 'cta';
+                                    formulaCount++;
+                                    specialFormulas.push({ row: r, col: c, formula, formulaType });
                                 }
                             }
                         }
                     }
                     
-                    console.log(`📋 Found ${formulaCount} XAVI formulas in selection (BALANCE + BUDGET)`);
+                    console.log(`📋 Found ${formulaCount} XAVI formulas in selection (BALANCE: ${cellsWithFormulas.length}, Special: ${specialFormulas.length})`);
                     
                     if (formulaCount === 0) {
                         hideLoading();
@@ -11365,11 +11375,78 @@ export default {
                         }
                     }
                     
-                    console.log(`   Items to clear: ${itemsToClear.length}`);
+                    console.log(`   Items to clear: ${itemsToClear.length}, Special formulas: ${specialFormulas.length}`);
                     
-                    if (itemsToClear.length === 0) {
+                    // Handle special formulas (NETINCOME, RETAINEDEARNINGS, CTA)
+                    // These need to clear their specific caches in functions.js
+                    if (specialFormulas.length > 0) {
+                        console.log(`📊 Found ${specialFormulas.length} special formulas to refresh`);
+                        
+                        // For each special formula, we need to extract the period and clear its cache
+                        // Then trigger recalculation by invalidating
+                        for (const cell of specialFormulas) {
+                            try {
+                                // Extract period reference from formula
+                                const cellRefPattern = /\$?[A-Z]+\$?\d+/gi;
+                                const refs = cell.formula.match(cellRefPattern);
+                                
+                                if (refs && refs.length >= 1) {
+                                    const periodRef = refs[0]; // First param is period
+                                    const periodCell = context.workbook.worksheets.getActiveWorksheet().getRange(periodRef);
+                                    periodCell.load('values');
+                                    await context.sync();
+                                    
+                                    let period = periodCell.values[0][0];
+                                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                    
+                                    // Convert date to period format
+                                    if (typeof period === 'number' && period > 1000) {
+                                        const excelEpoch = new Date(1900, 0, 1);
+                                        const d = new Date(excelEpoch.getTime() + (period - 2) * 24 * 60 * 60 * 1000);
+                                        period = `${months[d.getMonth()]} ${d.getFullYear()}`;
+                                    } else if (typeof period === 'number' && period >= 1900 && period <= 2100) {
+                                        // Year only - for YTD formulas, use Dec
+                                        period = `Dec ${period}`;
+                                    }
+                                    
+                                    console.log(`   📊 Special formula: ${cell.formulaType} for ${period}`);
+                                    
+                                    // Clear special formula cache using __CLEARCACHE__ command
+                                    const specialClearKey = `SPECIAL:${cell.formulaType.toUpperCase()}:${period}`;
+                                    
+                                    const tempSheet = context.workbook.worksheets.getActiveWorksheet();
+                                    const tempRange = tempSheet.getRange('XFD2');
+                                    tempRange.formulas = [[`=XAVI.BALANCE("__CLEARCACHE__","${specialClearKey}","")`]];
+                                    await context.sync();
+                                    
+                                    // Wait briefly then clear
+                                    await new Promise(r => setTimeout(r, 500));
+                                    tempRange.clear();
+                                    await context.sync();
+                                }
+                            } catch (e) {
+                                console.warn(`   ⚠️ Could not clear special formula cache:`, e);
+                            }
+                        }
+                    }
+                    
+                    if (itemsToClear.length === 0 && specialFormulas.length === 0) {
                         hideLoading();
                         statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">⚠️ Could not resolve cell references</strong></div>`;
+                        setTimeout(() => statusEl.textContent = '', 5000);
+                        return;
+                    }
+                    
+                    // Skip balance/budget cache clearing if only special formulas
+                    if (itemsToClear.length === 0) {
+                        // Just special formulas - they've been handled above
+                        // Trigger recalculation
+                        updateLoading('Recalculating special formulas...', 70);
+                        await context.workbook.application.calculate(Excel.CalculationType.full);
+                        await context.sync();
+                        
+                        hideLoading();
+                        statusEl.innerHTML = `<div style="background: #dcfce7; padding: 10px; border-radius: 6px;"><strong style="color: #166534;">✅ Refreshed ${specialFormulas.length} special formula(s)</strong></div>`;
                         setTimeout(() => statusEl.textContent = '', 5000);
                         return;
                     }

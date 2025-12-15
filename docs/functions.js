@@ -3790,78 +3790,117 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
 }
 
 // ============================================================================
-// NETINCOME - Calculate current fiscal year net income (no account number)
-// NetSuite calculates this dynamically at report runtime
+// NETINCOME - Calculate net income for a period range
+// Supports both YTD (single period) and custom ranges (from/to periods)
 // ============================================================================
 /**
- * Get current fiscal year net income through target period.
- * NetSuite calculates this dynamically - there is no account number to query.
- * NI = Sum of all P&L from fiscal year start through target period end.
+ * Get net income for a period or range of periods.
+ * 
+ * Usage:
+ *   =XAVI.NETINCOME("Dec 2025")                          → YTD: FY start through Dec 2025
+ *   =XAVI.NETINCOME("2025")                              → Full year: Jan through Dec 2025
+ *   =XAVI.NETINCOME("Jan 2025", "Mar 2025")              → Custom range: Jan through Mar 2025
+ *   =XAVI.NETINCOME("Dec 2025", "Celigo Inc.")           → YTD with subsidiary filter
+ *   =XAVI.NETINCOME("Jan 2025", "Mar 2025", "Celigo")    → Custom range with subsidiary
  * 
  * @customfunction NETINCOME
- * @param {any} period Accounting period (e.g., "Mar 2025")
- * @param {any} [subsidiary] Subsidiary ID (optional)
- * @param {any} [accountingBook] Accounting Book ID (optional, defaults to Primary Book)
- * @param {any} [classId] Class filter (optional)
- * @param {any} [department] Department filter (optional)
- * @param {any} [location] Location filter (optional)
+ * @param {any} toPeriod End period (e.g., "Dec 2025" or "2025" for full year)
+ * @param {any} [fromPeriodOrSubsidiary] Either a start period (e.g., "Jan 2025") or subsidiary name
+ * @param {any} [subsidiaryOrAccountingBook] Subsidiary (if prev param was period) or AccountingBook
+ * @param {any} [accountingBookOrClass] AccountingBook (if prev was subsidiary) or Class
+ * @param {any} [classOrDepartment] Class or Department
+ * @param {any} [departmentOrLocation] Department or Location
+ * @param {any} [location] Location (only if using all params)
  * @returns {Promise<number>} Net income value
  */
-async function NETINCOME(period, subsidiary, accountingBook, classId, department, location) {
+async function NETINCOME(toPeriod, fromPeriodOrSubsidiary, subsidiaryOrAccountingBook, accountingBookOrClass, classOrDepartment, departmentOrLocation, location) {
     try {
-        // ================================================================
-        // VALIDATION: Detect common formula syntax errors  
-        // ================================================================
-        const rawPeriod = period;
-        const rawSubsidiary = subsidiary;
+        const rawToPeriod = toPeriod;
+        const rawSecondParam = fromPeriodOrSubsidiary;
         
-        // Check if subsidiary looks like a date/year (common mistake: =NETINCOME(C4, C4) where C4 is a date)
-        if (typeof subsidiary === 'number' && (subsidiary > 40000 || (subsidiary >= 1900 && subsidiary <= 2100))) {
-            console.error(`❌ FORMULA ERROR: Second parameter (${subsidiary}) looks like a date/year, not a subsidiary!`);
-            console.error(`   XAVI.NETINCOME expects: (period, subsidiary, accountingBook, ...)`);
-            console.error(`   Your formula: =XAVI.NETINCOME(${rawPeriod}, ${subsidiary}) - did you pass the same date twice?`);
-            console.error(`   Correct: =XAVI.NETINCOME(${rawPeriod}, "") or =XAVI.NETINCOME(${rawPeriod}, "Subsidiary Name")`);
-            return "#SYNTAX!";
+        // ================================================================
+        // SMART PARAMETER DETECTION
+        // Detect if 2nd param is a period (fromPeriod) or a subsidiary
+        // ================================================================
+        let fromPeriod = null;
+        let subsidiary = '';
+        let accountingBook = '';
+        let classId = '';
+        let department = '';
+        let locationParam = '';
+        
+        // Helper to check if a value looks like a period
+        const looksLikePeriod = (val) => {
+            if (!val || val === '') return false;
+            const str = String(val).trim();
+            // Year-only: "2025" or 2025
+            if (/^\d{4}$/.test(str)) return true;
+            // Month-year: "Jan 2025", "January 2025"
+            if (/^[A-Za-z]{3,9}\s+\d{4}$/.test(str)) return true;
+            // Number that looks like a year
+            if (typeof val === 'number' && val >= 1900 && val <= 2100 && Number.isInteger(val)) return true;
+            // Excel date serial (large number)
+            if (typeof val === 'number' && val > 40000) return true;
+            return false;
+        };
+        
+        // Determine if 2nd param is fromPeriod or subsidiary
+        if (looksLikePeriod(fromPeriodOrSubsidiary)) {
+            // 2nd param is fromPeriod - shift all params
+            fromPeriod = fromPeriodOrSubsidiary;
+            subsidiary = String(subsidiaryOrAccountingBook || '').trim();
+            accountingBook = String(accountingBookOrClass || '').trim();
+            classId = String(classOrDepartment || '').trim();
+            department = String(departmentOrLocation || '').trim();
+            locationParam = String(location || '').trim();
+            console.log(`📊 NETINCOME: Detected fromPeriod=${rawSecondParam} (range mode)`);
+        } else {
+            // 2nd param is subsidiary (or empty) - use FY start as fromPeriod
+            fromPeriod = null; // Will default to FY start on backend
+            subsidiary = String(fromPeriodOrSubsidiary || '').trim();
+            accountingBook = String(subsidiaryOrAccountingBook || '').trim();
+            classId = String(accountingBookOrClass || '').trim();
+            department = String(classOrDepartment || '').trim();
+            locationParam = String(departmentOrLocation || '').trim();
+            console.log(`📊 NETINCOME: YTD mode (no fromPeriod specified)`);
         }
         
-        // NETINCOME is a YTD calculation - period should be the END of the range
-        // For year-only values like "2025" or 2025, use Dec (end of year) not Jan
-        // This ensures full year calculation (Jan through Dec)
-        period = convertToMonthYear(period, false);  // false = use Dec for year-only
+        // Convert toPeriod - for year-only, use Dec (end of year)
+        const convertedToPeriod = convertToMonthYear(toPeriod, false);  // false = use Dec
         
-        if (!period) {
-            console.error('NETINCOME: period is required');
+        // Convert fromPeriod if specified - for year-only, use Jan (start of year)
+        let convertedFromPeriod = null;
+        if (fromPeriod !== null) {
+            convertedFromPeriod = convertToMonthYear(fromPeriod, true);  // true = use Jan
+        }
+        
+        if (!convertedToPeriod) {
+            console.error('NETINCOME: toPeriod is required');
             return 0;
         }
         
-        console.log(`📊 NETINCOME: Raw period=${rawPeriod} → Calculating through ${period}`);
-        console.log(`   Subsidiary: "${rawSubsidiary || '(all)'}"`);
+        console.log(`📊 NETINCOME: ${rawToPeriod} → Range: ${convertedFromPeriod || '(FY start)'} through ${convertedToPeriod}`);
+        console.log(`   Subsidiary: "${subsidiary || '(all)'}"`);
         
-        // Normalize optional parameters
-        subsidiary = String(subsidiary || '').trim();
-        accountingBook = String(accountingBook || '').trim();
-        classId = String(classId || '').trim();
-        department = String(department || '').trim();
-        location = String(location || '').trim();
-        
-        // Build cache key
-        const cacheKey = `netincome:${period}:${subsidiary}:${accountingBook}:${classId}:${department}:${location}`;
+        // Build cache key - include fromPeriod for cache uniqueness
+        const cacheKey = `netincome:${convertedFromPeriod || 'FY'}:${convertedToPeriod}:${subsidiary}:${accountingBook}:${classId}:${department}:${locationParam}`;
         
         // Check cache first
         if (cache.balance.has(cacheKey)) {
             cacheStats.hits++;
-            console.log(`📥 CACHE HIT [net income]: ${period}`);
+            console.log(`📥 CACHE HIT [net income]: ${convertedFromPeriod || 'FY'} → ${convertedToPeriod}`);
             return cache.balance.get(cacheKey);
         }
         
         // Check if there's already a request in-flight for this exact key
         if (inFlightRequests.has(cacheKey)) {
-            console.log(`⏳ Waiting for in-flight request [net income]: ${period}`);
+            console.log(`⏳ Waiting for in-flight request [net income]: ${convertedFromPeriod || 'FY'} → ${convertedToPeriod}`);
             return await inFlightRequests.get(cacheKey);
         }
         
         cacheStats.misses++;
-        console.log(`📥 Calculating Net Income for ${period}...`);
+        const rangeDesc = convertedFromPeriod ? `${convertedFromPeriod} → ${convertedToPeriod}` : `FY start → ${convertedToPeriod}`;
+        console.log(`📥 Calculating Net Income for ${rangeDesc}...`);
         
         // ═══════════════════════════════════════════════════════════════
         // SEQUENTIAL EXECUTION: Acquire semaphore lock before API call
@@ -3871,7 +3910,7 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
             await acquireSpecialFormulaLock(cacheKey, 'NETINCOME');
         } catch (lockError) {
             if (lockError.message === 'QUEUE_CLEARED') {
-                console.log(`🚫 NETINCOME ${period}: Queue cleared, formula will re-evaluate`);
+                console.log(`🚫 NETINCOME ${rangeDesc}: Queue cleared, formula will re-evaluate`);
                 return '#BUSY!';
             }
             throw lockError;
@@ -3881,12 +3920,11 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
         let toastId;
         try {
             // Broadcast toast notification to taskpane
-            toastId = broadcastToast(
-                'Calculating Year-to-Date Net Income…',
-                `<strong>${period}</strong><br><br>This formula summarizes all revenue, cost, and expense activity from the start of the fiscal year through the selected period. It typically runs in 10–20 seconds due to the volume of P&L data involved.`,
-                'calculating',
-                0 // Don't auto-dismiss
-            );
+            const toastTitle = convertedFromPeriod ? 'Calculating Net Income Range…' : 'Calculating Year-to-Date Net Income…';
+            const toastBody = convertedFromPeriod 
+                ? `<strong>${convertedFromPeriod} → ${convertedToPeriod}</strong><br><br>Calculating P&L activity for the specified period range.`
+                : `<strong>${convertedToPeriod}</strong><br><br>This formula summarizes all revenue, cost, and expense activity from the start of the fiscal year through the selected period.`;
+            toastId = broadcastToast(toastTitle, toastBody, 'calculating', 0);
         } catch (setupError) {
             // Error before inner promise - release lock immediately
             console.error('NETINCOME setup error:', setupError);
@@ -3901,12 +3939,13 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        period,
+                        period: convertedToPeriod,
+                        fromPeriod: convertedFromPeriod,  // New: explicit start period (null = FY start)
                         subsidiary,
                         accountingBook,
                         classId,
                         department,
-                        location
+                        location: locationParam
                     })
                 });
                 
@@ -3925,11 +3964,11 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 }
                 
                 const data = await response.json();
-                console.log(`📨 Net Income API response:`, JSON.stringify(data));
+                console.log(`📨 Net Income API response (${rangeDesc}):`, JSON.stringify(data));
                 
                 // Validate response - don't mask null/undefined as 0
                 if (data.value === null || data.value === undefined) {
-                    console.error(`❌ Net Income (${period}): API returned null/undefined`);
+                    console.error(`❌ Net Income (${rangeDesc}): API returned null/undefined`);
                     if (toastId) {
                         updateBroadcastToast(toastId, 'Net Income Error', 'API returned empty value', 'error');
                         setTimeout(() => removeBroadcastToast(toastId), 5000);
@@ -3939,7 +3978,7 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 
                 const value = parseFloat(data.value);
                 if (isNaN(value)) {
-                    console.error(`❌ Net Income (${period}): Invalid number: ${data.value}`);
+                    console.error(`❌ Net Income (${rangeDesc}): Invalid number: ${data.value}`);
                     if (toastId) {
                         updateBroadcastToast(toastId, 'Net Income Error', `Invalid value: ${data.value}`, 'error');
                         setTimeout(() => removeBroadcastToast(toastId), 5000);
@@ -3949,13 +3988,13 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
                 
                 // Cache the result (only valid numbers)
                 cache.balance.set(cacheKey, value);
-                console.log(`✅ Net Income (${period}): ${value.toLocaleString()}`);
+                console.log(`✅ Net Income (${rangeDesc}): ${value.toLocaleString()}`);
                 
                 // Update toast with success
                 if (toastId) {
                     updateBroadcastToast(toastId, 
                         'Net Income Complete', 
-                        `${period}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
+                        `${rangeDesc}: ${value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`, 
                         'success'
                     );
                     setTimeout(() => removeBroadcastToast(toastId), 4000);

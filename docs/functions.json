@@ -302,7 +302,7 @@
     {
       "id": "NETINCOME",
       "name": "NETINCOME",
-      "description": "Get current fiscal year net income through target period. NetSuite calculates this dynamically - no account number needed.",
+      "description": "Get net income for a period or range. Use '2025' for full year, or specify from/to periods like 'Jan 2025' to 'Mar 2025'.",
       "helpUrl": "https://www.example.com/help",
       "result": {
         "type": "any",
@@ -310,45 +310,46 @@
       },
       "parameters": [
         {
-          "name": "period",
-          "description": "Accounting period (e.g., \"Mar 2025\")",
+          "name": "toPeriod",
+          "description": "End period (e.g., \"Dec 2025\") or year (\"2025\" for full year)",
           "type": "any",
           "dimensionality": "scalar"
         },
         {
-          "name": "subsidiary",
-          "description": "Subsidiary ID (optional)",
+          "name": "fromPeriodOrSubsidiary",
+          "description": "Start period (e.g., \"Jan 2025\") OR subsidiary name. If period, next param is subsidiary.",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         },
         {
-          "name": "accountingBook",
-          "description": "Accounting Book ID (optional, defaults to Primary Book)",
+          "name": "subsidiaryOrAccountingBook",
+          "description": "Subsidiary (if prev was period) OR Accounting Book",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         },
         {
-          "name": "classId",
-          "description": "Class filter (optional)",
+          "name": "accountingBookOrClass",
+          "description": "Accounting Book OR Class filter",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         },
         {
-          "name": "department",
-          "description": "Department filter (optional)",
+          "name": "classOrDepartment",
+          "description": "Class OR Department filter",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "departmentOrLocation",
+          "description": "Department OR Location filter",
+          "type": "any",
+          "dimensionality": "scalar"
         },
         {
           "name": "location",
-          "description": "Location filter (optional)",
+          "description": "Location filter (only when using all params)",
           "type": "any",
-          "dimensionality": "scalar",
-          "optional": true
+          "dimensionality": "scalar"
         }
       ],
       "options": {
