@@ -2436,10 +2436,42 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
             return 0;
         }
         
+        // ================================================================
+        // VALIDATION: Detect common formula syntax errors
+        // ================================================================
+        // Check if toPeriod looks like a subsidiary name (common mistake)
+        const rawToPeriod = String(toPeriod || '');
+        if (rawToPeriod && (
+            rawToPeriod.toLowerCase().includes('consolidated') ||
+            rawToPeriod.toLowerCase().includes('inc') ||
+            rawToPeriod.toLowerCase().includes('llc') ||
+            rawToPeriod.toLowerCase().includes('corp')
+        )) {
+            console.error(`❌ FORMULA ERROR: "${rawToPeriod}" looks like a subsidiary name, not a period!`);
+            console.error(`   XAVI.BALANCE expects: (account, fromPeriod, toPeriod, subsidiary, ...)`);
+            console.error(`   Your formula likely has subsidiary in the wrong position.`);
+            console.error(`   Correct: =XAVI.BALANCE("${account}", fromPeriod, toPeriod, "${rawToPeriod}")`);
+            return "#SYNTAX!";
+        }
+        
         // Convert date values to "Mon YYYY" format (supports both dates and period strings)
         // For year-only format ("2025"), expand to "Jan 2025" and "Dec 2025"
+        const rawFrom = fromPeriod;
+        const rawTo = toPeriod;
         fromPeriod = convertToMonthYear(fromPeriod, true);   // true = isFromPeriod
         toPeriod = convertToMonthYear(toPeriod, false);      // false = isToPeriod
+        
+        // Debug log the period conversion
+        console.log(`📅 BALANCE periods: ${rawFrom} → "${fromPeriod}", ${rawTo} → "${toPeriod}"`);
+        
+        // Validate that periods were converted successfully
+        const periodPattern = /^[A-Za-z]{3}\s+\d{4}$/;
+        if (fromPeriod && !periodPattern.test(fromPeriod)) {
+            console.error(`❌ Invalid fromPeriod after conversion: "${fromPeriod}" (raw: ${rawFrom})`);
+        }
+        if (toPeriod && !periodPattern.test(toPeriod)) {
+            console.error(`❌ Invalid toPeriod after conversion: "${toPeriod}" (raw: ${rawTo})`);
+        }
         
         // Other parameters as strings
         subsidiary = String(subsidiary || '').trim();
@@ -3777,6 +3809,21 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
  */
 async function NETINCOME(period, subsidiary, accountingBook, classId, department, location) {
     try {
+        // ================================================================
+        // VALIDATION: Detect common formula syntax errors  
+        // ================================================================
+        const rawPeriod = period;
+        const rawSubsidiary = subsidiary;
+        
+        // Check if subsidiary looks like a date/year (common mistake: =NETINCOME(C4, C4) where C4 is a date)
+        if (typeof subsidiary === 'number' && (subsidiary > 40000 || (subsidiary >= 1900 && subsidiary <= 2100))) {
+            console.error(`❌ FORMULA ERROR: Second parameter (${subsidiary}) looks like a date/year, not a subsidiary!`);
+            console.error(`   XAVI.NETINCOME expects: (period, subsidiary, accountingBook, ...)`);
+            console.error(`   Your formula: =XAVI.NETINCOME(${rawPeriod}, ${subsidiary}) - did you pass the same date twice?`);
+            console.error(`   Correct: =XAVI.NETINCOME(${rawPeriod}, "") or =XAVI.NETINCOME(${rawPeriod}, "Subsidiary Name")`);
+            return "#SYNTAX!";
+        }
+        
         // NETINCOME is a YTD calculation - period should be the END of the range
         // For year-only values like "2025" or 2025, use Dec (end of year) not Jan
         // This ensures full year calculation (Jan through Dec)
@@ -3787,7 +3834,8 @@ async function NETINCOME(period, subsidiary, accountingBook, classId, department
             return 0;
         }
         
-        console.log(`📊 NETINCOME: Calculating through ${period}`);
+        console.log(`📊 NETINCOME: Raw period=${rawPeriod} → Calculating through ${period}`);
+        console.log(`   Subsidiary: "${rawSubsidiary || '(all)'}"`);
         
         // Normalize optional parameters
         subsidiary = String(subsidiary || '').trim();
