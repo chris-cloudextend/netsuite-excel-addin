@@ -4448,6 +4448,151 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
 }
 
 // ============================================================================
+// TYPEBALANCE - Get balance for all accounts of a specific type
+// Automatically handles BS (cumulative) vs P&L (period range)
+// ============================================================================
+/**
+ * Get total balance for all accounts of a specific NetSuite account type.
+ * BS types (Bank, AcctRec, etc.) use cumulative calculation from inception.
+ * P&L types (Income, Expense, etc.) use the specified period range.
+ * 
+ * @customfunction TYPEBALANCE
+ * @param {any} accountType NetSuite account type (e.g., "OthAsset", "Expense", "Income")
+ * @param {any} [fromPeriod] Start period (required for P&L, ignored for BS)
+ * @param {any} toPeriod End period (required)
+ * @param {any} [subsidiary] Subsidiary name or ID (optional)
+ * @param {any} [department] Department filter (optional)
+ * @param {any} [location] Location filter (optional)
+ * @param {any} [classId] Class filter (optional)
+ * @param {any} [accountingBook] Accounting Book ID (optional)
+ * @returns {Promise<number>} Total balance for all accounts of the specified type
+ */
+async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook) {
+    try {
+        // Normalize account type
+        const normalizedType = String(accountType || '').trim();
+        if (!normalizedType) {
+            console.error('❌ TYPEBALANCE: accountType is required');
+            return 0;
+        }
+        
+        // Valid NetSuite account types
+        const BS_TYPES = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 'DeferExpense', 'AcctPay', 'CredCard', 'OthCurrLiab', 'LongTermLiab', 'DeferRevenue', 'Equity', 'RetainedEarnings', 'UnbilledRec'];
+        const PL_TYPES = ['Income', 'COGS', 'Expense', 'OthIncome', 'OthExpense', 'NonPosting'];
+        const ALL_TYPES = [...BS_TYPES, ...PL_TYPES];
+        
+        if (!ALL_TYPES.includes(normalizedType)) {
+            console.error(`❌ TYPEBALANCE: Invalid account type "${normalizedType}". Valid types: ${ALL_TYPES.join(', ')}`);
+            return 0;
+        }
+        
+        const isBalanceSheet = BS_TYPES.includes(normalizedType);
+        
+        // Convert periods
+        let convertedToPeriod = convertToMonthYear(toPeriod, false); // false = use Dec for year-only
+        if (!convertedToPeriod) {
+            console.error('❌ TYPEBALANCE: toPeriod is required');
+            return 0;
+        }
+        
+        let convertedFromPeriod = '';
+        if (isBalanceSheet) {
+            // BS types: cumulative from inception, ignore fromPeriod
+            console.log(`📊 TYPEBALANCE: BS type "${normalizedType}" - cumulative through ${convertedToPeriod}`);
+        } else {
+            // P&L types: need fromPeriod
+            convertedFromPeriod = convertToMonthYear(fromPeriod, true); // true = use Jan for year-only
+            if (!convertedFromPeriod) {
+                console.error('❌ TYPEBALANCE: fromPeriod is required for P&L account types');
+                return 0;
+            }
+            console.log(`📊 TYPEBALANCE: P&L type "${normalizedType}" - range ${convertedFromPeriod} → ${convertedToPeriod}`);
+        }
+        
+        // Build cache key
+        const subsidiaryStr = String(subsidiary || '').trim();
+        const departmentStr = String(department || '').trim();
+        const locationStr = String(location || '').trim();
+        const classStr = String(classId || '').trim();
+        const bookStr = String(accountingBook || '').trim();
+        const cacheKey = `typebalance:${normalizedType}:${convertedFromPeriod}:${convertedToPeriod}:${subsidiaryStr}:${departmentStr}:${locationStr}:${classStr}:${bookStr}`;
+        
+        // Check cache
+        if (cache.typebalance && cache.typebalance[cacheKey] !== undefined) {
+            console.log(`📋 TYPEBALANCE cache hit: ${cacheKey} = ${cache.typebalance[cacheKey]}`);
+            return cache.typebalance[cacheKey];
+        }
+        
+        // Check in-flight
+        if (inFlightRequests.has(cacheKey)) {
+            console.log(`⏳ TYPEBALANCE: Waiting for in-flight request: ${cacheKey}`);
+            return await inFlightRequests.get(cacheKey);
+        }
+        
+        // Make API request
+        const requestPromise = (async () => {
+            try {
+                // Acquire lock to prevent flooding
+                await acquireSpecialFormulaLock('TYPEBALANCE', cacheKey);
+                
+                broadcastToast('Calculating Type Balance…', 'info');
+                
+                const response = await fetch(`${SERVER_URL}/type-balance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        accountType: normalizedType,
+                        fromPeriod: convertedFromPeriod,
+                        toPeriod: convertedToPeriod,
+                        subsidiary: subsidiaryStr,
+                        department: departmentStr,
+                        location: locationStr,
+                        classId: classStr,
+                        accountingBook: bookStr
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`❌ TYPEBALANCE API error: ${response.status} - ${errorText}`);
+                    releaseSpecialFormulaLock(cacheKey);
+                    return 0;
+                }
+                
+                const data = await response.json();
+                const value = parseFloat(data.value) || 0;
+                
+                console.log(`✅ TYPEBALANCE ${normalizedType} (${convertedFromPeriod || 'inception'} → ${convertedToPeriod}): ${value.toLocaleString()}`);
+                
+                // Cache the result
+                if (!cache.typebalance) cache.typebalance = {};
+                cache.typebalance[cacheKey] = value;
+                
+                broadcastToast(`Type Balance: $${value.toLocaleString()}`, 'success');
+                
+                releaseSpecialFormulaLock(cacheKey);
+                inFlightRequests.delete(cacheKey);
+                
+                return value;
+                
+            } catch (error) {
+                console.error('TYPEBALANCE fetch error:', error);
+                releaseSpecialFormulaLock(cacheKey);
+                inFlightRequests.delete(cacheKey);
+                return 0;
+            }
+        })();
+        
+        inFlightRequests.set(cacheKey, requestPromise);
+        return await requestPromise;
+        
+    } catch (error) {
+        console.error('TYPEBALANCE error:', error);
+        return 0;
+    }
+}
+
+// ============================================================================
 // CTA - Calculate Cumulative Translation Adjustment (multi-currency plug)
 // This is the balancing figure after currency translation in consolidation
 // ============================================================================
@@ -4791,6 +4936,7 @@ if (typeof CustomFunctions !== 'undefined') {
     CustomFunctions.associate('BUDGET', BUDGET);
     CustomFunctions.associate('RETAINEDEARNINGS', RETAINEDEARNINGS);
     CustomFunctions.associate('NETINCOME', NETINCOME);
+    CustomFunctions.associate('TYPEBALANCE', TYPEBALANCE);
     CustomFunctions.associate('CTA', CTA);
     CustomFunctions.associate('CLEARCACHE', CLEARCACHE);
     console.log('✅ Custom functions registered with Excel');
