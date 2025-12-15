@@ -60,9 +60,13 @@ fy_start = fy_info['fy_start']
 | `docs/functions.json` | Options | `stream`, `cancelable`, `volatile` settings |
 | `docs/functions.js` | **`CustomFunctions.associate()`** | **MUST add function binding (~line 4986)** |
 
-> ⚠️ **CRITICAL**: Missing `CustomFunctions.associate('FUNCTIONNAME', FUNCTIONNAME)` will cause  
-> the entire add-in to fail with "We can't start this add-in because it isn't set up properly."  
-> This is the #1 cause of add-in load failures after adding new functions!
+> ⚠️ **CRITICAL #1**: Missing `CustomFunctions.associate('FUNCTIONNAME', FUNCTIONNAME)` will cause  
+> the entire add-in to fail with "We can't start this add-in because it isn't set up properly."
+
+> ⚠️ **CRITICAL #2**: **Optional parameters MUST come AFTER required parameters!**  
+> Excel will silently fail to load the add-in if an `optional: true` parameter appears before a required one.  
+> If you need a "skippable" parameter in the middle, mark ALL subsequent parameters as `optional: true`  
+> and validate required values in JavaScript instead.
 
 ### 3. Frontend - Taskpane Integration
 | File | Location | What to Update |
