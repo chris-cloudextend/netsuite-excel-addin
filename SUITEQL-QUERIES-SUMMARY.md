@@ -518,5 +518,5 @@ CRED_CARD = 'CredCard'               # NOT 'CreditCard'
 
 *Document Version: 2.0*
 *Last Updated: December 2025*
-*Add-in Version: 3.0.5.75*
+*Add-in Version: 3.0.5.76*
 

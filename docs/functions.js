@@ -232,10 +232,20 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
- * Parse "Mon YYYY" string into {month: 0-11, year: YYYY}
+ * Parse period string into {month: 0-11, year: YYYY}
+ * Supports both "Mon YYYY" format and year-only "YYYY" format
+ * For year-only, returns month: 0 (Jan) as the starting month
  */
 function parsePeriod(periodStr) {
     if (!periodStr || typeof periodStr !== 'string') return null;
+    
+    // Check for year-only format (e.g., "2024")
+    const yearOnlyMatch = periodStr.match(/^(\d{4})$/);
+    if (yearOnlyMatch) {
+        return { month: 0, year: parseInt(yearOnlyMatch[1]), isYearOnly: true };
+    }
+    
+    // Check for "Mon YYYY" format
     const match = periodStr.match(/^([A-Za-z]{3})\s+(\d{4})$/);
     if (!match) return null;
     const monthIndex = MONTH_NAMES.findIndex(m => m.toLowerCase() === match[1].toLowerCase());
@@ -888,6 +898,9 @@ async function runBuildModeBatch() {
             // DEBUG: Log what we're processing
             console.log(`   📅 Processing: ${p.account} from=${p.fromPeriod} to=${p.toPeriod}`);
             
+            // Helper to check if a period is year-only (e.g., "2024")
+            const isYearOnly = (str) => str && /^\d{4}$/.test(String(str).trim());
+            
             // If there's a date RANGE (fromPeriod !== toPeriod), expand to all months
             if (p.fromPeriod && p.toPeriod && p.fromPeriod !== p.toPeriod) {
                 // Use the second expandPeriodRange function that takes (from, to) 
@@ -897,11 +910,29 @@ async function runBuildModeBatch() {
                     periods.add(period);
                 }
             } else if (p.fromPeriod && p.fromPeriod !== '') {
-                console.log(`   📅 Single period (from): ${p.fromPeriod}`);
-                periods.add(p.fromPeriod);
+                // Check if it's a year-only period that needs expansion
+                if (isYearOnly(p.fromPeriod)) {
+                    const expandedPeriods = expandPeriodRangeFromTo(p.fromPeriod, p.fromPeriod);
+                    console.log(`   📅 Year-only period: ${p.fromPeriod} → ${expandedPeriods.length} months`);
+                    for (const period of expandedPeriods) {
+                        periods.add(period);
+                    }
+                } else {
+                    console.log(`   📅 Single period (from): ${p.fromPeriod}`);
+                    periods.add(p.fromPeriod);
+                }
             } else if (p.toPeriod && p.toPeriod !== '') {
-                console.log(`   📅 Single period (to): ${p.toPeriod}`);
-                periods.add(p.toPeriod);
+                // Check if it's a year-only period that needs expansion
+                if (isYearOnly(p.toPeriod)) {
+                    const expandedPeriods = expandPeriodRangeFromTo(p.toPeriod, p.toPeriod);
+                    console.log(`   📅 Year-only period: ${p.toPeriod} → ${expandedPeriods.length} months`);
+                    for (const period of expandedPeriods) {
+                        periods.add(period);
+                    }
+                } else {
+                    console.log(`   📅 Single period (to): ${p.toPeriod}`);
+                    periods.add(p.toPeriod);
+                }
             }
         }
         
@@ -911,9 +942,16 @@ async function runBuildModeBatch() {
         const allBalances = {};
         let hasError = false;
         
-        // Detect years from periods
-        const years = new Set(periodsArray.filter(p => p && p.includes(' ')).map(p => p.split(' ')[1]));
-        const yearsArray = Array.from(years).filter(y => y && !isNaN(parseInt(y)));
+        // Detect years from periods (handles both "Mon YYYY" and year-only "YYYY" formats)
+        const years = new Set(periodsArray.map(p => {
+            if (!p) return null;
+            // Year-only format (e.g., "2024")
+            if (/^\d{4}$/.test(p)) return p;
+            // "Mon YYYY" format
+            if (p.includes(' ')) return p.split(' ')[1];
+            return null;
+        }).filter(y => y && !isNaN(parseInt(y))));
+        const yearsArray = Array.from(years);
         
         // Classify accounts
         const plAccounts = [];
@@ -1608,10 +1646,18 @@ window.populateFrontendCache = function(balances, filters = {}) {
     console.log(`\n🔄 Checking ${pendingRequests.balance.size} pending requests...`);
     
     for (const [cacheKey, request] of Array.from(pendingRequests.balance.entries())) {
-        const { account, fromPeriod } = request.params;
+        const { account, fromPeriod, toPeriod } = request.params;
         let value = 0;
         
-        if (balances[account] && balances[account][fromPeriod] !== undefined) {
+        // Handle year-only periods by summing all 12 months
+        if (fromPeriod && /^\d{4}$/.test(fromPeriod)) {
+            const expanded = expandPeriodRangeFromTo(fromPeriod, toPeriod || fromPeriod);
+            for (const period of expanded) {
+                if (balances[account] && balances[account][period] !== undefined) {
+                    value += balances[account][period];
+                }
+            }
+        } else if (balances[account] && balances[account][fromPeriod] !== undefined) {
             value = balances[account][fromPeriod];
         }
         
@@ -2754,7 +2800,16 @@ async function processBudgetBatchQueue() {
         
         const group = groups.get(filterKey);
         group.accounts.add(request.params.account);
-        group.periods.add(request.params.fromPeriod);  // Use fromPeriod (same as toPeriod for batched requests)
+        
+        // Handle year-only periods (e.g., "2024") by expanding to all 12 months
+        const period = request.params.fromPeriod;
+        if (period && /^\d{4}$/.test(period)) {
+            const expanded = expandPeriodRangeFromTo(period, period);
+            expanded.forEach(p => group.periods.add(p));
+        } else if (period) {
+            group.periods.add(period);
+        }
+        
         group.requests.push({ cacheKey, request });
     }
     
@@ -2807,7 +2862,15 @@ async function processBudgetBatchQueue() {
                 const { account, fromPeriod } = request.params;
                 let value = 0;
                 
-                if (budgets[account] && budgets[account][fromPeriod] !== undefined) {
+                // Handle year-only periods by summing all 12 months
+                if (fromPeriod && /^\d{4}$/.test(fromPeriod)) {
+                    const expanded = expandPeriodRangeFromTo(fromPeriod, fromPeriod);
+                    for (const period of expanded) {
+                        if (budgets[account] && budgets[account][period] !== undefined) {
+                            value += budgets[account][period];
+                        }
+                    }
+                } else if (budgets[account] && budgets[account][fromPeriod] !== undefined) {
                     value = budgets[account][fromPeriod];
                 }
                 
@@ -2942,18 +3005,14 @@ async function processFullRefresh() {
                 
                 // Sum requested period range
                 let total = 0;
-                if (fromPeriod === toPeriod) {
-                    // Single period
-                    if (balances[account] && balances[account][fromPeriod] !== undefined) {
-                        total = balances[account][fromPeriod];
-                    }
-                } else {
-                    // Multiple periods - sum them
-                    const periodRange = expandPeriodRangeFromTo(fromPeriod, toPeriod);
-                    for (const period of periodRange) {
-                        if (balances[account] && balances[account][period] !== undefined) {
-                            total += balances[account][period];
-                        }
+                // Always use expandPeriodRangeFromTo - it handles:
+                // - Year-only periods (e.g., "2024" → Jan-Dec 2024)
+                // - Single month periods (returns same period)
+                // - Date ranges (expands to all months)
+                const periodRange = expandPeriodRangeFromTo(fromPeriod, toPeriod || fromPeriod);
+                for (const period of periodRange) {
+                    if (balances[account] && balances[account][period] !== undefined) {
+                        total += balances[account][period];
                     }
                 }
                 
@@ -3100,10 +3159,24 @@ async function processBatchQueue() {
                 expanded.forEach(p => periods.add(p));
             } else if (fromPeriod) {
                 isFullYearRequest = false;
-                periods.add(fromPeriod);
+                // Check for year-only format and expand if needed
+                if (/^\d{4}$/.test(fromPeriod)) {
+                    const expanded = expandPeriodRangeFromTo(fromPeriod, fromPeriod);
+                    console.log(`  📅 Year-only expansion: ${fromPeriod} → ${expanded.length} months`);
+                    expanded.forEach(p => periods.add(p));
+                } else {
+                    periods.add(fromPeriod);
+                }
             } else if (toPeriod) {
                 isFullYearRequest = false;
-                periods.add(toPeriod);
+                // Check for year-only format and expand if needed
+                if (/^\d{4}$/.test(toPeriod)) {
+                    const expanded = expandPeriodRangeFromTo(toPeriod, toPeriod);
+                    console.log(`  📅 Year-only expansion: ${toPeriod} → ${expanded.length} months`);
+                    expanded.forEach(p => periods.add(p));
+                } else {
+                    periods.add(toPeriod);
+                }
             }
         }
         const periodsArray = [...periods];
@@ -3428,8 +3501,8 @@ async function fetchBatchBalances(accounts, periods, filters, allRequests, retry
                 
                 const accountBalances = balances[req.params.account] || {};
                 
-                // Expand THIS cell's period range
-                const cellPeriods = expandPeriodRange(req.params.fromPeriod, req.params.toPeriod);
+                // Expand THIS cell's period range (use FromTo version for two-argument form)
+                const cellPeriods = expandPeriodRangeFromTo(req.params.fromPeriod, req.params.toPeriod);
                 
                 // Sum only the periods THIS cell requested
                 let total = 0;

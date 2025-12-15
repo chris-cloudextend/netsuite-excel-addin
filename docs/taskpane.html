@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.75</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.76</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -6658,12 +6658,24 @@ For licensing inquiries, contact: legal@celigo.com
                     throw new Error('No valid dates found in selection. Please select cells containing dates (e.g., 1/1/2025 or "Jan 2025").');
                 }
 
-                // Sort periods chronologically
+                // Sort periods chronologically (handles both "Mon YYYY" and year-only "YYYY" formats)
                 selectedPeriods.sort((a, b) => {
-                    const [aMonth, aYear] = a.split(' ');
-                    const [bMonth, bYear] = b.split(' ');
-                    const aIdx = monthNames.indexOf(aMonth) + parseInt(aYear) * 12;
-                    const bIdx = monthNames.indexOf(bMonth) + parseInt(bYear) * 12;
+                    // Parse period a
+                    let aMonth, aYear;
+                    if (/^\d{4}$/.test(a)) {
+                        aMonth = 0; aYear = parseInt(a); // Year-only: treat as Jan
+                    } else {
+                        [aMonth, aYear] = [monthNames.indexOf(a.split(' ')[0]), parseInt(a.split(' ')[1])];
+                    }
+                    // Parse period b
+                    let bMonth, bYear;
+                    if (/^\d{4}$/.test(b)) {
+                        bMonth = 0; bYear = parseInt(b); // Year-only: treat as Jan
+                    } else {
+                        [bMonth, bYear] = [monthNames.indexOf(b.split(' ')[0]), parseInt(b.split(' ')[1])];
+                    }
+                    const aIdx = aMonth + aYear * 12;
+                    const bIdx = bMonth + bYear * 12;
                     return aIdx - bIdx;
                 });
 
