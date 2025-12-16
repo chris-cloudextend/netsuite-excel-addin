@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.114</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.115</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3250,7 +3250,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.114"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.115"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -12172,6 +12172,71 @@ export default {
                     const upperFormula = (formula || '').toUpperCase();
                     
                     // ================================================================
+                    // CHECK FOR TYPEBALANCE DRILL-DOWN SHEET (static account numbers)
+                    // ================================================================
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    sheet.load('name');
+                    await context.sync();
+                    
+                    if (sheet.name.startsWith('DrillDown_')) {
+                        // Check for drill-down context in row 3
+                        const contextCell = sheet.getRange('A3');
+                        contextCell.load('values');
+                        await context.sync();
+                        
+                        const contextValue = String(contextCell.values[0][0] || '');
+                        if (contextValue.startsWith('DRILLDOWN_CONTEXT:')) {
+                            // This is a TYPEBALANCE drill-down sheet - get account from column A
+                            const rowMatch = address.match(/\d+/);
+                            const row = rowMatch ? parseInt(rowMatch[0]) : 0;
+                            
+                            if (row >= 6) {
+                                // Get account number from column A
+                                const acctCell = sheet.getRange(`A${row}`);
+                                acctCell.load('values');
+                                await context.sync();
+                                
+                                const account = String(acctCell.values[0][0] || '');
+                                if (account && account !== 'TOTAL') {
+                                    // Parse context: DRILLDOWN_CONTEXT:period:subsidiary
+                                    const parts = contextValue.split(':');
+                                    const period = parts[1] || '';
+                                    const subsidiary = parts[2] || '';
+                                    
+                                    console.log(`📊 TYPEBALANCE drill-down: account=${account}, period=${period}, subsidiary=${subsidiary}`);
+                                    
+                                    statusEl.textContent = `Fetching transactions for account ${account}...`;
+                                    
+                                    // Fetch transactions directly
+                                    const queryParams = new URLSearchParams({ account, period });
+                                    if (subsidiary) queryParams.append('subsidiary', subsidiary);
+                                    
+                                    const response = await fetch(`${SERVER_URL}/transactions?${queryParams}`);
+                                    if (!response.ok) throw new Error(`API error: ${response.status}`);
+                                    
+                                    const data = await response.json();
+                                    const transactions = data.transactions || [];
+                                    
+                                    if (transactions.length === 0) {
+                                        statusEl.innerHTML = '<span style="color:#059669">✓ No transactions found</span>';
+                                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                                        return;
+                                    }
+                                    
+                                    await createDrillDownSheet(context, transactions, { account, period, subsidiary });
+                                    statusEl.innerHTML = `<span style="color:#059669">✓ Loaded ${transactions.length} transaction(s)!</span>`;
+                                    setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+                                    return;
+                                }
+                            }
+                            
+                            statusEl.innerHTML = '<span style="color:#dc2626">✗ Please select a row with an account number</span>';
+                            setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                            return;
+                        }
+                    }
+                    
+                    // ================================================================
                     // FORMULA TYPE DETECTION
                     // ================================================================
                     const hasBalance = upperFormula.includes('XAVI.BALANCE');
@@ -12483,37 +12548,31 @@ export default {
             drillSheet.getRange('A3').format.font.italic = true;
             drillSheet.getRange('A3').format.font.color = '#6b7280';
             
-            // Column headers - Account Number, Account Name, Balance (with drill-down formula)
+            // Column headers - Account, Name, Balance
+            // Store period/subsidiary info in sheet for drill-down
             const headers = [['Account', 'Account Name', 'Balance']];
             drillSheet.getRange('A5:C5').values = headers;
             drillSheet.getRange('A5:C5').format.font.bold = true;
             drillSheet.getRange('A5:C5').format.fill.color = '#667eea';
             drillSheet.getRange('A5:C5').format.font.color = 'white';
             
+            // Store drill-down context in row 3 (hidden) for drill-down function to use
+            drillSheet.getRange('A3').values = [[`DRILLDOWN_CONTEXT:${params.toPeriod || ''}:${params.subsidiary || ''}`]];
+            drillSheet.getRange('A3').format.font.color = 'white'; // Hide it visually
+            
             if (accounts.length > 0) {
-                // Build period and subsidiary params for BALANCE formulas
-                const periodParam = params.toPeriod ? `"${params.toPeriod}"` : '""';
-                const subsidiaryParam = params.subsidiary ? `"${params.subsidiary}"` : '""';
-                
-                // Set account numbers in column A
-                const acctRows = accounts.map(acc => [acc.account_number || acc.acctnumber || '']);
-                drillSheet.getRange(`A6:A${5 + accounts.length}`).values = acctRows;
-                
-                // Set account names in column B  
-                const nameRows = accounts.map(acc => [acc.account_name || acc.accountname || '']);
-                drillSheet.getRange(`B6:B${5 + accounts.length}`).values = nameRows;
-                
-                // Set BALANCE formulas in column C (for drill-down capability)
-                const formulas = accounts.map(acc => {
-                    const acctNum = acc.account_number || acc.acctnumber || '';
-                    return [`=XAVI.BALANCE("${acctNum}",,${periodParam},${subsidiaryParam})`];
-                });
-                drillSheet.getRange(`C6:C${5 + accounts.length}`).formulas = formulas;
+                // Use PRE-FETCHED balances as static values (INSTANT display - no API calls!)
+                const dataRows = accounts.map(acc => [
+                    acc.account_number || acc.acctnumber || '',
+                    acc.account_name || acc.accountname || '',
+                    acc.balance || 0
+                ]);
+                drillSheet.getRange(`A6:C${5 + accounts.length}`).values = dataRows;
                 
                 // Format balance column as currency
                 drillSheet.getRange(`C6:C${5 + accounts.length}`).numberFormat = [['$#,##0.00']];
                 
-                // Make account numbers blue
+                // Make account numbers blue (clickable visual cue)
                 drillSheet.getRange(`A6:A${5 + accounts.length}`).format.font.color = '#0ea5e9';
                 
                 // Add total row
@@ -12526,7 +12585,7 @@ export default {
                 
                 // Add instructions row
                 const infoRow = totalRow + 2;
-                drillSheet.getRange(`A${infoRow}`).values = [[`${accounts.length} accounts | Click any Balance cell, then "View Transactions" to drill down`]];
+                drillSheet.getRange(`A${infoRow}`).values = [[`${accounts.length} accounts | Click any row, then "View Transactions" to drill into that account`]];
                 drillSheet.getRange(`A${infoRow}`).format.font.italic = true;
                 drillSheet.getRange(`A${infoRow}`).format.font.color = '#6b7280';
             }
