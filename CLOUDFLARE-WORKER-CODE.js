@@ -28,7 +28,7 @@
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://streams-interfaces-programmer-activists.trycloudflare.com';
+    const TUNNEL_URL = 'https://golden-extreme-fails-strain.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {

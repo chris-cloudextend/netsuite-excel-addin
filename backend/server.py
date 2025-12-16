@@ -1458,14 +1458,13 @@ def get_accounts_by_type():
                 'is_balance_sheet': is_bs
             })
         
-        # For drill-down, just return accounts without individual balances
-        # (querying each account's balance individually is too slow)
-        # Users will click on accounts to see transactions
+        # Return accounts list quickly without individual balances
+        # (Balance queries are too slow for drill-down - user can see total from TYPEBALANCE formula)
         for acc in accounts_result:
             accounts_with_balances.append({
                 'account_number': acc.get('acctnumber'),
                 'account_name': acc.get('accountname'),
-                'balance': 0  # Balance not fetched for performance
+                'balance': 0  # Skip balance for speed - drill-down is about listing accounts
             })
         
         return jsonify({
