@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.111</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.112</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3250,7 +3250,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.111"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.112"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -12479,38 +12479,51 @@ export default {
             drillSheet.getRange('A2').values = [[`Account Type: ${params.accountType}${useSpecialLabel} | Period: ${params.toPeriod || 'All Time'}`]];
             drillSheet.getRange('A2').format.font.bold = true;
             
-            drillSheet.getRange('A3').values = [['💡 Click any Account Number below, then use "View Transactions" to drill into that account.']];
+            drillSheet.getRange('A3').values = [['💡 To drill into an account: Select the Account Number cell, then click "View Transactions" in the task pane.']];
             drillSheet.getRange('A3').format.font.italic = true;
             drillSheet.getRange('A3').format.font.color = '#6b7280';
             
-            // Column headers
-            const headers = [['Account Number', 'Account Name', 'Balance']];
-            drillSheet.getRange('A5:C5').values = headers;
-            drillSheet.getRange('A5:C5').format.font.bold = true;
-            drillSheet.getRange('A5:C5').format.fill.color = '#667eea';
-            drillSheet.getRange('A5:C5').format.font.color = 'white';
+            // Column headers - Balance (with formula), Account Name
+            const headers = [['Balance', 'Account Name']];
+            drillSheet.getRange('A5:B5').values = headers;
+            drillSheet.getRange('A5:B5').format.font.bold = true;
+            drillSheet.getRange('A5:B5').format.fill.color = '#667eea';
+            drillSheet.getRange('A5:B5').format.font.color = 'white';
             
-            // Data rows
-            const dataRows = accounts.map(acc => [
-                acc.account_number || acc.acctnumber || '',
-                acc.account_name || acc.accountname || '',
-                acc.balance || 0
-            ]);
+            // Data rows - Column A has BALANCE formulas, Column B has names
+            // Build period parameter for formulas
+            const periodParam = params.toPeriod ? `"${params.toPeriod}"` : '""';
+            const subsidiaryParam = params.subsidiary ? `"${params.subsidiary}"` : '""';
             
-            if (dataRows.length > 0) {
-                const dataRange = drillSheet.getRange(`A6:C${5 + dataRows.length}`);
-                dataRange.values = dataRows;
+            if (accounts.length > 0) {
+                // Set account names in column B
+                const nameRows = accounts.map(acc => [acc.account_name || acc.accountname || '']);
+                drillSheet.getRange(`B6:B${5 + accounts.length}`).values = nameRows;
                 
-                // Format balance column as currency
-                drillSheet.getRange(`C6:C${5 + dataRows.length}`).numberFormat = [['$#,##0.00']];
+                // Set BALANCE formulas in column A (so users can drill down on them)
+                const formulas = accounts.map(acc => {
+                    const acctNum = acc.account_number || acc.acctnumber || '';
+                    // Create formula: =XAVI.BALANCE("acctnum",,"period","subsidiary")
+                    return [`=XAVI.BALANCE("${acctNum}",,${periodParam},${subsidiaryParam})`];
+                });
+                drillSheet.getRange(`A6:A${5 + accounts.length}`).formulas = formulas;
+                
+                // Format column A as currency
+                drillSheet.getRange(`A6:A${5 + accounts.length}`).numberFormat = [['$#,##0.00']];
                 
                 // Add total row
-                const totalRow = 6 + dataRows.length;
-                drillSheet.getRange(`A${totalRow}`).values = [['TOTAL']];
+                const totalRow = 6 + accounts.length;
+                drillSheet.getRange(`B${totalRow}`).values = [['TOTAL']];
+                drillSheet.getRange(`B${totalRow}`).format.font.bold = true;
+                drillSheet.getRange(`A${totalRow}`).formulas = [[`=SUM(A6:A${totalRow - 1})`]];
                 drillSheet.getRange(`A${totalRow}`).format.font.bold = true;
-                drillSheet.getRange(`C${totalRow}`).formulas = [[`=SUM(C6:C${totalRow - 1})`]];
-                drillSheet.getRange(`C${totalRow}`).format.font.bold = true;
-                drillSheet.getRange(`C${totalRow}`).numberFormat = [['$#,##0.00']];
+                drillSheet.getRange(`A${totalRow}`).numberFormat = [['$#,##0.00']];
+                
+                // Add instructions row
+                const infoRow = totalRow + 2;
+                drillSheet.getRange(`A${infoRow}`).values = [[`${accounts.length} accounts | Click any balance, then "View Transactions" to drill down`]];
+                drillSheet.getRange(`A${infoRow}`).format.font.italic = true;
+                drillSheet.getRange(`A${infoRow}`).format.font.color = '#6b7280';
             }
             
             // Auto-fit columns
@@ -12546,16 +12559,16 @@ export default {
                         parenDepth--;
                         current += char;
                     } else if (char === ',' && !inQuotes && parenDepth === 0) {
+                        // ALWAYS push the parameter, even if empty (for skipped params like ",,")
                         params.push(current.trim());
                         current = '';
-                } else {
+                    } else {
                         current += char;
                     }
                 }
                 
-                if (current.trim()) {
-                    params.push(current.trim());
-                }
+                // Always push the last parameter (even if empty)
+                params.push(current.trim());
                 
                 // Return cell references or literal values as-is
                 return {
@@ -12675,9 +12688,15 @@ export default {
                 const fromPeriod = convertToPeriodName(fromPeriodRaw);
                 const toPeriod = convertToPeriodName(toPeriodRaw);
                 
+                // For Balance Sheet accounts, fromPeriod may be empty (cumulative from inception)
+                // Use toPeriod for drill-down in that case
+                const drillDownPeriod = fromPeriod || toPeriod;
+                
                 return {
                     account: account,
-                    period: fromPeriod, // Use fromPeriod as the drill-down period
+                    period: drillDownPeriod, // Use fromPeriod if set, otherwise toPeriod
+                    fromPeriod: fromPeriod,
+                    toPeriod: toPeriod,
                     subsidiary: subsidiary,
                     department: department,
                     location: location,

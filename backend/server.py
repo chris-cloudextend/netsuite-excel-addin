@@ -1458,76 +1458,22 @@ def get_accounts_by_type():
                 'is_balance_sheet': is_bs
             })
         
-        # Parse period to get date
-        period_info = parse_period(to_period)
-        if not period_info:
-            return jsonify({'error': f'Invalid period format: {to_period}'}), 400
-        
-        to_date_str = period_info['end_date'].strftime('%Y-%m-%d')
-        
-        # For Balance Sheet accounts, calculate cumulative balance
-        # For P&L accounts, we'd need from_period but for drill-down we show cumulative anyway
+        # For drill-down, just return accounts without individual balances
+        # (querying each account's balance individually is too slow)
+        # Users will click on accounts to see transactions
         for acc in accounts_result:
-            acc_number = acc.get('acctnumber')
-            acc_name = acc.get('accountname')
-            
-            # Build balance query for this account
-            if subsidiary:
-                sub_filter = f"AND s.id = {subsidiary}"
-            else:
-                sub_filter = ""
-            
-            balance_query = f"""
-                SELECT 
-                    SUM(
-                        BUILTIN.CONSOLIDATE(
-                            tal.amount,
-                            'LEDGER',
-                            'DEFAULT',
-                            'DEFAULT',
-                            {subsidiary or 1},
-                            t.postingperiod,
-                            'DEFAULT'
-                        )
-                    ) as balance
-                FROM 
-                    Transaction t
-                    JOIN TransactionAccountingLine tal ON t.id = tal.transaction
-                    JOIN Account a ON tal.account = a.id
-                    JOIN AccountingPeriod ap ON t.postingperiod = ap.id
-                    {"JOIN Subsidiary s ON t.subsidiary = s.id" if subsidiary else ""}
-                WHERE 
-                    t.posting = 'T'
-                    AND ap.enddate <= TO_DATE('{to_date_str}', 'YYYY-MM-DD')
-                    AND a.acctnumber = '{escape_sql(acc_number)}'
-                    {sub_filter}
-            """
-            
-            try:
-                balance_result = query_netsuite(balance_query)
-                balance = 0
-                if balance_result and len(balance_result) > 0:
-                    raw_balance = balance_result[0].get('balance')
-                    if raw_balance is not None:
-                        balance = float(raw_balance)
-                        # Flip sign for income accounts (credits stored as negative)
-                        if first_acct_type in ['Income', 'OthIncome']:
-                            balance = -balance
-            except Exception as e:
-                print(f"Error getting balance for {acc_number}: {e}", file=sys.stderr)
-                balance = 0
-            
             accounts_with_balances.append({
-                'account_number': acc_number,
-                'account_name': acc_name,
-                'balance': balance
+                'account_number': acc.get('acctnumber'),
+                'account_name': acc.get('accountname'),
+                'balance': 0  # Balance not fetched for performance
             })
         
         return jsonify({
             'accounts': accounts_with_balances,
             'count': len(accounts_with_balances),
             'account_type': account_type,
-            'is_balance_sheet': is_bs
+            'is_balance_sheet': is_bs,
+            'period': to_period
         })
         
     except Exception as e:
