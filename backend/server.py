@@ -1445,6 +1445,14 @@ def get_accounts_with_activity():
             HAVING 
                 SUM(ABS(tal.amount)) > 0
             ORDER BY 
+                CASE a.accttype 
+                    WHEN 'Income' THEN 1 
+                    WHEN 'OthIncome' THEN 2 
+                    WHEN 'COGS' THEN 3 
+                    WHEN 'Expense' THEN 4 
+                    WHEN 'OthExpense' THEN 5 
+                    ELSE 6 
+                END,
                 SUM(ABS(tal.amount)) DESC
             FETCH FIRST {limit * 2} ROWS ONLY
         """
