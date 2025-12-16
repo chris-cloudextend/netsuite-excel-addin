@@ -5825,9 +5825,19 @@ def get_transactions():
         where_conditions = [
             "t.posting = 'T'",
             "tal.posting = 'T'",
-            account_filter,  # Supports wildcards like '4*' → LIKE '4%'
-            f"ap.periodname = '{escape_sql(period)}'"
+            account_filter  # Supports wildcards like '4*' → LIKE '4%'
         ]
+        
+        # Handle period - could be year-only ("2025") or month ("Dec 2025")
+        if is_year_only(period):
+            # Year-only: get all transactions in that year
+            year = period.strip()
+            where_conditions.append(f"t.trandate >= TO_DATE('{year}-01-01', 'YYYY-MM-DD')")
+            where_conditions.append(f"t.trandate <= TO_DATE('{year}-12-31', 'YYYY-MM-DD')")
+            print(f"DEBUG - Year-only period '{period}' → full year date range", file=sys.stderr)
+        else:
+            # Specific month period
+            where_conditions.append(f"ap.periodname = '{escape_sql(period)}'")
         
         # CRITICAL: Use tl.subsidiary for GL line-level filtering (intercompany JEs)
         needs_line_join = False
