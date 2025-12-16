@@ -2777,6 +2777,90 @@ For licensing inquiries, contact: legal@celigo.com
             color: rgba(255, 255, 255, 0.5);
         }
         
+        .cheat-sheet.compact .cheat-item {
+            padding: 6px 10px;
+        }
+        
+        .cheat-sheet.compact .cheat-item code {
+            font-size: 10px;
+        }
+        
+        /* Onboarding Examples */
+        .onboarding-examples {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 12px 0;
+        }
+        
+        .example-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .example-item code {
+            color: var(--anenome);
+            margin-right: 4px;
+        }
+        
+        /* Steps List */
+        .onboarding-steps-list {
+            text-align: left;
+            margin: 12px 0;
+        }
+        
+        .step-item {
+            padding: 6px 0;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .step-item code {
+            background: rgba(10, 226, 193, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--anenome);
+        }
+        
+        /* Dynamic Params */
+        .dynamic-params-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 12px 0;
+            text-align: left;
+        }
+        
+        .param-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .param-label {
+            background: rgba(59, 130, 246, 0.2);
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: #93c5fd;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        
+        /* Compact highlight box */
+        .onboarding-highlight-box.compact {
+            padding: 12px;
+            margin: 10px 0;
+        }
+        
+        .formula-display.small {
+            font-size: 11px;
+        }
+        
         /* Onboarding Confirm Dialog */
         .onboarding-confirm-overlay {
             position: fixed;
@@ -2929,13 +3013,18 @@ For licensing inquiries, contact: legal@celigo.com
             background: rgba(10, 226, 193, 0.05);
         }
 
-        /* Adjust content padding for quick actions bar */
+        /* Adjust content padding for quick actions bar and footer */
         .content {
-            padding-bottom: 140px !important;
+            padding-bottom: 180px !important;
         }
         
         .tab-panel {
-            padding-bottom: 20px;
+            padding-bottom: 40px;
+        }
+        
+        /* Ensure accordions have proper bottom spacing */
+        .accordion:last-child {
+            margin-bottom: 30px;
         }
 
         .info-box {
@@ -3228,7 +3317,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.128</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.129</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4181,6 +4270,10 @@ For licensing inquiries, contact: legal@celigo.com
                         <span class="dot" data-step="4"></span>
                         <span class="dot" data-step="4b"></span>
                         <span class="dot" data-step="5"></span>
+                        <span class="dot" data-step="6"></span>
+                        <span class="dot" data-step="7"></span>
+                        <span class="dot" data-step="8"></span>
+                        <span class="dot" data-step="9"></span>
                     </div>
                     <button class="onboarding-skip" onclick="skipOnboarding()">Skip</button>
                     <button class="onboarding-restart" onclick="restartOnboarding()">↺ Start Over</button>
@@ -4290,30 +4383,102 @@ For licensing inquiries, contact: legal@celigo.com
                     </div>
                 </div>
                 
-                <!-- Step 5: Complete -->
+                <!-- Step 5: Wildcards -->
                 <div class="onboarding-step" id="onboardingStep5">
+                    <div class="onboarding-icon">⚡</div>
+                    <h2>Level Up: Wildcards</h2>
+                    <p class="onboarding-desc">
+                        Use <strong>wildcards (*)</strong> to sum multiple accounts at once!
+                    </p>
+                    <div class="onboarding-highlight-box">
+                        <div class="formula-display">=XAVI.BALANCE("40*", "Jan 2025", "Jan 2025")</div>
+                        <div class="result-display">→ Sum of ALL accounts starting with 40</div>
+                    </div>
+                    <p class="onboarding-tip">💡 Great for totaling revenue (4*), expenses (6*), or any account group!</p>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep('4b')">← Back</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(6)">More Power →</button>
+                    </div>
+                </div>
+                
+                <!-- Step 6: TYPEBALANCE -->
+                <div class="onboarding-step" id="onboardingStep6">
+                    <div class="onboarding-icon">📊</div>
+                    <h2>Level Up: Account Types</h2>
+                    <p class="onboarding-desc">
+                        Use <strong>TYPEBALANCE</strong> to sum all accounts of a type!
+                    </p>
+                    <div class="onboarding-highlight-box">
+                        <div class="formula-display">=XAVI.TYPEBALANCE("Income", "Jan 2025", "Jan 2025")</div>
+                        <div class="result-display">→ Total of ALL Income accounts</div>
+                    </div>
+                    <div class="onboarding-examples">
+                        <div class="example-item"><code>"Income"</code> All revenue</div>
+                        <div class="example-item"><code>"COGS"</code> Cost of goods</div>
+                        <div class="example-item"><code>"Expense"</code> Operating expenses</div>
+                    </div>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep(5)">← Back</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(7)">Bulk Add →</button>
+                    </div>
+                </div>
+                
+                <!-- Step 7: Bulk Add -->
+                <div class="onboarding-step" id="onboardingStep7">
+                    <div class="onboarding-icon">📋</div>
+                    <h2>Pro Tip: Bulk Add</h2>
+                    <p class="onboarding-desc">
+                        Need a list of your accounts? Use <strong>Bulk Add</strong>!
+                    </p>
+                    <div class="onboarding-steps-list">
+                        <div class="step-item">1️⃣ Click an empty cell</div>
+                        <div class="step-item">2️⃣ Go to "Account Lookup" → "Bulk Add"</div>
+                        <div class="step-item">3️⃣ Enter <code>*</code> for ALL accounts</div>
+                        <div class="step-item">4️⃣ Or <code>4*</code> for just revenue</div>
+                    </div>
+                    <p class="onboarding-tip">💡 Loads Account #, Name, Type, and Special Type!</p>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep(6)">← Back</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(8)">Go Dynamic →</button>
+                    </div>
+                </div>
+                
+                <!-- Step 8: Dynamic Parameters -->
+                <div class="onboarding-step" id="onboardingStep8">
+                    <div class="onboarding-icon">🎯</div>
+                    <h2>Go Dynamic!</h2>
+                    <p class="onboarding-desc">
+                        Use <strong>cell references</strong> for dynamic reports!
+                    </p>
+                    <div class="onboarding-highlight-box compact">
+                        <div class="formula-display small">=XAVI.BALANCE($A2, $B$1, $B$1, $E$1)</div>
+                    </div>
+                    <div class="dynamic-params-list">
+                        <div class="param-item"><span class="param-label">$E$1</span> Subsidiary</div>
+                        <div class="param-item"><span class="param-label">$F$1</span> Department</div>
+                        <div class="param-item"><span class="param-label">$G$1</span> Class/Location</div>
+                    </div>
+                    <p class="onboarding-tip">💡 Change one cell → entire report updates!</p>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep(7)">← Back</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(9)">Finish →</button>
+                    </div>
+                </div>
+                
+                <!-- Step 9: Complete -->
+                <div class="onboarding-step" id="onboardingStep9">
                     <div class="onboarding-icon">🏆</div>
                     <h2>You're a Pro!</h2>
                     <p class="onboarding-desc">
-                        You just learned the core of XAVI. Here's your cheat sheet:
+                        Here's your quick reference:
                     </p>
-                    <div class="cheat-sheet">
-                        <div class="cheat-item">
-                            <code>=XAVI.BALANCE(acct, from, to)</code>
-                            <span>Get account balance</span>
-                        </div>
-                        <div class="cheat-item">
-                            <code>=XAVI.BALANCE("4*", ...)</code>
-                            <span>Wildcard for all 4xxx</span>
-                        </div>
-                        <div class="cheat-item">
-                            <code>=XAVI.BUDGET(acct, from, to)</code>
-                            <span>Get budget amount</span>
-                        </div>
-                        <div class="cheat-item">
-                            <code>=XAVI.NETINCOME(from, to)</code>
-                            <span>Calculate net income</span>
-                        </div>
+                    <div class="cheat-sheet compact">
+                        <div class="cheat-item"><code>BALANCE(acct, from, to)</code> <span>Account balance</span></div>
+                        <div class="cheat-item"><code>BALANCE("4*", ...)</code> <span>Wildcard sum</span></div>
+                        <div class="cheat-item"><code>TYPEBALANCE(type, ...)</code> <span>Sum by type</span></div>
+                        <div class="cheat-item"><code>NAME(acct)</code> <span>Account name</span></div>
+                        <div class="cheat-item"><code>BUDGET(acct, period)</code> <span>Budget amount</span></div>
+                        <div class="cheat-item"><code>NETINCOME(from, to)</code> <span>Net income</span></div>
                     </div>
                     <button class="onboarding-btn primary" onclick="finishOnboarding()">
                         Start Building! 🚀
@@ -4409,7 +4574,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.128"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.129"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -4807,7 +4972,7 @@ For licensing inquiries, contact: legal@celigo.com
         
         function goToOnboardingStep(step) {
             // Hide all steps
-            const steps = ['1', '2', '3', '4', '4b', '5'];
+            const steps = ['1', '2', '3', '4', '4b', '5', '6', '7', '8', '9'];
             steps.forEach(s => {
                 const el = document.getElementById(`onboardingStep${s}`);
                 if (el) el.classList.remove('active');
@@ -4820,7 +4985,7 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         function updateOnboardingProgress() {
-            const stepOrder = ['1', '2', '3', '4', '4b', '5'];
+            const stepOrder = ['1', '2', '3', '4', '4b', '5', '6', '7', '8', '9'];
             const currentIdx = stepOrder.indexOf(String(onboardingState.currentStep));
             const dots = document.querySelectorAll('.progress-dots .dot');
             dots.forEach((dot, index) => {
