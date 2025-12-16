@@ -1458,13 +1458,121 @@ def get_accounts_by_type():
                 'is_balance_sheet': is_bs
             })
         
-        # Return accounts list quickly without individual balances
-        # (Balance queries are too slow for drill-down - user can see total from TYPEBALANCE formula)
+        # Parse period to get date for balance calculation
+        start_date_str, end_date_str, period_id = get_period_dates_from_name(to_period)
+        
+        if not end_date_str:
+            # If period parsing fails, return accounts without balances
+            for acc in accounts_result:
+                accounts_with_balances.append({
+                    'account_number': acc.get('acctnumber'),
+                    'account_name': acc.get('accountname'),
+                    'balance': 0
+                })
+            return jsonify({
+                'accounts': accounts_with_balances,
+                'count': len(accounts_with_balances),
+                'account_type': account_type,
+                'is_balance_sheet': is_bs,
+                'period': to_period
+            })
+        
+        # Convert date format
+        from datetime import datetime
+        try:
+            end_date = datetime.strptime(end_date_str, '%m/%d/%Y')
+            to_date_str = end_date.strftime('%Y-%m-%d')
+        except ValueError:
+            to_date_str = end_date_str
+        
+        # Get ALL balances in a SINGLE efficient query using the account type filter
+        # This is much faster than N separate queries
+        print(f"DEBUG - Batch balance query for {type_field}='{account_type}' through {to_date_str}", file=sys.stderr)
+        
+        # For non-consolidated queries, use simple SUM (much faster)
+        # For consolidated, we still need CONSOLIDATE but it's one query for all accounts
+        target_sub = subsidiary or 1
+        
+        if is_bs:
+            # Balance Sheet: cumulative from inception through period
+            balance_query = f"""
+                SELECT 
+                    a.acctnumber,
+                    SUM(
+                        BUILTIN.CONSOLIDATE(
+                            tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
+                            {target_sub}, t.postingperiod, 'DEFAULT'
+                        )
+                    ) as balance
+                FROM 
+                    Transaction t
+                    JOIN TransactionAccountingLine tal ON t.id = tal.transaction
+                    JOIN Account a ON tal.account = a.id
+                WHERE 
+                    t.posting = 'T'
+                    AND t.trandate <= TO_DATE('{to_date_str}', 'YYYY-MM-DD')
+                    AND a.{type_field} = '{escaped_type}'
+                    AND a.isinactive = 'F'
+                GROUP BY a.acctnumber
+            """
+        else:
+            # P&L: activity within the period (year)
+            # Get fiscal year start
+            year = to_period.split()[-1] if ' ' in to_period else to_period
+            fy_start = f"01/01/{year}"
+            try:
+                fy_start_date = datetime.strptime(fy_start, '%m/%d/%Y')
+                from_date_str = fy_start_date.strftime('%Y-%m-%d')
+            except ValueError:
+                from_date_str = f"{year}-01-01"
+            
+            balance_query = f"""
+                SELECT 
+                    a.acctnumber,
+                    SUM(
+                        BUILTIN.CONSOLIDATE(
+                            tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT',
+                            {target_sub}, t.postingperiod, 'DEFAULT'
+                        )
+                    ) * CASE WHEN a.accttype IN ('Income', 'OthIncome') THEN -1 ELSE 1 END as balance
+                FROM 
+                    Transaction t
+                    JOIN TransactionAccountingLine tal ON t.id = tal.transaction
+                    JOIN Account a ON tal.account = a.id
+                WHERE 
+                    t.posting = 'T'
+                    AND t.trandate >= TO_DATE('{from_date_str}', 'YYYY-MM-DD')
+                    AND t.trandate <= TO_DATE('{to_date_str}', 'YYYY-MM-DD')
+                    AND a.{type_field} = '{escaped_type}'
+                    AND a.isinactive = 'F'
+                GROUP BY a.acctnumber, a.accttype
+            """
+        
+        try:
+            print(f"DEBUG - Executing batch balance query...", file=sys.stderr)
+            balance_result = query_netsuite(balance_query, timeout=90)
+            
+            # Build lookup dict
+            balance_lookup = {}
+            if isinstance(balance_result, list):
+                for row in balance_result:
+                    acc_num = row.get('acctnumber')
+                    raw_balance = row.get('balance') or 0
+                    balance_lookup[acc_num] = float(raw_balance)
+            
+            print(f"DEBUG - Got {len(balance_lookup)} balances from batch query", file=sys.stderr)
+            
+        except Exception as e:
+            print(f"Error in batch balance query: {e}", file=sys.stderr)
+            balance_lookup = {}
+        
+        # Build response with balances
         for acc in accounts_result:
+            acc_number = acc.get('acctnumber')
             accounts_with_balances.append({
-                'account_number': acc.get('acctnumber'),
+                'account_number': acc_number,
                 'account_name': acc.get('accountname'),
-                'balance': 0  # Skip balance for speed - drill-down is about listing accounts
+                'balance': balance_lookup.get(acc_number, 0)
             })
         
         return jsonify({

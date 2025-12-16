@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.113</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.114</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3250,7 +3250,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.113"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.114"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -12483,42 +12483,52 @@ export default {
             drillSheet.getRange('A3').format.font.italic = true;
             drillSheet.getRange('A3').format.font.color = '#6b7280';
             
-            // Column headers - Account Number, Account Name
-            const headers = [['Account Number', 'Account Name']];
-            drillSheet.getRange('A5:B5').values = headers;
-            drillSheet.getRange('A5:B5').format.font.bold = true;
-            drillSheet.getRange('A5:B5').format.fill.color = '#667eea';
-            drillSheet.getRange('A5:B5').format.font.color = 'white';
+            // Column headers - Account Number, Account Name, Balance (with drill-down formula)
+            const headers = [['Account', 'Account Name', 'Balance']];
+            drillSheet.getRange('A5:C5').values = headers;
+            drillSheet.getRange('A5:C5').format.font.bold = true;
+            drillSheet.getRange('A5:C5').format.fill.color = '#667eea';
+            drillSheet.getRange('A5:C5').format.font.color = 'white';
             
             if (accounts.length > 0) {
-                // Data rows - just account numbers and names (fast!)
-                const dataRows = accounts.map(acc => [
-                    acc.account_number || acc.acctnumber || '',
-                    acc.account_name || acc.accountname || ''
-                ]);
+                // Build period and subsidiary params for BALANCE formulas
+                const periodParam = params.toPeriod ? `"${params.toPeriod}"` : '""';
+                const subsidiaryParam = params.subsidiary ? `"${params.subsidiary}"` : '""';
                 
-                drillSheet.getRange(`A6:B${5 + accounts.length}`).values = dataRows;
+                // Set account numbers in column A
+                const acctRows = accounts.map(acc => [acc.account_number || acc.acctnumber || '']);
+                drillSheet.getRange(`A6:A${5 + accounts.length}`).values = acctRows;
                 
-                // Make account numbers blue for visual cue
+                // Set account names in column B  
+                const nameRows = accounts.map(acc => [acc.account_name || acc.accountname || '']);
+                drillSheet.getRange(`B6:B${5 + accounts.length}`).values = nameRows;
+                
+                // Set BALANCE formulas in column C (for drill-down capability)
+                const formulas = accounts.map(acc => {
+                    const acctNum = acc.account_number || acc.acctnumber || '';
+                    return [`=XAVI.BALANCE("${acctNum}",,${periodParam},${subsidiaryParam})`];
+                });
+                drillSheet.getRange(`C6:C${5 + accounts.length}`).formulas = formulas;
+                
+                // Format balance column as currency
+                drillSheet.getRange(`C6:C${5 + accounts.length}`).numberFormat = [['$#,##0.00']];
+                
+                // Make account numbers blue
                 drillSheet.getRange(`A6:A${5 + accounts.length}`).format.font.color = '#0ea5e9';
                 
-                // Add count row
-                const countRow = 6 + accounts.length + 1;
-                drillSheet.getRange(`A${countRow}`).values = [[`${accounts.length} accounts found`]];
-                drillSheet.getRange(`A${countRow}`).format.font.bold = true;
+                // Add total row
+                const totalRow = 6 + accounts.length;
+                drillSheet.getRange(`A${totalRow}`).values = [['TOTAL']];
+                drillSheet.getRange(`A${totalRow}`).format.font.bold = true;
+                drillSheet.getRange(`C${totalRow}`).formulas = [[`=SUM(C6:C${totalRow - 1})`]];
+                drillSheet.getRange(`C${totalRow}`).format.font.bold = true;
+                drillSheet.getRange(`C${totalRow}`).numberFormat = [['$#,##0.00']];
                 
                 // Add instructions row
-                const infoRow = countRow + 2;
-                drillSheet.getRange(`A${infoRow}`).values = [['💡 To view transactions for an account:']];
-                drillSheet.getRange(`A${infoRow}`).format.font.bold = true;
-                
-                const infoRow2 = infoRow + 1;
-                drillSheet.getRange(`A${infoRow2}`).values = [[`1. In any cell, enter: =XAVI.BALANCE("acctnum",,"${params.toPeriod || 'Dec 2025'}")`]];
-                drillSheet.getRange(`A${infoRow2}`).format.font.color = '#6b7280';
-                
-                const infoRow3 = infoRow + 2;
-                drillSheet.getRange(`A${infoRow3}`).values = [['2. Select that cell, then click "View Transactions" in the task pane']];
-                drillSheet.getRange(`A${infoRow3}`).format.font.color = '#6b7280';
+                const infoRow = totalRow + 2;
+                drillSheet.getRange(`A${infoRow}`).values = [[`${accounts.length} accounts | Click any Balance cell, then "View Transactions" to drill down`]];
+                drillSheet.getRange(`A${infoRow}`).format.font.italic = true;
+                drillSheet.getRange(`A${infoRow}`).format.font.color = '#6b7280';
             }
             
             // Auto-fit columns
