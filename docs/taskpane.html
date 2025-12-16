@@ -1703,100 +1703,159 @@ For licensing inquiries, contact: legal@celigo.com
             color: white;
         }
 
+        /* Compact Formula Card */
         .formula-card {
-            background: linear-gradient(135deg, rgba(168, 177, 206, 0.1) 0%, rgba(211, 216, 230, 0.3) 100%);
+            background: rgba(255, 255, 255, 0.95);
             border: 1px solid var(--barnacle);
-            border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 14px;
-            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            overflow: hidden;
+            transition: all 0.2s ease;
         }
 
         .formula-card:hover {
             border-color: var(--tidal-wave);
-            box-shadow: 0 4px 12px rgba(0, 79, 182, 0.1);
+        }
+        
+        .formula-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            cursor: pointer;
+            background: linear-gradient(135deg, rgba(168, 177, 206, 0.15) 0%, rgba(211, 216, 230, 0.25) 100%);
+        }
+        
+        .formula-header:hover {
+            background: linear-gradient(135deg, rgba(168, 177, 206, 0.25) 0%, rgba(211, 216, 230, 0.35) 100%);
+        }
+        
+        .formula-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 0;
         }
 
         .formula-name {
-            font-size: 16px;
+            font-size: 13px;
             font-weight: 700;
             color: var(--blue-light);
-            margin-bottom: 6px;
             font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            white-space: nowrap;
+        }
+        
+        .formula-brief {
+            font-size: 11px;
+            color: var(--bottlenose);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .formula-expand-icon {
+            width: 16px;
+            height: 16px;
+            color: var(--bottlenose);
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        
+        .formula-card.expanded .formula-expand-icon {
+            transform: rotate(180deg);
         }
 
         .formula-description {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--bottlenose);
-            margin-bottom: 12px;
-            line-height: 1.5;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        
+        .formula-details {
+            display: none;
+            padding: 12px;
+            border-top: 1px solid var(--barnacle);
+            background: white;
+        }
+        
+        .formula-card.expanded .formula-details {
+            display: block;
         }
 
         .formula-syntax {
             background: var(--deep-dive);
-            border-radius: 6px;
-            padding: 10px 12px;
+            border-radius: 4px;
+            padding: 8px 10px;
             font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-            font-size: 11px;
+            font-size: 10px;
             color: var(--anenome);
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             overflow-x: auto;
         }
 
         .parameters {
-            margin-top: 10px;
+            margin-top: 8px;
         }
 
         .param-title {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 600;
             color: var(--deep-dive);
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         .param-item {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--bottlenose);
-            margin-bottom: 4px;
-            padding-left: 10px;
-            line-height: 1.4;
+            margin-bottom: 2px;
+            padding-left: 8px;
+            line-height: 1.3;
         }
         
         .param-name {
             font-weight: 600;
             color: var(--deep-dive);
             font-family: 'SF Mono', Monaco, monospace;
-            font-size: 11px;
+            font-size: 10px;
         }
 
         .example {
             background: rgba(10, 226, 193, 0.08);
-            border-left: 3px solid var(--anenome);
-            padding: 12px;
-            margin-top: 12px;
-            border-radius: 4px;
+            border-left: 2px solid var(--anenome);
+            padding: 8px 10px;
+            margin-top: 8px;
+            border-radius: 3px;
         }
         
         .example-title {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 600;
             color: var(--deep-dive);
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         .example-code {
             font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-            font-size: 11px;
+            font-size: 10px;
             color: var(--deep-dive);
             background: var(--barnacle);
-            padding: 4px 8px;
-            border-radius: 4px;
+            padding: 3px 6px;
+            border-radius: 3px;
             display: inline-block;
-            margin: 2px 0;
+            margin: 1px 0;
+        }
+        
+        .example-result {
+            font-size: 10px;
+            color: var(--bottlenose);
+            font-style: italic;
+            margin-left: 8px;
         }
 
         .example-result {
@@ -3317,7 +3376,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.129</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.130</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3911,275 +3970,176 @@ For licensing inquiries, contact: legal@celigo.com
                 <div class="collapsible-content">
     
             <!-- XAVI.NAME -->
-            <div class="formula-card">
-                <div class="formula-name">XAVI.NAME</div>
-                <div class="formula-description">
-                    Get the account name for any NetSuite account number or ID.
-                </div>
-                <div class="formula-syntax">
-                    =XAVI.NAME(accountNumber)
-                </div>
-                <div class="parameters">
-                    <div class="param-title">Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">accountNumber</span> - Account number or internal ID (numeric or text)
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">NAME</span>
+                        <span class="formula-brief">Get account name</span>
                     </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="example">
-                    <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.NAME(A4)</div>
-                    <div class="example-code">=XAVI.NAME("4220")</div>
-                    <div class="example-code">=XAVI.NAME("15000-1")</div>
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.NAME(accountNumber)</div>
+                    <div class="param-item"><span class="param-name">accountNumber</span> - Account # or ID</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.NAME(A4)</div>
+                        <div class="example-code">=XAVI.NAME("4220")</div>
+                    </div>
                 </div>
             </div>
 
             <!-- XAVI.TYPE -->
-            <div class="formula-card">
-                <div class="formula-name">XAVI.TYPE</div>
-                <div class="formula-description">
-                    Get the account type for any account (Income, Expense, Bank, AcctRec, Equity, etc.).
-                </div>
-                <div class="formula-syntax">
-                    =XAVI.TYPE(accountNumber)
-                </div>
-                <div class="parameters">
-                    <div class="param-title">Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">accountNumber</span> - Account number or internal ID (numeric or text)
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">TYPE</span>
+                        <span class="formula-brief">Get account type</span>
                     </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="example">
-                    <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.TYPE("4220")</div>
-                    <div class="example-result">Returns: "Income"</div>
-                    <div class="example-code">=XAVI.TYPE("10010")</div>
-                    <div class="example-result">Returns: "Bank"</div>
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.TYPE(accountNumber)</div>
+                    <div class="param-item"><span class="param-name">accountNumber</span> - Account # or ID</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.TYPE("4220")</div> <span class="example-result">→ "Income"</span>
+                    </div>
                 </div>
             </div>
 
             <!-- XAVI.PARENT -->
-            <div class="formula-card">
-                <div class="formula-name">XAVI.PARENT</div>
-                <div class="formula-description">
-                    Get the parent account number for any sub-account (returns empty string if no parent).
-                </div>
-                <div class="formula-syntax">
-                    =XAVI.PARENT(accountNumber)
-                </div>
-                <div class="parameters">
-                    <div class="param-title">Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">accountNumber</span> - Account number or internal ID (numeric or text)
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">PARENT</span>
+                        <span class="formula-brief">Get parent account</span>
                     </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="example">
-                    <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.PARENT("4220")</div>
-                    <div class="example-result">Returns: "4210"</div>
-                    <div class="example-code">=XAVI.PARENT("4000")</div>
-                    <div class="example-result">Returns: "" (top-level account)</div>
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.PARENT(accountNumber)</div>
+                    <div class="param-item"><span class="param-name">accountNumber</span> - Account # or ID</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.PARENT("4220")</div> <span class="example-result">→ "4210"</span>
+                    </div>
                 </div>
             </div>
 
             <!-- XAVI.BALANCE -->
-            <div class="formula-card">
-                <div class="formula-name">XAVI.BALANCE</div>
-                <div class="formula-description">
-                    Get the GL account balance for a specific period or range, with optional filtering by subsidiary, department, location, and class. <strong>Supports wildcards!</strong>
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">BALANCE</span>
+                        <span class="formula-brief">Account balance • Wildcards ✓</span>
+                    </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="formula-syntax">
-                    =XAVI.BALANCE(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])
-                </div>
-                <div class="parameters">
-                    <div class="param-title">Required Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">account</span> - Account number, ID, or <strong>wildcard pattern</strong> (e.g., "4*" for all revenue)
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">fromPeriod</span> - Starting period (e.g., "Jan 2025" or just "2025" for full year)
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">toPeriod</span> - Ending period (e.g., "Dec 2025" or just "2025" for full year)
-                    </div>
-                    <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">subsidiary</span> - Filter by subsidiary ID
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">department</span> - Filter by department ID
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">location</span> - Filter by location ID
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">class</span> - Filter by class ID
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.BALANCE(acct, from, to, [sub], [dept], [loc], [class])</div>
+                    <div class="param-item"><span class="param-name">acct</span> - Account # or wildcard ("4*")</div>
+                    <div class="param-item"><span class="param-name">from/to</span> - Period ("Jan 2025" or "2025")</div>
+                    <div class="param-item"><span class="param-name">sub/dept/loc/class</span> - Optional filters</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Dec 2025")</div>
+                        <div class="example-code">=XAVI.BALANCE("4*", "2025", "2025")</div> <span class="example-result">← All 4xxx accounts</span>
                     </div>
                 </div>
-                <div class="example">
-                    <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Dec 2025")</div>
-                    <div class="example-code">=XAVI.BALANCE("4010", "2025", "2025")  <span style="color:#6b7280;">← Year-only format (optimized)</span></div>
-                    <div class="example-code">=XAVI.BALANCE(A4, B1, C1)</div>
-                    <div class="example-code">=XAVI.BALANCE("4010", "Jan 2025", "Jan 2025", "", "13", "", "")</div>
-                </div>
-                <div class="tip" style="margin-top: 12px; padding: 10px; background: #f0fdf4; border-left: 3px solid #22c55e; font-size: 12px;">
-                    <strong>💡 Tip:</strong> Use year-only format (e.g., "2025", "2025") for annual reports - it uses an optimized single query instead of 12 monthly queries.
-                </div>
-                <div class="tip" style="margin-top: 8px; padding: 10px; background: #eff6ff; border-left: 3px solid #3b82f6; font-size: 12px;">
-                    <strong>🔍 Wildcards:</strong> Use <code>*</code> to match multiple accounts:<br>
-                    • <code>"4*"</code> = all accounts starting with 4 (revenue)<br>
-                    • <code>"60*"</code> = all accounts starting with 60<br>
-                    • <code>"4010"</code> = exact match only (no 40100, 40101, etc.)
-                </div>
-    </div>
+            </div>
     
             <!-- XAVI.BUDGET -->
-            <div class="formula-card">
-                <div class="formula-name">XAVI.BUDGET</div>
-                <div class="formula-description">
-                    Get the budget amount for an account and period, with optional filtering by subsidiary, department, location, and class. <strong>Supports wildcards!</strong>
+            <!-- XAVI.BUDGET -->
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">BUDGET</span>
+                        <span class="formula-brief">Budget amounts • Wildcards ✓</span>
+                    </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="formula-syntax">
-                    =XAVI.BUDGET(account, fromPeriod, toPeriod, [subsidiary], [department], [location], [class])
-                </div>
-                <div class="parameters">
-                    <div class="param-title">Required Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">account</span> - Account number, ID, or <strong>wildcard pattern</strong> (e.g., "5*" for all COGS)
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.BUDGET(acct, from, to, [sub], [dept], [loc], [class])</div>
+                    <div class="param-item"><span class="param-name">acct</span> - Account # or wildcard ("6*")</div>
+                    <div class="param-item"><span class="param-name">from/to</span> - Period range</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.BUDGET("5000", "2025", "2025")</div>
+                        <div class="example-code">=XAVI.BUDGET("6*", "Jan 2025", "Dec 2025")</div>
                     </div>
-                    <div class="param-item">
-                        <span class="param-name">fromPeriod</span> - Starting period (e.g., "Jan 2025" or "2025" for full year)
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">toPeriod</span> - Ending period (e.g., "Dec 2025" or "2025" for full year)
-                    </div>
-                    <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">subsidiary</span> - Filter by subsidiary ID
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">department</span> - Filter by department ID
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">location</span> - Filter by location ID
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">class</span> - Filter by class ID
-                    </div>
-                </div>
-                <div class="example">
-                    <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.BUDGET("5000", "Jan 2025", "Dec 2025")</div>
-                    <div class="example-code">=XAVI.BUDGET("5000", "2025", "2025")  <span style="color:#6b7280;">← Year-only format</span></div>
-                    <div class="example-code">=XAVI.BUDGET(A4, B1, C1)</div>
-                    <div class="example-code">=XAVI.BUDGET("6*", "2025", "2025")  <span style="color:#6b7280;">← All expense budgets</span></div>
                 </div>
             </div>
 
-            <!-- XAVI.RETAINEDEARNINGS -->
-            <div class="formula-card">
-                <div class="formula-name">XAVI.RETAINEDEARNINGS</div>
-                <div class="formula-description">
-                    Calculate Retained Earnings (cumulative P&L from company inception through prior fiscal year end). This value is computed dynamically—there is no account to query.
-                </div>
-                <div class="formula-syntax">
-                    =XAVI.RETAINEDEARNINGS(period, [subsidiary], [accountingBook], [class], [department], [location])
-                </div>
-                <div class="parameters">
-                    <div class="param-title">Required Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">period</span> - Target period (e.g., "Dec 2024")
+            <!-- XAVI.TYPEBALANCE -->
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">TYPEBALANCE</span>
+                        <span class="formula-brief">Sum by account type</span>
                     </div>
-                    <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">subsidiary</span> - Subsidiary Context (ID or name, add "(Consolidated)" for children)
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">accountingBook</span> - Accounting Book ID
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">class, department, location</span> - Segment filters
-                    </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="example">
-                    <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.RETAINEDEARNINGS("Dec 2024")</div>
-                    <div class="example-code">=XAVI.RETAINEDEARNINGS(B1, "Celigo Inc.")</div>
-                </div>
-                <div class="help-tip" style="margin-top: 10px; font-size: 11px; color: var(--bottlenose);">
-                    ⏱️ Takes up to 2 minutes due to historical data aggregation
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.TYPEBALANCE(type, from, to, [sub], ...)</div>
+                    <div class="param-item"><span class="param-name">type</span> - "Income", "Expense", "COGS", etc.</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.TYPEBALANCE("Income", "Jan 2025", "Dec 2025")</div>
+                        <div class="example-code">=XAVI.TYPEBALANCE("COGS", "2025", "2025")</div>
+                    </div>
                 </div>
             </div>
 
             <!-- XAVI.NETINCOME -->
-            <div class="formula-card">
-                <div class="formula-name">XAVI.NETINCOME</div>
-                <div class="formula-description">
-                    Calculate Net Income for a period range (sum of P&L activity). Specify both from and to periods explicitly.
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">NETINCOME</span>
+                        <span class="formula-brief">Calculate net income</span>
+                    </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="formula-syntax">
-                    =XAVI.NETINCOME(fromPeriod, [toPeriod], [subsidiary], [accountingBook], [class], [department], [location])
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.NETINCOME(from, [to], [sub], [book], ...)</div>
+                    <div class="param-item"><span class="param-name">from/to</span> - Period range (to defaults to from)</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.NETINCOME("Jan 2025", "Dec 2025")</div>
+                        <div class="example-code">=XAVI.NETINCOME("2025",, "Celigo Inc.")</div>
+                    </div>
+                    <div style="font-size: 10px; color: var(--bottlenose); margin-top: 6px;">⏱️ 10–20 sec</div>
                 </div>
-                <div class="parameters">
-                    <div class="param-title">Required Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">fromPeriod</span> - Start period (e.g., "Jan 2025", "2025", or cell reference)
+            </div>
+
+            <!-- XAVI.RETAINEDEARNINGS -->
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">RETAINEDEARNINGS</span>
+                        <span class="formula-brief">Cumulative P&L</span>
                     </div>
-                    <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">toPeriod</span> - End period (defaults to fromPeriod if empty). For year-only, expands to Dec.
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">subsidiary</span> - Subsidiary Context (ID or name, add "(Consolidated)" for children)
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">accountingBook</span> - Accounting Book ID
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">class, department, location</span> - Segment filters
-                    </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="example">
-                    <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.NETINCOME("Jan 2025", "Dec 2025")</div>
-                    <div class="example-code">=XAVI.NETINCOME("2025", "2025")</div>
-                    <div class="example-code">=XAVI.NETINCOME("Jan 2025",, "Celigo Inc.")</div>
-                    <div class="example-code">=XAVI.NETINCOME(C4, D4, E4)</div>
-                </div>
-                <div class="help-tip" style="margin-top: 10px; font-size: 11px; color: var(--bottlenose);">
-                    ⏱️ Takes 10–20 seconds due to P&L aggregation. Use comma to skip toPeriod: =NETINCOME("Jan 2025",,"Sub")
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.RETAINEDEARNINGS(period, [sub], [book], ...)</div>
+                    <div class="param-item">Cumulative P&L from inception through prior FY end</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.RETAINEDEARNINGS("Dec 2024")</div>
+                    </div>
+                    <div style="font-size: 10px; color: var(--bottlenose); margin-top: 6px;">⏱️ Up to 2 min</div>
                 </div>
             </div>
 
             <!-- XAVI.CTA -->
-            <div class="formula-card">
-                <div class="formula-name">XAVI.CTA</div>
-                <div class="formula-description">
-                    Calculate Cumulative Translation Adjustment (FX plug for multi-currency consolidated Balance Sheets). Uses the "plug method" for 100% accuracy.
-                </div>
-                <div class="formula-syntax">
-                    =XAVI.CTA(period, [subsidiary], [accountingBook])
-                </div>
-                <div class="parameters">
-                    <div class="param-title">Required Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">period</span> - Target period (e.g., "Dec 2024")
+            <div class="formula-card" onclick="this.classList.toggle('expanded')">
+                <div class="formula-header">
+                    <div class="formula-header-left">
+                        <span class="formula-name">CTA</span>
+                        <span class="formula-brief">FX translation adjustment</span>
                     </div>
-                    <div class="param-title" style="margin-top: 15px;">Optional Parameters</div>
-                    <div class="param-item">
-                        <span class="param-name">subsidiary</span> - Subsidiary Context (ID or name, add "(Consolidated)" for children)
-                    </div>
-                    <div class="param-item">
-                        <span class="param-name">accountingBook</span> - Accounting Book ID
-                    </div>
+                    <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
-                <div class="example">
-                    <div class="example-title">Examples</div>
-                    <div class="example-code">=XAVI.CTA("Dec 2024")</div>
-                    <div class="example-code">=XAVI.CTA(B1, "Celigo Inc.")</div>
-                </div>
-                <div class="help-tip" style="margin-top: 10px; font-size: 11px; color: var(--bottlenose);">
-                    ⏱️ Takes 60+ seconds (runs 6 parallel queries for assets, liabilities, equity, RE, NI)
+                <div class="formula-details">
+                    <div class="formula-syntax">=XAVI.CTA(period, [sub], [book])</div>
+                    <div class="param-item">Cumulative Translation Adjustment for multi-currency</div>
+                    <div class="example">
+                        <div class="example-code">=XAVI.CTA("Dec 2024")</div>
+                    </div>
+                    <div style="font-size: 10px; color: var(--bottlenose); margin-top: 6px;">⏱️ Up to 2 min</div>
                 </div>
             </div>
     
@@ -4574,7 +4534,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.129"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.130"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
