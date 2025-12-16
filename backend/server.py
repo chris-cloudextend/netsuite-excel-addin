@@ -1380,6 +1380,111 @@ def search_accounts():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/accounts/with-activity', methods=['GET'])
+def get_accounts_with_activity():
+    """
+    Get accounts that have actual transaction activity for a given period.
+    Only returns accounts with parent (not top-level) to ensure detail accounts.
+    
+    Query params:
+        - period: Period name (e.g., "Jan 2025")
+        - limit: Max accounts to return (default: 10)
+        - types: Account types to include, comma-separated (default: Income,Expense,COGS)
+    
+    Returns: List of accounts with their balances for the period
+    """
+    try:
+        period = request.args.get('period', 'Jan 2025')
+        limit = int(request.args.get('limit', '10'))
+        types_param = request.args.get('types', 'Income,Expense,COGS')
+        
+        # Parse the period to get date range
+        start_date_str, end_date_str, period_id = get_period_dates_from_name(period)
+        if not end_date_str:
+            return jsonify({'error': f'Invalid period: {period}'}), 400
+        
+        from datetime import datetime
+        try:
+            start_date = datetime.strptime(start_date_str, '%m/%d/%Y')
+            end_date = datetime.strptime(end_date_str, '%m/%d/%Y')
+            start_sql = start_date.strftime('%Y-%m-%d')
+            end_sql = end_date.strftime('%Y-%m-%d')
+        except ValueError:
+            start_sql = start_date_str
+            end_sql = end_date_str
+        
+        # Build type filter
+        types_list = [t.strip() for t in types_param.split(',')]
+        types_sql = ','.join([f"'{t}'" for t in types_list])
+        
+        # Query for accounts with activity in the period
+        # Only include accounts that have a parent (not top-level)
+        # Order by absolute amount to get accounts with most activity
+        query = f"""
+            SELECT 
+                a.id,
+                a.acctnumber,
+                a.accountsearchdisplaynamecopy AS accountname,
+                a.accttype,
+                a.parent,
+                SUM(ABS(tal.amount)) AS activity_amount,
+                SUM(tal.amount) AS balance
+            FROM 
+                Transaction t
+                JOIN TransactionAccountingLine tal ON t.id = tal.transaction
+                JOIN Account a ON tal.account = a.id
+            WHERE 
+                t.posting = 'T'
+                AND t.trandate >= TO_DATE('{start_sql}', 'YYYY-MM-DD')
+                AND t.trandate <= TO_DATE('{end_sql}', 'YYYY-MM-DD')
+                AND a.accttype IN ({types_sql})
+                AND a.parent IS NOT NULL
+                AND a.isinactive = 'F'
+            GROUP BY 
+                a.id, a.acctnumber, a.accountsearchdisplaynamecopy, a.accttype, a.parent
+            HAVING 
+                SUM(ABS(tal.amount)) > 0
+            ORDER BY 
+                SUM(ABS(tal.amount)) DESC
+            FETCH FIRST {limit * 2} ROWS ONLY
+        """
+        
+        print(f"DEBUG - Accounts with activity query for {period}", file=sys.stderr)
+        
+        result = query_netsuite(query, timeout=30)
+        
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify(result), 500
+        
+        # Format response - take top accounts by activity
+        accounts = []
+        for row in result[:limit]:
+            balance = row.get('balance') or 0
+            # Apply sign convention for Income
+            if row.get('accttype') in ['Income', 'OthIncome']:
+                balance = -balance  # Income is credit (negative) but we show positive
+            
+            accounts.append({
+                'id': row.get('id'),
+                'accountnumber': row.get('acctnumber'),
+                'accountname': row.get('accountname'),
+                'accttype': row.get('accttype'),
+                'balance': round(balance, 2)
+            })
+        
+        return jsonify({
+            'period': period,
+            'count': len(accounts),
+            'accounts': accounts
+        })
+        
+    except Exception as e:
+        print(f"Error in get_accounts_with_activity: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/accounts/by-type', methods=['GET'])
 def get_accounts_by_type():
     """

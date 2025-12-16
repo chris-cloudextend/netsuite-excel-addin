@@ -2415,11 +2415,13 @@ For licensing inquiries, contact: legal@celigo.com
         .onboarding-wizard {
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             border-radius: 20px;
-            padding: 28px 24px;
-            max-width: 360px;
-            width: 100%;
+            padding: 24px 20px;
+            max-width: 340px;
+            width: calc(100% - 24px);
             border: 1px solid rgba(59, 130, 246, 0.3);
             box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+            max-height: 90vh;
+            overflow-y: auto;
         }
         
         .onboarding-progress {
@@ -2451,7 +2453,7 @@ For licensing inquiries, contact: legal@celigo.com
             background: #22c55e;
         }
         
-        .onboarding-skip {
+        .onboarding-skip, .onboarding-restart {
             background: none;
             border: none;
             color: rgba(255, 255, 255, 0.4);
@@ -2459,8 +2461,26 @@ For licensing inquiries, contact: legal@celigo.com
             cursor: pointer;
         }
         
-        .onboarding-skip:hover {
+        .onboarding-skip:hover, .onboarding-restart:hover {
             color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .onboarding-restart {
+            margin-left: 8px;
+        }
+        
+        .onboarding-tip {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+            margin: 12px 0;
+            padding: 8px 10px;
+            background: rgba(10, 226, 193, 0.1);
+            border-radius: 6px;
+            text-align: left;
+        }
+        
+        .onboarding-tip strong {
+            color: var(--anenome);
         }
         
         .onboarding-step {
@@ -2557,18 +2577,20 @@ For licensing inquiries, contact: legal@celigo.com
         
         .onboarding-input-group {
             display: flex;
+            flex-direction: column;
             gap: 8px;
             margin-bottom: 16px;
         }
         
         .onboarding-input {
-            flex: 1;
-            padding: 12px 16px;
+            width: 100%;
+            padding: 12px 14px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.05);
             color: white;
             font-size: 14px;
+            box-sizing: border-box;
         }
         
         .onboarding-input:focus {
@@ -2683,7 +2705,7 @@ For licensing inquiries, contact: legal@celigo.com
         
         .demo-arrow {
             position: absolute;
-            right: -60px;
+            right: -50px;
             top: 50%;
             transform: translateY(-50%);
             color: #fbbf24;
@@ -2693,6 +2715,33 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         @keyframes bounce {
+            0%, 100% { transform: translateY(-50%) translateX(0); }
+            50% { transform: translateY(-50%) translateX(5px); }
+        }
+        
+        .drag-demo-visual.horizontal {
+            flex-direction: row;
+            gap: 6px;
+        }
+        
+        .drag-demo-visual.horizontal .demo-cell {
+            width: auto;
+            padding: 8px 12px;
+            font-size: 11px;
+        }
+        
+        .demo-arrow-right {
+            position: absolute;
+            right: -45px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #fbbf24;
+            font-size: 12px;
+            font-weight: 600;
+            animation: bounceRight 1s infinite;
+        }
+        
+        @keyframes bounceRight {
             0%, 100% { transform: translateY(-50%) translateX(0); }
             50% { transform: translateY(-50%) translateX(5px); }
         }
@@ -2882,7 +2931,11 @@ For licensing inquiries, contact: legal@celigo.com
 
         /* Adjust content padding for quick actions bar */
         .content {
-            padding-bottom: 100px !important;
+            padding-bottom: 140px !important;
+        }
+        
+        .tab-panel {
+            padding-bottom: 20px;
         }
 
         .info-box {
@@ -3175,7 +3228,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.125</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.126</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4126,9 +4179,11 @@ For licensing inquiries, contact: legal@celigo.com
                         <span class="dot" data-step="2"></span>
                         <span class="dot" data-step="3"></span>
                         <span class="dot" data-step="4"></span>
+                        <span class="dot" data-step="4b"></span>
                         <span class="dot" data-step="5"></span>
                     </div>
-                    <button class="onboarding-skip" onclick="skipOnboarding()">Skip Tutorial</button>
+                    <button class="onboarding-skip" onclick="skipOnboarding()">Skip</button>
+                    <button class="onboarding-restart" onclick="restartOnboarding()">↺ Start Over</button>
                 </div>
                 
                 <!-- Step 1: Welcome -->
@@ -4152,12 +4207,12 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-icon">🔢</div>
                     <h2>Pick an Account</h2>
                     <p class="onboarding-desc">
-                        Enter one of your G/L account numbers to see real data. If you don't know one, we can show you accounts that have activity.
+                        Enter a G/L account number, or we'll show you accounts with Jan 2025 activity.
                     </p>
                     <div class="onboarding-input-group">
-                        <input type="text" id="onboardingAccountInput" placeholder="e.g., 4000, 5100, 6200" class="onboarding-input" />
-                        <button class="onboarding-btn secondary" onclick="showSampleAccounts()">
-                            Show Me Accounts
+                        <input type="text" id="onboardingAccountInput" placeholder="e.g., 40110, 51000, 62100" class="onboarding-input" />
+                        <button class="onboarding-btn secondary" onclick="showSampleAccounts()" id="showAccountsBtn">
+                            🔍 Find Accounts With Activity
                         </button>
                     </div>
                     <div id="sampleAccountsList" class="sample-accounts-list" style="display: none;"></div>
@@ -4174,25 +4229,27 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-icon">🎉</div>
                     <h2>Look at That!</h2>
                     <p class="onboarding-desc">
-                        Your formula just pulled real data from NetSuite! The number you see is the account balance for January 2025.
+                        Your formula pulled real data! We also added <strong>XAVI.NAME</strong> to show the account name automatically.
                     </p>
                     <div class="onboarding-highlight-box">
-                        <div class="formula-display" id="insertedFormulaDisplay">=XAVI.BALANCE("4000", "Jan 2025", "Jan 2025")</div>
+                        <div class="formula-display" id="insertedFormulaDisplay">=XAVI.BALANCE("40110", "Jan 2025", "Jan 2025")</div>
                         <div class="result-display">→ <span id="insertedResultDisplay">$12,500.00</span></div>
                     </div>
+                    <p class="onboarding-tip">💡 <strong>XAVI.NAME(account)</strong> returns the account name — great for labels!</p>
                     <div class="onboarding-nav">
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep(2)">← Back</button>
                         <button class="onboarding-btn primary" onclick="teachDragFill()">
-                            Now the Fun Part →
+                            Add More Accounts →
                         </button>
                     </div>
                 </div>
                 
-                <!-- Step 4: Drag & Fill -->
+                <!-- Step 4: Drag & Fill Rows -->
                 <div class="onboarding-step" id="onboardingStep4">
                     <div class="onboarding-icon">⚡</div>
-                    <h2>Drag to Fill</h2>
+                    <h2>Fill Down for Accounts</h2>
                     <p class="onboarding-desc">
-                        We just added 3 more accounts below. Now <strong>drag the formula corner</strong> down to fill them all — or let us do it for you!
+                        We added 3 more accounts. <strong>Drag the formula corner down</strong> to fill them — or we'll do it for you!
                     </p>
                     <div class="drag-demo-container">
                         <div class="drag-demo-visual">
@@ -4204,8 +4261,32 @@ For licensing inquiries, contact: legal@celigo.com
                         </div>
                     </div>
                     <div class="onboarding-nav">
-                        <button class="onboarding-btn secondary" onclick="autoFillFormulas()">Auto-Fill for Me</button>
-                        <button class="onboarding-btn primary" onclick="completeDragStep()">I Did It! →</button>
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep(3)">← Back</button>
+                        <button class="onboarding-btn secondary" onclick="autoFillFormulas()">Auto-Fill Rows</button>
+                        <button class="onboarding-btn primary" onclick="setupMonthsFill()">Next: Months →</button>
+                    </div>
+                </div>
+                
+                <!-- Step 4b: Drag & Fill Months -->
+                <div class="onboarding-step" id="onboardingStep4b">
+                    <div class="onboarding-icon">📅</div>
+                    <h2>Fill Right for Months</h2>
+                    <p class="onboarding-desc">
+                        Now <strong>drag right</strong> across the columns to fill all 12 months! This is the power of Excel + XAVI.
+                    </p>
+                    <div class="drag-demo-container">
+                        <div class="drag-demo-visual horizontal">
+                            <div class="demo-cell filled">Jan</div>
+                            <div class="demo-cell empty">Feb</div>
+                            <div class="demo-cell empty">...</div>
+                            <div class="demo-cell empty">Dec</div>
+                            <div class="demo-arrow-right">→ Drag</div>
+                        </div>
+                    </div>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep(4)">← Back</button>
+                        <button class="onboarding-btn secondary" onclick="autoFillMonths()">Auto-Fill Months</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(5)">Complete! →</button>
                     </div>
                 </div>
                 
@@ -4328,7 +4409,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.125"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.126"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -4726,25 +4807,41 @@ For licensing inquiries, contact: legal@celigo.com
         
         function goToOnboardingStep(step) {
             // Hide all steps
-            for (let i = 1; i <= 5; i++) {
-                document.getElementById(`onboardingStep${i}`).classList.remove('active');
-            }
+            const steps = ['1', '2', '3', '4', '4b', '5'];
+            steps.forEach(s => {
+                const el = document.getElementById(`onboardingStep${s}`);
+                if (el) el.classList.remove('active');
+            });
             // Show requested step
-            document.getElementById(`onboardingStep${step}`).classList.add('active');
+            const targetEl = document.getElementById(`onboardingStep${step}`);
+            if (targetEl) targetEl.classList.add('active');
             onboardingState.currentStep = step;
             updateOnboardingProgress();
         }
         
         function updateOnboardingProgress() {
+            const stepOrder = ['1', '2', '3', '4', '4b', '5'];
+            const currentIdx = stepOrder.indexOf(String(onboardingState.currentStep));
             const dots = document.querySelectorAll('.progress-dots .dot');
             dots.forEach((dot, index) => {
                 dot.classList.remove('active', 'completed');
-                if (index + 1 === onboardingState.currentStep) {
+                if (index === currentIdx) {
                     dot.classList.add('active');
-                } else if (index + 1 < onboardingState.currentStep) {
+                } else if (index < currentIdx) {
                     dot.classList.add('completed');
                 }
             });
+        }
+        
+        function restartOnboarding() {
+            onboardingState = {
+                currentStep: 1,
+                selectedAccount: null,
+                selectedAccountName: null,
+                insertedValue: null,
+                selectedAccounts: []
+            };
+            goToOnboardingStep(1);
         }
         
         function startOnboardingStep2() {
@@ -4753,29 +4850,33 @@ For licensing inquiries, contact: legal@celigo.com
         
         async function showSampleAccounts() {
             const listEl = document.getElementById('sampleAccountsList');
+            const btn = document.getElementById('showAccountsBtn');
             listEl.style.display = 'block';
-            listEl.innerHTML = '<div style="color: rgba(255,255,255,0.5); text-align: center; padding: 10px;">Loading accounts with activity...</div>';
+            listEl.innerHTML = '<div style="color: rgba(255,255,255,0.5); text-align: center; padding: 10px;">🔍 Finding accounts with Jan 2025 activity...</div>';
+            if (btn) btn.disabled = true;
             
             try {
-                // Fetch accounts that have data for Jan 2025
-                const response = await fetch(`${SERVER_URL}/accounts/with-activity?period=Jan 2025&limit=10`);
+                // Fetch accounts that have data for Jan 2025 (detail accounts only - those with parents)
+                const response = await fetch(`${SERVER_URL}/accounts/with-activity?period=Jan 2025&limit=10&types=Income,Expense,COGS`);
                 
                 if (!response.ok) {
-                    // Fallback: just get some accounts
-                    const fallbackResponse = await fetch(`${SERVER_URL}/accounts/search?pattern=4*&limit=10`);
-                    if (fallbackResponse.ok) {
-                        const data = await fallbackResponse.json();
-                        renderSampleAccounts(data.accounts || []);
-                    } else {
-                        throw new Error('Could not load accounts');
-                    }
+                    throw new Error('Could not load accounts');
+                }
+                
+                const data = await response.json();
+                const accounts = data.accounts || [];
+                
+                if (accounts.length === 0) {
+                    listEl.innerHTML = '<div style="color: rgba(255,255,255,0.5); text-align: center; padding: 10px;">No accounts with Jan 2025 activity found. Try entering an account number manually.</div>';
                 } else {
-                    const data = await response.json();
-                    renderSampleAccounts(data.accounts || []);
+                    onboardingState.selectedAccounts = accounts;
+                    renderSampleAccounts(accounts);
                 }
             } catch (e) {
                 console.error('Error loading sample accounts:', e);
-                listEl.innerHTML = '<div style="color: #fca5a5; text-align: center; padding: 10px;">Could not load accounts. Try entering one manually.</div>';
+                listEl.innerHTML = '<div style="color: #fca5a5; text-align: center; padding: 10px;">Could not load accounts. Try entering one manually (e.g., 40110).</div>';
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
         
@@ -4807,7 +4908,7 @@ For licensing inquiries, contact: legal@celigo.com
             const account = inputEl.value.trim() || onboardingState.selectedAccount;
             
             if (!account) {
-                showOnboardingMessage('Account Required', 'Please enter an account number or click "Show Me Accounts" to select one.', 'warning');
+                showOnboardingMessage('Account Required', 'Please enter an account number or click "Find Accounts" to see options.', 'warning');
                 return;
             }
             
@@ -4817,9 +4918,13 @@ For licensing inquiries, contact: legal@celigo.com
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Insert account number in A1, period header in B1
-                    const headerRange = sheet.getRange('A1:B1');
-                    headerRange.values = [['Account', 'Jan 2025']];
+                    // Create header row with Account Number, Account Name, and 12 months
+                    const months = ['Jan 2025', 'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025', 
+                                    'Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025'];
+                    
+                    // Headers: A=Number, B=Name, C-N=Months
+                    const headerRange = sheet.getRange('A1:N1');
+                    headerRange.values = [['Account #', 'Account Name', ...months]];
                     headerRange.format.font.bold = true;
                     headerRange.format.fill.color = '#1e3a5f';
                     headerRange.format.font.color = 'white';
@@ -4828,23 +4933,28 @@ For licensing inquiries, contact: legal@celigo.com
                     const accountCell = sheet.getRange('A2');
                     accountCell.values = [[account]];
                     
-                    // Insert XAVI.BALANCE formula in B2
-                    const formulaCell = sheet.getRange('B2');
-                    formulaCell.formulas = [[`=XAVI.BALANCE($A2, B$1, B$1)`]];
+                    // Insert XAVI.NAME formula in B2 (teaches this formula!)
+                    const nameCell = sheet.getRange('B2');
+                    nameCell.formulas = [['=XAVI.NAME($A2)']];
+                    
+                    // Insert XAVI.BALANCE formula in C2 (first month)
+                    const formulaCell = sheet.getRange('C2');
+                    formulaCell.formulas = [['=XAVI.BALANCE($A2, C$1, C$1)']];
                     
                     // Format
-                    formulaCell.format.autofitColumns();
-                    accountCell.format.autofitColumns();
+                    headerRange.format.autofitColumns();
                     
                     await context.sync();
                     
                     // Wait for formula to calculate, then get value
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await new Promise(resolve => setTimeout(resolve, 2500));
                     
                     formulaCell.load('values');
+                    nameCell.load('values');
                     await context.sync();
                     
                     onboardingState.insertedValue = formulaCell.values[0][0];
+                    onboardingState.accountName = nameCell.values[0][0];
                 });
                 
                 // Update display and move to step 3
@@ -4867,17 +4977,35 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         async function teachDragFill() {
-            // Add 3 more accounts below
+            // Add 3 more accounts below using accounts with activity if available
             try {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Get some more accounts to add
-                    const accounts = ['5000', '6000', '7000']; // Default fallbacks
+                    // Use accounts from the list if available, otherwise fallback
+                    let accounts = [];
+                    if (onboardingState.selectedAccounts && onboardingState.selectedAccounts.length > 1) {
+                        // Take different accounts from the fetched list (skip first which was already used)
+                        accounts = onboardingState.selectedAccounts.slice(1, 4).map(a => a.accountnumber);
+                    }
+                    
+                    // Fallback if we don't have enough
+                    while (accounts.length < 3) {
+                        const fallbacks = ['51000', '62000', '70000'];
+                        accounts.push(fallbacks[accounts.length]);
+                    }
                     
                     // Insert account numbers in A3:A5
                     const accountRange = sheet.getRange('A3:A5');
                     accountRange.values = accounts.map(a => [a]);
+                    
+                    // Also add XAVI.NAME formulas in B3:B5
+                    const nameRange = sheet.getRange('B3:B5');
+                    nameRange.formulas = [
+                        ['=XAVI.NAME($A3)'],
+                        ['=XAVI.NAME($A4)'],
+                        ['=XAVI.NAME($A5)']
+                    ];
                     
                     await context.sync();
                 });
@@ -4895,12 +5023,12 @@ For licensing inquiries, contact: legal@celigo.com
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Fill formulas in B3:B5
-                    const formulaRange = sheet.getRange('B3:B5');
+                    // Fill BALANCE formulas in C3:C5 (first month column)
+                    const formulaRange = sheet.getRange('C3:C5');
                     formulaRange.formulas = [
-                        ['=XAVI.BALANCE($A3, B$1, B$1)'],
-                        ['=XAVI.BALANCE($A4, B$1, B$1)'],
-                        ['=XAVI.BALANCE($A5, B$1, B$1)']
+                        ['=XAVI.BALANCE($A3, C$1, C$1)'],
+                        ['=XAVI.BALANCE($A4, C$1, C$1)'],
+                        ['=XAVI.BALANCE($A5, C$1, C$1)']
                     ];
                     
                     // Format as currency
@@ -4909,19 +5037,70 @@ For licensing inquiries, contact: legal@celigo.com
                     await context.sync();
                 });
                 
-                // Small delay then move to step 5
+                // Move to months step
                 await new Promise(resolve => setTimeout(resolve, 1000));
+                goToOnboardingStep('4b');
+                updateContextualUI();
+                
+            } catch (e) {
+                console.error('Error auto-filling rows:', e);
+                goToOnboardingStep('4b');
+            }
+        }
+        
+        function setupMonthsFill() {
+            goToOnboardingStep('4b');
+        }
+        
+        async function autoFillMonths() {
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Fill all 12 months for all 4 accounts (rows 2-5, columns D-N)
+                    // Row 2
+                    const row2 = sheet.getRange('D2:N2');
+                    row2.formulas = [[
+                        '=XAVI.BALANCE($A2, D$1, D$1)', '=XAVI.BALANCE($A2, E$1, E$1)',
+                        '=XAVI.BALANCE($A2, F$1, F$1)', '=XAVI.BALANCE($A2, G$1, G$1)',
+                        '=XAVI.BALANCE($A2, H$1, H$1)', '=XAVI.BALANCE($A2, I$1, I$1)',
+                        '=XAVI.BALANCE($A2, J$1, J$1)', '=XAVI.BALANCE($A2, K$1, K$1)',
+                        '=XAVI.BALANCE($A2, L$1, L$1)', '=XAVI.BALANCE($A2, M$1, M$1)',
+                        '=XAVI.BALANCE($A2, N$1, N$1)'
+                    ]];
+                    
+                    // Rows 3-5
+                    for (let row = 3; row <= 5; row++) {
+                        const range = sheet.getRange(`D${row}:N${row}`);
+                        range.formulas = [[
+                            `=XAVI.BALANCE($A${row}, D$1, D$1)`, `=XAVI.BALANCE($A${row}, E$1, E$1)`,
+                            `=XAVI.BALANCE($A${row}, F$1, F$1)`, `=XAVI.BALANCE($A${row}, G$1, G$1)`,
+                            `=XAVI.BALANCE($A${row}, H$1, H$1)`, `=XAVI.BALANCE($A${row}, I$1, I$1)`,
+                            `=XAVI.BALANCE($A${row}, J$1, J$1)`, `=XAVI.BALANCE($A${row}, K$1, K$1)`,
+                            `=XAVI.BALANCE($A${row}, L$1, L$1)`, `=XAVI.BALANCE($A${row}, M$1, M$1)`,
+                            `=XAVI.BALANCE($A${row}, N$1, N$1)`
+                        ]];
+                    }
+                    
+                    // Format all data as currency
+                    const dataRange = sheet.getRange('C2:N5');
+                    dataRange.numberFormat = '$#,##0.00';
+                    
+                    await context.sync();
+                });
+                
+                await new Promise(resolve => setTimeout(resolve, 1500));
                 goToOnboardingStep(5);
                 updateContextualUI();
                 
             } catch (e) {
-                console.error('Error auto-filling:', e);
+                console.error('Error auto-filling months:', e);
                 goToOnboardingStep(5);
             }
         }
         
         function completeDragStep() {
-            goToOnboardingStep(5);
+            goToOnboardingStep('4b');
             updateContextualUI();
         }
         
