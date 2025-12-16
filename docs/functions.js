@@ -22,7 +22,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.108';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.109';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -3672,8 +3672,11 @@ async function processBatchQueue() {
         }
         const periodsArray = [...periods];
         
-        // OPTIMIZATION: If all requests are for a full year, use the year endpoint
-        const useYearEndpoint = isFullYearRequest && yearForOptimization && periodsArray.length === 12;
+        // OPTIMIZATION: Disabled for now - year endpoint returns P&L activity totals,
+        // which is WRONG for Balance Sheet accounts that need cumulative balances.
+        // The regular /balance endpoint correctly detects BS accounts and uses cumulative logic.
+        // TODO: Re-enable when we can detect account types on frontend and route accordingly.
+        const useYearEndpoint = false;  // Was: isFullYearRequest && yearForOptimization && periodsArray.length === 12;
         
         if (useYearEndpoint) {
             console.log(`  🗓️ YEAR OPTIMIZATION: Using /batch/balance/year for FY ${yearForOptimization}`);
