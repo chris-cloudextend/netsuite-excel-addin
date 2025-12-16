@@ -1460,6 +1460,12 @@ def get_accounts_with_activity():
         accounts = []
         for row in result[:limit]:
             balance = row.get('balance') or 0
+            # Convert to float if string
+            try:
+                balance = float(balance)
+            except (TypeError, ValueError):
+                balance = 0
+            
             # Apply sign convention for Income
             if row.get('accttype') in ['Income', 'OthIncome']:
                 balance = -balance  # Income is credit (negative) but we show positive
