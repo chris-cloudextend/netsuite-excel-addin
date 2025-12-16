@@ -2171,14 +2171,12 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         .quick-action-help {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            background: transparent;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            font-weight: 700;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -2188,9 +2186,29 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         .quick-action-help:hover {
-            border-color: var(--anenome);
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        .quick-action-help svg {
+            width: 18px;
+            height: 18px;
+        }
+        
+        /* Formula count footer */
+        .quick-actions-footer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 8px;
+            margin-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .quick-actions-footer.has-formulas {
             color: var(--anenome);
-            background: rgba(10, 226, 193, 0.1);
         }
         
         /* Contextual Status Badge */
@@ -2359,6 +2377,343 @@ For licensing inquiries, contact: legal@celigo.com
         
         .quick-help-tip strong {
             color: var(--anenome);
+        }
+
+        /* ================================================================
+           INTERACTIVE ONBOARDING WIZARD
+           ================================================================ */
+        .onboarding-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+            padding: 16px;
+        }
+        
+        .onboarding-overlay.active {
+            display: flex;
+        }
+        
+        .onboarding-wizard {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border-radius: 20px;
+            padding: 28px 24px;
+            max-width: 360px;
+            width: 100%;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .onboarding-progress {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .progress-dots {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .progress-dots .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            transition: all 0.3s;
+        }
+        
+        .progress-dots .dot.active {
+            background: var(--anenome);
+            box-shadow: 0 0 10px rgba(10, 226, 193, 0.5);
+        }
+        
+        .progress-dots .dot.completed {
+            background: #22c55e;
+        }
+        
+        .onboarding-skip {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 11px;
+            cursor: pointer;
+        }
+        
+        .onboarding-skip:hover {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .onboarding-step {
+            display: none;
+            text-align: center;
+        }
+        
+        .onboarding-step.active {
+            display: block;
+            animation: fadeInUp 0.3s ease;
+        }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .onboarding-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .onboarding-step h2 {
+            color: white;
+            font-size: 22px;
+            margin: 0 0 8px 0;
+            font-weight: 700;
+        }
+        
+        .onboarding-subtitle {
+            color: var(--anenome);
+            font-size: 14px;
+            margin: 0 0 16px 0;
+        }
+        
+        .onboarding-desc {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 13px;
+            line-height: 1.6;
+            margin: 0 0 20px 0;
+        }
+        
+        .onboarding-time {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .onboarding-btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+        
+        .onboarding-btn.primary {
+            background: linear-gradient(135deg, var(--anenome) 0%, #06d6a0 100%);
+            color: var(--deep-dive);
+        }
+        
+        .onboarding-btn.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(10, 226, 193, 0.3);
+        }
+        
+        .onboarding-btn.secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .onboarding-btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .onboarding-btn.text {
+            background: none;
+            color: rgba(255, 255, 255, 0.5);
+            padding: 12px 16px;
+        }
+        
+        .onboarding-btn.text:hover {
+            color: white;
+        }
+        
+        .onboarding-input-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .onboarding-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            font-size: 14px;
+        }
+        
+        .onboarding-input:focus {
+            outline: none;
+            border-color: var(--anenome);
+            background: rgba(10, 226, 193, 0.05);
+        }
+        
+        .onboarding-input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .sample-accounts-list {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 16px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        .sample-account-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .sample-account-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .sample-account-item .account-number {
+            font-family: monospace;
+            color: var(--anenome);
+            font-weight: 600;
+        }
+        
+        .sample-account-item .account-name {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            text-align: right;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .onboarding-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+        }
+        
+        .onboarding-highlight-box {
+            background: rgba(10, 226, 193, 0.1);
+            border: 1px solid rgba(10, 226, 193, 0.3);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .formula-display {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            color: var(--anenome);
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        
+        .result-display {
+            font-size: 20px;
+            font-weight: 700;
+            color: white;
+        }
+        
+        .drag-demo-container {
+            margin: 20px 0;
+        }
+        
+        .drag-demo-visual {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            position: relative;
+        }
+        
+        .demo-cell {
+            width: 100px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .demo-cell.filled {
+            background: rgba(10, 226, 193, 0.2);
+            border: 2px solid var(--anenome);
+            color: var(--anenome);
+        }
+        
+        .demo-cell.empty {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .demo-arrow {
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #fbbf24;
+            font-size: 12px;
+            font-weight: 600;
+            animation: bounce 1s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(-50%) translateX(0); }
+            50% { transform: translateY(-50%) translateX(5px); }
+        }
+        
+        .cheat-sheet {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .cheat-item {
+            display: flex;
+            flex-direction: column;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .cheat-item:last-child {
+            border-bottom: none;
+        }
+        
+        .cheat-item code {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 11px;
+            color: var(--anenome);
+            margin-bottom: 4px;
+        }
+        
+        .cheat-item span {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
         }
 
         /* ================================================================
@@ -2735,7 +3090,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.122</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.123</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2838,22 +3193,27 @@ For licensing inquiries, contact: legal@celigo.com
                     <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </summary>
                 <div class="collapsible-content" style="background: linear-gradient(135deg, rgba(9, 35, 92, 0.05) 0%, rgba(0, 79, 182, 0.05) 100%);">
-                    <p style="font-size: 12px; line-height: 1.6; color: var(--bottlenose); margin-bottom: 16px;">
-                        The best way to learn how to use the <strong>Financial Reporting Engine (FRE)</strong> is to see it in action. 
-                        Choose <strong>Sample Report</strong> below and we'll pull in 35 of your P&L accounts and build formulas for each month. 
-                        We'll leave the last 10 rows empty so you can see how easy it is to drag and drop your formulas—that's the beauty of using Excel formulas for financial data!
-                    </p>
-                    <p style="font-size: 12px; line-height: 1.6; color: var(--bottlenose); margin-bottom: 16px;">
-                        If you want to see all of your accounts, choose <strong>Full Income Statement</strong> and we'll examine your NetSuite account to create a beautifully formatted income statement with filters for year and subsidiary. 
-                        Since every NetSuite account is different, <strong>we highly recommend you verify our work</strong> against your NetSuite reports at least once.
+                    
+                    <!-- Interactive Tutorial (NEW - highlighted) -->
+                    <div class="guide-choice tutorial-highlight" onclick="startOnboarding()" style="margin-bottom: 16px; background: linear-gradient(135deg, rgba(10, 226, 193, 0.15) 0%, rgba(6, 214, 160, 0.1) 100%); border: 2px solid var(--anenome);">
+                        <div class="guide-choice-icon">✨</div>
+                        <div class="guide-choice-content">
+                            <div class="guide-choice-title" style="color: var(--anenome);">Interactive Tutorial</div>
+                            <div class="guide-choice-desc" style="color: var(--bottlenose);">Learn by building — 60 seconds on an empty sheet</div>
+                        </div>
+                        <span style="background: var(--anenome); color: var(--deep-dive); font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 10px; margin-left: auto;">NEW</span>
+                    </div>
+                    
+                    <p style="font-size: 11px; line-height: 1.5; color: var(--bottlenose); margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.1);">
+                        Or jump straight into a pre-built report:
                     </p>
                     
                     <!-- Option 1: Sample Report -->
                     <div class="guide-choice" onclick="runGuideMe()" style="margin-bottom: 12px; background: rgba(255,255,255,0.8); border: 2px solid var(--deep-dive);">
                         <div class="guide-choice-icon">📝</div>
                         <div class="guide-choice-content">
-                            <div class="guide-choice-title" style="color: var(--deep-dive);">Sample Report (Learn)</div>
-                            <div class="guide-choice-desc" style="color: var(--bottlenose);">35 accounts with formulas you can study and extend</div>
+                            <div class="guide-choice-title" style="color: var(--deep-dive);">Sample Report</div>
+                            <div class="guide-choice-desc" style="color: var(--bottlenose);">35 accounts with formulas you can study</div>
                         </div>
             </div>
                     
@@ -3608,7 +3968,7 @@ For licensing inquiries, contact: legal@celigo.com
 
         <!-- Quick Actions Bar - Always visible at bottom -->
         <div class="quick-actions-bar" id="quickActionsBar">
-            <!-- Contextual Status Badge -->
+            <!-- Contextual Status Badge (top) -->
             <div class="quick-actions-status" id="quickActionsStatus">
                 <span class="status-badge-icon" id="statusBadgeIcon">📊</span>
                 <span class="status-badge-text" id="statusBadgeText">Checking sheet...</span>
@@ -3624,8 +3984,16 @@ For licensing inquiries, contact: legal@celigo.com
                     <span>🔍</span> Drill Down
                 </button>
                 <button class="quick-action-help" onclick="showQuickActionsHelp()" title="Quick Actions Help">
-                    ?
-                </button>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+            </button>
+        </div>
+            <!-- Formula Count (persistent at bottom) -->
+            <div class="quick-actions-footer" id="quickActionsFooter">
+                <span id="formulaCountText">—</span>
             </div>
         </div>
         
@@ -3659,6 +4027,131 @@ For licensing inquiries, contact: legal@celigo.com
                 </div>
                 <div class="quick-help-tip">
                     💡 <strong>Pro Tip:</strong> Toggle "Show All Sections" above to access Filters, Bulk Add, and Formula Reference.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Interactive Onboarding Wizard -->
+        <div class="onboarding-overlay" id="onboardingOverlay">
+            <div class="onboarding-wizard">
+                <!-- Progress Indicator -->
+                <div class="onboarding-progress">
+                    <div class="progress-dots" id="progressDots">
+                        <span class="dot active" data-step="1"></span>
+                        <span class="dot" data-step="2"></span>
+                        <span class="dot" data-step="3"></span>
+                        <span class="dot" data-step="4"></span>
+                        <span class="dot" data-step="5"></span>
+                    </div>
+                    <button class="onboarding-skip" onclick="skipOnboarding()">Skip Tutorial</button>
+                </div>
+                
+                <!-- Step 1: Welcome -->
+                <div class="onboarding-step active" id="onboardingStep1">
+                    <div class="onboarding-icon">✨</div>
+                    <h2>Welcome to XAVI</h2>
+                    <p class="onboarding-subtitle">NetSuite data → Excel formulas in seconds</p>
+                    <p class="onboarding-desc">
+                        Let's build your first formula together. You'll learn to pull real account data and create dynamic reports.
+                    </p>
+                    <div class="onboarding-time">
+                        <span>⏱️ Takes about 60 seconds</span>
+                    </div>
+                    <button class="onboarding-btn primary" onclick="startOnboardingStep2()">
+                        Let's Go! →
+                    </button>
+                </div>
+                
+                <!-- Step 2: Enter Account Number -->
+                <div class="onboarding-step" id="onboardingStep2">
+                    <div class="onboarding-icon">🔢</div>
+                    <h2>Pick an Account</h2>
+                    <p class="onboarding-desc">
+                        Enter one of your G/L account numbers to see real data. If you don't know one, we can show you accounts that have activity.
+                    </p>
+                    <div class="onboarding-input-group">
+                        <input type="text" id="onboardingAccountInput" placeholder="e.g., 4000, 5100, 6200" class="onboarding-input" />
+                        <button class="onboarding-btn secondary" onclick="showSampleAccounts()">
+                            Show Me Accounts
+                        </button>
+                    </div>
+                    <div id="sampleAccountsList" class="sample-accounts-list" style="display: none;"></div>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep(1)">← Back</button>
+                        <button class="onboarding-btn primary" onclick="insertFirstFormula()" id="insertFormulaBtn">
+                            Insert Formula →
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Step 3: See the Magic -->
+                <div class="onboarding-step" id="onboardingStep3">
+                    <div class="onboarding-icon">🎉</div>
+                    <h2>Look at That!</h2>
+                    <p class="onboarding-desc">
+                        Your formula just pulled real data from NetSuite! The number you see is the account balance for January 2025.
+                    </p>
+                    <div class="onboarding-highlight-box">
+                        <div class="formula-display" id="insertedFormulaDisplay">=XAVI.BALANCE("4000", "Jan 2025", "Jan 2025")</div>
+                        <div class="result-display">→ <span id="insertedResultDisplay">$12,500.00</span></div>
+                    </div>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn primary" onclick="teachDragFill()">
+                            Now the Fun Part →
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Step 4: Drag & Fill -->
+                <div class="onboarding-step" id="onboardingStep4">
+                    <div class="onboarding-icon">⚡</div>
+                    <h2>Drag to Fill</h2>
+                    <p class="onboarding-desc">
+                        We just added 3 more accounts below. Now <strong>drag the formula corner</strong> down to fill them all — or let us do it for you!
+                    </p>
+                    <div class="drag-demo-container">
+                        <div class="drag-demo-visual">
+                            <div class="demo-cell filled">$12,500</div>
+                            <div class="demo-cell empty">?</div>
+                            <div class="demo-cell empty">?</div>
+                            <div class="demo-cell empty">?</div>
+                            <div class="demo-arrow">↓ Drag</div>
+                        </div>
+                    </div>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn secondary" onclick="autoFillFormulas()">Auto-Fill for Me</button>
+                        <button class="onboarding-btn primary" onclick="completeDragStep()">I Did It! →</button>
+                    </div>
+                </div>
+                
+                <!-- Step 5: Complete -->
+                <div class="onboarding-step" id="onboardingStep5">
+                    <div class="onboarding-icon">🏆</div>
+                    <h2>You're a Pro!</h2>
+                    <p class="onboarding-desc">
+                        You just learned the core of XAVI. Here's your cheat sheet:
+                    </p>
+                    <div class="cheat-sheet">
+                        <div class="cheat-item">
+                            <code>=XAVI.BALANCE(acct, from, to)</code>
+                            <span>Get account balance</span>
+                        </div>
+                        <div class="cheat-item">
+                            <code>=XAVI.BALANCE("4*", ...)</code>
+                            <span>Wildcard for all 4xxx</span>
+                        </div>
+                        <div class="cheat-item">
+                            <code>=XAVI.BUDGET(acct, from, to)</code>
+                            <span>Get budget amount</span>
+                        </div>
+                        <div class="cheat-item">
+                            <code>=XAVI.NETINCOME(from, to)</code>
+                            <span>Calculate net income</span>
+                        </div>
+                    </div>
+                    <button class="onboarding-btn primary" onclick="finishOnboarding()">
+                        Start Building! 🚀
+                    </button>
                 </div>
             </div>
         </div>
@@ -3750,7 +4243,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.122"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.123"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -3929,11 +4422,22 @@ For licensing inquiries, contact: legal@celigo.com
             const refreshBtn = document.getElementById('quickRefreshBtn');
             const refreshSelectedBtn = document.getElementById('quickRefreshSelectedBtn');
             const drillBtn = document.getElementById('quickDrillBtn');
+            const footerEl = document.getElementById('quickActionsFooter');
+            const countTextEl = document.getElementById('formulaCountText');
             
             // Reset classes
             statusEl.className = 'quick-actions-status';
+            footerEl.className = 'quick-actions-footer';
             refreshBtn.classList.remove('highlight');
             drillBtn.classList.remove('highlight');
+            
+            // Always update footer with formula count
+            if (contextualState.formulaCount > 0) {
+                countTextEl.textContent = `${contextualState.formulaCount} XAVI formula${contextualState.formulaCount !== 1 ? 's' : ''} on this sheet`;
+                footerEl.classList.add('has-formulas');
+            } else {
+                countTextEl.textContent = 'No formulas on this sheet';
+            }
             
             if (contextualState.isCalculating) {
                 // Calculating state
@@ -3947,7 +4451,7 @@ For licensing inquiries, contact: legal@celigo.com
                 // Empty sheet - no XAVI formulas
                 statusEl.classList.add('empty-sheet');
                 iconEl.textContent = '📝';
-                textEl.textContent = 'No XAVI formulas yet • Use Quick Start above';
+                textEl.textContent = 'No XAVI formulas yet • Use Quick Start above or start building on your own';
                 refreshBtn.disabled = true;
                 refreshSelectedBtn.disabled = true;
                 drillBtn.disabled = true;
@@ -3974,10 +4478,10 @@ For licensing inquiries, contact: legal@celigo.com
                 refreshBtn.disabled = false;
                 refreshSelectedBtn.disabled = false;
             } else {
-                // Has formulas but none selected
+                // Has formulas but none selected - show ready state
                 statusEl.classList.add('has-formulas');
                 iconEl.textContent = '✅';
-                textEl.textContent = `${contextualState.formulaCount} XAVI formula${contextualState.formulaCount !== 1 ? 's' : ''} on sheet`;
+                textEl.textContent = 'Ready • Select a BALANCE formula to drill down';
                 refreshBtn.disabled = false;
                 refreshSelectedBtn.disabled = false;
                 drillBtn.disabled = true; // Can't drill without selection
@@ -4011,6 +4515,278 @@ For licensing inquiries, contact: legal@celigo.com
         function setCalculatingState(isCalculating) {
             contextualState.isCalculating = isCalculating;
             updateQuickActionsUI();
+        }
+        
+        // ========================================================================
+        // INTERACTIVE ONBOARDING WIZARD
+        // ========================================================================
+        let onboardingState = {
+            currentStep: 1,
+            selectedAccount: null,
+            selectedAccountName: null,
+            insertedValue: null
+        };
+        
+        async function startOnboarding() {
+            // Check if sheet is empty first
+            const isEmpty = await isSheetEmpty();
+            if (!isEmpty) {
+                alert('Please start the tutorial on an empty sheet.\n\nYou can create a new sheet using the + button at the bottom of Excel.');
+                return;
+            }
+            
+            // Check if already completed onboarding
+            const completed = localStorage.getItem('xavi_onboarding_completed');
+            if (completed === 'true') {
+                // Ask if they want to redo
+                if (!confirm('You\'ve already completed the tutorial. Would you like to go through it again?')) {
+                    return;
+                }
+            }
+            
+            // Reset state and show wizard
+            onboardingState = {
+                currentStep: 1,
+                selectedAccount: null,
+                selectedAccountName: null,
+                insertedValue: null
+            };
+            
+            document.getElementById('onboardingOverlay').classList.add('active');
+            updateOnboardingProgress();
+        }
+        
+        async function isSheetEmpty() {
+            try {
+                let isEmpty = true;
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    let usedRange;
+                    try {
+                        usedRange = sheet.getUsedRange();
+                        usedRange.load('cellCount');
+                        await context.sync();
+                        isEmpty = !usedRange || usedRange.cellCount === 0;
+                    } catch (e) {
+                        // getUsedRange throws if sheet is completely empty
+                        isEmpty = true;
+                    }
+                });
+                return isEmpty;
+            } catch (e) {
+                return true; // Assume empty on error
+            }
+        }
+        
+        function skipOnboarding() {
+            document.getElementById('onboardingOverlay').classList.remove('active');
+        }
+        
+        function goToOnboardingStep(step) {
+            // Hide all steps
+            for (let i = 1; i <= 5; i++) {
+                document.getElementById(`onboardingStep${i}`).classList.remove('active');
+            }
+            // Show requested step
+            document.getElementById(`onboardingStep${step}`).classList.add('active');
+            onboardingState.currentStep = step;
+            updateOnboardingProgress();
+        }
+        
+        function updateOnboardingProgress() {
+            const dots = document.querySelectorAll('.progress-dots .dot');
+            dots.forEach((dot, index) => {
+                dot.classList.remove('active', 'completed');
+                if (index + 1 === onboardingState.currentStep) {
+                    dot.classList.add('active');
+                } else if (index + 1 < onboardingState.currentStep) {
+                    dot.classList.add('completed');
+                }
+            });
+        }
+        
+        function startOnboardingStep2() {
+            goToOnboardingStep(2);
+        }
+        
+        async function showSampleAccounts() {
+            const listEl = document.getElementById('sampleAccountsList');
+            listEl.style.display = 'block';
+            listEl.innerHTML = '<div style="color: rgba(255,255,255,0.5); text-align: center; padding: 10px;">Loading accounts with activity...</div>';
+            
+            try {
+                // Fetch accounts that have data for Jan 2025
+                const response = await fetch(`${SERVER_URL}/accounts/with-activity?period=Jan 2025&limit=10`);
+                
+                if (!response.ok) {
+                    // Fallback: just get some accounts
+                    const fallbackResponse = await fetch(`${SERVER_URL}/accounts/search?pattern=4*&limit=10`);
+                    if (fallbackResponse.ok) {
+                        const data = await fallbackResponse.json();
+                        renderSampleAccounts(data.accounts || []);
+                    } else {
+                        throw new Error('Could not load accounts');
+                    }
+                } else {
+                    const data = await response.json();
+                    renderSampleAccounts(data.accounts || []);
+                }
+            } catch (e) {
+                console.error('Error loading sample accounts:', e);
+                listEl.innerHTML = '<div style="color: #fca5a5; text-align: center; padding: 10px;">Could not load accounts. Try entering one manually.</div>';
+            }
+        }
+        
+        function renderSampleAccounts(accounts) {
+            const listEl = document.getElementById('sampleAccountsList');
+            
+            if (accounts.length === 0) {
+                listEl.innerHTML = '<div style="color: rgba(255,255,255,0.5); text-align: center; padding: 10px;">No accounts found. Try entering one manually.</div>';
+                return;
+            }
+            
+            listEl.innerHTML = accounts.map(acc => `
+                <div class="sample-account-item" onclick="selectSampleAccount('${acc.accountnumber}', '${(acc.accountname || '').replace(/'/g, "\\'")}')">
+                    <span class="account-number">${acc.accountnumber}</span>
+                    <span class="account-name">${acc.accountname || ''}</span>
+                </div>
+            `).join('');
+        }
+        
+        function selectSampleAccount(number, name) {
+            document.getElementById('onboardingAccountInput').value = number;
+            onboardingState.selectedAccount = number;
+            onboardingState.selectedAccountName = name;
+            document.getElementById('sampleAccountsList').style.display = 'none';
+        }
+        
+        async function insertFirstFormula() {
+            const inputEl = document.getElementById('onboardingAccountInput');
+            const account = inputEl.value.trim() || onboardingState.selectedAccount;
+            
+            if (!account) {
+                alert('Please enter an account number or select one from the list.');
+                return;
+            }
+            
+            onboardingState.selectedAccount = account;
+            
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Insert account number in A1, period header in B1
+                    const headerRange = sheet.getRange('A1:B1');
+                    headerRange.values = [['Account', 'Jan 2025']];
+                    headerRange.format.font.bold = true;
+                    headerRange.format.fill.color = '#1e3a5f';
+                    headerRange.format.font.color = 'white';
+                    
+                    // Insert account number in A2
+                    const accountCell = sheet.getRange('A2');
+                    accountCell.values = [[account]];
+                    
+                    // Insert XAVI.BALANCE formula in B2
+                    const formulaCell = sheet.getRange('B2');
+                    formulaCell.formulas = [[`=XAVI.BALANCE($A2, B$1, B$1)`]];
+                    
+                    // Format
+                    formulaCell.format.autofitColumns();
+                    accountCell.format.autofitColumns();
+                    
+                    await context.sync();
+                    
+                    // Wait for formula to calculate, then get value
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    formulaCell.load('values');
+                    await context.sync();
+                    
+                    onboardingState.insertedValue = formulaCell.values[0][0];
+                });
+                
+                // Update display and move to step 3
+                document.getElementById('insertedFormulaDisplay').textContent = `=XAVI.BALANCE("${account}", "Jan 2025", "Jan 2025")`;
+                
+                const formattedValue = typeof onboardingState.insertedValue === 'number' 
+                    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(onboardingState.insertedValue)
+                    : onboardingState.insertedValue || 'Loading...';
+                document.getElementById('insertedResultDisplay').textContent = formattedValue;
+                
+                goToOnboardingStep(3);
+                
+                // Update contextual UI
+                updateContextualUI();
+                
+            } catch (e) {
+                console.error('Error inserting formula:', e);
+                alert('Could not insert formula. Please try again.');
+            }
+        }
+        
+        async function teachDragFill() {
+            // Add 3 more accounts below
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Get some more accounts to add
+                    const accounts = ['5000', '6000', '7000']; // Default fallbacks
+                    
+                    // Insert account numbers in A3:A5
+                    const accountRange = sheet.getRange('A3:A5');
+                    accountRange.values = accounts.map(a => [a]);
+                    
+                    await context.sync();
+                });
+                
+                goToOnboardingStep(4);
+                
+            } catch (e) {
+                console.error('Error adding accounts:', e);
+                goToOnboardingStep(4); // Continue anyway
+            }
+        }
+        
+        async function autoFillFormulas() {
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Fill formulas in B3:B5
+                    const formulaRange = sheet.getRange('B3:B5');
+                    formulaRange.formulas = [
+                        ['=XAVI.BALANCE($A3, B$1, B$1)'],
+                        ['=XAVI.BALANCE($A4, B$1, B$1)'],
+                        ['=XAVI.BALANCE($A5, B$1, B$1)']
+                    ];
+                    
+                    // Format as currency
+                    formulaRange.numberFormat = [['$#,##0.00'], ['$#,##0.00'], ['$#,##0.00']];
+                    
+                    await context.sync();
+                });
+                
+                // Small delay then move to step 5
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                goToOnboardingStep(5);
+                updateContextualUI();
+                
+            } catch (e) {
+                console.error('Error auto-filling:', e);
+                goToOnboardingStep(5);
+            }
+        }
+        
+        function completeDragStep() {
+            goToOnboardingStep(5);
+            updateContextualUI();
+        }
+        
+        function finishOnboarding() {
+            localStorage.setItem('xavi_onboarding_completed', 'true');
+            document.getElementById('onboardingOverlay').classList.remove('active');
+            updateContextualUI();
         }
         
         // Sort subsidiaries hierarchically for display
