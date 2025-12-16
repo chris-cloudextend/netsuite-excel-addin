@@ -2170,12 +2170,127 @@ For licensing inquiries, contact: legal@celigo.com
             gap: 4px;
         }
         
-        .quick-actions-hint kbd {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 2px 5px;
-            border-radius: 3px;
-            font-family: monospace;
-            font-size: 9px;
+        .quick-action-help {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: transparent;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            margin-left: 4px;
+        }
+        
+        .quick-action-help:hover {
+            border-color: var(--anenome);
+            color: var(--anenome);
+            background: rgba(10, 226, 193, 0.1);
+        }
+
+        /* Quick Actions Help Modal */
+        .quick-help-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+        
+        .quick-help-modal.active {
+            display: flex;
+        }
+        
+        .quick-help-content {
+            background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 320px;
+            width: 100%;
+            position: relative;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+        
+        .quick-help-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        
+        .quick-help-close:hover {
+            color: white;
+        }
+        
+        .quick-help-content h3 {
+            color: white;
+            margin: 0 0 20px 0;
+            font-size: 18px;
+        }
+        
+        .quick-help-items {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .quick-help-item {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        
+        .quick-help-icon {
+            font-size: 20px;
+            width: 24px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        
+        .quick-help-item strong {
+            color: #93c5fd;
+            display: block;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        
+        .quick-help-item p {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 11px;
+            line-height: 1.5;
+            margin: 0;
+        }
+        
+        .quick-help-tip {
+            margin-top: 20px;
+            padding: 12px;
+            background: rgba(10, 226, 193, 0.1);
+            border-radius: 8px;
+            border-left: 3px solid var(--anenome);
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.5;
+        }
+        
+        .quick-help-tip strong {
+            color: var(--anenome);
         }
 
         /* ================================================================
@@ -2552,7 +2667,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.120</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.121</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3422,7 +3537,7 @@ For licensing inquiries, contact: legal@celigo.com
             </details>
             </div><!-- end panelFinancial -->
         </div>
-        
+
         <!-- Quick Actions Bar - Always visible at bottom -->
         <div class="quick-actions-bar" id="quickActionsBar">
             <div class="quick-actions-buttons">
@@ -3430,26 +3545,52 @@ For licensing inquiries, contact: legal@celigo.com
                     <span>⚡</span> Refresh All
                 </button>
                 <button class="quick-action-btn secondary" onclick="refreshSelected()" id="quickRefreshSelectedBtn">
-                    <span>🎯</span> Selected
+                    <span>🎯</span> Refresh Selected
                 </button>
                 <button class="quick-action-btn secondary" onclick="drillDownTransactions()" id="quickDrillBtn">
                     <span>🔍</span> Drill Down
                 </button>
+                <button class="quick-action-help" onclick="showQuickActionsHelp()" title="Quick Actions Help">
+                    ?
+            </button>
             </div>
-            <div class="quick-actions-hint">
-                <span>Right-click cell for context menu</span>
-                <span>•</span>
-                <span>Press <kbd>?</kbd> for help</span>
+        </div>
+        
+        <!-- Quick Actions Help Modal -->
+        <div class="quick-help-modal" id="quickHelpModal" onclick="hideQuickActionsHelp(event)">
+            <div class="quick-help-content" onclick="event.stopPropagation()">
+                <button class="quick-help-close" onclick="hideQuickActionsHelp()">×</button>
+                <h3>⚡ Quick Actions Guide</h3>
+                <div class="quick-help-items">
+                    <div class="quick-help-item">
+                        <span class="quick-help-icon">⚡</span>
+                        <div>
+                            <strong>Refresh All</strong>
+                            <p>Clears cache and recalculates ALL XAVI formulas on the current sheet. Use after posting new transactions.</p>
+                        </div>
+                    </div>
+                    <div class="quick-help-item">
+                        <span class="quick-help-icon">🎯</span>
+                        <div>
+                            <strong>Refresh Selected</strong>
+                            <p>Recalculates only the cells you've highlighted. Much faster for spot-checking individual accounts.</p>
+                        </div>
+                    </div>
+                    <div class="quick-help-item">
+                        <span class="quick-help-icon">🔍</span>
+                        <div>
+                            <strong>Drill Down</strong>
+                            <p>Select a cell with XAVI.BALANCE or XAVI.TYPEBALANCE and click to see all underlying transactions.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="quick-help-tip">
+                    💡 <strong>Pro Tip:</strong> Toggle "Show All Sections" above to access Filters, Bulk Add, and Formula Reference.
+                </div>
             </div>
         </div>
 
-        <!-- Footer is now minimal since quick actions bar handles main actions -->
-        <div class="footer" style="margin-bottom: 80px; padding: 8px 16px;">
-            <div class="footer-content" style="display: flex; justify-content: space-between; align-items: center;">
-                <p style="margin: 0; font-size: 10px;"><a href="https://www.cloudextend.io" target="_blank">CloudExtend</a> FRE</p>
-                <p class="footer-version" style="margin: 0; font-size: 10px;">v<span id="footerVersion">3.0.5.120</span></p>
-            </div>
-        </div>
+        <!-- Footer removed - version info now in Settings panel only -->
         </div><!-- end main-view -->
     </div>
     
@@ -3536,7 +3677,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.120"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.121"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -3661,7 +3802,7 @@ For licensing inquiries, contact: legal@celigo.com
                 console.log('Contextual UI check skipped:', e.message);
             }
         }
-
+        
         // Sort subsidiaries hierarchically for display
         // Order: Consolidated first, then plain, then children indented
         function sortSubsidiariesHierarchically(subsidiaries) {
@@ -12577,6 +12718,19 @@ export default {
         
         function hideDrilldownStatus() {
             document.getElementById('drilldownStatus').style.display = 'none';
+        }
+        
+        // ================================================================
+        // QUICK ACTIONS HELP MODAL
+        // ================================================================
+        function showQuickActionsHelp() {
+            document.getElementById('quickHelpModal').classList.add('active');
+        }
+        
+        function hideQuickActionsHelp(event) {
+            // If called from backdrop click, event is passed
+            // If called from close button, just close
+            document.getElementById('quickHelpModal').classList.remove('active');
         }
 
         async function drillDownTransactions() {
