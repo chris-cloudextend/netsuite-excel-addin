@@ -152,16 +152,17 @@ def query_netsuite(sql_query, timeout=30):
             return {'error': str(e)}
 
 
-def query_netsuite_paginated(sql_query, timeout=30, page_size=1000):
+def query_netsuite_paginated(sql_query, timeout=30, page_size=1000, order_by="1"):
     """Execute a SuiteQL query with pagination to get ALL results.
     
     SuiteQL has a default limit of 1000 rows per query. This function
     automatically paginates through all results using OFFSET/FETCH.
     
     Args:
-        sql_query: The SuiteQL query to execute (without ORDER BY/OFFSET/FETCH)
+        sql_query: The SuiteQL query to execute (should NOT include ORDER BY/OFFSET/FETCH)
         timeout: Request timeout in seconds per page
         page_size: Number of rows per page (max 1000)
+        order_by: ORDER BY clause content (default "1" = first column)
     
     Returns:
         List of all result rows, or error dict
@@ -173,9 +174,8 @@ def query_netsuite_paginated(sql_query, timeout=30, page_size=1000):
     page_size = min(page_size, 1000)
     
     while True:
-        # Add ORDER BY (required for pagination) and pagination clauses
-        # We order by account and period to ensure consistent pagination
-        paginated_query = f"{sql_query} ORDER BY acctnumber, periodname OFFSET {offset} ROWS FETCH NEXT {page_size} ROWS ONLY"
+        # Add ORDER BY and pagination clauses
+        paginated_query = f"{sql_query} ORDER BY {order_by} OFFSET {offset} ROWS FETCH NEXT {page_size} ROWS ONLY"
         
         print(f"DEBUG - Paginated query (offset={offset})...", file=sys.stderr)
         
@@ -5868,6 +5868,7 @@ def get_transactions():
         # SuiteQL query for transaction details
         # For drill-down, we show RAW transaction amounts (no consolidation)
         # This gives users the actual transaction detail, not consolidated view
+        # NOTE: No ORDER BY here - pagination function adds it
         if needs_line_join:
             query = f"""
                 SELECT 
@@ -5900,8 +5901,6 @@ def get_transactions():
                 GROUP BY
                     t.id, t.tranid, t.trandisplayname, t.recordtype, t.trandate,
                     e.entityid, e.id, t.memo, a.acctnumber, a.accountsearchdisplayname
-                ORDER BY
-                    t.trandate, t.tranid
             """
         else:
             query = f"""
@@ -5933,12 +5932,11 @@ def get_transactions():
                 GROUP BY
                     t.id, t.tranid, t.trandisplayname, t.recordtype, t.trandate,
                     e.entityid, e.id, t.memo, a.acctnumber, a.accountsearchdisplayname
-                ORDER BY
-                    t.trandate, t.tranid
             """
         
-        print(f"DEBUG - Transaction drill-down query:\n{query[:500]}...", file=sys.stderr)
-        result = query_netsuite(query)
+        print(f"DEBUG - Transaction drill-down query (paginated):\n{query[:500]}...", file=sys.stderr)
+        # Use paginated query to handle > 1000 transactions
+        result = query_netsuite_paginated(query, timeout=60, order_by="t.trandate, t.tranid")
         
         print(f"DEBUG - Query result type: {type(result)}", file=sys.stderr)
         if isinstance(result, list):
