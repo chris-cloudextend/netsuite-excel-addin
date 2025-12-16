@@ -1380,6 +1380,163 @@ def search_accounts():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/accounts/by-type', methods=['GET'])
+def get_accounts_by_type():
+    """
+    Get all accounts of a specific type with their balances.
+    Used for TYPEBALANCE drill-down (Step 1: show accounts).
+    
+    Query params:
+        - account_type: Account type (e.g., "Expense", "AcctRec")
+        - to_period: Period through which to calculate balance (e.g., "Dec 2025")
+        - subsidiary: Optional subsidiary filter
+        - use_special: "1" to filter by sspecacct instead of accttype
+    
+    Returns: List of accounts with balances
+    """
+    try:
+        account_type = request.args.get('account_type', '')
+        to_period = request.args.get('to_period', '')
+        subsidiary = request.args.get('subsidiary', '')
+        use_special = request.args.get('use_special', '0') == '1'
+        
+        if not account_type:
+            return jsonify({'error': 'account_type parameter is required'}), 400
+        
+        # Convert subsidiary name to ID if needed
+        subsidiary = convert_name_to_id('subsidiary', subsidiary)
+        
+        # Determine filter field
+        type_field = 'sspecacct' if use_special else 'accttype'
+        escaped_type = escape_sql(account_type)
+        
+        print(f"DEBUG - Accounts by type: {type_field}='{account_type}', to_period='{to_period}', subsidiary='{subsidiary}'", file=sys.stderr)
+        
+        # First, get all accounts of this type
+        accounts_query = f"""
+            SELECT 
+                id,
+                acctnumber,
+                accountsearchdisplaynamecopy AS accountname,
+                accttype
+            FROM 
+                Account
+            WHERE 
+                {type_field} = '{escaped_type}'
+                AND isinactive = 'F'
+            ORDER BY 
+                acctnumber
+        """
+        
+        accounts_result = query_netsuite(accounts_query)
+        
+        if isinstance(accounts_result, dict) and 'error' in accounts_result:
+            return jsonify(accounts_result), 500
+        
+        if not accounts_result:
+            return jsonify({'accounts': [], 'count': 0})
+        
+        # Determine if these are BS or P&L accounts
+        first_acct_type = accounts_result[0].get('accttype', '')
+        is_bs = is_balance_sheet_account(first_acct_type)
+        
+        # Get balances for each account
+        accounts_with_balances = []
+        
+        # If no period specified, just return accounts without balances
+        if not to_period:
+            for acc in accounts_result:
+                accounts_with_balances.append({
+                    'account_number': acc.get('acctnumber'),
+                    'account_name': acc.get('accountname'),
+                    'balance': 0
+                })
+            return jsonify({
+                'accounts': accounts_with_balances,
+                'count': len(accounts_with_balances),
+                'account_type': account_type,
+                'is_balance_sheet': is_bs
+            })
+        
+        # Parse period to get date
+        period_info = parse_period(to_period)
+        if not period_info:
+            return jsonify({'error': f'Invalid period format: {to_period}'}), 400
+        
+        to_date_str = period_info['end_date'].strftime('%Y-%m-%d')
+        
+        # For Balance Sheet accounts, calculate cumulative balance
+        # For P&L accounts, we'd need from_period but for drill-down we show cumulative anyway
+        for acc in accounts_result:
+            acc_number = acc.get('acctnumber')
+            acc_name = acc.get('accountname')
+            
+            # Build balance query for this account
+            if subsidiary:
+                sub_filter = f"AND s.id = {subsidiary}"
+            else:
+                sub_filter = ""
+            
+            balance_query = f"""
+                SELECT 
+                    SUM(
+                        BUILTIN.CONSOLIDATE(
+                            tal.amount,
+                            'LEDGER',
+                            'DEFAULT',
+                            'DEFAULT',
+                            {subsidiary or 1},
+                            t.postingperiod,
+                            'DEFAULT'
+                        )
+                    ) as balance
+                FROM 
+                    Transaction t
+                    JOIN TransactionAccountingLine tal ON t.id = tal.transaction
+                    JOIN Account a ON tal.account = a.id
+                    JOIN AccountingPeriod ap ON t.postingperiod = ap.id
+                    {"JOIN Subsidiary s ON t.subsidiary = s.id" if subsidiary else ""}
+                WHERE 
+                    t.posting = 'T'
+                    AND ap.enddate <= TO_DATE('{to_date_str}', 'YYYY-MM-DD')
+                    AND a.acctnumber = '{escape_sql(acc_number)}'
+                    {sub_filter}
+            """
+            
+            try:
+                balance_result = query_netsuite(balance_query)
+                balance = 0
+                if balance_result and len(balance_result) > 0:
+                    raw_balance = balance_result[0].get('balance')
+                    if raw_balance is not None:
+                        balance = float(raw_balance)
+                        # Flip sign for income accounts (credits stored as negative)
+                        if first_acct_type in ['Income', 'OthIncome']:
+                            balance = -balance
+            except Exception as e:
+                print(f"Error getting balance for {acc_number}: {e}", file=sys.stderr)
+                balance = 0
+            
+            accounts_with_balances.append({
+                'account_number': acc_number,
+                'account_name': acc_name,
+                'balance': balance
+            })
+        
+        return jsonify({
+            'accounts': accounts_with_balances,
+            'count': len(accounts_with_balances),
+            'account_type': account_type,
+            'is_balance_sheet': is_bs
+        })
+        
+    except Exception as e:
+        print(f"Error in get_accounts_by_type: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 def build_pl_query(accounts, periods, base_where, target_sub, needs_line_join, accountingbook=None, 
                    subsidiary_id=None, use_hierarchy=False):
     """

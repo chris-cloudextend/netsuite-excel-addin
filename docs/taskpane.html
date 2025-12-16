@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.110</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.111</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3250,7 +3250,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.110"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.111"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -12150,11 +12150,13 @@ export default {
 
         async function drillDownTransactions() {
             const statusEl = document.getElementById('drillStatus');
-            const btn = event.target;
+            const btn = event?.target;
             
             try {
-                btn.disabled = true;
-                btn.textContent = 'Loading...';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = 'Loading...';
+                }
                 statusEl.textContent = 'Analyzing selected cell...';
                 statusEl.style.color = '#0284c7';
                 
@@ -12167,88 +12169,354 @@ export default {
                     
                     const formula = range.formulas[0][0];
                     const address = range.address;
+                    const upperFormula = (formula || '').toUpperCase();
                     
-                    // Check if it's an XAVI.BALANCE formula
-                    if (!formula || !formula.toUpperCase().includes('XAVI.BALANCE')) {
-                        statusEl.textContent = '✗ Please select a cell with an XAVI.BALANCE formula';
-                        statusEl.style.color = '#dc2626';
-                        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                    // ================================================================
+                    // FORMULA TYPE DETECTION
+                    // ================================================================
+                    const hasBalance = upperFormula.includes('XAVI.BALANCE');
+                    const hasTypeBalance = upperFormula.includes('XAVI.TYPEBALANCE');
+                    const hasBudget = upperFormula.includes('XAVI.BUDGET');
+                    const hasNetIncome = upperFormula.includes('XAVI.NETINCOME');
+                    const hasRetainedEarnings = upperFormula.includes('XAVI.RETAINEDEARNINGS');
+                    
+                    // Check for unsupported formulas
+                    if (hasBudget) {
+                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Drill-down is not available for BUDGET formulas</span>';
+                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
                         return;
                     }
                     
-                    // Parse the formula to extract cell references
-                    const cellRefs = parseFormulaCellRefs(formula);
-                    
-                    // Now get the actual VALUES from those cells
-                    const params = await resolveFormulaParams(context, cellRefs);
-                    
-                    if (!params || !params.account || !params.period) {
-                        statusEl.textContent = '✗ Could not parse formula parameters';
-                        statusEl.style.color = '#dc2626';
-                        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                    if (hasNetIncome || hasRetainedEarnings) {
+                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Drill-down is not available for NETINCOME/RETAINEDEARNINGS formulas</span>';
+                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
                         return;
                     }
                     
-                    statusEl.textContent = 'Fetching transactions from NetSuite...';
-                    
-                    // Build query string
-                    const queryParams = new URLSearchParams({
-                        account: params.account,
-                        period: params.period
-                    });
-                    
-                    if (params.subsidiary) queryParams.append('subsidiary', params.subsidiary);
-                    if (params.department) queryParams.append('department', params.department);
-                    if (params.location) queryParams.append('location', params.location);
-                    if (params.class) queryParams.append('class', params.class);
-                    
-                    const fetchUrl = `${SERVER_URL}/transactions?${queryParams}`;
-                    
-                    // Fetch transactions from backend
-                    const response = await fetch(fetchUrl);
-                    
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('Drill-down API error:', errorText);
-                        throw new Error(`API error: ${response.status} - ${errorText}`);
-                    }
-                    
-                    const data = await response.json();
-                    const transactions = data.transactions;
-                    
-                    if (!transactions || transactions.length === 0) {
-                        statusEl.textContent = '✓ No transactions found for this period';
-                        statusEl.style.color = '#059669';
-                        setTimeout(() => { statusEl.textContent = ''; }, 5000);
+                    // Check for supported formulas
+                    if (!hasBalance && !hasTypeBalance) {
+                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Please select a cell with XAVI.BALANCE or XAVI.TYPEBALANCE formula</span>';
+                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
                         return;
                     }
                     
-                    console.log(`Drill-down: ${transactions.length} transactions for ${params.account}/${params.period}`);
+                    // ================================================================
+                    // TYPEBALANCE: Two-step drill-down (show accounts first)
+                    // ================================================================
+                    if (hasTypeBalance) {
+                        await handleTypeBalanceDrillDown(context, formula, statusEl);
+                        return;
+                    }
                     
-                    // Create new sheet with transaction details
-                    await createDrillDownSheet(context, transactions, params);
+                    // ================================================================
+                    // BALANCE: Handle single or multiple formulas
+                    // ================================================================
+                    // Find ALL XAVI.BALANCE formulas in the cell (for formulas like A + B)
+                    const balanceMatches = formula.match(/XAVI\.BALANCE\s*\([^)]+\)/gi) || [];
                     
-                    statusEl.textContent = `✓ Loaded ${transactions.length} transaction(s)!`;
-                    statusEl.style.color = '#059669';
+                    if (balanceMatches.length === 0) {
+                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Could not parse BALANCE formula</span>';
+                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        return;
+                    }
+                    
+                    console.log(`📊 Found ${balanceMatches.length} BALANCE formula(s) in cell`);
+                    
+                    // Parse each formula and collect all accounts
+                    const allAccounts = [];
+                    let commonParams = null;
+                    
+                    for (const balanceFormula of balanceMatches) {
+                        const cellRefs = parseFormulaCellRefs(balanceFormula);
+                        const params = await resolveFormulaParams(context, cellRefs);
+                        
+                        if (params && params.account) {
+                            allAccounts.push(params.account);
+                            // Use first formula's params as common params (period, subsidiary, etc.)
+                            if (!commonParams) {
+                                commonParams = params;
+                            }
+                        }
+                    }
+                    
+                    if (allAccounts.length === 0 || !commonParams || !commonParams.period) {
+                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Could not parse formula parameters</span>';
+                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        return;
+                    }
+                    
+                    console.log(`📊 Drilling down for accounts: ${allAccounts.join(', ')}`);
+                    statusEl.textContent = `Fetching transactions for ${allAccounts.length} account(s)...`;
+                    
+                    // Fetch transactions for ALL accounts
+                    let allTransactions = [];
+                    
+                    for (const account of allAccounts) {
+                        const queryParams = new URLSearchParams({
+                            account: account,
+                            period: commonParams.period
+                        });
+                        
+                        if (commonParams.subsidiary) queryParams.append('subsidiary', commonParams.subsidiary);
+                        if (commonParams.department) queryParams.append('department', commonParams.department);
+                        if (commonParams.location) queryParams.append('location', commonParams.location);
+                        if (commonParams.class) queryParams.append('class', commonParams.class);
+                        
+                        const fetchUrl = `${SERVER_URL}/transactions?${queryParams}`;
+                        
+                        try {
+                            const response = await fetch(fetchUrl);
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                if (data.transactions && data.transactions.length > 0) {
+                                    // Add account number to each transaction for multi-account view
+                                    data.transactions.forEach(txn => {
+                                        txn.account_number = txn.account_number || account;
+                                    });
+                                    allTransactions = allTransactions.concat(data.transactions);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn(`Could not fetch transactions for ${account}:`, e);
+                        }
+                    }
+                    
+                    if (allTransactions.length === 0) {
+                        statusEl.innerHTML = '<span style="color:#059669">✓ No transactions found for this period</span>';
+                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        return;
+                    }
+                    
+                    console.log(`Drill-down: ${allTransactions.length} total transactions for ${allAccounts.length} account(s)`);
+                    
+                    // Create drill-down sheet with all transactions
+                    const multiAccountParams = {
+                        ...commonParams,
+                        account: allAccounts.length > 1 ? allAccounts.join(', ') : allAccounts[0],
+                        isMultiAccount: allAccounts.length > 1
+                    };
+                    
+                    await createDrillDownSheet(context, allTransactions, multiAccountParams);
+                    
+                    statusEl.innerHTML = `<span style="color:#059669">✓ Loaded ${allTransactions.length} transaction(s) from ${allAccounts.length} account(s)!</span>`;
                     
                     setTimeout(() => {
-                        statusEl.textContent = '';
+                        statusEl.innerHTML = '';
                     }, 3000);
                 });
                 
             } catch (error) {
                 console.error('Drill-down error:', error.message);
                 
-                statusEl.textContent = '✗ Error: ' + error.message;
-                statusEl.style.color = '#dc2626';
+                statusEl.innerHTML = '<span style="color:#dc2626">✗ Error: ' + error.message + '</span>';
                 
                 setTimeout(() => {
-                    statusEl.textContent = '';
+                    statusEl.innerHTML = '';
                 }, 5000);
             } finally {
-                btn.disabled = false;
-                btn.textContent = 'View Transactions';
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'View Transactions';
+                }
             }
+        }
+        
+        // ================================================================
+        // TYPEBALANCE DRILL-DOWN: Two-step process
+        // Step 1: Show all accounts of that type with balances
+        // Step 2: User clicks an account to see transactions
+        // ================================================================
+        async function handleTypeBalanceDrillDown(context, formula, statusEl) {
+            try {
+                // Parse TYPEBALANCE formula parameters
+                const match = formula.match(/XAVI\.TYPEBALANCE\s*\((.*)\)/i);
+                if (!match) {
+                    statusEl.innerHTML = '<span style="color:#dc2626">✗ Could not parse TYPEBALANCE formula</span>';
+                    return;
+                }
+                
+                const paramsStr = match[1];
+                const params = parseTypeBalanceParams(paramsStr);
+                
+                // Resolve cell references to actual values
+                const resolvedParams = await resolveTypeBalanceParams(context, params);
+                
+                if (!resolvedParams.accountType) {
+                    statusEl.innerHTML = '<span style="color:#dc2626">✗ Could not determine account type</span>';
+                    return;
+                }
+                
+                statusEl.textContent = `Fetching ${resolvedParams.accountType} accounts...`;
+                
+                // Query backend for all accounts of this type with their balances
+                const queryParams = new URLSearchParams({
+                    account_type: resolvedParams.accountType,
+                    to_period: resolvedParams.toPeriod || '',
+                    subsidiary: resolvedParams.subsidiary || '',
+                    use_special: resolvedParams.useSpecialAccountType ? '1' : '0'
+                });
+                
+                const response = await fetch(`${SERVER_URL}/accounts/by-type?${queryParams}`);
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const accounts = data.accounts || [];
+                
+                if (accounts.length === 0) {
+                    statusEl.innerHTML = `<span style="color:#059669">✓ No accounts found for type "${resolvedParams.accountType}"</span>`;
+                    setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                    return;
+                }
+                
+                // Create drill-down sheet showing accounts (Step 1)
+                await createTypeBalanceAccountsSheet(context, accounts, resolvedParams);
+                
+                statusEl.innerHTML = `<span style="color:#059669">✓ Found ${accounts.length} ${resolvedParams.accountType} account(s). Click any account number to drill into transactions.</span>`;
+                
+                setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                
+            } catch (error) {
+                console.error('TYPEBALANCE drill-down error:', error);
+                statusEl.innerHTML = `<span style="color:#dc2626">✗ Error: ${error.message}</span>`;
+                setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+            }
+        }
+        
+        function parseTypeBalanceParams(paramsStr) {
+            const params = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < paramsStr.length; i++) {
+                const char = paramsStr[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                    current += char;
+                } else if (char === ',' && !inQuotes) {
+                    params.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            if (current.trim()) params.push(current.trim());
+            
+            return {
+                accountTypeRef: params[0] || '',
+                fromPeriodRef: params[1] || '',
+                toPeriodRef: params[2] || '',
+                subsidiaryRef: params[3] || '',
+                departmentRef: params[4] || '',
+                locationRef: params[5] || '',
+                classRef: params[6] || '',
+                accountingBookRef: params[7] || '',
+                useSpecialRef: params[8] || ''
+            };
+        }
+        
+        async function resolveTypeBalanceParams(context, refs) {
+            const cleanParam = (p) => {
+                if (!p || p === '""' || p === '') return '';
+                return p.replace(/^["']|["']$/g, '');
+            };
+            
+            const isCellRef = (str) => /^[\$]?[A-Z]+[\$]?\d+$/.test(str);
+            
+            const getValue = async (ref) => {
+                if (!ref || ref === '""' || ref === '') return '';
+                const cleaned = cleanParam(ref);
+                
+                if (isCellRef(cleaned)) {
+                    try {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const refRange = sheet.getRange(cleaned);
+                        refRange.load('values');
+                        await context.sync();
+                        return String(refRange.values[0][0] || '');
+                    } catch (e) {
+                        return '';
+                    }
+                }
+                return cleaned;
+            };
+            
+            return {
+                accountType: await getValue(refs.accountTypeRef),
+                fromPeriod: await getValue(refs.fromPeriodRef),
+                toPeriod: await getValue(refs.toPeriodRef),
+                subsidiary: await getValue(refs.subsidiaryRef),
+                department: await getValue(refs.departmentRef),
+                location: await getValue(refs.locationRef),
+                classId: await getValue(refs.classRef),
+                accountingBook: await getValue(refs.accountingBookRef),
+                useSpecialAccountType: (await getValue(refs.useSpecialRef)) === '1'
+            };
+        }
+        
+        async function createTypeBalanceAccountsSheet(context, accounts, params) {
+            const sheetName = `DrillDown_${params.accountType}`;
+            
+            // Delete existing sheet if present
+            try {
+                const existingSheet = context.workbook.worksheets.getItem(sheetName);
+                existingSheet.delete();
+                await context.sync();
+            } catch (e) { /* Sheet doesn't exist */ }
+            
+            const drillSheet = context.workbook.worksheets.add(sheetName);
+            drillSheet.activate();
+            
+            // Header
+            drillSheet.getRange('A1').values = [['TYPEBALANCE DRILL-DOWN']];
+            drillSheet.getRange('A1').format.font.bold = true;
+            drillSheet.getRange('A1').format.font.size = 14;
+            
+            const useSpecialLabel = params.useSpecialAccountType ? ' (Special Account Type)' : '';
+            drillSheet.getRange('A2').values = [[`Account Type: ${params.accountType}${useSpecialLabel} | Period: ${params.toPeriod || 'All Time'}`]];
+            drillSheet.getRange('A2').format.font.bold = true;
+            
+            drillSheet.getRange('A3').values = [['💡 Click any Account Number below, then use "View Transactions" to drill into that account.']];
+            drillSheet.getRange('A3').format.font.italic = true;
+            drillSheet.getRange('A3').format.font.color = '#6b7280';
+            
+            // Column headers
+            const headers = [['Account Number', 'Account Name', 'Balance']];
+            drillSheet.getRange('A5:C5').values = headers;
+            drillSheet.getRange('A5:C5').format.font.bold = true;
+            drillSheet.getRange('A5:C5').format.fill.color = '#667eea';
+            drillSheet.getRange('A5:C5').format.font.color = 'white';
+            
+            // Data rows
+            const dataRows = accounts.map(acc => [
+                acc.account_number || acc.acctnumber || '',
+                acc.account_name || acc.accountname || '',
+                acc.balance || 0
+            ]);
+            
+            if (dataRows.length > 0) {
+                const dataRange = drillSheet.getRange(`A6:C${5 + dataRows.length}`);
+                dataRange.values = dataRows;
+                
+                // Format balance column as currency
+                drillSheet.getRange(`C6:C${5 + dataRows.length}`).numberFormat = [['$#,##0.00']];
+                
+                // Add total row
+                const totalRow = 6 + dataRows.length;
+                drillSheet.getRange(`A${totalRow}`).values = [['TOTAL']];
+                drillSheet.getRange(`A${totalRow}`).format.font.bold = true;
+                drillSheet.getRange(`C${totalRow}`).formulas = [[`=SUM(C6:C${totalRow - 1})`]];
+                drillSheet.getRange(`C${totalRow}`).format.font.bold = true;
+                drillSheet.getRange(`C${totalRow}`).numberFormat = [['$#,##0.00']];
+            }
+            
+            // Auto-fit columns
+            drillSheet.getUsedRange().format.autofitColumns();
+            
+            await context.sync();
         }
 
         function parseFormulaCellRefs(formula) {
@@ -12425,9 +12693,10 @@ export default {
         async function createDrillDownSheet(context, transactions, params) {
             // Create or get drill-down sheet
             // Sanitize account name for sheet name (Excel doesn't allow * in sheet names)
-            const sanitizedAccount = params.account.replace(/\*/g, 'ALL');
+            const sanitizedAccount = params.account.replace(/\*/g, 'ALL').replace(/,\s*/g, '_').substring(0, 20);
             const sheetName = `DrillDown_${sanitizedAccount}`;
-            const isWildcard = params.account.includes('*');
+            // Show account column if wildcard OR multiple accounts in the cell
+            const isWildcard = params.account.includes('*') || params.isMultiAccount;
             
             let drillSheet;
             try {
@@ -12446,7 +12715,14 @@ export default {
             drillSheet.getRange('A1').format.font.bold = true;
             drillSheet.getRange('A1').format.font.size = 14;
             
-            const accountLabel = isWildcard ? `Accounts: ${params.account} (wildcard)` : `Account: ${params.account}`;
+            let accountLabel;
+            if (params.isMultiAccount) {
+                accountLabel = `Multiple Accounts: ${params.account}`;
+            } else if (params.account.includes('*')) {
+                accountLabel = `Accounts: ${params.account} (wildcard)`;
+            } else {
+                accountLabel = `Account: ${params.account}`;
+            }
             drillSheet.getRange('A2').values = [[`${accountLabel} | Period: ${params.period}`]];
             drillSheet.getRange('A2').format.font.bold = true;
             
