@@ -2192,6 +2192,74 @@ For licensing inquiries, contact: legal@celigo.com
             color: var(--anenome);
             background: rgba(10, 226, 193, 0.1);
         }
+        
+        /* Contextual Status Badge */
+        .quick-actions-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 12px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            transition: all 0.3s;
+        }
+        
+        .quick-actions-status.has-formulas {
+            background: rgba(10, 226, 193, 0.15);
+            color: var(--anenome);
+        }
+        
+        .quick-actions-status.empty-sheet {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+        }
+        
+        .quick-actions-status.has-selection {
+            background: rgba(59, 130, 246, 0.15);
+            color: #93c5fd;
+        }
+        
+        .quick-actions-status.calculating {
+            background: rgba(139, 92, 246, 0.15);
+            color: #c4b5fd;
+        }
+        
+        .status-badge-icon {
+            font-size: 12px;
+        }
+        
+        .status-badge-text {
+            font-weight: 500;
+        }
+        
+        /* Button contextual states */
+        .quick-action-btn.highlight {
+            animation: pulse-highlight 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-highlight {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(10, 226, 193, 0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(10, 226, 193, 0); }
+        }
+        
+        .quick-action-btn.ready {
+            opacity: 1;
+        }
+        
+        .quick-action-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .quick-action-btn:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
 
         /* Quick Actions Help Modal */
         .quick-help-modal {
@@ -2667,7 +2735,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.121</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.122</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3540,19 +3608,24 @@ For licensing inquiries, contact: legal@celigo.com
 
         <!-- Quick Actions Bar - Always visible at bottom -->
         <div class="quick-actions-bar" id="quickActionsBar">
+            <!-- Contextual Status Badge -->
+            <div class="quick-actions-status" id="quickActionsStatus">
+                <span class="status-badge-icon" id="statusBadgeIcon">📊</span>
+                <span class="status-badge-text" id="statusBadgeText">Checking sheet...</span>
+            </div>
             <div class="quick-actions-buttons">
-                <button class="quick-action-btn primary" onclick="refreshCurrentSheet()" id="quickRefreshBtn">
+                <button class="quick-action-btn primary" onclick="refreshCurrentSheet()" id="quickRefreshBtn" disabled>
                     <span>⚡</span> Refresh All
                 </button>
-                <button class="quick-action-btn secondary" onclick="refreshSelected()" id="quickRefreshSelectedBtn">
+                <button class="quick-action-btn secondary" onclick="refreshSelected()" id="quickRefreshSelectedBtn" disabled>
                     <span>🎯</span> Refresh Selected
                 </button>
-                <button class="quick-action-btn secondary" onclick="drillDownTransactions()" id="quickDrillBtn">
+                <button class="quick-action-btn secondary" onclick="drillDownTransactions()" id="quickDrillBtn" disabled>
                     <span>🔍</span> Drill Down
                 </button>
                 <button class="quick-action-help" onclick="showQuickActionsHelp()" title="Quick Actions Help">
                     ?
-            </button>
+                </button>
             </div>
         </div>
         
@@ -3677,7 +3750,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.121"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.122"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -3761,46 +3834,183 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         // ========================================================================
-        // CONTEXTUAL UI - Detect sheet state and highlight relevant sections
+        // CONTEXTUAL UI - Detect sheet state and update quick actions bar
         // ========================================================================
+        let contextualState = {
+            formulaCount: 0,
+            hasXaviFormulas: false,
+            selectedCellHasXavi: false,
+            selectedFormulaType: null, // 'BALANCE', 'BUDGET', 'TYPEBALANCE', 'NETINCOME', etc.
+            isCalculating: false
+        };
+        
         async function updateContextualUI() {
             try {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    const usedRange = sheet.getUsedRange();
-                    usedRange.load('formulas');
+                    const selection = context.workbook.getSelectedRange();
+                    
+                    // Load used range for formula count
+                    let usedRange;
+                    try {
+                        usedRange = sheet.getUsedRange();
+                        usedRange.load('formulas');
+                    } catch (e) {
+                        // Sheet might be empty
+                        usedRange = null;
+                    }
+                    
+                    // Load selected cell info
+                    selection.load(['formulas', 'values', 'address']);
                     
                     await context.sync();
                     
-                    // Check if sheet has XAVI formulas
+                    // Count XAVI formulas on sheet
+                    let formulaCount = 0;
                     let hasXaviFormulas = false;
-                    const formulas = usedRange.formulas;
                     
-                    if (formulas && formulas.length > 0) {
+                    if (usedRange && usedRange.formulas) {
+                        const formulas = usedRange.formulas;
                         for (let row of formulas) {
                             for (let cell of row) {
                                 if (cell && typeof cell === 'string' && cell.toUpperCase().includes('XAVI.')) {
+                                    formulaCount++;
                                     hasXaviFormulas = true;
-                                    break;
                                 }
                             }
-                            if (hasXaviFormulas) break;
                         }
                     }
                     
-                    // Update quick actions bar state
-                    const refreshBtn = document.getElementById('quickRefreshBtn');
-                    const drillBtn = document.getElementById('quickDrillBtn');
+                    // Check selected cell
+                    let selectedCellHasXavi = false;
+                    let selectedFormulaType = null;
                     
-                    if (hasXaviFormulas) {
-                        if (refreshBtn) refreshBtn.disabled = false;
-                        if (drillBtn) drillBtn.disabled = false;
+                    const selectedFormula = selection.formulas[0][0];
+                    if (selectedFormula && typeof selectedFormula === 'string') {
+                        const upper = selectedFormula.toUpperCase();
+                        if (upper.includes('XAVI.BALANCE')) {
+                            selectedCellHasXavi = true;
+                            selectedFormulaType = 'BALANCE';
+                        } else if (upper.includes('XAVI.TYPEBALANCE')) {
+                            selectedCellHasXavi = true;
+                            selectedFormulaType = 'TYPEBALANCE';
+                        } else if (upper.includes('XAVI.BUDGET')) {
+                            selectedCellHasXavi = true;
+                            selectedFormulaType = 'BUDGET';
+                        } else if (upper.includes('XAVI.NETINCOME')) {
+                            selectedCellHasXavi = true;
+                            selectedFormulaType = 'NETINCOME';
+                        } else if (upper.includes('XAVI.')) {
+                            selectedCellHasXavi = true;
+                            selectedFormulaType = 'OTHER';
+                        }
                     }
+                    
+                    // Update state
+                    contextualState.formulaCount = formulaCount;
+                    contextualState.hasXaviFormulas = hasXaviFormulas;
+                    contextualState.selectedCellHasXavi = selectedCellHasXavi;
+                    contextualState.selectedFormulaType = selectedFormulaType;
+                    
+                    // Update UI
+                    updateQuickActionsUI();
                 });
             } catch (e) {
-                // Silently fail - contextual UI is optional enhancement
                 console.log('Contextual UI check skipped:', e.message);
+                // Show default state
+                updateQuickActionsUI();
             }
+        }
+        
+        function updateQuickActionsUI() {
+            const statusEl = document.getElementById('quickActionsStatus');
+            const iconEl = document.getElementById('statusBadgeIcon');
+            const textEl = document.getElementById('statusBadgeText');
+            const refreshBtn = document.getElementById('quickRefreshBtn');
+            const refreshSelectedBtn = document.getElementById('quickRefreshSelectedBtn');
+            const drillBtn = document.getElementById('quickDrillBtn');
+            
+            // Reset classes
+            statusEl.className = 'quick-actions-status';
+            refreshBtn.classList.remove('highlight');
+            drillBtn.classList.remove('highlight');
+            
+            if (contextualState.isCalculating) {
+                // Calculating state
+                statusEl.classList.add('calculating');
+                iconEl.textContent = '⏳';
+                textEl.textContent = 'Calculating formulas...';
+                refreshBtn.disabled = true;
+                refreshSelectedBtn.disabled = true;
+                drillBtn.disabled = true;
+            } else if (contextualState.formulaCount === 0) {
+                // Empty sheet - no XAVI formulas
+                statusEl.classList.add('empty-sheet');
+                iconEl.textContent = '📝';
+                textEl.textContent = 'No XAVI formulas yet • Use Quick Start above';
+                refreshBtn.disabled = true;
+                refreshSelectedBtn.disabled = true;
+                drillBtn.disabled = true;
+            } else if (contextualState.selectedCellHasXavi) {
+                // Cell with XAVI formula selected
+                statusEl.classList.add('has-selection');
+                
+                if (contextualState.selectedFormulaType === 'BALANCE' || 
+                    contextualState.selectedFormulaType === 'TYPEBALANCE') {
+                    iconEl.textContent = '🔍';
+                    textEl.textContent = `${contextualState.selectedFormulaType} selected • Drill Down ready`;
+                    drillBtn.disabled = false;
+                    drillBtn.classList.add('highlight');
+                } else if (contextualState.selectedFormulaType === 'BUDGET') {
+                    iconEl.textContent = '💰';
+                    textEl.textContent = 'BUDGET selected • Drill Down not available';
+                    drillBtn.disabled = true;
+                } else {
+                    iconEl.textContent = '📊';
+                    textEl.textContent = `${contextualState.selectedFormulaType} selected`;
+                    drillBtn.disabled = true;
+                }
+                
+                refreshBtn.disabled = false;
+                refreshSelectedBtn.disabled = false;
+            } else {
+                // Has formulas but none selected
+                statusEl.classList.add('has-formulas');
+                iconEl.textContent = '✅';
+                textEl.textContent = `${contextualState.formulaCount} XAVI formula${contextualState.formulaCount !== 1 ? 's' : ''} on sheet`;
+                refreshBtn.disabled = false;
+                refreshSelectedBtn.disabled = false;
+                drillBtn.disabled = true; // Can't drill without selection
+            }
+        }
+        
+        // Set up selection change listener
+        async function setupSelectionChangeListener() {
+            try {
+                await Excel.run(async (context) => {
+                    const workbook = context.workbook;
+                    
+                    // Listen for selection changes
+                    workbook.onSelectionChanged.add(async (event) => {
+                        // Debounce rapid selection changes
+                        clearTimeout(window._selectionDebounce);
+                        window._selectionDebounce = setTimeout(() => {
+                            updateContextualUI();
+                        }, 150);
+                    });
+                    
+                    await context.sync();
+                    console.log('✅ Selection change listener registered');
+                });
+            } catch (e) {
+                console.log('Could not set up selection listener:', e.message);
+            }
+        }
+        
+        // Track calculation state
+        function setCalculatingState(isCalculating) {
+            contextualState.isCalculating = isCalculating;
+            updateQuickActionsUI();
         }
         
         // Sort subsidiaries hierarchically for display
@@ -8712,8 +8922,11 @@ export default {
             // Initialize progressive disclosure view mode
             initViewMode();
             
-            // Update contextual UI based on sheet content
-            setTimeout(() => updateContextualUI(), 1000);
+            // Set up contextual UI with selection change listener
+            setupSelectionChangeListener();
+            
+            // Initial contextual UI check (after short delay for Excel to be ready)
+            setTimeout(() => updateContextualUI(), 500);
         });
         
         // Tab Navigation - switch between Data Management, Analytics, and Financial Reporting
