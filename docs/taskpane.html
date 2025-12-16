@@ -2715,6 +2715,79 @@ For licensing inquiries, contact: legal@celigo.com
             font-size: 11px;
             color: rgba(255, 255, 255, 0.5);
         }
+        
+        /* Onboarding Confirm Dialog */
+        .onboarding-confirm-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 4000;
+            padding: 20px;
+        }
+        
+        .onboarding-confirm-dialog {
+            background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 300px;
+            text-align: center;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+        
+        .onboarding-confirm-dialog h3 {
+            color: white;
+            margin: 0 0 12px 0;
+            font-size: 18px;
+        }
+        
+        .onboarding-confirm-dialog p {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 13px;
+            line-height: 1.5;
+            margin: 0 0 20px 0;
+        }
+        
+        .confirm-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .confirm-btn {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+        
+        .confirm-btn.cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .confirm-btn.cancel:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .confirm-btn.ok {
+            background: linear-gradient(135deg, var(--anenome) 0%, #06d6a0 100%);
+            color: var(--deep-dive);
+        }
+        
+        .confirm-btn.ok:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(10, 226, 193, 0.3);
+        }
 
         /* ================================================================
            VIEW MODE TOGGLE - Progressive Disclosure
@@ -3090,7 +3163,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.123</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.124</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4243,7 +4316,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.123"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.124"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -4531,19 +4604,24 @@ For licensing inquiries, contact: legal@celigo.com
             // Check if sheet is empty first
             const isEmpty = await isSheetEmpty();
             if (!isEmpty) {
-                alert('Please start the tutorial on an empty sheet.\n\nYou can create a new sheet using the + button at the bottom of Excel.');
+                showOnboardingMessage('Sheet Not Empty', 'Please start the tutorial on an empty sheet. You can create a new sheet using the + button at the bottom of Excel.', 'warning');
                 return;
             }
             
             // Check if already completed onboarding
             const completed = localStorage.getItem('xavi_onboarding_completed');
             if (completed === 'true') {
-                // Ask if they want to redo
-                if (!confirm('You\'ve already completed the tutorial. Would you like to go through it again?')) {
-                    return;
-                }
+                // Show confirmation dialog
+                showOnboardingConfirm('Redo Tutorial?', 'You\'ve already completed the tutorial. Would you like to go through it again?', () => {
+                    launchOnboardingWizard();
+                });
+                return;
             }
             
+            launchOnboardingWizard();
+        }
+        
+        function launchOnboardingWizard() {
             // Reset state and show wizard
             onboardingState = {
                 currentStep: 1,
@@ -4554,6 +4632,49 @@ For licensing inquiries, contact: legal@celigo.com
             
             document.getElementById('onboardingOverlay').classList.add('active');
             updateOnboardingProgress();
+        }
+        
+        function showOnboardingMessage(title, message, type = 'info') {
+            // Use our drilldown status widget for messages
+            const widget = document.getElementById('drilldownStatus');
+            const msgEl = document.getElementById('drilldownMessage');
+            const detailEl = document.getElementById('drilldownDetail');
+            const iconEl = document.getElementById('drilldownIcon');
+            const titleEl = document.getElementById('drilldownTitle');
+            const dismissBtn = document.getElementById('drilldownDismiss');
+            
+            widget.className = 'drilldown-status ' + (type === 'warning' ? 'error' : 'success');
+            iconEl.textContent = type === 'warning' ? '⚠️' : 'ℹ️';
+            titleEl.textContent = title;
+            msgEl.textContent = message;
+            detailEl.textContent = '';
+            dismissBtn.style.display = 'block';
+            widget.style.display = 'block';
+            
+            // Auto-dismiss after 8 seconds
+            setTimeout(() => { widget.style.display = 'none'; }, 8000);
+        }
+        
+        function showOnboardingConfirm(title, message, onConfirm) {
+            // Create a simple confirm dialog
+            const overlay = document.createElement('div');
+            overlay.className = 'onboarding-confirm-overlay';
+            overlay.innerHTML = `
+                <div class="onboarding-confirm-dialog">
+                    <h3>${title}</h3>
+                    <p>${message}</p>
+                    <div class="confirm-buttons">
+                        <button class="confirm-btn cancel" onclick="this.closest('.onboarding-confirm-overlay').remove()">No, Thanks</button>
+                        <button class="confirm-btn ok" id="confirmYesBtn">Yes, Let's Go!</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            document.getElementById('confirmYesBtn').onclick = () => {
+                overlay.remove();
+                onConfirm();
+            };
         }
         
         async function isSheetEmpty() {
@@ -4665,7 +4786,7 @@ For licensing inquiries, contact: legal@celigo.com
             const account = inputEl.value.trim() || onboardingState.selectedAccount;
             
             if (!account) {
-                alert('Please enter an account number or select one from the list.');
+                showOnboardingMessage('Account Required', 'Please enter an account number or click "Show Me Accounts" to select one.', 'warning');
                 return;
             }
             
@@ -4720,7 +4841,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
             } catch (e) {
                 console.error('Error inserting formula:', e);
-                alert('Could not insert formula. Please try again.');
+                showOnboardingMessage('Error', 'Could not insert formula. Please try again.', 'warning');
             }
         }
         
