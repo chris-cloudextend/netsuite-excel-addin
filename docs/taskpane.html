@@ -2011,6 +2011,90 @@ For licensing inquiries, contact: legal@celigo.com
             transition: width 0.3s ease;
         }
 
+        /* Drill-Down Status Widget */
+        .drilldown-status {
+            position: fixed;
+            bottom: 20px;
+            left: 10px;
+            right: 10px;
+            background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            z-index: 1001;
+            display: none;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .drilldown-status.success {
+            background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+            border-color: rgba(16, 185, 129, 0.4);
+        }
+        
+        .drilldown-status.error {
+            background: linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%);
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+        
+        .drilldown-status-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .drilldown-status-icon { font-size: 20px; }
+        
+        .drilldown-status-title {
+            color: #93c5fd;
+            font-size: 14px;
+            font-weight: 600;
+            flex: 1;
+        }
+        
+        .drilldown-status.success .drilldown-status-title { color: #6ee7b7; }
+        .drilldown-status.error .drilldown-status-title { color: #fca5a5; }
+        
+        .drilldown-status-dismiss {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.5);
+            cursor: pointer;
+            font-size: 20px;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .drilldown-status-dismiss:hover { color: white; }
+        
+        .drilldown-status-message {
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .drilldown-status-detail {
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+        }
+        
+        .drilldown-status-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        .drilldown-status.success .drilldown-status-spinner,
+        .drilldown-status.error .drilldown-status-spinner { display: none; }
+
         .info-box {
             background: linear-gradient(135deg, rgba(10, 226, 193, 0.1) 0%, rgba(0, 121, 255, 0.05) 100%);
             border: 1px solid var(--anenome);
@@ -2201,6 +2285,18 @@ For licensing inquiries, contact: legal@celigo.com
             <div class="floating-status-progress-bar" id="floatingStatusProgressBar" style="width: 0%"></div>
         </div>
     </div>
+    
+    <!-- Drill-Down Status Widget -->
+    <div class="drilldown-status" id="drilldownStatus">
+        <div class="drilldown-status-header">
+            <span class="drilldown-status-icon" id="drilldownIcon">🔍</span>
+            <span class="drilldown-status-title" id="drilldownTitle">Transaction Drill-Down</span>
+            <button class="drilldown-status-dismiss" id="drilldownDismiss" onclick="hideDrilldownStatus()" style="display: none;">×</button>
+        </div>
+        <div class="drilldown-status-message" id="drilldownMessage">Analyzing selected cell...</div>
+        <div class="drilldown-status-detail" id="drilldownDetail"></div>
+        <div class="drilldown-status-spinner" id="drilldownSpinner"></div>
+    </div>
 
     <!-- Settings View (inline, replaces main content) -->
     <div class="settings-view" id="settingsView">
@@ -2289,7 +2385,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.118</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.119</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3250,7 +3346,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.118"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.119"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -3620,29 +3716,29 @@ For licensing inquiries, contact: legal@celigo.com
             lastStatusTimestamp = Date.now();
             taskpaneReady = true;
             
-            setInterval(() => {
+        setInterval(() => {
                 if (!taskpaneReady) return;  // Don't poll until ready
-                try {
-                    const statusJson = localStorage.getItem('netsuite_status');
-                    if (statusJson) {
-                        const status = JSON.parse(statusJson);
+            try {
+                const statusJson = localStorage.getItem('netsuite_status');
+                if (statusJson) {
+                    const status = JSON.parse(statusJson);
                         // Only show if timestamp is newer than when taskpane loaded
-                        if (status.timestamp > lastStatusTimestamp) {
-                            lastStatusTimestamp = status.timestamp;
-                            const icon = status.type === 'success' ? '✅' : 
-                                         status.type === 'error' ? '❌' : '⏳';
-                            showStatus(status.message, icon, status.progress, status.type);
-                            
-                            // Auto-hide success/error after delay
-                            if (status.type === 'success' || status.type === 'error') {
-                                hideStatus(3000);
-                            }
+                    if (status.timestamp > lastStatusTimestamp) {
+                        lastStatusTimestamp = status.timestamp;
+                        const icon = status.type === 'success' ? '✅' : 
+                                     status.type === 'error' ? '❌' : '⏳';
+                        showStatus(status.message, icon, status.progress, status.type);
+                        
+                        // Auto-hide success/error after delay
+                        if (status.type === 'success' || status.type === 'error') {
+                            hideStatus(3000);
                         }
                     }
-                } catch (e) {
-                    // Ignore parsing errors
                 }
-            }, 500);  // Check every 500ms
+            } catch (e) {
+                // Ignore parsing errors
+            }
+        }, 500);  // Check every 500ms
         }
 
         // Poll for toast notifications from custom functions (via localStorage)
@@ -10789,24 +10885,24 @@ export default {
                         topBanner.style.display = 'block';
                         topBanner.innerHTML = `
                             <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 14px; border-radius: 8px; margin-bottom: 12px; border-left: 5px solid #f59e0b; box-shadow: 0 2px 8px rgba(245,158,11,0.2);">
-                                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                    <div>
-                                        <strong style="color: #b45309; font-size: 14px;">⚠️ Refresh Complete - No Data Loaded</strong><br>
-                                        <span style="font-size: 12px; color: #92400e; display: block; margin-top: 4px;">
-                                            Formulas were refreshed but no account data was retrieved.
-                                        </span>
-                                        <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 11px; color: #78350f;">
-                                            <strong>Possible causes:</strong><br>
-                                            • Cloudflare tunnel may have expired<br>
-                                            • Backend server may not be running<br>
-                                            • Network connectivity issues<br><br>
-                                            <strong>Try:</strong> Check connection status in Settings, then Refresh All again.
-                                        </div>
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div>
+                                    <strong style="color: #b45309; font-size: 14px;">⚠️ Refresh Complete - No Data Loaded</strong><br>
+                                    <span style="font-size: 12px; color: #92400e; display: block; margin-top: 4px;">
+                                        Formulas were refreshed but no account data was retrieved.
+                                    </span>
+                                    <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 11px; color: #78350f;">
+                                        <strong>Possible causes:</strong><br>
+                                        • Cloudflare tunnel may have expired<br>
+                                        • Backend server may not be running<br>
+                                        • Network connectivity issues<br><br>
+                                        <strong>Try:</strong> Check connection status in Settings, then Refresh All again.
                                     </div>
-                                    <button onclick="this.parentElement.parentElement.parentElement.style.display='none'" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #b45309; padding: 0; margin-left: 8px;">&times;</button>
                                 </div>
+                                    <button onclick="this.parentElement.parentElement.parentElement.style.display='none'" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #b45309; padding: 0; margin-left: 8px;">&times;</button>
                             </div>
-                        `;
+                        </div>
+                    `;
                     }
                     statusEl.textContent = ''; // Clear inline status
                 } else {
@@ -11495,18 +11591,18 @@ export default {
                                 
                                 if (refs && refs.length >= 1) {
                                     const periodRef = refs[0]; // First param is period
-                                    const periodCell = context.workbook.worksheets.getActiveWorksheet().getRange(periodRef);
-                                    periodCell.load('values');
-                                    await context.sync();
-                                    
-                                    let period = periodCell.values[0][0];
-                                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                                    
+                                const periodCell = context.workbook.worksheets.getActiveWorksheet().getRange(periodRef);
+                                periodCell.load('values');
+                                await context.sync();
+                                
+                                let period = periodCell.values[0][0];
+                                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                
                                     // Convert date to period format
-                                    if (typeof period === 'number' && period > 1000) {
-                                        const excelEpoch = new Date(1900, 0, 1);
-                                        const d = new Date(excelEpoch.getTime() + (period - 2) * 24 * 60 * 60 * 1000);
-                                        period = `${months[d.getMonth()]} ${d.getFullYear()}`;
+                                if (typeof period === 'number' && period > 1000) {
+                                    const excelEpoch = new Date(1900, 0, 1);
+                                    const d = new Date(excelEpoch.getTime() + (period - 2) * 24 * 60 * 60 * 1000);
+                                    period = `${months[d.getMonth()]} ${d.getFullYear()}`;
                                     } else if (typeof period === 'number' && period >= 1900 && period <= 2100) {
                                         // Year only - for YTD formulas, use Dec
                                         period = `Dec ${period}`;
@@ -11945,8 +12041,8 @@ export default {
                     sheets.load('items/name');
                     const activeSheet = context.workbook.worksheets.getActiveWorksheet();
                     activeSheet.load('name');
-                    await context.sync();
-                    
+                await context.sync();
+                
                     activeSheetName = activeSheet.name;
                     allSheetNames = sheets.items.map(s => s.name);
                     
@@ -11958,10 +12054,10 @@ export default {
                     // Process each sheet
                     for (const sheet of sheetsToProcess) {
                         sheet.load('name');
-                        const usedRange = sheet.getUsedRange();
+                    const usedRange = sheet.getUsedRange();
                         usedRange.load(['formulas', 'values', 'rowCount', 'columnCount', 'address']);
-                        await context.sync();
-                        
+                    await context.sync();
+                    
                         const sheetName = sheet.name;
                         const rowCount = usedRange.rowCount;
                         const colCount = usedRange.columnCount;
@@ -12148,17 +12244,83 @@ export default {
             setTimeout(() => { statusEl.innerHTML = ''; }, 6000);
         }
 
+        // ================================================================
+        // DRILL-DOWN STATUS HELPERS
+        // ================================================================
+        function showDrilldownStatus(message, detail = '', isProcessing = true) {
+            const widget = document.getElementById('drilldownStatus');
+            const msgEl = document.getElementById('drilldownMessage');
+            const detailEl = document.getElementById('drilldownDetail');
+            const iconEl = document.getElementById('drilldownIcon');
+            const titleEl = document.getElementById('drilldownTitle');
+            const dismissBtn = document.getElementById('drilldownDismiss');
+            const spinnerEl = document.getElementById('drilldownSpinner');
+            
+            widget.className = 'drilldown-status';
+            iconEl.textContent = '🔍';
+            titleEl.textContent = 'Transaction Drill-Down';
+            msgEl.textContent = message;
+            detailEl.textContent = detail;
+            dismissBtn.style.display = 'none';
+            spinnerEl.style.display = isProcessing ? 'block' : 'none';
+            widget.style.display = 'block';
+        }
+        
+        function showDrilldownSuccess(message, detail = '') {
+            const widget = document.getElementById('drilldownStatus');
+            const msgEl = document.getElementById('drilldownMessage');
+            const detailEl = document.getElementById('drilldownDetail');
+            const iconEl = document.getElementById('drilldownIcon');
+            const titleEl = document.getElementById('drilldownTitle');
+            const dismissBtn = document.getElementById('drilldownDismiss');
+            
+            widget.className = 'drilldown-status success';
+            iconEl.textContent = '✅';
+            titleEl.textContent = 'Drill-Down Complete';
+            msgEl.textContent = message;
+            detailEl.textContent = detail;
+            dismissBtn.style.display = 'block';
+            widget.style.display = 'block';
+            
+            // Auto-dismiss after 8 seconds
+            setTimeout(() => hideDrilldownStatus(), 8000);
+        }
+        
+        function showDrilldownError(message, detail = '') {
+            const widget = document.getElementById('drilldownStatus');
+            const msgEl = document.getElementById('drilldownMessage');
+            const detailEl = document.getElementById('drilldownDetail');
+            const iconEl = document.getElementById('drilldownIcon');
+            const titleEl = document.getElementById('drilldownTitle');
+            const dismissBtn = document.getElementById('drilldownDismiss');
+            
+            widget.className = 'drilldown-status error';
+            iconEl.textContent = '❌';
+            titleEl.textContent = 'Drill-Down Error';
+            msgEl.textContent = message;
+            detailEl.textContent = detail;
+            dismissBtn.style.display = 'block';
+            widget.style.display = 'block';
+            
+            // Auto-dismiss after 10 seconds
+            setTimeout(() => hideDrilldownStatus(), 10000);
+        }
+        
+        function hideDrilldownStatus() {
+            document.getElementById('drilldownStatus').style.display = 'none';
+        }
+
         async function drillDownTransactions() {
             const statusEl = document.getElementById('drillStatus');
             const btn = event?.target;
             
             try {
                 if (btn) {
-                    btn.disabled = true;
-                    btn.textContent = 'Loading...';
+                btn.disabled = true;
+                btn.textContent = 'Loading...';
                 }
-                statusEl.textContent = 'Analyzing selected cell...';
-                statusEl.style.color = '#0284c7';
+                statusEl.textContent = '';
+                showDrilldownStatus('Analyzing selected cell...', 'Detecting formula type');
                 
                 await Excel.run(async (context) => {
                     // Get the selected cell
@@ -12206,7 +12368,7 @@ export default {
                                     
                                     console.log(`📊 TYPEBALANCE drill-down: account=${account}, period=${period}, subsidiary=${subsidiary}`);
                                     
-                                    statusEl.textContent = `Fetching transactions for account ${account}...`;
+                                    showDrilldownStatus(`Fetching transactions for account ${account}...`, `Period: ${period}`);
                                     
                                     // Fetch transactions directly
                                     const queryParams = new URLSearchParams({ account, period });
@@ -12219,20 +12381,17 @@ export default {
                                     const transactions = data.transactions || [];
                                     
                                     if (transactions.length === 0) {
-                                        statusEl.innerHTML = '<span style="color:#059669">✓ No transactions found</span>';
-                                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
-                                        return;
-                                    }
-                                    
+                                        showDrilldownSuccess('No transactions found', `Account ${account} has no activity for ${period}`);
+                        return;
+                    }
+                    
                                     await createDrillDownSheet(context, transactions, { account, period, subsidiary });
-                                    statusEl.innerHTML = `<span style="color:#059669">✓ Loaded ${transactions.length} transaction(s)!</span>`;
-                                    setTimeout(() => { statusEl.innerHTML = ''; }, 3000);
+                                    showDrilldownSuccess(`Found ${transactions.length} transaction(s)`, `Account ${account} • ${period}`);
                                     return;
                                 }
                             }
                             
-                            statusEl.innerHTML = '<span style="color:#dc2626">✗ Please select a row with an account number</span>';
-                            setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                            showDrilldownError('Invalid selection', 'Please select a row with an account number');
                             return;
                         }
                     }
@@ -12248,21 +12407,18 @@ export default {
                     
                     // Check for unsupported formulas
                     if (hasBudget) {
-                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Drill-down is not available for BUDGET formulas</span>';
-                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        showDrilldownError('Not available for BUDGET formulas', 'Drill-down is only supported for BALANCE and TYPEBALANCE');
                         return;
                     }
                     
                     if (hasNetIncome || hasRetainedEarnings) {
-                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Drill-down is not available for NETINCOME/RETAINEDEARNINGS formulas</span>';
-                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        showDrilldownError('Not available for this formula type', 'NETINCOME and RETAINEDEARNINGS formulas aggregate multiple accounts');
                         return;
                     }
                     
                     // Check for supported formulas
                     if (!hasBalance && !hasTypeBalance) {
-                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Please select a cell with XAVI.BALANCE or XAVI.TYPEBALANCE formula</span>';
-                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        showDrilldownError('No XAVI formula found', 'Select a cell with XAVI.BALANCE or XAVI.TYPEBALANCE');
                         return;
                     }
                     
@@ -12281,12 +12437,12 @@ export default {
                     const balanceMatches = formula.match(/XAVI\.BALANCE\s*\([^)]+\)/gi) || [];
                     
                     if (balanceMatches.length === 0) {
-                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Could not parse BALANCE formula</span>';
-                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        showDrilldownError('Could not parse BALANCE formula', 'The formula structure was not recognized');
                         return;
                     }
                     
                     console.log(`📊 Found ${balanceMatches.length} BALANCE formula(s) in cell`);
+                    showDrilldownStatus('Parsing formula parameters...', `Found ${balanceMatches.length} BALANCE formula(s)`);
                     
                     // Parse each formula and collect all accounts
                     const allAccounts = [];
@@ -12294,8 +12450,8 @@ export default {
                     
                     for (const balanceFormula of balanceMatches) {
                         const cellRefs = parseFormulaCellRefs(balanceFormula);
-                        const params = await resolveFormulaParams(context, cellRefs);
-                        
+                    const params = await resolveFormulaParams(context, cellRefs);
+                    
                         if (params && params.account) {
                             allAccounts.push(params.account);
                             // Use first formula's params as common params (period, subsidiary, etc.)
@@ -12306,19 +12462,18 @@ export default {
                     }
                     
                     if (allAccounts.length === 0 || !commonParams || !commonParams.period) {
-                        statusEl.innerHTML = '<span style="color:#dc2626">✗ Could not parse formula parameters</span>';
-                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        showDrilldownError('Could not parse formula parameters', 'Check that account and period values are set');
                         return;
                     }
                     
                     console.log(`📊 Drilling down for accounts: ${allAccounts.join(', ')}`);
-                    statusEl.textContent = `Fetching transactions for ${allAccounts.length} account(s)...`;
+                    showDrilldownStatus(`Fetching transactions...`, `${allAccounts.length} account(s) • ${commonParams.period}`);
                     
                     // Fetch transactions for ALL accounts
                     let allTransactions = [];
                     
                     for (const account of allAccounts) {
-                        const queryParams = new URLSearchParams({
+                    const queryParams = new URLSearchParams({
                             account: account,
                             period: commonParams.period
                         });
@@ -12327,12 +12482,12 @@ export default {
                         if (commonParams.department) queryParams.append('department', commonParams.department);
                         if (commonParams.location) queryParams.append('location', commonParams.location);
                         if (commonParams.class) queryParams.append('class', commonParams.class);
-                        
-                        const fetchUrl = `${SERVER_URL}/transactions?${queryParams}`;
-                        
+                    
+                    const fetchUrl = `${SERVER_URL}/transactions?${queryParams}`;
+                    
                         try {
-                            const response = await fetch(fetchUrl);
-                            
+                    const response = await fetch(fetchUrl);
+                    
                             if (response.ok) {
                                 const data = await response.json();
                                 if (data.transactions && data.transactions.length > 0) {
@@ -12349,12 +12504,12 @@ export default {
                     }
                     
                     if (allTransactions.length === 0) {
-                        statusEl.innerHTML = '<span style="color:#059669">✓ No transactions found for this period</span>';
-                        setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                        showDrilldownSuccess('No transactions found', `${commonParams.period} • ${allAccounts.join(', ')}`);
                         return;
                     }
                     
                     console.log(`Drill-down: ${allTransactions.length} total transactions for ${allAccounts.length} account(s)`);
+                    showDrilldownStatus('Creating transaction sheet...', `${allTransactions.length} transactions found`);
                     
                     // Create drill-down sheet with all transactions
                     const multiAccountParams = {
@@ -12365,25 +12520,17 @@ export default {
                     
                     await createDrillDownSheet(context, allTransactions, multiAccountParams);
                     
-                    statusEl.innerHTML = `<span style="color:#059669">✓ Loaded ${allTransactions.length} transaction(s) from ${allAccounts.length} account(s)!</span>`;
-                    
-                    setTimeout(() => {
-                        statusEl.innerHTML = '';
-                    }, 3000);
+                    const accountLabel = allAccounts.length > 1 ? `${allAccounts.length} accounts` : allAccounts[0];
+                    showDrilldownSuccess(`Found ${allTransactions.length} transaction(s)`, `${accountLabel} • ${commonParams.period}`);
                 });
                 
             } catch (error) {
                 console.error('Drill-down error:', error.message);
-                
-                statusEl.innerHTML = '<span style="color:#dc2626">✗ Error: ' + error.message + '</span>';
-                
-                setTimeout(() => {
-                    statusEl.innerHTML = '';
-                }, 5000);
+                showDrilldownError(error.message, 'Check console for details');
             } finally {
                 if (btn) {
-                    btn.disabled = false;
-                    btn.textContent = 'View Transactions';
+                btn.disabled = false;
+                btn.textContent = 'View Transactions';
                 }
             }
         }
@@ -12398,7 +12545,7 @@ export default {
                 // Parse TYPEBALANCE formula parameters
                 const match = formula.match(/XAVI\.TYPEBALANCE\s*\((.*)\)/i);
                 if (!match) {
-                    statusEl.innerHTML = '<span style="color:#dc2626">✗ Could not parse TYPEBALANCE formula</span>';
+                    showDrilldownError('Could not parse TYPEBALANCE formula', 'The formula structure was not recognized');
                     return;
                 }
                 
@@ -12406,14 +12553,15 @@ export default {
                 const params = parseTypeBalanceParams(paramsStr);
                 
                 // Resolve cell references to actual values
+                showDrilldownStatus('Parsing formula parameters...', 'Resolving cell references');
                 const resolvedParams = await resolveTypeBalanceParams(context, params);
                 
                 if (!resolvedParams.accountType) {
-                    statusEl.innerHTML = '<span style="color:#dc2626">✗ Could not determine account type</span>';
+                    showDrilldownError('Could not determine account type', 'Check the first parameter of the formula');
                     return;
                 }
                 
-                statusEl.textContent = `Fetching ${resolvedParams.accountType} accounts...`;
+                showDrilldownStatus(`Fetching ${resolvedParams.accountType} accounts...`, 'Querying NetSuite');
                 
                 // Query backend for all accounts of this type with their balances
                 const queryParams = new URLSearchParams({
@@ -12433,22 +12581,20 @@ export default {
                 const accounts = data.accounts || [];
                 
                 if (accounts.length === 0) {
-                    statusEl.innerHTML = `<span style="color:#059669">✓ No accounts found for type "${resolvedParams.accountType}"</span>`;
-                    setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                    showDrilldownSuccess(`No accounts found`, `Account type "${resolvedParams.accountType}" has no accounts`);
                     return;
                 }
+                
+                showDrilldownStatus('Creating accounts sheet...', `${accounts.length} accounts found`);
                 
                 // Create drill-down sheet showing accounts (Step 1)
                 await createTypeBalanceAccountsSheet(context, accounts, resolvedParams);
                 
-                statusEl.innerHTML = `<span style="color:#059669">✓ Found ${accounts.length} ${resolvedParams.accountType} account(s). Click any account number to drill into transactions.</span>`;
-                
-                setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                showDrilldownSuccess(`Found ${accounts.length} ${resolvedParams.accountType} account(s)`, 'Click any account row to drill into transactions');
                 
             } catch (error) {
                 console.error('TYPEBALANCE drill-down error:', error);
-                statusEl.innerHTML = `<span style="color:#dc2626">✗ Error: ${error.message}</span>`;
-                setTimeout(() => { statusEl.innerHTML = ''; }, 5000);
+                showDrilldownError(error.message, 'Check console for details');
             }
         }
         
@@ -12627,13 +12773,13 @@ export default {
                         // ALWAYS push the parameter, even if empty (for skipped params like ",,")
                         params.push(current.trim());
                         current = '';
-                    } else {
+                } else {
                         current += char;
                     }
                 }
                 
                 // Always push the last parameter (even if empty)
-                params.push(current.trim());
+                    params.push(current.trim());
                 
                 // Return cell references or literal values as-is
                 return {
