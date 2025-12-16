@@ -2289,7 +2289,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.109</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.110</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -2595,7 +2595,7 @@ For licensing inquiries, contact: legal@celigo.com
                         </div>
                         <div class="header-text">
                             <span>Refresh & Caching</span>
-                            <span class="subtitle">Update formulas and clear cache</span>
+                            <span class="subtitle">Update formulas with fresh data</span>
                         </div>
                     </h3>
                     <svg class="chevron" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
@@ -2611,26 +2611,20 @@ For licensing inquiries, contact: legal@celigo.com
                         <div class="action-grid">
                             <button class="action-btn primary" onclick="refreshCurrentSheet()">
                                 <span class="action-icon">⚡</span>
-                                <span class="action-text">Refresh Accounts</span>
-                                <span class="help-icon small" data-tip="Refreshes all BALANCE formulas on this sheet. Auto-detects P&L and Balance Sheet accounts. P&L loads quickly (~30s/year), Balance Sheet takes 2-3 minutes.">?</span>
+                                <span class="action-text">Refresh All</span>
+                                <span class="help-icon small" data-tip="Clears cache and refreshes ALL XAVI formulas on this sheet. Auto-detects P&L (fast ~30s/year) and Balance Sheet accounts (2-3 min). Use after posting transactions or to get fresh data.">?</span>
                             </button>
                             
                             <button class="action-btn secondary" onclick="refreshSelected()">
                                 <span class="action-icon">🎯</span>
                                 <span class="action-text">Refresh Selected</span>
-                                <span class="help-icon small" data-tip="Re-calculates only the cells you've selected. Faster than Refresh Accounts for quick updates.">?</span>
+                                <span class="help-icon small" data-tip="Clears cache and refreshes ONLY the cells you've selected. Much faster than Refresh All for quick spot-checks.">?</span>
                             </button>
                             
                             <button class="action-btn warning" onclick="recalculateSpecialFormulas()">
                                 <span class="action-icon">📊</span>
                                 <span class="action-text">Recalculate Retained Earnings</span>
-                                <span class="help-icon small" data-tip="Retained Earnings, Net Income, and Cumulative Translation Adjustment (CTA) require scanning your entire transaction history and applying currency consolidation. This can take up to 5 minutes. When to recalculate: After posting journal entries, after period close, or when values seem stale. You can continue working in your sheet while recalculating.">?</span>
-                            </button>
-                            
-                            <button class="action-btn danger" onclick="clearCache()">
-                                <span class="action-icon">🗑️</span>
-                                <span class="action-text">Clear Cache</span>
-                                <span class="help-icon small" data-tip="Erases all cached data. Forces formulas to re-query NetSuite on next calculation.">?</span>
+                                <span class="help-icon small" data-tip="Retained Earnings, Net Income, and CTA require full transaction history scan with currency consolidation (up to 5 min). Use after: journal entries, period close, or when values seem stale.">?</span>
                             </button>
                             
                             <button class="action-btn" onclick="formatCurrencies()" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);">
@@ -3256,7 +3250,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.109"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.110"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -9631,19 +9625,19 @@ export default {
                 
                 // Clear any stale flags from previous runs
                 localStorage.removeItem('netsuite_bulk_refresh');
-                localStorage.removeItem('netsuite_show_toasts'); // Don't show toasts during Refresh Accounts
+                localStorage.removeItem('netsuite_show_toasts'); // Don't show toasts during Refresh All
                 
                 // ============================================
                 // STEP 0: Verify connection before starting
                 // ============================================
-                showLoading('Refresh Accounts', 'Verifying connection to NetSuite...', 2);
+                showLoading('Refresh All', 'Verifying connection to NetSuite...', 2);
                 
                 const isConnected = await checkConnectionStatus(true);
                 if (!isConnected) {
                     hideLoading();
                     hideCancelButton();
                     btn.disabled = false;
-                    btn.innerHTML = '<span class="action-icon">⚡</span>Refresh Accounts';
+                    btn.innerHTML = '<span class="action-icon">⚡</span>Refresh All';
                     
                     showPersistentError(
                         'Connection Failed',
@@ -9661,7 +9655,7 @@ export default {
                 }
                 
                 btn.textContent = 'Analyzing...';
-                showLoading('Refresh Accounts', 'Checking sheet type...', 5);
+                showLoading('Refresh All', 'Checking sheet type...', 5);
                 
                 // ============================================
                 // CHECK FOR AUTO-GENERATED INCOME STATEMENT
@@ -9715,7 +9709,7 @@ export default {
                 // If this is an auto-generated sheet with sync enabled, rebuild structure
                 console.log(`🔍 STRUCTURE SYNC CHECK: shouldSyncStructure = ${shouldSyncStructure}`);
                 if (shouldSyncStructure) {
-                    showLoading('Refresh Accounts', `Syncing structure for ${syncYear}...`, 10);
+                    showLoading('Refresh All', `Syncing structure for ${syncYear}...`, 10);
                     console.log(`🚀 ENTERING STRUCTURE SYNC for year ${syncYear}, subsidiary: "${syncSubsidiary}"`);
                     
                     // Get currency format for the selected subsidiary
@@ -9804,7 +9798,7 @@ export default {
                                              categories.cogs.length + categories.expense.length + categories.othExpense.length;
                         
                         console.log(`📊 Found ${totalAccounts} P&L accounts for ${syncYear}`);
-                        showLoading('Refresh Accounts', `Rebuilding with ${totalAccounts} accounts...`, 20);
+                        showLoading('Refresh All', `Rebuilding with ${totalAccounts} accounts...`, 20);
                         
                         // Rebuild the sheet
                         await Excel.run(async (context) => {
@@ -10173,7 +10167,7 @@ export default {
                     hideLoading();
                     hideCancelButton();
                     btn.disabled = false;
-                    btn.innerHTML = '<span class="action-icon">⚡</span>Refresh Accounts';
+                    btn.innerHTML = '<span class="action-icon">⚡</span>Refresh All';
                     
                     if (statusEl) {
                         statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px; border-left: 4px solid #10b981;">
@@ -10185,12 +10179,12 @@ export default {
                 }
                 
                 // Continue with normal refresh for non-auto-generated sheets...
-                showLoading('Refresh Accounts', 'Scanning formulas on sheet...', 5);
+                showLoading('Refresh All', 'Scanning formulas on sheet...', 5);
                 
-                // NOTE: We do NOT set netsuite_show_toasts during Refresh Accounts
+                // NOTE: We do NOT set netsuite_show_toasts during Refresh All
                 // All status updates go to the task pane instead of toast popups
                 // This prevents toasts from appearing during bulk operations
-                console.log('🔕 Refresh Accounts mode - toasts will NOT appear (status in task pane only)');
+                console.log('🔕 Refresh All mode - toasts will NOT appear (status in task pane only)');
                 
                 const start = Date.now();
                 let formulasFound = [];
@@ -10479,7 +10473,7 @@ export default {
                             showPersistentError(
                                 'P&L Data Fetch Failed',
                                 `Could not load P&L data for ${year}. Your formulas may show $0 or stale values.`,
-                                `Error: ${e.message}<br>Try: Click "Clear Cache" then "Refresh All" to retry.`
+                                `Error: ${e.message}<br>Try: Click "Refresh All" to retry.`
                             );
                             // Update connection status
                             await checkConnectionStatus(true);
@@ -10557,7 +10551,7 @@ export default {
                             showPersistentError(
                                 'Balance Sheet Fetch Failed',
                                 `Error ${response.status} loading Balance Sheet data. BS formulas may show incorrect values.`,
-                                `HTTP Status: ${response.status}<br>Try: Use "Refresh Selected" on individual cells, or "Clear Cache" then "Refresh All".`
+                                `HTTP Status: ${response.status}<br>Try: Use "Refresh Selected" on individual cells, or "Refresh All" to retry.`
                             );
                             }
                     } catch (e) {
@@ -10565,7 +10559,7 @@ export default {
                         showPersistentError(
                             'Balance Sheet Fetch Failed',
                             'Could not load Balance Sheet data. BS formulas may show incorrect values.',
-                            `Error: ${e.message}<br>Try: Click "Clear Cache" then "Refresh All" to retry.`
+                            `Error: ${e.message}<br>Try: Click "Refresh All" to retry.`
                         );
                         // Update connection status
                         await checkConnectionStatus(true);
@@ -10864,7 +10858,7 @@ export default {
                                     <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 11px; color: #7f1d1d;">
                                         <strong>What to try:</strong><br>
                                         1. Check if the tunnel is running (ask your admin)<br>
-                                        2. Click "Clear Cache" then try again<br>
+                                        2. Click "Refresh All" to retry<br>
                                         3. Check the terminal for errors
                                     </div>
                                 </div>
@@ -10884,7 +10878,7 @@ export default {
                                 <div style="margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; font-size: 11px; color: #7f1d1d;">
                                     <strong>What to try:</strong><br>
                                     1. Check if the tunnel is running (ask your admin)<br>
-                                    2. Click "Clear Cache" then try again<br>
+                                    2. Click "Refresh All" to retry<br>
                                     3. Check the terminal for errors
                                 </div>
                             </div>
@@ -10898,13 +10892,13 @@ export default {
                 localStorage.removeItem('netsuite_bulk_refresh');
                 hideToast();
                 btn.disabled = false;
-                btn.innerHTML = '<span class="action-icon">⚡</span><span class="action-text">Refresh Accounts</span>';
+                btn.innerHTML = '<span class="action-icon">⚡</span><span class="action-text">Refresh All</span>';
             }
         }
 
         // ============================================
         // RECALCULATE SPECIAL FORMULAS (RE, NI, CTA)
-        // Separate from Refresh Accounts because these require
+        // Separate from Refresh All because these require
         // scanning entire transaction history and take up to 5 minutes
         // Uses floating status so user can continue working
         // ============================================
