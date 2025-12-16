@@ -1,135 +1,134 @@
-# NetSuite Special Account Types (sspecacct) Reference
+# Account Type vs. Special Account Type
 
-This document provides a comprehensive reference for the `sspecacct` field in NetSuite, which is used by `XAVI.TYPEBALANCE` when the `useSpecialAccount` parameter is set to 1.
+**A One-Page Guide for Financial Users and NetSuite Administrators**
 
-## Purpose
+NetSuite assigns two different classifications to accounts: **Account Type** and **Special Account Type**.
+They work together, but they serve different purposes.
+Understanding both helps ensure accurate reporting, clean configurations, and reliable system behavior.
 
-The Special Account Type field (`sspecacct`) is an internal classification used on account records to flag certain system-defined or feature-specific accounts. These are accounts that NetSuite automatically creates or expects for various sub-ledgers and processes.
+---
 
-- Regular accounts have this field **blank**
-- Any non-blank value indicates the type of system account
+## Together:
+- **Account Type** shows where an account belongs in financial reporting
+- **Special Account Type** shows how the account functions inside NetSuite
 
-## Special Account Types by Category
+Both perspectives are important for a clear, accurate understanding of your financial data and system behavior.
 
-### Accounts Receivable & Customer-Related
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `AcctRec` | Accounts Receivable (main A/R control) | Balance Sheet |
-| `UnbilledRec` | Unbilled Receivable (earned but not billed) | Balance Sheet |
-| `CustDep` | Customer Deposit (prepayments) | Balance Sheet (Liability) |
-| `CustAuth` | Customer Payment Authorizations | Balance Sheet (Asset) |
-| `RefundPay` | Refunds Payable | Balance Sheet (Liability) |
-| `UnappvPymt` | Unapproved Customer Payments | Non-Posting |
+---
 
-### Accounts Payable & Vendor-Related
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `AcctPay` | Accounts Payable (main A/P control) | Balance Sheet |
-| `AdvPaid` | Advances Paid to vendors | Balance Sheet (Asset) |
-| `RecvNotBill` | Inventory Received Not Billed | Balance Sheet (Liability) |
+## 1. Account Type — Financial Reporting Classification
 
-### Inventory and COGS
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `InvtAsset` | Inventory Asset | Balance Sheet |
-| `COGS` | Cost of Goods Sold | P&L |
-| `InvInTransit` | Inventory In Transit | Balance Sheet |
-| `InvInTransitExt` | External Inventory In Transit | Balance Sheet |
-| `RtnNotCredit` | Inventory Returned Not Credited | Balance Sheet |
+### What it is:
+The standard accounting category assigned to every account.
 
-### Deferred Revenue/Expense
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `DeferRevenue` | Deferred Revenue | Balance Sheet (Liability) |
-| `DeferExpense` | Deferred Expense/Prepaid | Balance Sheet (Asset) |
-| `DeferRevClearing` | Deferred Revenue Clearing | Balance Sheet |
+### Common types include:
+- Asset
+- Liability
+- Equity
+- Income
+- Expense
+- Subcategories such as Other Current Asset, Other Current Liability, etc.
 
-### Equity and Retained Earnings
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `OpeningBalEquity` | Opening Balance Equity | Balance Sheet |
-| `RetEarnings` | Retained Earnings | Balance Sheet |
-| `CumulTransAdj` | Cumulative Translation Adjustment (CTA) | Balance Sheet |
-| `CTA-E` | CTA - Elimination | Balance Sheet |
+### What it controls:
+- Where the account appears on the Balance Sheet or Income Statement
+- How accounts roll up into financial reporting sections
+- How totals and subtotals are calculated in standard NetSuite reports
 
-### Multi-Currency Gain/Loss
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `FxRateVariance` | Foreign Currency Rate Variance | P&L |
-| `RealizedERV` | Realized Gain/Loss (Exchange Rate) | P&L |
-| `UnrERV` | Unrealized Gain/Loss (Exchange Rate) | P&L |
-| `MatchingUnrERV` | Unrealized Matching Gain/Loss | P&L |
-| `RndERV` | Rounding Gain/Loss | P&L |
+### When it's used:
+✔ Building or reviewing financial statements  
+✔ Summarizing accounts by financial category  
+✔ Organizing the chart of accounts  
+✔ Producing high-level financial analysis  
 
-### Tax Accounts
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `SalesTaxPay` | Sales Taxes Payable | Balance Sheet (Liability) |
-| `Tax` | Tax (various) | Varies |
-| `TaxLiability` | Tax Liability | Balance Sheet (Liability) |
-| `PSTExp` | PST Expense (Canada) | P&L |
-| `PSTPay` | PST Payable (Canada) | Balance Sheet |
+> **Think of Account Type as:**
+> 
+> *"How does this account appear in financial reporting?"*
 
-### Payroll and Compensation
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `CommPay` | Commissions Payable | Balance Sheet (Liability) |
-| `PayrollExp` | Payroll Expense | P&L |
-| `PayrollLiab` | Payroll Liability | Balance Sheet (Liability) |
-| `PayrollFloat` | Payroll Float | Balance Sheet (Asset) |
-| `PayWage` | Payroll Wage | P&L |
-| `PayAdjst` | Payroll Adjustment | Balance Sheet (Liability) |
-| `UnappvExpRept` | Unapproved Expense Reports | Non-Posting |
+---
 
-### Cash and Banking
-| Code | Description | Account Type |
-|------|-------------|--------------|
-| `UndepFunds` | Undeposited Funds | Balance Sheet (Asset) |
+## 2. Special Account Type — System Behavior Classification
 
-### Non-Posting Transaction Accounts
+### What it is:
+A system-assigned tag used only for certain accounts that play a special functional role inside NetSuite.
+
+### Examples include accounts NetSuite uses for:
+- Customer transactions (Accounts Receivable)
+- Vendor transactions (Accounts Payable)
+- Inventory valuation
+- Tax handling
+- Revenue recognition
+- Multicurrency adjustments
+
+**Only a small number of accounts carry a Special Account Type; most will be blank.**
+
+### What it controls:
+- Which account NetSuite uses as an official control account
+- How certain transactions are posted
+- How subledgers (AR, AP, Inventory, Tax, FX) interact with the general ledger
+- System logic tied to required accounts
+
+### When it's used:
+✔ Identifying the true system control accounts  
+✔ Troubleshooting unexpected posting behavior  
+✔ Understanding how transactions flow  
+✔ Ensuring system-required accounts are not repurposed  
+✔ Designing automations or queries that rely on system roles  
+
+> **Think of Special Account Type as:**
+> 
+> *"What does NetSuite use this account for behind the scenes?"*
+
+---
+
+## 3. Why Both Classifications Matter
+
+These two fields solve different problems:
+
+| Purpose | Account Type | Special Account Type |
+|---------|:------------:|:--------------------:|
+| Financial reporting and layout | ✔ | |
+| Organizing financial categories | ✔ | |
+| Identifying all accounts in a reporting section | ✔ | |
+| Understanding system-required accounts | | ✔ |
+| Knowing which account NetSuite posts to for a function | | ✔ |
+| Troubleshooting system behavior | | ✔ |
+
+---
+
+## Common Special Account Type Values
+
 | Code | Description |
 |------|-------------|
-| `Opprtnty` | Opportunity |
-| `Estimate` | Estimate/Quote |
-| `SalesOrd` | Sales Order |
-| `PurchOrd` | Purchase Order |
-| `PurchReq` | Requisitions |
-| `WorkOrd` | Work Orders |
-| `RtnAuth` | Return Authorization |
-| `VendAuth` | Vendor Return Authorizations |
-| `RevArrng` | Revenue Arrangement |
-| `TrnfrOrd` | Transfer Order |
+| `AcctRec` | Accounts Receivable control account |
+| `AcctPay` | Accounts Payable control account |
+| `InvtAsset` | Inventory Asset account |
+| `UndepFunds` | Undeposited Funds account |
+| `DeferRevenue` | Deferred Revenue account |
+| `DeferExpense` | Deferred Expense / Prepaid account |
+| `RetEarnings` | Retained Earnings account |
+| `SalesTaxPay` | Sales Tax Payable account |
+| `CumulTransAdj` | Cumulative Translation Adjustment (CTA) |
+| `RealizedERV` | Realized FX Gain/Loss account |
+| `UnrERV` | Unrealized FX Gain/Loss account |
 
-## Usage in XAVI.TYPEBALANCE
+---
+
+## Using in XAVI Formulas
+
+The `XAVI.TYPEBALANCE` formula can query by either classification:
 
 ```excel
-=XAVI.TYPEBALANCE("AcctRec", , "Dec 2025", , , , , , 1)
+// Query by Account Type (financial reporting)
+=XAVI.TYPEBALANCE("OthCurrAsset",,"Dec 2025")
+
+// Query by Special Account Type (system accounts)
+=XAVI.TYPEBALANCE("AcctRec",,"Dec 2025",,,,,,1)
 ```
 
-The last parameter (`useSpecialAccount`) when set to `1` tells the function to filter by `sspecacct` instead of `accttype`.
+The last parameter (`1`) tells the formula to use Special Account Type instead of Account Type.
 
-## Cash Flow Statement Mapping
+---
 
-For building cash flow statements, these special accounts map to:
+## See Also
 
-### Operating Activities (Changes in Working Capital)
-- `AcctRec` - Changes in Accounts Receivable
-- `AcctPay` - Changes in Accounts Payable  
-- `InvtAsset` - Changes in Inventory
-- `DeferRevenue` - Changes in Deferred Revenue
-- `DeferExpense` - Changes in Prepaid Expenses
-- `UnbilledRec` - Changes in Unbilled Receivables
-
-### Investing Activities
-- `InvInTransit` - Inventory transfers
-- `FixedAsset` (use accttype) - Capital expenditures
-
-### Financing Activities
-- `RetEarnings` - Retained earnings changes
-- `CumulTransAdj` - Currency translation adjustments
-
-## Sources
-- NetSuite Schema Browser
-- Marty Zigman, NetSuite Account Special Types Reference (Prolecto)
-- NetSuite Help Documentation
-
+- [USER_GUIDE_TYPEBALANCE.md](USER_GUIDE_TYPEBALANCE.md) - Formula syntax and examples

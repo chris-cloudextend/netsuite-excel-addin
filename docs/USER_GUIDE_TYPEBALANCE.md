@@ -1,125 +1,43 @@
 # XAVI.TYPEBALANCE User Guide
 
-## Understanding Account Type vs. Special Account Type
+## Overview
 
-A quick guide for choosing the right option in **XAVI.TYPEBALANCE**
+`XAVI.TYPEBALANCE` retrieves the total balance for all accounts of a specific type. It can query by:
 
-When pulling financial data into Excel with XAVI, NetSuite provides two ways to classify accounts. Choosing the right one determines how precise or broad your results will be.
-
----
-
-## 1. Account Type (Standard Financial Category)
-
-Account Type is the traditional classification used for financial statements:
-
-| Account Type | Description |
-|--------------|-------------|
-| `Bank` | Bank and cash accounts |
-| `AcctRec` | Accounts Receivable |
-| `OthCurrAsset` | Other Current Assets |
-| `FixedAsset` | Fixed Assets |
-| `OthAsset` | Other Assets |
-| `AcctPay` | Accounts Payable |
-| `CredCard` | Credit Card |
-| `OthCurrLiab` | Other Current Liabilities |
-| `LongTermLiab` | Long-Term Liabilities |
-| `Equity` | Equity |
-| `Income` | Income |
-| `COGS` | Cost of Goods Sold |
-| `Expense` | Expenses |
-| `OthIncome` | Other Income |
-| `OthExpense` | Other Expense |
-
-Every account has exactly one Account Type. NetSuite uses these types for the Balance Sheet, Income Statement, and Cash Flow Statement.
-
-### When to Use Account Type
-
-Use this whenever you want broad groupings, such as:
-
-* All assets of a certain type
-* All liabilities
-* All expenses
-* All income accounts
-
-**Example - Total of all Other Current Liabilities:**
-
-```excel
-=XAVI.TYPEBALANCE("OthCurrLiab",,"Dec 2025")
-```
-
-**Example - Total Expenses for a period:**
-
-```excel
-=XAVI.TYPEBALANCE("Expense","Jan 2025","Dec 2025")
-```
+1. **Account Type** - Financial reporting categories (Asset, Liability, Income, Expense, etc.)
+2. **Special Account Type** - System-defined control accounts (AcctRec, AcctPay, InvtAsset, etc.)
 
 ---
 
-## 2. Special Account Type (System-Defined Control Accounts)
+## When to Use Each
 
-Special Account Type identifies NetSuite's *system accounts*, created automatically for functions like AR, AP, Inventory, Taxes, and Multi-Currency.
-
-### Common Special Account Types
-
-| Code | Description | Category |
-|------|-------------|----------|
-| `AcctRec` | Accounts Receivable (control) | Balance Sheet |
-| `AcctPay` | Accounts Payable (control) | Balance Sheet |
-| `InvtAsset` | Inventory Asset | Balance Sheet |
-| `UndepFunds` | Undeposited Funds | Balance Sheet |
-| `DeferRevenue` | Deferred Revenue | Balance Sheet |
-| `DeferExpense` | Deferred Expense / Prepaid | Balance Sheet |
-| `RetEarnings` | Retained Earnings | Balance Sheet |
-| `SalesTaxPay` | Sales Tax Payable | Balance Sheet |
-| `CumulTransAdj` | Cumulative Translation Adjustment | Balance Sheet |
-| `COGS` | Cost of Goods Sold (system) | P&L |
-| `RealizedERV` | Realized FX Gain/Loss | P&L |
-| `UnrERV` | Unrealized FX Gain/Loss | P&L |
-
-Only true control accounts have these values. User-created accounts typically have a blank special account type.
-
-### When to Use Special Account Type
-
-Choose this when you need:
-
-* The *real* AR or AP control account (not user-created AR sub-accounts)
-* Consistent results across subsidiaries
-* A precise cash flow model using working-capital accounts
-* To avoid including custom user-created accounts
-
-**Example - True Accounts Receivable balance:**
-
-```excel
-=XAVI.TYPEBALANCE("AcctRec",,"Dec 2025",,,,,,1)
-```
-
-**Example - Inventory Asset for cash flow:**
-
-```excel
-=XAVI.TYPEBALANCE("InvtAsset",,"Dec 2025",,,,,,1)
-```
-
-The `1` at the end tells the formula to use Special Account Type instead of regular Account Type.
+| Use Case | Account Type | Special Account Type |
+|----------|:------------:|:--------------------:|
+| Financial reporting totals | ✔ | |
+| Summarizing by financial category | ✔ | |
+| Identifying system control accounts | | ✔ |
+| Finding what NetSuite uses for specific functions | | ✔ |
+| Troubleshooting posting behavior | | ✔ |
 
 ---
 
 ## Formula Syntax
 
 ```
-=XAVI.TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook, useSpecialAccount)
+=XAVI.TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook, useSpecialAccountType)
 ```
 
 | Parameter | Position | Description |
 |-----------|----------|-------------|
 | `accountType` | 1 | Required. The account type or special account type code |
-| `fromPeriod` | 2 | Start period (required for P&L, ignored for BS) |
+| `fromPeriod` | 2 | Start period (required for P&L types, ignored for BS types) |
 | `toPeriod` | 3 | End period (required) |
 | `subsidiary` | 4 | Optional. Subsidiary name or ID |
 | `department` | 5 | Optional. Department filter |
 | `location` | 6 | Optional. Location filter |
 | `classId` | 7 | Optional. Class filter |
 | `accountingBook` | 8 | Optional. Accounting Book ID |
-| `useSpecialAccount` | 9 | Optional. Set to `1` to use Special Account Type |
+| `useSpecialAccountType` | 9 | Optional. Set to `1` to use Special Account Type |
 
 ### Balance Sheet vs P&L Behavior
 
@@ -128,12 +46,58 @@ The `1` at the end tells the formula to use Special Account Type instead of regu
 
 ---
 
+## Account Type Values (Financial Reporting)
+
+Standard categories for financial statements:
+
+| Account Type | Category |
+|--------------|----------|
+| `Bank` | Balance Sheet |
+| `AcctRec` | Balance Sheet |
+| `OthCurrAsset` | Balance Sheet |
+| `FixedAsset` | Balance Sheet |
+| `OthAsset` | Balance Sheet |
+| `AcctPay` | Balance Sheet |
+| `CredCard` | Balance Sheet |
+| `OthCurrLiab` | Balance Sheet |
+| `LongTermLiab` | Balance Sheet |
+| `Equity` | Balance Sheet |
+| `Income` | P&L |
+| `COGS` | P&L |
+| `Expense` | P&L |
+| `OthIncome` | P&L |
+| `OthExpense` | P&L |
+
+---
+
+## Special Account Type Values (System Accounts)
+
+System-assigned tags for accounts with special functions:
+
+| Special Account Type | Description |
+|---------------------|-------------|
+| `AcctRec` | Accounts Receivable control |
+| `AcctPay` | Accounts Payable control |
+| `InvtAsset` | Inventory Asset |
+| `UndepFunds` | Undeposited Funds |
+| `DeferRevenue` | Deferred Revenue |
+| `DeferExpense` | Deferred Expense / Prepaid |
+| `RetEarnings` | Retained Earnings |
+| `CumulTransAdj` | Cumulative Translation Adjustment |
+| `SalesTaxPay` | Sales Tax Payable |
+| `RealizedERV` | Realized FX Gain/Loss |
+| `UnrERV` | Unrealized FX Gain/Loss |
+
+**Note:** Most accounts have a blank Special Account Type. Only system control accounts have values.
+
+---
+
 ## Examples
 
-### Using Regular Account Type (Position 9 = 0 or blank)
+### Using Account Type (Position 9 = 0 or blank)
 
 ```excel
-// All Other Current Assets as of Dec 2025
+// Total of all Other Current Assets as of Dec 2025
 =XAVI.TYPEBALANCE("OthCurrAsset",,"Dec 2025")
 
 // All Expenses for full year 2025
@@ -141,74 +105,56 @@ The `1` at the end tells the formula to use Special Account Type instead of regu
 
 // All Income for Q1 2025 for specific subsidiary
 =XAVI.TYPEBALANCE("Income","Jan 2025","Mar 2025","Celigo Inc.")
+
+// All Long-Term Liabilities
+=XAVI.TYPEBALANCE("LongTermLiab",,"Dec 2025")
 ```
 
 ### Using Special Account Type (Position 9 = 1)
 
 ```excel
-// True A/R control account balance
+// True Accounts Receivable control account balance
 =XAVI.TYPEBALANCE("AcctRec",,"Dec 2025",,,,,,1)
 
-// True A/P control account balance
+// True Accounts Payable control account balance
 =XAVI.TYPEBALANCE("AcctPay",,"Dec 2025",,,,,,1)
 
-// Inventory Asset for cash flow analysis
+// Inventory Asset (system inventory account)
 =XAVI.TYPEBALANCE("InvtAsset",,"Dec 2025",,,,,,1)
 
-// Deferred Revenue balance
+// Deferred Revenue
 =XAVI.TYPEBALANCE("DeferRevenue",,"Dec 2025",,,,,,1)
 
-// Retained Earnings
+// Retained Earnings (system account)
 =XAVI.TYPEBALANCE("RetEarnings",,"Dec 2025",,,,,,1)
 ```
 
 ---
 
-## Which Should I Choose?
+## Key Differences
 
-| Goal | Use Account Type | Use Special Account Type |
-|------|------------------|--------------------------|
-| Build Balance Sheet | ✔ | |
-| Build Income Statement | ✔ | |
-| Broad financial categories | ✔ | |
-| True AR/AP/Inventory accounts | | ✔ |
-| Cash Flow (working-capital deltas) | | ✔ |
-| Identify Undeposited Funds or Tax accounts | | ✔ |
-| Avoid including user-created accounts | | ✔ |
-| Multi-currency FX gain/loss accounts | | ✔ |
+### Account Type
+- Every account has one
+- Used for financial statement organization
+- Groups accounts for reporting sections
+- Best for: "Show me all assets" or "Total expenses for the year"
+
+### Special Account Type
+- Only some accounts have one (most are blank)
+- Identifies system control accounts
+- Shows what NetSuite uses the account for internally
+- Best for: "Find the true A/R control account" or "What's the system inventory account?"
 
 ---
 
 ## Rule of Thumb
 
-> **Use Account Type for broad financial reporting.**
+> **Use Account Type** when you want to summarize by financial category.
 > 
-> **Use Special Account Type when you need precision control accounts.**
-
----
-
-## Cash Flow Statement Example
-
-For a proper indirect method cash flow statement, use Special Account Types to get precise working capital changes:
-
-```excel
-// Change in Accounts Receivable
-=XAVI.TYPEBALANCE("AcctRec",,"Dec 2024",,,,,,1) - XAVI.TYPEBALANCE("AcctRec",,"Dec 2025",,,,,,1)
-
-// Change in Inventory
-=XAVI.TYPEBALANCE("InvtAsset",,"Dec 2024",,,,,,1) - XAVI.TYPEBALANCE("InvtAsset",,"Dec 2025",,,,,,1)
-
-// Change in Accounts Payable
-=XAVI.TYPEBALANCE("AcctPay",,"Dec 2025",,,,,,1) - XAVI.TYPEBALANCE("AcctPay",,"Dec 2024",,,,,,1)
-
-// Change in Deferred Revenue
-=XAVI.TYPEBALANCE("DeferRevenue",,"Dec 2025",,,,,,1) - XAVI.TYPEBALANCE("DeferRevenue",,"Dec 2024",,,,,,1)
-```
+> **Use Special Account Type** when you need to identify a specific system control account.
 
 ---
 
 ## See Also
 
-- [SPECIAL_ACCOUNT_TYPES.md](SPECIAL_ACCOUNT_TYPES.md) - Complete list of all special account type codes
-- [DEVELOPER_CHECKLIST.md](../DEVELOPER_CHECKLIST.md) - Developer integration guide
-
+- [SPECIAL_ACCOUNT_TYPES.md](SPECIAL_ACCOUNT_TYPES.md) - Detailed explanation of both classifications

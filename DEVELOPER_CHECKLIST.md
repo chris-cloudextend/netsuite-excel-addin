@@ -121,24 +121,24 @@ fy_start = fy_info['fy_start']
 When building formulas that filter by account classification, understand the difference:
 
 ### Account Type (`accttype` field)
-Standard financial categories used in financial statements:
+Standard financial categories for financial statements:
 - `Bank`, `AcctRec`, `OthCurrAsset`, `FixedAsset`, `OthAsset`
 - `AcctPay`, `CredCard`, `OthCurrLiab`, `LongTermLiab`
 - `Equity`, `RetainedEarnings`
 - `Income`, `COGS`, `Expense`, `OthIncome`, `OthExpense`
 
-**Use for:** Broad financial reporting, standard Balance Sheet/P&L
+**Use for:** Financial reporting, summarizing by category, Balance Sheet/P&L totals
 
 ### Special Account Type (`sspecacct` field)
-System-defined control accounts NetSuite creates automatically:
-- `AcctRec`, `AcctPay` - True AR/AP control accounts
-- `InvtAsset` - System inventory asset account
+System-assigned tags for accounts with special internal roles:
+- `AcctRec`, `AcctPay` - AR/AP control accounts
+- `InvtAsset` - Inventory asset account
 - `UndepFunds` - Undeposited funds clearing
 - `DeferRevenue`, `DeferExpense` - Deferred items
 - `RetEarnings`, `CumulTransAdj` - Equity system accounts
 - `RealizedERV`, `UnrERV` - FX gain/loss accounts
 
-**Use for:** Cash flow statements, working capital analysis, precise control account totals
+**Use for:** Identifying system control accounts, troubleshooting posting behavior, understanding transaction flows
 
 ### Backend Implementation Pattern
 
