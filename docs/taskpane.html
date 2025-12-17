@@ -3035,10 +3035,31 @@ For licensing inquiries, contact: legal@celigo.com
             font-family: 'SF Mono', Monaco, 'Courier New', monospace !important;
         }
         
+        .more-formulas-hint {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            margin: 12px 0 8px 0;
+            padding: 8px 12px;
+            background: rgba(59, 130, 246, 0.15);
+            border-radius: 6px;
+            border-left: 3px solid var(--tidal-wave);
+        }
+        
         .final-tip {
             font-size: 10px;
-            color: rgba(255, 255, 255, 0.5);
+            color: rgba(255, 255, 255, 0.6);
             margin-top: 12px;
+            line-height: 1.5;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+        }
+        
+        .final-tip code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 9px;
         }
         
         /* Onboarding Confirm Dialog */
@@ -3193,22 +3214,40 @@ For licensing inquiries, contact: legal@celigo.com
             background: rgba(10, 226, 193, 0.05);
         }
 
-        /* Adjust content padding for quick actions bar and footer */
+        /* ================================================================
+           CRITICAL: Content area must not overlap fixed bottom bar
+           The quick-actions-bar is ~160px tall (buttons + status + footer)
+           ================================================================ */
         .content {
-            padding-bottom: 220px !important;
+            padding-bottom: 180px !important;
+            /* Create scrollable container that respects fixed bottom bar */
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+            overflow-x: hidden;
         }
         
         .tab-panel {
-            padding-bottom: 60px;
+            padding-bottom: 40px;
+            /* Prevent content from extending behind fixed elements */
+            margin-bottom: 20px;
         }
         
         /* Ensure accordions have proper bottom spacing */
         .accordion:last-child {
-            margin-bottom: 50px;
+            margin-bottom: 60px !important;
         }
         
+        /* Extra safety: collapsed content should never extend beyond visible area */
         .collapsible-content {
-            padding-bottom: 20px;
+            padding-bottom: 16px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        /* Spacer element at bottom of accordion lists */
+        .accordion-bottom-spacer {
+            height: 80px;
+            flex-shrink: 0;
         }
 
         .info-box {
@@ -3501,7 +3540,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.133</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.134</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4560,14 +4599,15 @@ For licensing inquiries, contact: legal@celigo.com
                     </p>
                     <div class="onboarding-steps-list">
                         <div class="step-item">1️⃣ Click any cell with a BALANCE formula</div>
-                        <div class="step-item">2️⃣ Click the <strong>"Drill Down"</strong> button below</div>
-                        <div class="step-item">3️⃣ See all transactions that make up the total!</div>
+                        <div class="step-item">2️⃣ <strong>Right-click</strong> → Select <strong>"CloudExtend"</strong></div>
+                        <div class="step-item">3️⃣ Choose <strong>"Drill Down"</strong></div>
+                        <div class="step-item">4️⃣ See all transactions that make up the total!</div>
                     </div>
                     <div class="drill-demo-box">
                         <button class="drill-demo-btn" onclick="demoSelectForDrill()">
                             🎯 Try It! Select a BALANCE Cell
                         </button>
-                        <p class="drill-demo-hint" id="drillDemoHint">Click a cell with a XAVI.BALANCE formula, then use the Drill Down button in the Quick Actions bar</p>
+                        <p class="drill-demo-hint" id="drillDemoHint">Click a cell with a XAVI.BALANCE formula, then right-click → CloudExtend → Drill Down</p>
                     </div>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(8)">← Back</button>
@@ -4601,14 +4641,15 @@ For licensing inquiries, contact: legal@celigo.com
                     </p>
                     <div class="cheat-sheet compact">
                         <div class="cheat-item"><code>BALANCE(acct, from, to)</code> <span>Balance</span></div>
-                        <div class="cheat-item"><code>BALANCE("4*", ...)</code> <span>Wildcard</span></div>
+                        <div class="cheat-item"><code>BUDGET(acct, from, to)</code> <span>Budget</span></div>
                         <div class="cheat-item"><code>TYPEBALANCE(type, ...)</code> <span>By type</span></div>
-                        <div class="cheat-item"><code>NETINCOME(from, to)</code> <span>Net income</span></div>
+                        <div class="cheat-item"><code>NAME(acct)</code> <span>Account name</span></div>
                     </div>
+                    <p class="more-formulas-hint">📋 Many more formulas available! Check the <strong>Formula Reference</strong> accordion.</p>
                     <button class="onboarding-btn primary celebration-btn" onclick="finishOnboarding()">
                         =START_BUILDING() 🚀
                     </button>
-                    <p class="final-tip">Pro tip: Your formulas auto-save. Come back anytime!</p>
+                    <p class="final-tip">💡 <strong>Pro tip:</strong> Parametrize your queries! Put your year in a cell (e.g., P3=2025), then use <code>=DATE($P$3,1,1)</code> for dates. Drag right to fill all months, then just change the year cell and all XAVI values recalculate!</p>
                 </div>
             </div>
         </div>
@@ -4700,7 +4741,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.133"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.134"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -5134,7 +5175,7 @@ For licensing inquiries, contact: legal@celigo.com
                     cell.select();
                     await context.sync();
                 });
-                document.getElementById('drillDemoHint').innerHTML = '✅ Cell selected! Now click <strong>Drill Down</strong> in the Quick Actions bar below.';
+                document.getElementById('drillDemoHint').innerHTML = '✅ Cell selected! Now <strong>right-click</strong> → select <strong>CloudExtend</strong> → choose <strong>Drill Down</strong>';
                 document.getElementById('drillDemoHint').style.color = '#047857';
             } catch (e) {
                 console.error('Error selecting cell:', e);
