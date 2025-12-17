@@ -54,9 +54,8 @@ Then in Excel: **Insert → My Add-ins → Shared Folder** → Select the manife
 | [DOCUMENTATION.md](DOCUMENTATION.md) | All | Complete guide (CPA + Engineering) |
 | [SUITEQL-QUERIES-SUMMARY.md](SUITEQL-QUERIES-SUMMARY.md) | Engineers | All SuiteQL queries used |
 | [SPECIAL_FORMULAS_REFERENCE.md](SPECIAL_FORMULAS_REFERENCE.md) | Engineers | RE, NI, CTA calculation details |
-| [SPEED-REFERENCE.md](SPEED-REFERENCE.md) | Engineers | Performance optimization techniques |
 | [FUTURE_DATA_SOURCES.md](FUTURE_DATA_SOURCES.md) | Product | Multi-ERP expansion roadmap |
-| [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) | Engineers | Technical architecture reference |
+| [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md) | Engineers | Cloud migration and CEFI integration |
 
 ## Project Structure
 
@@ -82,4 +81,4 @@ See [DOCUMENTATION.md](DOCUMENTATION.md) for detailed troubleshooting.
 
 ---
 
-*Current Version: 3.0.5.78*
+*Current Version: 3.0.5.161*

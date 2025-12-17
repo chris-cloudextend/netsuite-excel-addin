@@ -112,7 +112,7 @@ fy_start = fy_info['fy_start']
 | `docs/USER_GUIDE_TYPEBALANCE.md` | TYPEBALANCE usage, account types |
 | `docs/SPECIAL_ACCOUNT_TYPES.md` | Special account type reference |
 | `QA_TEST_PLAN.md` | Test cases for new feature |
-| `PROJECT_SUMMARY.md` | Version number |
+| `DOCUMENTATION.md` | Version history |
 
 ---
 
@@ -215,8 +215,9 @@ Update this file when:
 | 2025-12-15 | 3.0.5.96 | Added CustomFunctions.associate() warning |
 | 2025-12-15 | 3.0.5.98 | Added CRITICAL shared runtime configuration notes |
 | 2025-12-15 | 3.0.5.107 | Added Account Type vs Special Account Type section |
+| 2025-12-17 | 3.0.5.161 | Code cleanup for engineering handoff |
 
 ---
 
-*Last updated: December 15, 2025*
+*Last updated: December 17, 2025*
 

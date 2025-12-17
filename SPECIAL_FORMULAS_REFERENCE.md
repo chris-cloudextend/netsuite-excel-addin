@@ -1004,4 +1004,4 @@ async function CTA(period, subsidiary, accountingBook) {
 
 ## Version
 
-These changes were implemented in manifest version **1.5.8.0**.
+*Current Version: 3.0.5.161*

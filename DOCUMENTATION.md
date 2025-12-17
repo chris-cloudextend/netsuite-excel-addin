@@ -1365,8 +1365,9 @@ Backend prints detailed query information:
 | 1.5.33.0 | Dec 2025 | Separate Refresh Accounts from RE/NI/CTA |
 | 1.5.32.0 | Dec 2025 | Fix account type spellings (DeferExpense, DeferRevenue) |
 | 1.5.31.0 | Dec 2025 | Fix Department/Class/Location lookups (direct table queries) |
+| 3.0.5.161 | Dec 2025 | Interactive tutorial, CloudExtend branding, code cleanup for engineering handoff |
 
 ---
 
-*Document Version: 2.5*
-*Last Updated: December 14, 2025*
+*Document Version: 2.6*
+*Last Updated: December 17, 2025*
