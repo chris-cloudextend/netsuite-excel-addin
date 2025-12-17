@@ -5399,10 +5399,10 @@ For licensing inquiries, contact: legal@celigo.com
             if (overlay) overlay.style.display = 'none';
             
             try {
-                // First, select cell C12 to ensure we don't overwrite any existing data
+                // First, select cell A12 to start the bulk add
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    const safeCell = sheet.getRange('C12');
+                    const safeCell = sheet.getRange('A12');
                     safeCell.select();
                     await context.sync();
                 });
@@ -16368,9 +16368,6 @@ export default {
             );
             headerRange.format.font.bold = true;
             headerRange.format.fill.color = '#f3f4f6';
-            
-            // Auto-fit columns
-            targetRange.format.autofitColumns();
             
             await context.sync();
             
