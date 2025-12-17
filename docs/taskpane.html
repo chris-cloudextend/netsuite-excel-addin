@@ -3666,8 +3666,11 @@ For licensing inquiries, contact: legal@celigo.com
                             </div>
                     </div>
                     
-                        <!-- Permissions list -->
-                        <div id="permissionsList" style="margin-top: 8px;">
+                        <!-- Table Permissions list -->
+                        <div id="tablePermissionsSection" style="display: none; margin-bottom: 12px;">
+                            <h4 style="font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 8px;">📋 Table Permissions</h4>
+                            <div id="permissionsList">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3686,7 +3689,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.151</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.152</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -10476,6 +10479,7 @@ export default {
             const featuresSection = settingsInline ? settingsInline.querySelector('#featuresSection') : document.getElementById('featuresSection');
             const subsidiariesSection = settingsInline ? settingsInline.querySelector('#subsidiariesSection') : document.getElementById('subsidiariesSection');
             const subsidiariesList = settingsInline ? settingsInline.querySelector('#subsidiariesList') : document.getElementById('subsidiariesList');
+            const tablePermissionsSection = settingsInline ? settingsInline.querySelector('#tablePermissionsSection') : document.getElementById('tablePermissionsSection');
             const listDiv = settingsInline ? settingsInline.querySelector('#permissionsList') : document.getElementById('permissionsList');
             
             // Show loading state
@@ -10487,6 +10491,7 @@ export default {
             statusDiv.textContent = 'Checking NetSuite account...';
             featuresSection.innerHTML = '';
             subsidiariesSection.style.display = 'none';
+            tablePermissionsSection.style.display = 'none';
             listDiv.innerHTML = '';
             
             try {
@@ -10638,6 +10643,13 @@ export default {
                 const totalCount = tableChecks.length;
                 const allVerified = verifiedCount === totalCount;
                 
+                // Override status banner if table permissions are not all verified
+                if (!allVerified && data.status === 'success') {
+                    statusDiv.style.background = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+                    statusDiv.style.color = '#92400e';
+                    statusDiv.innerHTML = `⚠️ ${verifiedCount}/${totalCount} table permissions verified`;
+                }
+                
                 let listHTML = `
                     <details style="border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
                         <summary style="padding: 10px 12px; background: ${allVerified ? '#ecfdf5' : '#fef3c7'}; cursor: pointer; font-size: 12px; font-weight: 600; color: #374151;">
@@ -10666,6 +10678,9 @@ export default {
                 
                 listHTML += '</div></details>';
                 listDiv.innerHTML = listHTML;
+                
+                // Show the table permissions section
+                tablePermissionsSection.style.display = 'block';
                 
             } catch (error) {
                 statusDiv.style.background = 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)';
