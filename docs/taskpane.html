@@ -3565,7 +3565,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.138</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.139</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4541,7 +4541,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(4)">← Back</button>
                         <button class="onboarding-btn secondary" onclick="autoFillMonths()">Auto-Fill Months</button>
-                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(5)">Complete! →</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(5)">Wildcards →</button>
                     </div>
                 </div>
                 
@@ -4785,7 +4785,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.138"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.139"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -5265,6 +5265,18 @@ For licensing inquiries, contact: legal@celigo.com
             // Get the pattern from the onboarding input
             const pattern = document.getElementById('onboardingBulkAddInput')?.value?.trim() || '*';
             
+            // First, select cell C12 to ensure we don't overwrite any existing data
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const safeCell = sheet.getRange('C12');
+                    safeCell.select();
+                    await context.sync();
+                });
+            } catch (e) {
+                console.log('Could not select C12:', e);
+            }
+            
             // Set the search input value and trigger the search
             const searchInput = document.getElementById('accountSearchInput');
             if (searchInput) {
@@ -5296,6 +5308,15 @@ For licensing inquiries, contact: legal@celigo.com
             // Trigger the drillDownTransactions function (same as Quick Actions bar)
             try {
                 await drillDownTransactions();
+                
+                // After successful drill down, wait a moment then show completion
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // Reopen onboarding and go to the finish step
+                if (overlay) {
+                    overlay.style.display = 'flex';
+                    goToOnboardingStep(10);
+                }
             } catch (e) {
                 console.error('Drill down error:', e);
                 showOnboardingMessage('Drill Down', 'Select a cell with a XAVI.BALANCE formula first, then try again.', 'info');
@@ -5412,8 +5433,11 @@ For licensing inquiries, contact: legal@celigo.com
                     const formulaCell = sheet.getRange('C2');
                     formulaCell.formulas = [['=XAVI.BALANCE($A2, C$1, C$1)']];
                     
-                    // Format
-                    headerRange.format.autofitColumns();
+                    // Set explicit column widths (autofit doesn't work reliably)
+                    // Account # = 12, Account Name = 30, Month columns = 14 each
+                    sheet.getRange('A:A').format.columnWidth = 75;  // ~12 chars
+                    sheet.getRange('B:B').format.columnWidth = 180; // ~30 chars for account names
+                    sheet.getRange('C:N').format.columnWidth = 90;  // ~14 chars for currency values
                     
                     await context.sync();
                     
@@ -5560,14 +5584,15 @@ For licensing inquiries, contact: legal@celigo.com
                     await context.sync();
                 });
                 
-                // Wait for formulas to resolve, then auto-fit columns
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                // Wait for formulas to resolve
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 
-                // Auto-fit all columns after formulas resolve
+                // Ensure column widths are set (autofit doesn't work reliably)
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    const allColumns = sheet.getRange('A:N');
-                    allColumns.format.autofitColumns();
+                    sheet.getRange('A:A').format.columnWidth = 75;  // Account #
+                    sheet.getRange('B:B').format.columnWidth = 180; // Account Name
+                    sheet.getRange('C:N').format.columnWidth = 90;  // Month columns
                     await context.sync();
                 });
                 
