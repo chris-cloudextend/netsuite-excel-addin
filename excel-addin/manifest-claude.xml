@@ -19,13 +19,13 @@ For licensing inquiries, contact: legal@celigo.com
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-5678-90ab-cdef-123456789abc</Id>
-  <Version>3.0.5.156</Version>
+  <Version>3.0.5.157</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="XAVI for NetSuite"/>
   <Description DefaultValue="XAVI - Financial reporting formulas for NetSuite"/>
-  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.156"/>
-  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.156"/>
+  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.157"/>
+  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.157"/>
   <SupportUrl DefaultValue="https://www.cloudextend.io"/>
 
   <Hosts>
@@ -41,7 +41,7 @@ For licensing inquiries, contact: legal@celigo.com
 
   <!-- Task Pane -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.156"/>
+    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.157"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -161,18 +161,18 @@ For licensing inquiries, contact: legal@celigo.com
 
       <!-- Icons -->
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=3.0.5.156"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.156"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=3.0.5.156"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=3.0.5.157"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.157"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=3.0.5.157"/>
       </bt:Images>
 
       <!-- External Files (cache-busted) -->
       <bt:Urls>
         <!-- Taskpane.Url is the SINGLE shared runtime page - used by Runtime, Page, FunctionFile, ShowTaskpane -->
-        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.156"/>
-        <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=3.0.5.156"/>
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.156"/>
-        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.5.156"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.157"/>
+        <bt:Url id="Functions.Page.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.html?v=3.0.5.157"/>
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.157"/>
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.5.157"/>
       </bt:Urls>
 
       <!-- Strings -->
