@@ -3691,7 +3691,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.146</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.147</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4931,7 +4931,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.146"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.147"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -7558,10 +7558,11 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("O16").formulas = [["=SUM(C16:N16)"]];
                     await context.sync();
                     
-                    // Style Net Income row
+                    // Style Net Income row (dark navy with white text - matches Full P&L)
                     const niRange = sheet.getRange("A16:O16");
                     niRange.format.font.bold = true;
-                    niRange.format.fill.color = "#FEF3C7";
+                    niRange.format.fill.color = "#09235C";
+                    niRange.format.font.color = "#FFFFFF";
                     niRange.format.borders.getItem('EdgeTop').style = 'Double';
                     niRange.format.borders.getItem('EdgeBottom').style = 'Double';
                     await context.sync();
@@ -10469,13 +10470,15 @@ export default {
         }
 
         async function checkNetSuitePermissions() {
-            const btn = document.getElementById('checkPermissionsBtn');
-            const resultsDiv = document.getElementById('permissionsResults');
-            const statusDiv = document.getElementById('permissionsStatus');
-            const featuresSection = document.getElementById('featuresSection');
-            const subsidiariesSection = document.getElementById('subsidiariesSection');
-            const subsidiariesList = document.getElementById('subsidiariesList');
-            const listDiv = document.getElementById('permissionsList');
+            // Find elements in the VISIBLE settings panel (inline view)
+            const settingsInline = document.getElementById('settingsViewInline');
+            const btn = settingsInline ? settingsInline.querySelector('#checkPermissionsBtn') : document.getElementById('checkPermissionsBtn');
+            const resultsDiv = settingsInline ? settingsInline.querySelector('#permissionsResults') : document.getElementById('permissionsResults');
+            const statusDiv = settingsInline ? settingsInline.querySelector('#permissionsStatus') : document.getElementById('permissionsStatus');
+            const featuresSection = settingsInline ? settingsInline.querySelector('#featuresSection') : document.getElementById('featuresSection');
+            const subsidiariesSection = settingsInline ? settingsInline.querySelector('#subsidiariesSection') : document.getElementById('subsidiariesSection');
+            const subsidiariesList = settingsInline ? settingsInline.querySelector('#subsidiariesList') : document.getElementById('subsidiariesList');
+            const listDiv = settingsInline ? settingsInline.querySelector('#permissionsList') : document.getElementById('permissionsList');
             
             // Show loading state
             btn.disabled = true;
