@@ -1823,6 +1823,64 @@ window.setAccountNameCache = function(accountNames) {
     return true;
 };
 
+// Function to populate the TYPEBALANCE cache from taskpane batch refresh
+// This dramatically reduces NetSuite API calls for reports with TYPEBALANCE formulas
+// Format: { "Income": { "Jan 2025": 8289880.01, ... }, "COGS": {...}, ... }
+window.setTypeBalanceCache = function(balances, year, subsidiary = '', department = '', location = '', classId = '', accountingBook = '', useSpecial = false) {
+    console.log('========================================');
+    console.log('📦 SETTING TYPEBALANCE CACHE IN FUNCTIONS.JS');
+    console.log(`   Account types: ${Object.keys(balances).length}`);
+    console.log(`   Year: ${year}, Subsidiary: ${subsidiary || '(all)'}`);
+    console.log('========================================');
+    
+    // Initialize typebalance cache if needed
+    if (!cache.typebalance) cache.typebalance = {};
+    
+    const specialFlag = useSpecial ? '1' : '0';
+    let cachedCount = 0;
+    
+    // Populate cache with format matching TYPEBALANCE function cache keys:
+    // typebalance:${normalizedType}:${convertedFromPeriod}:${convertedToPeriod}:${subsidiaryStr}:${departmentStr}:${locationStr}:${classStr}:${bookStr}:${specialFlag}
+    for (const accountType in balances) {
+        const monthData = balances[accountType];
+        
+        for (const period in monthData) {
+            const value = monthData[period];
+            
+            // For P&L types, fromPeriod and toPeriod can be the same (single month)
+            // or we can cache the cumulative as Jan -> period
+            // Cache SINGLE MONTH entries (fromPeriod = toPeriod = period)
+            const cacheKey = `typebalance:${accountType}:${period}:${period}:${subsidiary}:${department}:${location}:${classId}:${accountingBook}:${specialFlag}`;
+            cache.typebalance[cacheKey] = value;
+            cachedCount++;
+            
+            // Also cache cumulative YTD values (Jan -> each month)
+            // This helps when TYPEBALANCE is called with a date range like Jan 2025 -> Mar 2025
+            const janPeriod = `Jan ${year}`;
+            if (period !== janPeriod) {
+                // Calculate cumulative from Jan to this period
+                let ytdValue = 0;
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const periodMonth = period.split(' ')[0];
+                const periodMonthIndex = months.indexOf(periodMonth);
+                
+                for (let i = 0; i <= periodMonthIndex; i++) {
+                    const mp = `${months[i]} ${year}`;
+                    ytdValue += (monthData[mp] || 0);
+                }
+                
+                const ytdCacheKey = `typebalance:${accountType}:${janPeriod}:${period}:${subsidiary}:${department}:${location}:${classId}:${accountingBook}:${specialFlag}`;
+                cache.typebalance[ytdCacheKey] = ytdValue;
+                cachedCount++;
+            }
+        }
+    }
+    
+    console.log(`   TypeBalance cache now has ${cachedCount} entries`);
+    console.log('========================================');
+    return true;
+};
+
 // Check localStorage for cached data
 // Structure: { "4220": { "Apr 2024": 123.45, ... }, ... }
 function checkLocalStorageCache(account, period, toPeriod = null, subsidiary = '') {

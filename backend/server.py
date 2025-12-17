@@ -7449,6 +7449,233 @@ def calculate_type_balance():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/batch/typebalance_refresh', methods=['POST'])
+def batch_typebalance_refresh():
+    """
+    BATCH TYPE BALANCE REFRESH - Get ALL P&L account type balances for a fiscal year in ONE optimized query.
+    
+    This endpoint fetches balances for ALL P&L account types (Income, COGS, Expense, OthIncome, OthExpense)
+    for each month of the specified fiscal year, returning them all in one response.
+    
+    This dramatically reduces NetSuite API calls when loading reports with many TYPEBALANCE formulas.
+    Instead of 5 types × 12 months = 60 API calls, we make just 1 query.
+    
+    POST JSON:
+    {
+        "year": 2025,
+        "subsidiary": "",
+        "department": "",
+        "location": "",
+        "classId": "",
+        "accountingBook": "1"
+    }
+    
+    Returns:
+    {
+        "balances": {
+            "Income": {
+                "Jan 2025": 8289880.01,
+                "Feb 2025": 7654321.00,
+                ...
+            },
+            "COGS": { ... },
+            "Expense": { ... },
+            "OthIncome": { ... },
+            "OthExpense": { ... }
+        },
+        "elapsed_seconds": 12.5,
+        "types_loaded": 5
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        
+        # Extract year
+        fiscal_year = data.get('year')
+        if not fiscal_year:
+            fiscal_year = datetime.now().year
+        
+        # Get filters
+        raw_subsidiary = data.get('subsidiary', '')
+        department = data.get('department', '')
+        location = data.get('location', '')
+        classId = data.get('classId', '')
+        accountingbook = data.get('accountingBook') or DEFAULT_ACCOUNTING_BOOK
+        
+        # Convert names to IDs
+        subsidiary = convert_name_to_id('subsidiary', raw_subsidiary)
+        department = convert_name_to_id('department', department)
+        location = convert_name_to_id('location', location)
+        classId = convert_name_to_id('class', classId)
+        
+        print(f"\n{'='*80}", file=sys.stderr)
+        print(f"🚀 BATCH TYPEBALANCE REFRESH: Year {fiscal_year}", file=sys.stderr)
+        print(f"   subsidiary: '{raw_subsidiary}' → ID {subsidiary}", file=sys.stderr)
+        print(f"   department: '{department}', location: '{location}', class: '{classId}'", file=sys.stderr)
+        print(f"{'='*80}\n", file=sys.stderr)
+        
+        # P&L account types to query
+        PL_TYPES = ['Income', 'COGS', 'Expense', 'OthIncome', 'OthExpense']
+        
+        # Determine target subsidiary for consolidation
+        target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
+        
+        # Get subsidiary hierarchy
+        hierarchy_subs = get_subsidiaries_in_hierarchy(target_sub)
+        sub_filter = ', '.join(hierarchy_subs)
+        
+        # Build segment filters
+        segment_filters = [f"tl.subsidiary IN ({sub_filter})"]
+        if department:
+            segment_filters.append(f"tl.department = {department}")
+        if location:
+            segment_filters.append(f"tl.location = {location}")
+        if classId:
+            segment_filters.append(f"tl.class = {classId}")
+        segment_where = ' AND '.join(segment_filters)
+        
+        # Get fiscal year periods
+        periods_query = f"""
+            SELECT id, periodname, startdate, enddate
+            FROM accountingperiod
+            WHERE isyear = 'F' AND isquarter = 'F'
+              AND EXTRACT(YEAR FROM startdate) = {fiscal_year}
+              AND isadjust = 'F'
+            ORDER BY startdate
+        """
+        periods_result = query_netsuite(periods_query)
+        
+        if not isinstance(periods_result, list) or len(periods_result) == 0:
+            return jsonify({'error': f'No periods found for fiscal year {fiscal_year}'}), 400
+        
+        print(f"📅 Found {len(periods_result)} periods for FY {fiscal_year}", file=sys.stderr)
+        
+        # Build the optimized batch query - one query gets ALL types × ALL months
+        # Using CASE WHEN to pivot account types and months
+        start_time = datetime.now()
+        
+        # Sign flip SQL for income types (they're stored as credits/negative)
+        income_types_sql = "'Income', 'OthIncome'"
+        
+        # Build month columns dynamically based on actual periods
+        month_cases = []
+        for period in periods_result:
+            period_id = period.get('id')
+            period_name = period.get('periodname', '')
+            # Extract month abbreviation from period name (e.g., "Jan 2025" -> "jan")
+            month_abbr = period_name[:3].lower() if period_name else ''
+            if month_abbr:
+                # Handle Dec specially since 'dec' might be reserved
+                col_name = 'dec_month' if month_abbr == 'dec' else month_abbr
+                month_cases.append(f"""
+                    SUM(CASE WHEN t.postingperiod = {period_id} THEN 
+                        TO_NUMBER(BUILTIN.CONSOLIDATE(tal.amount, 'LEDGER', 'DEFAULT', 'DEFAULT', {target_sub}, t.postingperiod, 'DEFAULT'))
+                        * CASE WHEN a.accttype IN ({income_types_sql}) THEN -1 ELSE 1 END
+                    ELSE 0 END) AS {col_name}
+                """)
+        
+        if not month_cases:
+            return jsonify({'error': 'No valid periods found'}), 400
+        
+        month_columns = ',\n'.join(month_cases)
+        
+        # Get all period IDs for the date range filter
+        period_ids = [str(p.get('id')) for p in periods_result]
+        period_filter = ', '.join(period_ids)
+        
+        # Build the main query - pivots by account type
+        query = f"""
+            SELECT 
+                a.accttype AS account_type,
+                {month_columns}
+            FROM transactionaccountingline tal
+            JOIN transaction t ON t.id = tal.transaction
+            JOIN account a ON a.id = tal.account
+            JOIN TransactionLine tl ON t.id = tl.transaction AND tal.transactionline = tl.id
+            WHERE t.posting = 'T'
+              AND tal.posting = 'T'
+              AND a.accttype IN ('Income', 'COGS', 'Expense', 'OthIncome', 'OthExpense')
+              AND t.postingperiod IN ({period_filter})
+              AND tal.accountingbook = {accountingbook}
+              AND {segment_where}
+            GROUP BY a.accttype
+            ORDER BY a.accttype
+        """
+        
+        print(f"📝 Executing batch query...", file=sys.stderr)
+        
+        try:
+            items = run_paginated_suiteql(query, page_size=100, max_pages=1, timeout=120)
+        except Exception as e:
+            print(f"❌ Query error: {e}", file=sys.stderr)
+            return jsonify({'error': f'NetSuite query failed: {str(e)}'}), 500
+        
+        elapsed = (datetime.now() - start_time).total_seconds()
+        print(f"⏱️  Query time: {elapsed:.2f} seconds", file=sys.stderr)
+        print(f"✅ Received {len(items)} account type rows", file=sys.stderr)
+        
+        # Transform results to nested dict: { accountType: { period: value } }
+        balances = {}
+        
+        # Month column mapping
+        month_mapping = {
+            'jan': f'Jan {fiscal_year}',
+            'feb': f'Feb {fiscal_year}',
+            'mar': f'Mar {fiscal_year}',
+            'apr': f'Apr {fiscal_year}',
+            'may': f'May {fiscal_year}',
+            'jun': f'Jun {fiscal_year}',
+            'jul': f'Jul {fiscal_year}',
+            'aug': f'Aug {fiscal_year}',
+            'sep': f'Sep {fiscal_year}',
+            'oct': f'Oct {fiscal_year}',
+            'nov': f'Nov {fiscal_year}',
+            'dec_month': f'Dec {fiscal_year}'
+        }
+        
+        for row in items:
+            acct_type = row.get('account_type', '')
+            if not acct_type:
+                continue
+            
+            balances[acct_type] = {}
+            
+            for col_name, period_name in month_mapping.items():
+                amount = row.get(col_name)
+                if amount is not None:
+                    balances[acct_type][period_name] = float(amount)
+                else:
+                    balances[acct_type][period_name] = 0.0
+            
+            # Log first few for debugging
+            if len(balances) <= 3:
+                sample_month = f'Jan {fiscal_year}'
+                sample_val = balances[acct_type].get(sample_month, 0)
+                print(f"   {acct_type}: {sample_month} = ${sample_val:,.2f}", file=sys.stderr)
+        
+        # For any P&L types not in results (no activity), add zeros
+        for ptype in PL_TYPES:
+            if ptype not in balances:
+                balances[ptype] = {period_name: 0.0 for period_name in month_mapping.values()}
+        
+        print(f"📊 Returning {len(balances)} account types × 12 months", file=sys.stderr)
+        print(f"{'='*80}\n", file=sys.stderr)
+        
+        return jsonify({
+            'balances': balances,
+            'year': fiscal_year,
+            'elapsed_seconds': elapsed,
+            'types_loaded': len(balances),
+            'subsidiary': raw_subsidiary
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in batch typebalance refresh: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/cta', methods=['POST'])
 def calculate_cta():
     """

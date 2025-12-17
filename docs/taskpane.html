@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.166</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.167</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4072,6 +4072,12 @@ For licensing inquiries, contact: legal@celigo.com
                                 <span class="action-icon">📊</span>
                                 <span class="action-text">Recalculate Retained Earnings</span>
                                 <span class="help-icon small" data-tip="Retained Earnings, Net Income, and CTA require full transaction history scan with currency consolidation (up to 5 min). Use after: journal entries, period close, or when values seem stale.">?</span>
+                            </button>
+                            
+                            <button class="action-btn" onclick="batchRefreshTypeBalances()" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);">
+                                <span class="action-icon">📈</span>
+                                <span class="action-text">Preload Type Balances</span>
+                                <span class="help-icon small" data-tip="Pre-fetches ALL P&L account type totals (Income, COGS, Expense, etc.) for the current year in ONE query. Dramatically reduces NetSuite API calls for reports using XAVI.TYPEBALANCE formulas.">?</span>
                             </button>
                             
                             <button class="action-btn" onclick="formatCurrencies()" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);">
@@ -14601,6 +14607,146 @@ export default {
                 } catch (e) {
                     // Ignore cleanup errors
                 }
+                
+                statusEl.innerHTML = `
+                    <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px;">
+                        <strong style="color: #dc2626;">✗ Error</strong><br>
+                        <span style="font-size: 12px; color: #991b1b;">${error.message}</span>
+                    </div>
+                `;
+                
+                setTimeout(() => { statusEl.textContent = ''; }, 8000);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // ============================================
+        // BATCH REFRESH TYPE BALANCES
+        // Pre-fetches ALL P&L account type totals (Income, COGS, Expense, OthIncome, OthExpense)
+        // for the entire fiscal year in ONE query. Dramatically reduces NetSuite API calls
+        // for reports using XAVI.TYPEBALANCE formulas.
+        // ============================================
+        async function batchRefreshTypeBalances() {
+            const statusEl = document.getElementById('refreshStatus');
+            const btn = event.target;
+            
+            try {
+                btn.disabled = true;
+                const start = Date.now();
+                
+                // Get the current year from any date cell or use current year
+                const currentYear = new Date().getFullYear();
+                
+                // Check connection
+                showLoading('Preload Type Balances', 'Verifying connection...', 5);
+                const isConnected = await checkConnectionStatus(true);
+                if (!isConnected) {
+                    hideLoading();
+                    btn.disabled = false;
+                    statusEl.innerHTML = `
+                        <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px;">
+                            <strong style="color: #dc2626;">✗ Not Connected</strong><br>
+                            <span style="font-size: 12px; color: #991b1b;">Cannot reach NetSuite server. Please check your connection.</span>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                updateLoading('Fetching all P&L type balances...', 30, 'This is a single optimized query');
+                
+                // Get current subsidiary from filter if set
+                const subsidiaryValue = document.getElementById('subsidiaryFilter')?.value || '';
+                
+                // Call the batch endpoint
+                const response = await fetch(`${SERVER_URL}/batch/typebalance_refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: currentYear,
+                        subsidiary: subsidiaryValue,
+                        department: '',
+                        location: '',
+                        classId: '',
+                        accountingBook: ''
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server error: ${response.status} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                const balances = data.balances || {};
+                const typesLoaded = Object.keys(balances).length;
+                
+                updateLoading('Populating cache...', 70, `${typesLoaded} account types loaded`);
+                
+                // Populate the frontend cache using the Shared Runtime function
+                if (typeof window.setTypeBalanceCache === 'function') {
+                    window.setTypeBalanceCache(
+                        balances,
+                        currentYear,
+                        subsidiaryValue, // subsidiary
+                        '',              // department
+                        '',              // location
+                        '',              // classId
+                        '',              // accountingBook
+                        false            // useSpecial
+                    );
+                    console.log(`✅ TypeBalance cache populated with ${typesLoaded} types × 12 months`);
+                } else {
+                    console.warn('⚠️ window.setTypeBalanceCache not available (Shared Runtime may not be active)');
+                }
+                
+                // Trigger recalculation of TYPEBALANCE formulas on the sheet
+                updateLoading('Refreshing formulas...', 85);
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load('formulas, rowCount, columnCount');
+                    await context.sync();
+                    
+                    const formulas = usedRange.formulas;
+                    let typebalanceCount = 0;
+                    
+                    for (let row = 0; row < usedRange.rowCount; row++) {
+                        for (let col = 0; col < usedRange.columnCount; col++) {
+                            const formula = formulas[row][col];
+                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.TYPEBALANCE')) {
+                                const cell = usedRange.getCell(row, col);
+                                cell.calculate();
+                                typebalanceCount++;
+                            }
+                        }
+                    }
+                    await context.sync();
+                    
+                    console.log(`⚡ Triggered recalculation of ${typebalanceCount} TYPEBALANCE formulas`);
+                });
+                
+                const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+                
+                hideLoading();
+                
+                // Show success message
+                statusEl.innerHTML = `
+                    <div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px;">
+                        <strong style="color: #059669; font-size: 14px;">✓ Type Balances Preloaded!</strong><br>
+                        <span style="font-size: 12px; color: #047857;">
+                            ${typesLoaded} types × 12 months cached in ${elapsed}s<br>
+                            TYPEBALANCE formulas will now resolve instantly.
+                        </span>
+                    </div>
+                `;
+                
+                setTimeout(() => { statusEl.textContent = ''; }, 10000);
+                
+            } catch (error) {
+                console.error('Error in batch typebalance refresh:', error);
+                hideLoading();
                 
                 statusEl.innerHTML = `
                     <div style="background: #fee2e2; padding: 12px; border-radius: 8px; margin-top: 10px;">
