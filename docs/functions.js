@@ -22,7 +22,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.132';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.133';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -151,19 +151,74 @@ function expandPeriodRangeFromTo(fromPeriod, toPeriod) {
 }
 
 // ============================================================================
+// SAFE LOCALSTORAGE - Handles quota exceeded errors gracefully
+// ============================================================================
+const STORAGE_QUOTA_WARNING_LOGGED = { warned: false };
+
+function safeLocalStorageSet(key, value) {
+    try {
+        localStorage.setItem(key, value);
+        return true;
+    } catch (e) {
+        // QuotaExceededError - localStorage is full
+        if (e.name === 'QuotaExceededError' || e.code === 22) {
+            if (!STORAGE_QUOTA_WARNING_LOGGED.warned) {
+                console.warn('⚠️ localStorage quota exceeded - attempting cleanup');
+                STORAGE_QUOTA_WARNING_LOGGED.warned = true;
+            }
+            
+            // Try to free space by removing old cache data
+            const keysToEvict = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                // Only evict cache keys, not settings/state
+                if (k && (k.includes('_cache') || k.includes('_timestamp'))) {
+                    keysToEvict.push(k);
+                }
+            }
+            
+            // Evict oldest cache entries (up to 5 keys)
+            const toRemove = keysToEvict.slice(0, 5);
+            toRemove.forEach(k => {
+                try { localStorage.removeItem(k); } catch (e2) {}
+            });
+            
+            if (toRemove.length > 0) {
+                console.log(`🗑️ Evicted ${toRemove.length} cache entries to free space`);
+                
+                // Retry the set
+                try {
+                    localStorage.setItem(key, value);
+                    return true;
+                } catch (e3) {
+                    console.error('❌ localStorage still full after eviction');
+                    return false;
+                }
+            }
+        }
+        // Other error - ignore silently
+        return false;
+    }
+}
+
+function safeLocalStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        return null;
+    }
+}
+
+// ============================================================================
 // STATUS BROADCAST - Communicate progress to taskpane via localStorage
 // ============================================================================
 function broadcastStatus(message, progress = 0, type = 'info') {
-    try {
-        localStorage.setItem('netsuite_status', JSON.stringify({
-            message,
-            progress,
-            type,
-            timestamp: Date.now()
-        }));
-    } catch (e) {
-        // localStorage not available - ignore
-    }
+    safeLocalStorageSet('netsuite_status', JSON.stringify({
+        message,
+        progress,
+        type,
+        timestamp: Date.now()
+    }));
 }
 
 function clearStatus() {
@@ -333,19 +388,109 @@ function expandPeriodRange(periods, expandBefore = 1, expandAfter = 1) {
 }
 
 // ============================================================================
-// CACHE - Never expires, persists entire Excel session
+// LRU CACHE - Bounded cache with Least Recently Used eviction
+// Prevents memory growth over long Excel sessions
+// ============================================================================
+class LRUCache {
+    constructor(maxSize = 5000, name = 'cache') {
+        this.maxSize = maxSize;
+        this.name = name;
+        this.cache = new Map();
+    }
+    
+    get(key) {
+        if (!this.cache.has(key)) return undefined;
+        // Move to end (most recently used)
+        const value = this.cache.get(key);
+        this.cache.delete(key);
+        this.cache.set(key, value);
+        return value;
+    }
+    
+    set(key, value) {
+        // Delete first to update position if exists
+        if (this.cache.has(key)) {
+            this.cache.delete(key);
+        }
+        this.cache.set(key, value);
+        
+        // Evict oldest entries if over limit
+        if (this.cache.size > this.maxSize) {
+            const evictCount = Math.floor(this.maxSize * 0.1); // Evict 10%
+            let evicted = 0;
+            for (const oldKey of this.cache.keys()) {
+                if (evicted >= evictCount) break;
+                this.cache.delete(oldKey);
+                evicted++;
+            }
+            console.log(`🗑️ ${this.name}: Evicted ${evicted} old entries (size: ${this.cache.size})`);
+        }
+    }
+    
+    has(key) {
+        return this.cache.has(key);
+    }
+    
+    delete(key) {
+        return this.cache.delete(key);
+    }
+    
+    clear() {
+        this.cache.clear();
+    }
+    
+    get size() {
+        return this.cache.size;
+    }
+    
+    keys() {
+        return this.cache.keys();
+    }
+    
+    entries() {
+        return this.cache.entries();
+    }
+    
+    // For iteration support
+    [Symbol.iterator]() {
+        return this.cache[Symbol.iterator]();
+    }
+    
+    /**
+     * Atomic check-and-set for in-flight request tracking
+     * Returns existing value if key exists, otherwise sets and returns the new value
+     * This prevents race conditions where two concurrent calls both pass has() check
+     */
+    getOrSet(key, valueFactory) {
+        if (this.cache.has(key)) {
+            // Move to end (most recently used) and return existing
+            const value = this.cache.get(key);
+            this.cache.delete(key);
+            this.cache.set(key, value);
+            return { exists: true, value };
+        }
+        // Create new value and store
+        const newValue = valueFactory();
+        this.set(key, newValue);
+        return { exists: false, value: newValue };
+    }
+}
+
+// ============================================================================
+// CACHE - Bounded LRU caches prevent memory growth over long sessions
 // ============================================================================
 const cache = {
-    balance: new Map(),    // balance cache
-    title: new Map(),      // account title cache  
-    budget: new Map(),     // budget cache
-    type: new Map(),       // account type cache
-    parent: new Map()      // parent account cache
+    balance: new LRUCache(10000, 'balance'),   // Balance cache (largest - periods * accounts)
+    title: new LRUCache(5000, 'title'),        // Account title cache  
+    budget: new LRUCache(5000, 'budget'),      // Budget cache
+    type: new LRUCache(2000, 'type'),          // Account type cache (smaller - just metadata)
+    parent: new LRUCache(2000, 'parent')       // Parent account cache (smaller - just metadata)
 };
 
 // In-flight request tracking for expensive calculations (RE, NI, CTA)
 // This prevents duplicate concurrent API calls for the same period
-const inFlightRequests = new Map();
+// Bounded to prevent memory issues if requests never complete
+const inFlightRequests = new LRUCache(500, 'inFlight');
 
 // ============================================================================
 // SPECIAL FORMULA SEMAPHORE - Ensures only ONE special formula runs at a time
@@ -2732,7 +2877,8 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         account = normalizeAccountNumber(account);
         
         if (!account) {
-            return 0;
+            console.error('❌ BALANCE: account parameter is required');
+            return '#MISSING_ACCT#';
         }
         
         // ================================================================
@@ -3004,7 +3150,7 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         
     } catch (error) {
         console.error('BALANCE error:', error);
-        return 0;
+        return '#ERROR#';
     }
 }
 
@@ -3031,7 +3177,8 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
         account = normalizeAccountNumber(account);
         
         if (!account) {
-            return 0;
+            console.error('❌ BUDGET: account parameter is required');
+            return '#MISSING_ACCT#';
         }
         
         // Convert date values to "Mon YYYY" format (supports both dates and period strings)
@@ -3097,7 +3244,10 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error(`Budget API error: ${response.status}`, errorText);
-                return 0;
+                if (response.status === 524 || response.status === 522 || response.status === 504) {
+                    return '#TIMEOUT#';
+                }
+                return '#API_ERR#';
             }
             
             const text = await response.text();
@@ -3111,12 +3261,15 @@ async function BUDGET(account, fromPeriod, toPeriod, subsidiary, department, loc
             
         } catch (error) {
             console.error('Budget fetch error:', error);
-            return 0;
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                return '#OFFLINE#';
+            }
+            return '#ERROR#';
         }
         
     } catch (error) {
         console.error('BUDGET error:', error);
-        return 0;
+        return '#ERROR#';
     }
 }
 
@@ -4078,8 +4231,8 @@ async function RETAINEDEARNINGS(period, subsidiary, accountingBook, classId, dep
         period = convertToMonthYear(period, false);  // false = use Dec for year-only
         
         if (!period) {
-            console.error('RETAINEDEARNINGS: period is required');
-            return 0;
+            console.error('❌ RETAINEDEARNINGS: period is required');
+            return '#MISSING_PERIOD#';
         }
         
         console.log(`📊 RETAINEDEARNINGS: Calculating as of ${period}`);
@@ -4280,7 +4433,7 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
         // Validate fromPeriod is provided
         if (fromPeriod === undefined || fromPeriod === null || fromPeriod === '') {
             console.error('❌ NETINCOME: fromPeriod is required');
-            return 0;  // Return 0 instead of string error
+            return '#MISSING_PERIOD#';
         }
         
         // Convert fromPeriod - for year-only, use Jan (start of year)
@@ -4307,12 +4460,12 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
         
         if (!convertedFromPeriod) {
             console.error('❌ NETINCOME: Could not parse fromPeriod:', rawFromPeriod);
-            return 0;  // Return 0 instead of string error
+            return '#INVALID_PERIOD#';
         }
         
         if (!convertedToPeriod) {
             console.error('❌ NETINCOME: Could not parse toPeriod:', rawToPeriod);
-            return 0;  // Return 0 instead of string error
+            return '#INVALID_PERIOD#';
         }
         
         // Normalize optional parameters - NO guessing, just clean strings
@@ -4497,7 +4650,7 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
         const normalizedType = String(accountType || '').trim();
         if (!normalizedType) {
             console.error('❌ TYPEBALANCE: accountType is required');
-            return 0;
+            return '#MISSING_TYPE#';
         }
         
         // Check if using special account type (sspecacct) - parameter is 1 or "1" or true
@@ -4535,7 +4688,7 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
             // Using regular account type - strict validation
             if (!ALL_TYPES.includes(normalizedType)) {
                 console.error(`❌ TYPEBALANCE: Invalid account type "${normalizedType}". Valid types: ${ALL_TYPES.join(', ')}`);
-                return 0;
+                return '#INVALID_TYPE#';
             }
         }
         
@@ -4548,7 +4701,7 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
         let convertedToPeriod = convertToMonthYear(toPeriod, false); // false = use Dec for year-only
         if (!convertedToPeriod) {
             console.error('❌ TYPEBALANCE: toPeriod is required');
-            return 0;
+            return '#MISSING_PERIOD#';
         }
         
         let convertedFromPeriod = '';
@@ -4561,7 +4714,7 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
             convertedFromPeriod = convertToMonthYear(fromPeriod, true); // true = use Jan for year-only
             if (!convertedFromPeriod) {
                 console.error('❌ TYPEBALANCE: fromPeriod is required for P&L account types');
-                return 0;
+                return '#MISSING_PERIOD#';
             }
             const modeLabel = useSpecial ? 'special account' : 'account';
             console.log(`📊 TYPEBALANCE: P&L ${modeLabel} type "${normalizedType}" - range ${convertedFromPeriod} → ${convertedToPeriod}`);
@@ -4617,7 +4770,10 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
                     console.error(`❌ TYPEBALANCE API error: ${response.status} - ${errorText}`);
                     releaseSpecialFormulaLock(cacheKey);
                     inFlightRequests.delete(cacheKey);  // MUST delete or future calls hang forever
-                    return 0;
+                    if (response.status === 524 || response.status === 522 || response.status === 504) {
+                        return '#TIMEOUT#';
+                    }
+                    return '#API_ERR#';
                 }
                 
                 const data = await response.json();
@@ -4640,7 +4796,10 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
                 console.error('TYPEBALANCE fetch error:', error);
                 releaseSpecialFormulaLock(cacheKey);
                 inFlightRequests.delete(cacheKey);
-                return 0;
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    return '#OFFLINE#';
+                }
+                return '#ERROR#';
             }
         })();
         
@@ -4649,7 +4808,7 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
         
     } catch (error) {
         console.error('TYPEBALANCE error:', error);
-        return 0;
+        return '#ERROR#';
     }
 }
 
@@ -4675,8 +4834,8 @@ async function CTA(period, subsidiary, accountingBook) {
         period = convertToMonthYear(period, false);  // false = use Dec for year-only
         
         if (!period) {
-            console.error('CTA: period is required');
-            return 0;
+            console.error('❌ CTA: period is required');
+            return '#MISSING_PERIOD#';
         }
         
         console.log(`📊 CTA: Calculating as of ${period}`);
