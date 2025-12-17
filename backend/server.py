@@ -6060,6 +6060,10 @@ def get_transactions():
         print(f"DEBUG - Query result type: {type(result)}", file=sys.stderr)
         if isinstance(result, list):
             print(f"DEBUG - Found {len(result)} transactions", file=sys.stderr)
+            if len(result) > 0:
+                # Log first transaction to see column names and values
+                print(f"DEBUG - First transaction raw data: {result[0]}", file=sys.stderr)
+                print(f"DEBUG - Column names: {list(result[0].keys())}", file=sys.stderr)
         
         if isinstance(result, dict) and 'error' in result:
             print(f"DEBUG - Query error: {result}", file=sys.stderr)

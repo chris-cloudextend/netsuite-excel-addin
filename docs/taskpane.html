@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.163</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.164</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -15561,17 +15561,23 @@ export default {
                     sheet.load('name');
                     await context.sync();
                     
+                    console.log(`🔍 Drill-down: checking sheet "${sheet.name}", address="${address}"`);
+                    
                     if (sheet.name.startsWith('DrillDown_')) {
+                        console.log(`🔍 On DrillDown_ sheet - checking for context`);
                         // Check for drill-down context in row 3
                         const contextCell = sheet.getRange('A3');
                         contextCell.load('values');
                         await context.sync();
                         
                         const contextValue = String(contextCell.values[0][0] || '');
+                        console.log(`🔍 A3 context value: "${contextValue}"`);
+                        
                         if (contextValue.startsWith('DRILLDOWN_CONTEXT:')) {
                             // This is a TYPEBALANCE drill-down sheet - get account from column A
                             const rowMatch = address.match(/\d+/);
                             const row = rowMatch ? parseInt(rowMatch[0]) : 0;
+                            console.log(`🔍 Row from address: ${row}`);
                             
                             if (row >= 6) {
                                 // Get account number from column A
@@ -15580,6 +15586,8 @@ export default {
                                 await context.sync();
                                 
                                 const account = String(acctCell.values[0][0] || '');
+                                console.log(`🔍 Account from column A: "${account}"`);
+                                
                                 if (account && account !== 'TOTAL') {
                                     // Parse context: DRILLDOWN_CONTEXT:period:subsidiary
                                     const parts = contextValue.split(':');
