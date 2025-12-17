@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.174</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.175</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4985,7 +4985,19 @@ For licensing inquiries, contact: legal@celigo.com
         
         // Register globally IMMEDIATELY so ExecuteFunction can find it
         window.drillDownFromContextMenu = drillDownFromContextMenu;
-        console.log('✅ drillDownFromContextMenu registered EARLY on window object');
+        
+        // Also register via Office.actions if available (preferred method for ExecuteFunction)
+        // This MUST happen synchronously at script load time
+        try {
+            if (typeof Office !== 'undefined' && Office.actions && Office.actions.associate) {
+                Office.actions.associate("drillDownFromContextMenu", drillDownFromContextMenu);
+                console.log('✅ drillDownFromContextMenu registered via Office.actions.associate');
+            } else {
+                console.log('✅ drillDownFromContextMenu registered on window (Office.actions not ready yet)');
+            }
+        } catch (e) {
+            console.log('✅ drillDownFromContextMenu registered on window (Office.actions error: ' + e.message + ')');
+        }
         
         // SERVER_URL is defined in functions.js (loaded via shared runtime)
         // Do NOT redeclare it here to avoid duplicate variable error
@@ -8100,6 +8112,21 @@ For licensing inquiries, contact: legal@celigo.com
                 const accountNames = refreshData.account_names || {};
                 
                 console.log(`Income Statement: Loaded ${Object.keys(allBalances).length} accounts`);
+                
+                // CRITICAL: Save to localStorage so XAVI.BALANCE formulas can use cached data
+                // This prevents individual API calls for each formula cell
+                console.log('💾 Income Statement: Saving BALANCE cache to localStorage...');
+                try {
+                    const cacheData = {};
+                    for (const acctNum in allBalances) {
+                        cacheData[acctNum] = allBalances[acctNum];
+                    }
+                    localStorage.setItem('netsuite_balance_cache', JSON.stringify(cacheData));
+                    localStorage.setItem('netsuite_balance_cache_timestamp', Date.now().toString());
+                    console.log(`✅ Income Statement: Saved ${Object.keys(cacheData).length} accounts to localStorage`);
+                } catch (e) {
+                    console.warn('⚠️ Income Statement: localStorage save failed:', e.message);
+                }
                 
                 // Step 2: Categorize accounts by type
                 updateProgress(35, '🔍 Step 2 of 5: Categorizing', 'Grouping accounts by type...');
