@@ -228,6 +228,41 @@ Build a complete P&L summary in just 4 formulas:
 =XAVI.BALANCE("4*", "2025", "2025", "Celigo Australia")       → Australia Revenue
 ```
 
+### Combining XAVI Formulas with Excel Math
+
+XAVI formulas return numbers, so you can use standard Excel operations to combine them. This is powerful for calculating margins, variances, and custom metrics.
+
+**Gross Profit (Revenue minus COGS):**
+```
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Inc. (Consolidated)")
+ - XAVI.BALANCE("5*", "2025", "2025", "Celigo Inc. (Consolidated)")
+```
+
+**Gross Margin Percentage:**
+```
+=(XAVI.BALANCE("4*", "2025", "2025") - XAVI.BALANCE("5*", "2025", "2025"))
+ / XAVI.BALANCE("4*", "2025", "2025")
+```
+
+**Year-over-Year Variance:**
+```
+=XAVI.BALANCE("4*", "2025", "2025") - XAVI.BALANCE("4*", "2024", "2024")
+```
+
+**Budget vs. Actual:**
+```
+=XAVI.BALANCE("6*", "Jan 2025", "Jan 2025") - XAVI.BUDGET("6*", "Jan 2025", "Jan 2025")
+```
+
+**Sum Multiple Subsidiaries (alternative to Consolidated):**
+```
+=XAVI.BALANCE("4*", "2025", "2025", "Celigo Inc.")
+ + XAVI.BALANCE("4*", "2025", "2025", "Celigo Europe B.V.")
+ + XAVI.BALANCE("4*", "2025", "2025", "Celigo Australia")
+```
+
+> **Tip:** For cleaner formulas, put each XAVI.BALANCE in its own cell, then use a simple formula like `=B2-B3` or `=SUM(B2:B4)` to combine them.
+
 ---
 
 ## Filtering by Subsidiary, Department, Class, Location
