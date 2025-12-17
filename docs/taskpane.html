@@ -3565,7 +3565,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.136</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.137</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4534,6 +4534,10 @@ For licensing inquiries, contact: legal@celigo.com
                             <div class="demo-arrow-right">→ Drag</div>
                         </div>
                     </div>
+                    <div class="busy-notice">
+                        <span class="busy-icon">⏳</span>
+                        <span>You'll see <strong>#BUSY</strong> while we fetch data from NetSuite — that's us doing all the heavy lifting! Each cell will resolve in moments.</span>
+                    </div>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(4)">← Back</button>
                         <button class="onboarding-btn secondary" onclick="autoFillMonths()">Auto-Fill Months</button>
@@ -4632,20 +4636,23 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-icon">🔍</div>
                     <h2>Drill Into the Data</h2>
                     <p class="onboarding-desc">
-                        Want to see the transactions behind any number? Use <strong>Drill Down</strong>!
+                        Want to see the transactions behind any number? Use <strong>View Transactions</strong>!
                     </p>
                     <div class="onboarding-steps-list">
                         <div class="step-item">1️⃣ Click any cell with a BALANCE formula</div>
                         <div class="step-item">2️⃣ <strong>Right-click</strong> → Select <strong>"CloudExtend"</strong></div>
-                        <div class="step-item">3️⃣ Choose <strong>"Drill Down"</strong></div>
-                        <div class="step-item">4️⃣ See all transactions that make up the total!</div>
+                        <div class="step-item">3️⃣ Choose <strong>"View Transactions"</strong></div>
                     </div>
                     <div class="drill-demo-box">
                         <button class="drill-demo-btn" onclick="demoSelectForDrill()">
-                            🎯 Try It! Select a BALANCE Cell
+                            🎯 Select a BALANCE Cell
                         </button>
-                        <p class="drill-demo-hint" id="drillDemoHint">Click a cell with a XAVI.BALANCE formula, then right-click → CloudExtend → Drill Down</p>
+                        <button class="onboarding-btn secondary" onclick="doDrillDownFromOnboarding()" style="width: 100%; margin-top: 8px;">
+                            🔍 Drill Down Now
+                        </button>
+                        <p class="drill-demo-hint" id="drillDemoHint">Select a cell, then click "Drill Down Now" above — or use right-click → CloudExtend → View Transactions</p>
                     </div>
+                    <p class="onboarding-tip">💡 You can also use the <strong>Drill Down</strong> button in the Quick Actions bar at the bottom!</p>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(8)">← Back</button>
                         <button class="onboarding-btn primary" onclick="goToOnboardingStep(10)">Finish →</button>
@@ -4778,7 +4785,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.136"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.137"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -5244,6 +5251,22 @@ For licensing inquiries, contact: legal@celigo.com
             
             // Reopen onboarding
             if (overlay) overlay.style.display = 'flex';
+        }
+        
+        async function doDrillDownFromOnboarding() {
+            // Close the onboarding overlay temporarily
+            const overlay = document.getElementById('onboardingOverlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            // Trigger the drillDown function (same as Quick Actions bar)
+            try {
+                await drillDown();
+            } catch (e) {
+                console.error('Drill down error:', e);
+                showOnboardingMessage('Drill Down', 'Select a cell with a XAVI.BALANCE formula first, then try again.', 'info');
+                // Reopen onboarding on error
+                if (overlay) overlay.style.display = 'flex';
+            }
         }
         
         function restartOnboarding() {
