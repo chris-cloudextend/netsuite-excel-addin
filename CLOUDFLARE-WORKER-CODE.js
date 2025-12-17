@@ -20,15 +20,15 @@
 // 4. Replace ALL code with this file
 // 5. Click: Save and Deploy
 //
-// CURRENT TUNNEL URL: https://streams-interfaces-programmer-activists.trycloudflare.com
+// CURRENT TUNNEL URL: https://passenger-hist-invoice-displays.trycloudflare.com
 // CURRENT ACCOUNT: 589861 (Production)
-// Last Updated: Dec 15, 2025
+// Last Updated: Dec 17, 2025
 // ════════════════════════════════════════════════════════════════════
 
 export default {
   async fetch(request) {
     // ⚠️ UPDATE THIS LINE when tunnel URL changes:
-    const TUNNEL_URL = 'https://golden-extreme-fails-strain.trycloudflare.com';
+    const TUNNEL_URL = 'https://passenger-hist-invoice-displays.trycloudflare.com';
 
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {

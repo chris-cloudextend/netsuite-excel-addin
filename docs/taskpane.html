@@ -2920,6 +2920,127 @@ For licensing inquiries, contact: legal@celigo.com
             font-size: 11px;
         }
         
+        /* Drill Demo Box */
+        .drill-demo-box {
+            margin: 16px 0;
+            padding: 14px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .drill-demo-btn {
+            background: linear-gradient(135deg, var(--tidal-wave) 0%, #60a5fa 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .drill-demo-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        
+        .drill-demo-hint {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+        
+        /* Celebration Graphics */
+        .onboarding-celebration {
+            position: relative;
+            height: 100px;
+            margin-bottom: 10px;
+        }
+        
+        .spreadsheet-party {
+            display: grid;
+            grid-template-columns: repeat(3, 40px);
+            grid-template-rows: repeat(2, 35px);
+            gap: 4px;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        
+        .cell-char {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            animation: cellPop 0.5s ease-out backwards;
+        }
+        
+        .cell-a1 { animation-delay: 0.1s; }
+        .cell-b1 { animation-delay: 0.2s; }
+        .cell-c1 { animation-delay: 0.3s; }
+        .cell-a2 { animation-delay: 0.4s; }
+        .cell-b2 { animation-delay: 0.5s; }
+        .cell-c2 { animation-delay: 0.6s; }
+        
+        @keyframes cellPop {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .confetti-container {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 80px;
+            pointer-events: none;
+        }
+        
+        .confetti {
+            position: absolute;
+            font-size: 16px;
+            animation: confettiFall 3s ease-out infinite;
+            opacity: 0;
+        }
+        
+        .confetti:nth-child(1) { left: 10%; animation-delay: 0s; color: #fbbf24; }
+        .confetti:nth-child(2) { left: 25%; animation-delay: 0.3s; color: #22c55e; }
+        .confetti:nth-child(3) { left: 40%; animation-delay: 0.6s; color: #3b82f6; }
+        .confetti:nth-child(4) { left: 55%; animation-delay: 0.2s; color: #ec4899; }
+        .confetti:nth-child(5) { left: 70%; animation-delay: 0.5s; color: #8b5cf6; }
+        .confetti:nth-child(6) { left: 85%; animation-delay: 0.8s; color: #14b8a6; }
+        
+        @keyframes confettiFall {
+            0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(80px) rotate(360deg); opacity: 0; }
+        }
+        
+        .onboarding-desc.geeky {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--anenome);
+        }
+        
+        .celebration-btn {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace !important;
+        }
+        
+        .final-tip {
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 12px;
+        }
+        
         /* Onboarding Confirm Dialog */
         .onboarding-confirm-overlay {
             position: fixed;
@@ -3380,7 +3501,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.131</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.132</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4238,6 +4359,7 @@ For licensing inquiries, contact: legal@celigo.com
                         <span class="dot" data-step="7"></span>
                         <span class="dot" data-step="8"></span>
                         <span class="dot" data-step="9"></span>
+                        <span class="dot" data-step="10"></span>
                     </div>
                     <button class="onboarding-skip" onclick="skipOnboarding()">Skip</button>
                     <button class="onboarding-restart" onclick="restartOnboarding()">↺ Start Over</button>
@@ -4429,24 +4551,64 @@ For licensing inquiries, contact: legal@celigo.com
                     </div>
                 </div>
                 
-                <!-- Step 9: Complete -->
+                <!-- Step 9: Drill Down -->
                 <div class="onboarding-step" id="onboardingStep9">
-                    <div class="onboarding-icon">🏆</div>
-                    <h2>You're a Pro!</h2>
+                    <div class="onboarding-icon">🔍</div>
+                    <h2>Drill Into the Data</h2>
                     <p class="onboarding-desc">
-                        Here's your quick reference:
+                        Want to see the transactions behind any number? Use <strong>Drill Down</strong>!
+                    </p>
+                    <div class="onboarding-steps-list">
+                        <div class="step-item">1️⃣ Click any cell with a BALANCE formula</div>
+                        <div class="step-item">2️⃣ Click the <strong>"Drill Down"</strong> button below</div>
+                        <div class="step-item">3️⃣ See all transactions that make up the total!</div>
+                    </div>
+                    <div class="drill-demo-box">
+                        <button class="drill-demo-btn" onclick="demoSelectForDrill()">
+                            🎯 Try It! Select a BALANCE Cell
+                        </button>
+                        <p class="drill-demo-hint" id="drillDemoHint">Click a cell with a XAVI.BALANCE formula, then use the Drill Down button in the Quick Actions bar</p>
+                    </div>
+                    <div class="onboarding-nav">
+                        <button class="onboarding-btn text" onclick="goToOnboardingStep(8)">← Back</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(10)">Almost Done! →</button>
+                    </div>
+                </div>
+                
+                <!-- Step 10: Complete -->
+                <div class="onboarding-step" id="onboardingStep10">
+                    <div class="onboarding-celebration">
+                        <div class="spreadsheet-party">
+                            <div class="cell-char cell-a1">📊</div>
+                            <div class="cell-char cell-b1">🎉</div>
+                            <div class="cell-char cell-c1">💰</div>
+                            <div class="cell-char cell-a2">🧮</div>
+                            <div class="cell-char cell-b2">⚡</div>
+                            <div class="cell-char cell-c2">📈</div>
+                        </div>
+                        <div class="confetti-container">
+                            <span class="confetti">📐</span>
+                            <span class="confetti">∑</span>
+                            <span class="confetti">=</span>
+                            <span class="confetti">#</span>
+                            <span class="confetti">$</span>
+                            <span class="confetti">%</span>
+                        </div>
+                    </div>
+                    <h2>You're an Excel Wizard! 🧙‍♂️</h2>
+                    <p class="onboarding-desc geeky">
+                        =IF(you_completed_tutorial, "AMAZING!", "impossible")
                     </p>
                     <div class="cheat-sheet compact">
-                        <div class="cheat-item"><code>BALANCE(acct, from, to)</code> <span>Account balance</span></div>
-                        <div class="cheat-item"><code>BALANCE("4*", ...)</code> <span>Wildcard sum</span></div>
-                        <div class="cheat-item"><code>TYPEBALANCE(type, ...)</code> <span>Sum by type</span></div>
-                        <div class="cheat-item"><code>NAME(acct)</code> <span>Account name</span></div>
-                        <div class="cheat-item"><code>BUDGET(acct, period)</code> <span>Budget amount</span></div>
+                        <div class="cheat-item"><code>BALANCE(acct, from, to)</code> <span>Balance</span></div>
+                        <div class="cheat-item"><code>BALANCE("4*", ...)</code> <span>Wildcard</span></div>
+                        <div class="cheat-item"><code>TYPEBALANCE(type, ...)</code> <span>By type</span></div>
                         <div class="cheat-item"><code>NETINCOME(from, to)</code> <span>Net income</span></div>
                     </div>
-                    <button class="onboarding-btn primary" onclick="finishOnboarding()">
-                        Start Building! 🚀
+                    <button class="onboarding-btn primary celebration-btn" onclick="finishOnboarding()">
+                        =START_BUILDING() 🚀
                     </button>
+                    <p class="final-tip">Pro tip: Your formulas auto-save. Come back anytime!</p>
                 </div>
             </div>
         </div>
@@ -4538,7 +4700,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.131"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.132"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -4936,7 +5098,7 @@ For licensing inquiries, contact: legal@celigo.com
         
         function goToOnboardingStep(step) {
             // Hide all steps
-            const steps = ['1', '2', '3', '4', '4b', '5', '6', '7', '8', '9'];
+            const steps = ['1', '2', '3', '4', '4b', '5', '6', '7', '8', '9', '10'];
             steps.forEach(s => {
                 const el = document.getElementById(`onboardingStep${s}`);
                 if (el) el.classList.remove('active');
@@ -4949,7 +5111,7 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         function updateOnboardingProgress() {
-            const stepOrder = ['1', '2', '3', '4', '4b', '5', '6', '7', '8', '9'];
+            const stepOrder = ['1', '2', '3', '4', '4b', '5', '6', '7', '8', '9', '10'];
             const currentIdx = stepOrder.indexOf(String(onboardingState.currentStep));
             const dots = document.querySelectorAll('.progress-dots .dot');
             dots.forEach((dot, index) => {
@@ -4960,6 +5122,23 @@ For licensing inquiries, contact: legal@celigo.com
                     dot.classList.add('completed');
                 }
             });
+        }
+        
+        async function demoSelectForDrill() {
+            // Try to select a cell with a BALANCE formula for the user
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    // Select C2 which should have a BALANCE formula from the tutorial
+                    const cell = sheet.getRange('C2');
+                    cell.select();
+                    await context.sync();
+                });
+                document.getElementById('drillDemoHint').innerHTML = '✅ Cell selected! Now click <strong>Drill Down</strong> in the Quick Actions bar below.';
+                document.getElementById('drillDemoHint').style.color = '#047857';
+            } catch (e) {
+                console.error('Error selecting cell:', e);
+            }
         }
         
         function restartOnboarding() {
