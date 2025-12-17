@@ -22,7 +22,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.161';  // Version marker for debugging
+const FUNCTIONS_VERSION = '3.0.5.174';  // Version marker for debugging
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -4825,11 +4825,14 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
         
         // Check localStorage if in-memory cache misses
         // This is CRITICAL when functions.html loads AFTER taskpane has pre-fetched data
+        let localStorageStatus = 'not checked';
+        let localStorageKeyCount = 0;
         try {
             const stored = localStorage.getItem(TYPEBALANCE_STORAGE_KEY);
             if (stored) {
                 const storageData = JSON.parse(stored);
                 const storedBalances = storageData.balances || {};
+                localStorageKeyCount = Object.keys(storedBalances).length;
                 
                 // Check if this key exists in localStorage
                 if (storedBalances[cacheKey] !== undefined) {
@@ -4838,18 +4841,23 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
                     // Populate in-memory cache from localStorage for future lookups
                     if (!cache.typebalance) cache.typebalance = {};
                     cache.typebalance = { ...cache.typebalance, ...storedBalances };
-                    console.log(`   💾 Restored ${Object.keys(storedBalances).length} entries from localStorage to memory`);
+                    console.log(`   💾 Restored ${localStorageKeyCount} entries from localStorage to memory`);
                     
                     return storedBalances[cacheKey];
                 }
+                localStorageStatus = `has ${localStorageKeyCount} keys but NOT our key`;
+            } else {
+                localStorageStatus = 'EMPTY (no data from taskpane)';
             }
         } catch (e) {
+            localStorageStatus = `ERROR: ${e.message}`;
             console.warn('⚠️ localStorage read failed:', e.message);
         }
         
         // Log cache miss with details for debugging
         const cacheSize = cache.typebalance ? Object.keys(cache.typebalance).length : 0;
-        console.log(`❌ TYPEBALANCE cache MISS: "${cacheKey}" (memory: ${cacheSize} entries)`);
+        console.log(`❌ TYPEBALANCE cache MISS: "${cacheKey}"`);
+        console.log(`   📦 memory: ${cacheSize} entries, localStorage: ${localStorageStatus}`);
         
         // Check in-flight
         if (inFlightRequests.has(cacheKey)) {

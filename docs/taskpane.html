@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.173</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.174</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -7570,26 +7570,52 @@ For licensing inquiries, contact: legal@celigo.com
                         
                         console.log(`✅ CFO Flash: Pre-fetched ${typesLoaded} account types × 12 months`);
                         
-                        // Populate the frontend cache so TYPEBALANCE formulas resolve instantly
-                        console.log('🔍 CFO Flash: Checking if setTypeBalanceCache is available...');
-                        console.log(`   typeof window.setTypeBalanceCache = ${typeof window.setTypeBalanceCache}`);
+                        // CRITICAL: Save directly to localStorage - don't rely on setTypeBalanceCache
+                        // because functions.js may not be loaded yet!
+                        console.log('💾 CFO Flash: Saving TYPEBALANCE cache directly to localStorage...');
+                        console.log(`   - ${Object.keys(balances).length} account types`);
+                        console.log(`   - Year: ${currentYear}`);
+                        console.log(`   - Subsidiary: "${defaultSubsidiary}"`);
                         
-                        if (typeof window.setTypeBalanceCache === 'function') {
-                            console.log('🚀 CFO Flash: Calling setTypeBalanceCache with:');
-                            console.log(`   - ${Object.keys(balances).length} account types`);
-                            console.log(`   - Year: ${currentYear}`);
-                            console.log(`   - Subsidiary: "${defaultSubsidiary}"`);
+                        try {
+                            // Build cache entries with exact same key format as TYPEBALANCE function uses
+                            const cacheEntries = {};
+                            const specialFlag = '0'; // useSpecial = false
                             
-                            window.setTypeBalanceCache(
-                                balances,
-                                currentYear,
-                                defaultSubsidiary,
-                                '', '', '', '', false
-                            );
-                            console.log('✅ CFO Flash: setTypeBalanceCache call completed!');
-                        } else {
-                            console.error('❌ CFO Flash: setTypeBalanceCache NOT AVAILABLE!');
-                            console.error('   Shared Runtime may not be active - formulas will load one at a time');
+                            for (const accountType in balances) {
+                                const monthData = balances[accountType];
+                                for (const period in monthData) {
+                                    const value = monthData[period];
+                                    // Key format: typebalance:${type}:${from}:${to}:${sub}:${dept}:${loc}:${class}:${book}:${special}
+                                    const cacheKey = `typebalance:${accountType}:${period}:${period}:${defaultSubsidiary}:::::${specialFlag}`;
+                                    cacheEntries[cacheKey] = value;
+                                }
+                            }
+                            
+                            const storageData = {
+                                balances: cacheEntries,
+                                year: currentYear,
+                                subsidiary: defaultSubsidiary,
+                                timestamp: Date.now()
+                            };
+                            
+                            localStorage.setItem('netsuite_typebalance_cache', JSON.stringify(storageData));
+                            localStorage.setItem('netsuite_typebalance_cache_timestamp', Date.now().toString());
+                            
+                            console.log(`✅ CFO Flash: Saved ${Object.keys(cacheEntries).length} cache entries to localStorage`);
+                            
+                            // Log sample keys for debugging
+                            const sampleKeys = Object.keys(cacheEntries).slice(0, 3);
+                            console.log('   Sample keys:');
+                            sampleKeys.forEach(k => console.log(`      "${k}"`));
+                            
+                        } catch (e) {
+                            console.error('❌ CFO Flash: localStorage save failed:', e.message);
+                        }
+                        
+                        // Also try to call setTypeBalanceCache if available (for in-memory cache)
+                        if (typeof window.setTypeBalanceCache === 'function') {
+                            window.setTypeBalanceCache(balances, currentYear, defaultSubsidiary, '', '', '', '', false);
                         }
                     } else {
                         console.warn('⚠️ CFO Flash: TypeBalance pre-fetch failed, formulas will load individually');
