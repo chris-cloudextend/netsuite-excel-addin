@@ -3689,7 +3689,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.154</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.155</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5828,18 +5828,9 @@ For licensing inquiries, contact: legal@celigo.com
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Find the last used row to write BELOW any existing data
-                    let startRow = 8;  // Default if sheet is mostly empty
-                    try {
-                        const usedRange = sheet.getUsedRange();
-                        usedRange.load('rowCount', 'rowIndex');
-                        await context.sync();
-                        // Start 3 rows below the last used row
-                        startRow = usedRange.rowIndex + usedRange.rowCount + 3;
-                    } catch (e) {
-                        // Sheet might be empty, use default
-                        startRow = 8;
-                    }
+                    // Fixed position at G12 - safe spot that won't conflict with tutorial data
+                    const startRow = 12;
+                    const startCol = 'G';
                     
                     // Dot matrix patterns for letters (5 rows x variable width)
                     const letters = {
@@ -5936,7 +5927,7 @@ For licensing inquiries, contact: legal@celigo.com
                     // Write each row to Excel as a merged cell with the dot matrix text
                     for (let row = 0; row < 5; row++) {
                         const cellRow = startRow + row;
-                        const cell = sheet.getRange(`A${cellRow}`);
+                        const cell = sheet.getRange(`${startCol}${cellRow}`);
                         cell.values = [[output[row]]];
                         cell.format.font.name = 'Courier New';
                         cell.format.font.size = 10;
@@ -5945,7 +5936,7 @@ For licensing inquiries, contact: legal@celigo.com
                     }
                     
                     // Add a congratulations message below
-                    const msgCell = sheet.getRange(`A${startRow + 6}`);
+                    const msgCell = sheet.getRange(`${startCol}${startRow + 6}`);
                     msgCell.values = [['🎉 Congratulations! You\'ve mastered XAVI! 🎉']];
                     msgCell.format.font.bold = true;
                     msgCell.format.font.size = 12;
@@ -16319,7 +16310,10 @@ export default {
             
             console.log(`Inserting ${accounts.length} accounts at ${range.address}`);
             
-            // Prepare data WITHOUT headers (just the data)
+            // Headers row
+            const headers = ['Account Type', 'Spec Acct Type', 'Account Number', 'Account Name'];
+            
+            // Prepare data rows
             // Order: Type, Special Account Type, Number, Name
             const dataRows = accounts.map(acc => [
                 acc.accttype || '',
@@ -16328,23 +16322,36 @@ export default {
                 acc.accountname || ''
             ]);
             
-            // Get the range starting at cursor position
+            // Combine headers + data
+            const allRows = [headers, ...dataRows];
+            
+            // Get the range starting at cursor position (headers + data)
             const targetRange = sheet.getRangeByIndexes(
                 range.rowIndex,
                 range.columnIndex,
-                dataRows.length,
-                4  // Now 4 columns
+                allRows.length,
+                4  // 4 columns
             );
             
             // Insert data
-            targetRange.values = dataRows;
+            targetRange.values = allRows;
+            
+            // Style the header row
+            const headerRange = sheet.getRangeByIndexes(
+                range.rowIndex,
+                range.columnIndex,
+                1,
+                4
+            );
+            headerRange.format.font.bold = true;
+            headerRange.format.fill.color = '#f3f4f6';
             
             // Auto-fit columns
             targetRange.format.autofitColumns();
             
             await context.sync();
             
-            console.log(`Inserted ${accounts.length} accounts at cursor position`);
+            console.log(`Inserted ${accounts.length} accounts with headers at cursor position`);
         }
 
         // NOTE: drillDownFromContextMenu is defined at the TOP of the script
