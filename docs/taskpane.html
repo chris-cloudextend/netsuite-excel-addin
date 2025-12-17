@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.167</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.168</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4521,6 +4521,9 @@ For licensing inquiries, contact: legal@celigo.com
                 </button>
                 <button class="quick-action-btn secondary" onclick="drillDownTransactions()" id="quickDrillBtn" disabled>
                     <span>🔍</span> Drill Down
+                </button>
+                <button class="quick-action-btn secondary" onclick="batchRefreshTypeBalances()" id="quickTypeBalanceBtn" title="Preload Type Balances for faster TYPEBALANCE formulas" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);">
+                    <span>📈</span> Preload
                 </button>
                 <button class="quick-action-help" onclick="showQuickActionsHelp()" title="Quick Actions Help">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -7678,7 +7681,8 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("A5").values = [["Line Item"]];
                     sheet.getRange("B5").values = [[""]]; // Empty for spacing
                     
-                    // Month headers with DATE formula
+                    // Row 5 header labels (displayed) - formatted as "mmm-yy" for compact display
+                    // These cells contain DATE values for nice display
                     for (let m = 0; m < 12; m++) {
                         const colLetter = String.fromCharCode(67 + m); // C=67
                         sheet.getRange(`${colLetter}5`).formulas = [[`=DATE($P$3,${m + 1},1)`]];
@@ -7696,11 +7700,31 @@ For licensing inquiries, contact: legal@celigo.com
                     monthRange.numberFormat = [['mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy']];
                     await context.sync();
                     
+                    // Hidden row 16: Period strings for formulas to reference
+                    // These are formatted as "mmm yyyy" so TYPEBALANCE formulas can reference them
+                    // This enables proper drill-down parsing since the period comes from a cell value
+                    for (let m = 0; m < 12; m++) {
+                        const colLetter = String.fromCharCode(67 + m); // C=67
+                        sheet.getRange(`${colLetter}16`).formulas = [[`=TEXT(DATE($P$3,${m + 1},1),"mmm yyyy")`]];
+                    }
+                    await context.sync();
+                    
+                    // Hide row 16 (helper row with period strings)
+                    try {
+                        sheet.getRange("16:16").format.rowHeight = 0;
+                        await context.sync();
+                    } catch (e) {
+                        console.warn("Could not hide row 16:", e.message);
+                    }
+                    
                     // Helper to build TYPEBALANCE formula for each month
+                    // References the hidden row 16 cells which contain period strings like "Jan 2025"
+                    // This enables proper drill-down because the period is a cell reference
                     const buildTypeBalanceFormula = (acctType, colIndex) => {
-                        const monthNum = colIndex - 2; // C=col 3 → month 1
+                        const colLetter = String.fromCharCode(67 + (colIndex - 3)); // C=67
                         // Format: =XAVI.TYPEBALANCE(type, fromPeriod, toPeriod, subsidiary, dept, loc, class, acctBook)
-                        return `=XAVI.TYPEBALANCE("${acctType}",TEXT(DATE($P$3,${monthNum},1),"mmm yyyy"),TEXT(DATE($P$3,${monthNum},1),"mmm yyyy"),$Q$3,$R$3,$S$3,$T$3,$U$3)`;
+                        // Reference period from hidden row 16 cell instead of TEXT(DATE(...))
+                        return `=XAVI.TYPEBALANCE("${acctType}",${colLetter}$16,${colLetter}$16,$Q$3,$R$3,$S$3,$T$3,$U$3)`;
                     };
                     
                     // Helper to create named range for YTD column
