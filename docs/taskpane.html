@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.175</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.176</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5305,12 +5305,9 @@ For licensing inquiries, contact: legal@celigo.com
         };
         
         async function startOnboarding() {
-            // Always show the content warning - tutorial may overwrite data
-            showOnboardingConfirm(
-                'Learn In 60 Seconds', 
-                'Continuing will overwrite data on this sheet. Continue anyway?',
-                () => { launchOnboardingWizard(); }
-            );
+            // Skip confirmation dialog - go directly to the tutorial
+            // The first step (Pick an Account) already shows what the tutorial does
+            launchOnboardingWizard();
         }
         
         async function launchOnboardingWizard() {
