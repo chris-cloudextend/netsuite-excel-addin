@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.177</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.178</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -6783,6 +6783,7 @@ For licensing inquiries, contact: legal@celigo.com
         }
 
         async function runGuideMe() {
+            const startTime = Date.now(); // Track timing
             // Note: Button may not have an ID (called via onclick on div)
             const btn = document.getElementById('guideMeBtn');
             const progress = document.getElementById('guideMeProgress');
@@ -7406,9 +7407,11 @@ For licensing inquiries, contact: legal@celigo.com
                 const lastFormulaRow = 4 + formulaRows; // Row 29 (4 header rows + 25 formula rows)
                 const lastDataRow = 4 + allAccounts.length; // Row 39 (4 header rows + 35 data rows)
                 
-                // Success message - show as dismissible overlay
+                // Success message - show as dismissible overlay with timing
+                const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
                 showReportSuccessOverlay('Sample Report', {
                     totalAccounts: allAccounts.length,
+                    elapsedTime: elapsedSeconds,
                     sections: [
                         { name: 'Rows with formulas', count: formulaRows },
                         { name: 'Rows ready to extend', count: extraRows }
@@ -7446,6 +7449,7 @@ For licensing inquiries, contact: legal@celigo.com
         // ================================================================
         
         async function generateSummaryIncomeStatement() {
+            const startTime = Date.now(); // Track timing
             const progress = document.getElementById('guideMeProgress');
             const currentYear = new Date().getFullYear();
             
@@ -7946,9 +7950,11 @@ For licensing inquiries, contact: legal@celigo.com
                 clearInterval(tipInterval);
                 overlay.remove();
                 
-                // Show success overlay
+                // Show success overlay with timing
+                const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
                 showReportSuccessOverlay('CFO Flash Report', {
                     totalAccounts: 5,
+                    elapsedTime: elapsedSeconds,
                     sections: [
                         { name: 'Revenue (Income)', count: 'TYPEBALANCE' },
                         { name: 'COGS', count: 'TYPEBALANCE' },
@@ -7981,6 +7987,7 @@ For licensing inquiries, contact: legal@celigo.com
         // ================================================================
         
         async function generateFullIncomeStatement() {
+            const startTime = Date.now(); // Track timing
             const progress = document.getElementById('guideMeProgress');
             const currentYear = new Date().getFullYear();
             const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
@@ -8729,8 +8736,10 @@ For licensing inquiries, contact: legal@celigo.com
                 const totalAccounts = categories.income.length + categories.othIncome.length + 
                                      categories.cogs.length + categories.expense.length + categories.othExpense.length;
                 
+                const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
                 showReportSuccessOverlay('Income Statement', {
                     totalAccounts,
+                    elapsedTime: elapsedSeconds,
                     sections: [
                         { name: 'Revenue', count: categories.income.length },
                         { name: 'Cost of Sales', count: categories.cogs.length },
@@ -11141,12 +11150,19 @@ export default {
                 </div>`
             ).join('');
             
+            // Format elapsed time nicely
+            const timeDisplay = data.elapsedTime ? 
+                `<div style="margin-top: 8px; padding: 6px 10px; background: rgba(16, 185, 129, 0.1); border-radius: 6px; font-size: 12px; color: #059669;">
+                    ⏱️ Completed in <strong>${data.elapsedTime}s</strong>
+                </div>` : '';
+            
             overlay.innerHTML = `
                 <div class="report-success-card">
                     <h2>✅ ${reportType} Generated!</h2>
                     <div class="summary">
                         <div style="margin-bottom: 8px;">Created with <strong>${data.totalAccounts} accounts</strong> organized into sections:</div>
                         ${sectionsHtml}
+                        ${timeDisplay}
                     </div>
                     ${tipsHtml}
                     <button class="dismiss-btn" onclick="dismissReportSuccess()">
