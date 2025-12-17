@@ -1827,11 +1827,14 @@ window.setAccountNameCache = function(accountNames) {
 // This dramatically reduces NetSuite API calls for reports with TYPEBALANCE formulas
 // Format: { "Income": { "Jan 2025": 8289880.01, ... }, "COGS": {...}, ... }
 window.setTypeBalanceCache = function(balances, year, subsidiary = '', department = '', location = '', classId = '', accountingBook = '', useSpecial = false) {
-    console.log('========================================');
-    console.log('📦 SETTING TYPEBALANCE CACHE IN FUNCTIONS.JS');
-    console.log(`   Account types: ${Object.keys(balances).length}`);
-    console.log(`   Year: ${year}, Subsidiary: ${subsidiary || '(all)'}`);
-    console.log('========================================');
+    console.log('╔══════════════════════════════════════════════════════════════╗');
+    console.log('║  📦 setTypeBalanceCache CALLED in functions.js               ║');
+    console.log('╚══════════════════════════════════════════════════════════════╝');
+    console.log(`   Account types received: ${Object.keys(balances).length}`);
+    console.log(`   Year: ${year}`);
+    console.log(`   Subsidiary: "${subsidiary}"`);
+    console.log(`   Other filters: dept="${department}", loc="${location}", class="${classId}", book="${accountingBook}"`);
+    console.log(`   useSpecial: ${useSpecial}`);
     
     // Initialize typebalance cache if needed
     if (!cache.typebalance) cache.typebalance = {};
@@ -1876,8 +1879,15 @@ window.setTypeBalanceCache = function(balances, year, subsidiary = '', departmen
         }
     }
     
-    console.log(`   TypeBalance cache now has ${cachedCount} entries`);
-    console.log('========================================');
+    console.log(`   ✅ TypeBalance cache now has ${cachedCount} entries`);
+    
+    // Log a sample key to help debug cache misses
+    const sampleKeys = Object.keys(cache.typebalance).slice(0, 3);
+    console.log(`   Sample cache keys:`);
+    sampleKeys.forEach(k => console.log(`      "${k}"`));
+    console.log('╔══════════════════════════════════════════════════════════════╗');
+    console.log('║  ✅ setTypeBalanceCache COMPLETED                            ║');
+    console.log('╚══════════════════════════════════════════════════════════════╝');
     return true;
 };
 

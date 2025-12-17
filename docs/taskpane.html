@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.171</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.172</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -7571,14 +7571,25 @@ For licensing inquiries, contact: legal@celigo.com
                         console.log(`✅ CFO Flash: Pre-fetched ${typesLoaded} account types × 12 months`);
                         
                         // Populate the frontend cache so TYPEBALANCE formulas resolve instantly
+                        console.log('🔍 CFO Flash: Checking if setTypeBalanceCache is available...');
+                        console.log(`   typeof window.setTypeBalanceCache = ${typeof window.setTypeBalanceCache}`);
+                        
                         if (typeof window.setTypeBalanceCache === 'function') {
+                            console.log('🚀 CFO Flash: Calling setTypeBalanceCache with:');
+                            console.log(`   - ${Object.keys(balances).length} account types`);
+                            console.log(`   - Year: ${currentYear}`);
+                            console.log(`   - Subsidiary: "${defaultSubsidiary}"`);
+                            
                             window.setTypeBalanceCache(
                                 balances,
                                 currentYear,
                                 defaultSubsidiary,
                                 '', '', '', '', false
                             );
-                            console.log('✅ CFO Flash: TypeBalance cache populated - formulas will resolve instantly!');
+                            console.log('✅ CFO Flash: setTypeBalanceCache call completed!');
+                        } else {
+                            console.error('❌ CFO Flash: setTypeBalanceCache NOT AVAILABLE!');
+                            console.error('   Shared Runtime may not be active - formulas will load one at a time');
                         }
                     } else {
                         console.warn('⚠️ CFO Flash: TypeBalance pre-fetch failed, formulas will load individually');
