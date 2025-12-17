@@ -3689,7 +3689,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.152</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.153</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4596,8 +4596,8 @@ For licensing inquiries, contact: legal@celigo.com
                     <div id="sampleAccountsList" class="sample-accounts-list" style="display: none;"></div>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(1)">← Back</button>
-                        <button class="onboarding-btn primary" onclick="insertFirstFormula()" id="insertFormulaBtn">
-                            Insert Formula →
+                        <button class="onboarding-btn primary" onclick="insertFirstFormula()" id="insertFormulaBtn" style="font-size: 13px; padding: 10px 16px;">
+                            Build My Formula & Continue →
                         </button>
                     </div>
                 </div>
@@ -4651,7 +4651,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(3)">← Back</button>
                         <button class="onboarding-btn secondary" onclick="autoFillFormulas()">Auto-Fill Rows</button>
-                        <button class="onboarding-btn primary" onclick="setupMonthsFill()">Next: Months →</button>
+                        <button class="onboarding-btn primary" onclick="validateStep4AndContinue()">Next: Months →</button>
                     </div>
                     </div>
                 
@@ -4679,7 +4679,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(4)">← Back</button>
                         <button class="onboarding-btn secondary" onclick="autoFillMonths()">Auto-Fill Months</button>
-                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(5)">Wildcards →</button>
+                        <button class="onboarding-btn primary" onclick="validateStep4bAndContinue()">Wildcards →</button>
                 </div>
             </div>
 
@@ -5249,37 +5249,16 @@ For licensing inquiries, contact: legal@celigo.com
         };
         
         async function startOnboarding() {
-            // Check if sheet is empty first
-            const isEmpty = await isSheetEmpty();
-            if (!isEmpty) {
-                // Give user option to continue anyway
-                showOnboardingConfirm(
-                    'Sheet Has Content', 
-                    'This sheet appears to have content. The tutorial works best on an empty sheet. Continue anyway? (Content in columns A-B, rows 1-5 may be overwritten)',
-                    () => { proceedWithOnboarding(); }
-                );
-                return;
-            }
-            
-            proceedWithOnboarding();
-        }
-        
-        function proceedWithOnboarding() {
-            // Check if already completed onboarding
-            const completed = localStorage.getItem('xavi_onboarding_completed');
-            if (completed === 'true') {
-                // Show confirmation dialog
-                showOnboardingConfirm('Redo Tutorial?', 'You\'ve already completed the tutorial. Would you like to go through it again?', () => {
-                    launchOnboardingWizard();
-                });
-                return;
-            }
-            
-            launchOnboardingWizard();
+            // Always show the content warning - tutorial may overwrite data
+            showOnboardingConfirm(
+                'Learn In 60 Seconds', 
+                'Continuing will overwrite data on this sheet. Continue anyway?',
+                () => { launchOnboardingWizard(); }
+            );
         }
         
         function launchOnboardingWizard() {
-            // Reset state and show wizard
+            // Reset state completely
             onboardingState = {
                 currentStep: 1,
                 selectedAccount: null,
@@ -5287,8 +5266,13 @@ For licensing inquiries, contact: legal@celigo.com
                 insertedValue: null
             };
             
-            document.getElementById('onboardingOverlay').classList.add('active');
-            updateOnboardingProgress();
+            // Reset overlay display state and show
+            const overlay = document.getElementById('onboardingOverlay');
+            overlay.style.display = '';  // Clear any inline display:none
+            overlay.classList.add('active');
+            
+            // Reset to step 1 explicitly
+            goToOnboardingStep(1);
         }
         
         function showOnboardingMessage(title, message, type = 'info') {
@@ -5774,10 +5758,204 @@ For licensing inquiries, contact: legal@celigo.com
             updateContextualUI();
         }
         
-        function finishOnboarding() {
+        // Validation: Check if user completed the drag-down action for accounts
+        async function validateStep4AndContinue() {
+            try {
+                let isValid = false;
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const range = sheet.getRange('C3:C5');
+                    range.load('formulas');
+                    await context.sync();
+                    
+                    // Check if at least one cell has a BALANCE formula
+                    const formulas = range.formulas;
+                    isValid = formulas.some(row => row.some(cell => 
+                        cell && String(cell).toUpperCase().includes('XAVI.BALANCE')
+                    ));
+                });
+                
+                if (isValid) {
+                    setupMonthsFill();
+                } else {
+                    showOnboardingConfirm(
+                        'Complete the Step?',
+                        'It looks like you haven\'t dragged to fill the formulas yet. Use "Auto-Fill Rows" to complete this step, or click "Skip" to continue anyway.',
+                        () => { setupMonthsFill(); }
+                    );
+                }
+            } catch (e) {
+                // On error, just proceed
+                setupMonthsFill();
+            }
+        }
+        
+        // Validation: Check if user completed the drag-right action for months
+        async function validateStep4bAndContinue() {
+            try {
+                let isValid = false;
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const range = sheet.getRange('D2:F2');  // Check first few month columns
+                    range.load('formulas');
+                    await context.sync();
+                    
+                    // Check if at least one cell has a BALANCE formula
+                    const formulas = range.formulas;
+                    isValid = formulas.some(row => row.some(cell => 
+                        cell && String(cell).toUpperCase().includes('XAVI.BALANCE')
+                    ));
+                });
+                
+                if (isValid) {
+                    goToOnboardingStep(5);
+                } else {
+                    showOnboardingConfirm(
+                        'Complete the Step?',
+                        'It looks like you haven\'t dragged to fill the months yet. Use "Auto-Fill Months" to complete this step, or click "Skip" to continue anyway.',
+                        () => { goToOnboardingStep(5); }
+                    );
+                }
+            } catch (e) {
+                // On error, just proceed
+                goToOnboardingStep(5);
+            }
+        }
+        
+        // Dot-matrix style celebration - writes "XAVI MASTER" in Excel cells
+        async function writeXaviMasterCelebration() {
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Find an empty area to write the celebration (below the tutorial data)
+                    const startRow = 8;
+                    const startCol = 'A';
+                    
+                    // Dot matrix patterns for letters (5 rows x variable width)
+                    const letters = {
+                        'X': [
+                            '█   █',
+                            ' █ █ ',
+                            '  █  ',
+                            ' █ █ ',
+                            '█   █'
+                        ],
+                        'A': [
+                            ' ███ ',
+                            '█   █',
+                            '█████',
+                            '█   █',
+                            '█   █'
+                        ],
+                        'V': [
+                            '█   █',
+                            '█   █',
+                            '█   █',
+                            ' █ █ ',
+                            '  █  '
+                        ],
+                        'I': [
+                            '█████',
+                            '  █  ',
+                            '  █  ',
+                            '  █  ',
+                            '█████'
+                        ],
+                        ' ': [
+                            '  ',
+                            '  ',
+                            '  ',
+                            '  ',
+                            '  '
+                        ],
+                        'M': [
+                            '█   █',
+                            '██ ██',
+                            '█ █ █',
+                            '█   █',
+                            '█   █'
+                        ],
+                        'S': [
+                            ' ████',
+                            '█    ',
+                            ' ███ ',
+                            '    █',
+                            '████ '
+                        ],
+                        'T': [
+                            '█████',
+                            '  █  ',
+                            '  █  ',
+                            '  █  ',
+                            '  █  '
+                        ],
+                        'E': [
+                            '█████',
+                            '█    ',
+                            '████ ',
+                            '█    ',
+                            '█████'
+                        ],
+                        'R': [
+                            '████ ',
+                            '█   █',
+                            '████ ',
+                            '█  █ ',
+                            '█   █'
+                        ],
+                        '!': [
+                            '  █  ',
+                            '  █  ',
+                            '  █  ',
+                            '     ',
+                            '  █  '
+                        ]
+                    };
+                    
+                    // Build the text "XAVI MASTER!"
+                    const text = 'XAVI MASTER!';
+                    let output = ['', '', '', '', ''];
+                    
+                    for (const char of text) {
+                        const pattern = letters[char] || letters[' '];
+                        for (let row = 0; row < 5; row++) {
+                            output[row] += pattern[row] + ' ';
+                        }
+                    }
+                    
+                    // Write each row to Excel as a merged cell with the dot matrix text
+                    for (let row = 0; row < 5; row++) {
+                        const cellRow = startRow + row;
+                        const cell = sheet.getRange(`A${cellRow}`);
+                        cell.values = [[output[row]]];
+                        cell.format.font.name = 'Courier New';
+                        cell.format.font.size = 10;
+                        cell.format.font.bold = true;
+                        cell.format.font.color = '#10b981';  // Green color
+                    }
+                    
+                    // Add a congratulations message below
+                    const msgCell = sheet.getRange(`A${startRow + 6}`);
+                    msgCell.values = [['🎉 Congratulations! You\'ve mastered XAVI! 🎉']];
+                    msgCell.format.font.bold = true;
+                    msgCell.format.font.size = 12;
+                    msgCell.format.font.color = '#09235C';  // Deep dive blue
+                    
+                    await context.sync();
+                });
+            } catch (e) {
+                console.log('Could not write celebration:', e);
+            }
+        }
+        
+        async function finishOnboarding() {
             // Save completion status and timestamp
             localStorage.setItem('xavi_onboarding_completed', 'true');
             localStorage.setItem('xavi_onboarding_completed_at', new Date().toISOString());
+            
+            // Write the cool XAVI MASTER celebration to Excel
+            await writeXaviMasterCelebration();
             
             // Close the overlay properly
             const overlay = document.getElementById('onboardingOverlay');
