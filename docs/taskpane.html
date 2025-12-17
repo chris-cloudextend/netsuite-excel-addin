@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.170</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.171</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -16177,7 +16177,17 @@ export default {
             
             const isCellRef = (str) => /^[\$]?[A-Z]+[\$]?\d+$/.test(str);
             
-            const getValue = async (ref) => {
+            // Convert Excel date serial number to "mmm yyyy" format
+            const excelDateToMonthYear = (serial) => {
+                // Excel dates are days since Dec 30, 1899 (with 1900 leap year bug)
+                const excelEpoch = new Date(1899, 11, 30);
+                const date = new Date(excelEpoch.getTime() + serial * 86400000);
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return `${months[date.getMonth()]} ${date.getFullYear()}`;
+            };
+            
+            const getValue = async (ref, isDateParam = false) => {
                 if (!ref || ref === '""' || ref === '') return '';
                 const cleaned = cleanParam(ref);
                 
@@ -16187,7 +16197,16 @@ export default {
                         const refRange = sheet.getRange(cleaned);
                         refRange.load('values');
                         await context.sync();
-                        return String(refRange.values[0][0] || '');
+                        const rawValue = refRange.values[0][0];
+                        
+                        // Check if this is a date parameter and the value is a number (Excel date serial)
+                        if (isDateParam && typeof rawValue === 'number' && rawValue > 1000) {
+                            const converted = excelDateToMonthYear(rawValue);
+                            console.log(`📅 Converted date serial ${rawValue} → "${converted}"`);
+                            return converted;
+                        }
+                        
+                        return String(rawValue || '');
                     } catch (e) {
                         return '';
                     }
@@ -16195,17 +16214,21 @@ export default {
                 return cleaned;
             };
             
-            return {
-                accountType: await getValue(refs.accountTypeRef),
-                fromPeriod: await getValue(refs.fromPeriodRef),
-                toPeriod: await getValue(refs.toPeriodRef),
-                subsidiary: await getValue(refs.subsidiaryRef),
-                department: await getValue(refs.departmentRef),
-                location: await getValue(refs.locationRef),
-                classId: await getValue(refs.classRef),
-                accountingBook: await getValue(refs.accountingBookRef),
-                useSpecialAccountType: (await getValue(refs.useSpecialRef)) === '1'
+            // Mark fromPeriod and toPeriod as date parameters that may need conversion
+            const resolvedParams = {
+                accountType: await getValue(refs.accountTypeRef, false),
+                fromPeriod: await getValue(refs.fromPeriodRef, true),  // isDateParam = true
+                toPeriod: await getValue(refs.toPeriodRef, true),      // isDateParam = true
+                subsidiary: await getValue(refs.subsidiaryRef, false),
+                department: await getValue(refs.departmentRef, false),
+                location: await getValue(refs.locationRef, false),
+                classId: await getValue(refs.classRef, false),
+                accountingBook: await getValue(refs.accountingBookRef, false),
+                useSpecialAccountType: (await getValue(refs.useSpecialRef, false)) === '1'
             };
+            
+            console.log('📊 Resolved TYPEBALANCE params:', resolvedParams);
+            return resolvedParams;
         }
         
         async function createTypeBalanceAccountsSheet(context, accounts, params) {

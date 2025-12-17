@@ -4793,6 +4793,13 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
             return cache.typebalance[cacheKey];
         }
         
+        // Log cache miss with details for debugging
+        const cacheSize = cache.typebalance ? Object.keys(cache.typebalance).length : 0;
+        console.log(`❌ TYPEBALANCE cache MISS: "${cacheKey}" (cache has ${cacheSize} entries)`);
+        if (cacheSize > 0 && cacheSize < 20) {
+            console.log(`   Available keys:`, Object.keys(cache.typebalance).slice(0, 10));
+        }
+        
         // Check in-flight
         if (inFlightRequests.has(cacheKey)) {
             console.log(`⏳ TYPEBALANCE: Waiting for in-flight request: ${cacheKey}`);
