@@ -58,9 +58,22 @@ async function performDrillDown() {
             console.log('Formula:', formula);
             console.log('Value:', range.values[0][0]);
 
-            // Check for XAVI.BALANCE formula
-            if (!formula || !formula.toUpperCase().includes('XAVI.BALANCE')) {
-                console.warn('Not an XAVI.BALANCE formula - skipping drill-down');
+            const upperFormula = String(formula || '').toUpperCase();
+            
+            // Check for supported formula types
+            const hasBalance = upperFormula.includes('XAVI.BALANCE');
+            const hasTypeBalance = upperFormula.includes('XAVI.TYPEBALANCE');
+            
+            if (!hasBalance && !hasTypeBalance) {
+                console.warn('Not a supported XAVI formula - skipping drill-down');
+                // Show user feedback via alert since we don't have taskpane access
+                return;
+            }
+            
+            // For TYPEBALANCE, redirect to taskpane-style drill-down
+            if (hasTypeBalance) {
+                console.log('📊 TYPEBALANCE detected - using two-step drill-down');
+                await handleTypeBalanceDrillDown(context, formula);
                 return;
             }
 
@@ -376,6 +389,235 @@ async function createDrillDownSheet(context, transactions, params) {
     
     await context.sync();
     console.log('✅ Drill-down sheet created:', sheetName);
+}
+
+/**
+ * Handle TYPEBALANCE drill-down (shows accounts first, then transactions)
+ */
+async function handleTypeBalanceDrillDown(context, formula) {
+    try {
+        // Parse TYPEBALANCE formula parameters
+        const match = formula.match(/XAVI\.TYPEBALANCE\s*\((.*)\)/i);
+        if (!match) {
+            console.error('Could not parse TYPEBALANCE formula');
+            return;
+        }
+        
+        const paramsStr = match[1];
+        const params = parseTypeBalanceParams(paramsStr);
+        const resolved = await resolveTypeBalanceParams(context, params);
+        
+        console.log('TYPEBALANCE params:', resolved);
+        
+        if (!resolved.accountType) {
+            console.error('Could not determine account type');
+            return;
+        }
+        
+        // Query backend for all accounts of this type with their balances
+        const queryParams = new URLSearchParams({
+            account_type: resolved.accountType,
+            to_period: resolved.toPeriod || '',
+            subsidiary: resolved.subsidiary || '',
+            use_special: resolved.useSpecialAccountType ? '1' : '0'
+        });
+        
+        console.log('Fetching accounts by type:', queryParams.toString());
+        
+        const response = await fetch(`${SERVER_URL}/accounts/by-type?${queryParams}`);
+        
+        if (!response.ok) {
+            console.error('API error:', response.status);
+            return;
+        }
+        
+        const data = await response.json();
+        const accounts = data.accounts || [];
+        
+        if (accounts.length === 0) {
+            console.log('No accounts found for type:', resolved.accountType);
+            return;
+        }
+        
+        console.log(`Found ${accounts.length} ${resolved.accountType} accounts`);
+        
+        // Create accounts sheet
+        await createTypeBalanceAccountsSheet(context, accounts, resolved);
+        console.log('✅ TYPEBALANCE accounts sheet created');
+        
+    } catch (error) {
+        console.error('TYPEBALANCE drill-down error:', error);
+    }
+}
+
+/**
+ * Parse TYPEBALANCE formula parameters
+ */
+function parseTypeBalanceParams(paramsStr) {
+    const params = [];
+    let current = '';
+    let inQuotes = false;
+    let parenDepth = 0;
+    
+    for (let i = 0; i < paramsStr.length; i++) {
+        const char = paramsStr[i];
+        if (char === '"') {
+            inQuotes = !inQuotes;
+            current += char;
+        } else if (char === '(' && !inQuotes) {
+            parenDepth++;
+            current += char;
+        } else if (char === ')' && !inQuotes) {
+            parenDepth--;
+            current += char;
+        } else if (char === ',' && !inQuotes && parenDepth === 0) {
+            params.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    if (current.trim()) params.push(current.trim());
+    
+    return {
+        accountTypeRef: params[0] || '',
+        fromPeriodRef: params[1] || '',
+        toPeriodRef: params[2] || '',
+        subsidiaryRef: params[3] || '',
+        departmentRef: params[4] || '',
+        locationRef: params[5] || '',
+        classRef: params[6] || '',
+        accountingBookRef: params[7] || '',
+        useSpecialRef: params[8] || ''
+    };
+}
+
+/**
+ * Resolve TYPEBALANCE parameter references to values
+ */
+async function resolveTypeBalanceParams(context, refs) {
+    const cleanParam = (p) => {
+        if (!p || p === '""' || p === '') return '';
+        return p.replace(/^["']|["']$/g, '');
+    };
+    
+    const isCellRef = (str) => /^[\$]?[A-Z]+[\$]?\d+$/.test(str);
+    
+    const getValue = async (ref) => {
+        if (!ref || ref === '""' || ref === '') return '';
+        const cleaned = cleanParam(ref);
+        
+        // Check for TEXT() formula - extract the cell reference
+        const textMatch = cleaned.match(/^TEXT\s*\(\s*([\$]?[A-Z]+[\$]?\d+)\s*,/i);
+        if (textMatch) {
+            const cellRef = textMatch[1];
+            try {
+                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                const refRange = sheet.getRange(cellRef);
+                refRange.load('values');
+                await context.sync();
+                return String(refRange.values[0][0] || '');
+            } catch (e) {
+                return '';
+            }
+        }
+        
+        if (isCellRef(cleaned)) {
+            try {
+                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                const refRange = sheet.getRange(cleaned);
+                refRange.load('values');
+                await context.sync();
+                return String(refRange.values[0][0] || '');
+            } catch (e) {
+                return '';
+            }
+        }
+        return cleaned;
+    };
+    
+    return {
+        accountType: await getValue(refs.accountTypeRef),
+        fromPeriod: await getValue(refs.fromPeriodRef),
+        toPeriod: await getValue(refs.toPeriodRef),
+        subsidiary: await getValue(refs.subsidiaryRef),
+        department: await getValue(refs.departmentRef),
+        location: await getValue(refs.locationRef),
+        classId: await getValue(refs.classRef),
+        accountingBook: await getValue(refs.accountingBookRef),
+        useSpecialAccountType: (await getValue(refs.useSpecialRef)) === '1'
+    };
+}
+
+/**
+ * Create TYPEBALANCE accounts drill-down sheet
+ */
+async function createTypeBalanceAccountsSheet(context, accounts, params) {
+    const sheetName = `DrillDown_${params.accountType}`.substring(0, 31);
+    
+    // Delete existing sheet if present
+    const sheets = context.workbook.worksheets;
+    sheets.load('items/name');
+    await context.sync();
+    
+    const existingSheet = sheets.items.find(s => s.name === sheetName);
+    if (existingSheet) {
+        existingSheet.delete();
+        await context.sync();
+    }
+    
+    const drillSheet = sheets.add(sheetName);
+    drillSheet.activate();
+    await context.sync();
+    
+    // Header
+    drillSheet.getRange('A1').values = [['TYPEBALANCE DRILL-DOWN']];
+    drillSheet.getRange('A1').format.font.bold = true;
+    drillSheet.getRange('A1').format.font.size = 14;
+    
+    const useSpecialLabel = params.useSpecialAccountType ? ' (Special Account Type)' : '';
+    drillSheet.getRange('A2').values = [[`Account Type: ${params.accountType}${useSpecialLabel} | Period: ${params.toPeriod || 'All Time'}`]];
+    drillSheet.getRange('A2').format.font.bold = true;
+    
+    // Store drill-down context for second-level drill-down
+    // Extract year from toPeriod for full-year transaction queries
+    const yearMatch = (params.toPeriod || '').match(/\d{4}/);
+    const drilldownPeriod = yearMatch ? yearMatch[0] : params.toPeriod || '';
+    drillSheet.getRange('A3').values = [[`DRILLDOWN_CONTEXT:${drilldownPeriod}:${params.subsidiary || ''}`]];
+    drillSheet.getRange('A3').format.font.color = 'white'; // Hide it
+    
+    // Column headers
+    const headers = [['Account', 'Account Name', 'Balance']];
+    drillSheet.getRange('A5:C5').values = headers;
+    drillSheet.getRange('A5:C5').format.font.bold = true;
+    drillSheet.getRange('A5:C5').format.fill.color = '#667eea';
+    drillSheet.getRange('A5:C5').format.font.color = 'white';
+    
+    if (accounts.length > 0) {
+        const dataRows = accounts.map(acc => [
+            acc.account_number || acc.acctnumber || '',
+            acc.account_name || acc.accountname || '',
+            acc.balance || 0
+        ]);
+        drillSheet.getRange(`A6:C${5 + accounts.length}`).values = dataRows;
+        
+        // Format balance column as currency
+        drillSheet.getRange(`C6:C${5 + accounts.length}`).numberFormat = [['$#,##0.00']];
+        
+        // Make account numbers blue (clickable visual cue)
+        drillSheet.getRange(`A6:A${5 + accounts.length}`).format.font.color = '#0ea5e9';
+        
+        // Add total row
+        const totalRow = 6 + accounts.length;
+        drillSheet.getRange(`A${totalRow}`).values = [['TOTAL']];
+        drillSheet.getRange(`A${totalRow}`).format.font.bold = true;
+        drillSheet.getRange(`C${totalRow}`).formulas = [[`=SUM(C6:C${totalRow - 1})`]];
+        drillSheet.getRange(`C${totalRow}`).format.font.bold = true;
+        drillSheet.getRange(`C${totalRow}`).numberFormat = [['$#,##0.00']];
+    }
+    
+    drillSheet.getRange('A:C').format.autofitColumns();
+    await context.sync();
 }
 
 // Register the function for Office.js ExecuteFunction
