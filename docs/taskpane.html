@@ -3688,7 +3688,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.143</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.144</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3815,8 +3815,17 @@ For licensing inquiries, contact: legal@celigo.com
                         </div>
             </div>
                     
-                    <!-- Option 2: Full Income Statement -->
-                    <div class="guide-choice" onclick="generateFullIncomeStatement()" style="background: rgba(255,255,255,0.8); border: 2px solid var(--deep-dive);">
+                    <!-- Option 2: Summary Income Statement (NEW) -->
+                    <div class="guide-choice" onclick="generateSummaryIncomeStatement()" style="background: rgba(255,255,255,0.8); border: 2px solid #10B981;">
+                        <div class="guide-choice-icon">📈</div>
+                        <div class="guide-choice-content">
+                            <div class="guide-choice-title" style="color: #10B981;">Summary Income Statement</div>
+                            <div class="guide-choice-desc" style="color: var(--bottlenose);">High-level P&L with KPI cards — uses TYPEBALANCE formulas</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Option 3: Full Income Statement -->
+                    <div class="guide-choice" onclick="generateFullIncomeStatement()" style="margin-top: 12px; background: rgba(255,255,255,0.8); border: 2px solid var(--deep-dive);">
                         <div class="guide-choice-icon">📊</div>
                         <div class="guide-choice-content">
                             <div class="guide-choice-title" style="color: var(--deep-dive);">Full Income Statement</div>
@@ -3824,7 +3833,7 @@ For licensing inquiries, contact: legal@celigo.com
                         </div>
                     </div>
                     
-                    <!-- Option 3: Budget Report -->
+                    <!-- Option 4: Budget Report -->
                     <div class="guide-choice" onclick="generateBudgetReport()" style="margin-top: 12px; background: rgba(255,255,255,0.8); border: 2px solid #8B5CF6;">
                         <div class="guide-choice-icon">💰</div>
                         <div class="guide-choice-content">
@@ -4919,7 +4928,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.143"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.144"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -7156,6 +7165,444 @@ For licensing inquiries, contact: legal@celigo.com
                     btn.disabled = false;
                     btn.style.background = '';
                 }
+            }
+        }
+
+        // ================================================================
+        // GENERATE SUMMARY INCOME STATEMENT (High-Level P&L with TYPEBALANCE)
+        // ================================================================
+        
+        async function generateSummaryIncomeStatement() {
+            const progress = document.getElementById('guideMeProgress');
+            const currentYear = new Date().getFullYear();
+            
+            // Excel tips for loading overlay
+            const excelTips = [
+                '=XAVI.TYPEBALANCE("Income", from, to) → Total of all Income accounts',
+                '💡 TYPEBALANCE uses account types for cleaner, faster reports',
+                '=XAVI.TYPEBALANCE("COGS", from, to) → Cost of Goods Sold total',
+                '📊 Summary P&L is perfect for executive dashboards',
+                '=XAVI.TYPEBALANCE("Expense", from, to) → Operating expenses total',
+                '💰 Change Year cell to instantly update all formulas',
+                '📈 KPI cards show real-time margins and ratios'
+            ];
+            let tipIndex = 0;
+            
+            // Create loading overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'guide-me-overlay';
+            overlay.id = 'summaryISOverlay';
+            overlay.innerHTML = `
+                <div class="loading-spinner"></div>
+                <h2>Building Summary Income Statement</h2>
+                <div class="loading-subtitle">
+                    ⏱️ This is a quick one — just a few seconds!
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="summaryISProgressBar"></div>
+                    </div>
+                    <div class="progress-text" id="summaryISProgressText">0% complete</div>
+                </div>
+                
+                <div class="loading-step" id="summaryISStep">Initializing...</div>
+                <div class="loading-step-desc" id="summaryISStepDesc">Setting up your report</div>
+                
+                <div class="tips-section">
+                    <div class="tips-label">Formula Tips</div>
+                    <div class="loading-tip" id="summaryISTip">${excelTips[0]}</div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            // Rotate tips
+            const tipInterval = setInterval(() => {
+                tipIndex = (tipIndex + 1) % excelTips.length;
+                const tipEl = document.getElementById('summaryISTip');
+                if (tipEl) {
+                    tipEl.style.opacity = '0';
+                    setTimeout(() => {
+                        tipEl.textContent = excelTips[tipIndex];
+                        tipEl.style.opacity = '1';
+                    }, 200);
+                }
+            }, 2500);
+            
+            const updateProgress = (percent, step, desc) => {
+                const bar = document.getElementById('summaryISProgressBar');
+                const text = document.getElementById('summaryISProgressText');
+                const stepEl = document.getElementById('summaryISStep');
+                const descEl = document.getElementById('summaryISStepDesc');
+                if (bar) bar.style.width = percent + '%';
+                if (text) text.textContent = percent + '% complete';
+                if (stepEl) stepEl.textContent = step;
+                if (descEl) descEl.textContent = desc;
+            };
+            
+            try {
+                updateProgress(10, '🔍 Step 1 of 3: Getting Settings', 'Loading subsidiary and currency info...');
+                
+                // Get default subsidiary and currency format
+                let defaultSubsidiary = '';
+                let defaultSubsidiaryId = '1';
+                let currencyFormat = '$#,##0.00';
+                
+                try {
+                    const currencyResponse = await fetch(`${SERVER_URL}/lookups/currencies`);
+                    if (currencyResponse.ok) {
+                        const currencyData = await currencyResponse.json();
+                        defaultSubsidiaryId = currencyData.default_subsidiary || '1';
+                        const symbol = currencyData.currencies[defaultSubsidiaryId] || '$';
+                        currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
+                    }
+                    
+                    const lookupsResponse = await fetch(`${SERVER_URL}/lookups/all`);
+                    if (lookupsResponse.ok) {
+                        const lookups = await lookupsResponse.json();
+                        if (lookups.subsidiaries && lookups.subsidiaries.length > 0) {
+                            const parentSub = lookups.subsidiaries.find(s => s.id === defaultSubsidiaryId);
+                            if (parentSub) {
+                                defaultSubsidiary = parentSub.name + ' (Consolidated)';
+                            } else {
+                                const consolidated = lookups.subsidiaries.find(s => 
+                                    s.name.toLowerCase().includes('consolidated')
+                                );
+                                defaultSubsidiary = consolidated ? consolidated.name : lookups.subsidiaries[0].name;
+                            }
+                        }
+                    }
+                    if (!defaultSubsidiary) defaultSubsidiary = 'Parent Company (Consolidated)';
+                } catch (e) {
+                    console.warn('Subsidiary lookup failed:', e.message);
+                    defaultSubsidiary = 'Parent Company (Consolidated)';
+                }
+                
+                updateProgress(30, '📊 Step 2 of 3: Building Structure', 'Creating headers and parameters...');
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Rename sheet
+                    try {
+                        sheet.name = "Summary P&L";
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Hide gridlines
+                    try {
+                        sheet.showGridlines = false;
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ========== ROW 1: TITLE ==========
+                    const titleCell = sheet.getRange("A1");
+                    titleCell.formulas = [['="Summary Income Statement — "&P3']];
+                    titleCell.format.font.bold = true;
+                    titleCell.format.font.size = 18;
+                    titleCell.format.font.color = "#09235C";
+                    await context.sync();
+                    
+                    // ========== ROW 2: PARAMETER LABELS ==========
+                    sheet.getRange("P2").values = [["YEAR"]];
+                    sheet.getRange("Q2").values = [["Subsidiary"]];
+                    sheet.getRange("R2").values = [["Department"]];
+                    sheet.getRange("S2").values = [["Location"]];
+                    sheet.getRange("T2").values = [["Class"]];
+                    sheet.getRange("U2").values = [["Acct Book"]];
+                    await context.sync();
+                    
+                    // Style parameter labels
+                    const labelCells = ["P2", "Q2", "R2", "S2", "T2", "U2"];
+                    for (const cell of labelCells) {
+                        sheet.getRange(cell).format.font.bold = true;
+                        sheet.getRange(cell).format.font.color = "#09235C";
+                        sheet.getRange(cell).format.font.size = 10;
+                    }
+                    await context.sync();
+                    
+                    // ========== ROW 3: PARAMETER VALUES ==========
+                    sheet.getRange("P3").values = [[currentYear]];
+                    sheet.getRange("Q3").values = [[defaultSubsidiary]];
+                    sheet.getRange("R3").values = [[""]];
+                    sheet.getRange("S3").values = [[""]];
+                    sheet.getRange("T3").values = [[""]];
+                    sheet.getRange("U3").values = [[""]];
+                    await context.sync();
+                    
+                    // Style parameter value cells (teal background)
+                    const valueCells = ["P3", "Q3", "R3", "S3", "T3", "U3"];
+                    for (const cell of valueCells) {
+                        sheet.getRange(cell).format.fill.color = "#0AE2C1";
+                        sheet.getRange(cell).format.font.bold = true;
+                        sheet.getRange(cell).format.font.color = "#09235C";
+                    }
+                    await context.sync();
+                    
+                    // Add comments to parameter cells
+                    try {
+                        const comments = context.workbook.comments;
+                        const filterComments = {
+                            'P3': 'YEAR: Change this value to view a different fiscal year.',
+                            'Q3': 'SUBSIDIARY: Enter a subsidiary name. Add "(Consolidated)" to include child subsidiaries.',
+                            'R3': 'DEPARTMENT: Filter by department. Leave empty for all.',
+                            'S3': 'LOCATION: Filter by location. Leave empty for all.',
+                            'T3': 'CLASS: Filter by class. Leave empty for all.',
+                            'U3': 'ACCOUNTING BOOK: Enter a book ID for specific book. Leave empty for primary.'
+                        };
+                        for (const [cell, text] of Object.entries(filterComments)) {
+                            comments.add(sheet.getRange(cell).address, text);
+                        }
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // ========== ROW 4: KPI DASHBOARD ==========
+                    try {
+                        sheet.getRange("4:4").format.rowHeight = 50;
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // Merge KPI card cells
+                    try {
+                        sheet.getRange("A4:C4").merge();
+                        sheet.getRange("D4:F4").merge();
+                        sheet.getRange("G4:I4").merge();
+                        sheet.getRange("J4:L4").merge();
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    // KPI formulas using named ranges (will be created below)
+                    sheet.getRange("A4").formulas = [['="📊 YTD REVENUE\n"&TEXT(IFERROR(@_Revenue,0),"#,##0")']];
+                    sheet.getRange("D4").formulas = [['="📈 GROSS MARGIN\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Gross_Profit,0)/IFERROR(@_Revenue,0),"0.0%"))']];
+                    sheet.getRange("G4").formulas = [['="💰 NET MARGIN\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Net_Income,0)/IFERROR(@_Revenue,0),"0.0%"))']];
+                    sheet.getRange("J4").formulas = [['="⚙️ OPEX RATIO\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Operating_Expenses,0)/IFERROR(@_Revenue,0),"0.0%"))']];
+                    await context.sync();
+                    
+                    // Style KPI cards
+                    try {
+                        const kpiStyle = async (range, bgColor, fontColor = "#FFFFFF") => {
+                            const r = sheet.getRange(range);
+                            r.format.font.bold = true;
+                            r.format.font.size = 11;
+                            r.format.font.color = fontColor;
+                            r.format.fill.color = bgColor;
+                            r.format.horizontalAlignment = "Center";
+                            r.format.verticalAlignment = "Center";
+                            r.format.wrapText = true;
+                        };
+                        await kpiStyle("A4:C4", "#22C55E");
+                        await kpiStyle("D4:F4", "#FBBF24", "#000000");
+                        await kpiStyle("G4:I4", "#EF4444");
+                        await kpiStyle("J4:L4", "#8B5CF6");
+                        await context.sync();
+                    } catch (e) {}
+                    
+                    updateProgress(50, '📝 Step 3 of 3: Adding Formulas', 'Writing TYPEBALANCE formulas...');
+                    
+                    // ========== ROW 5: COLUMN HEADERS ==========
+                    sheet.getRange("A5").values = [["Line Item"]];
+                    sheet.getRange("B5").values = [[""]]; // Empty for spacing
+                    
+                    // Month headers with DATE formula
+                    for (let m = 0; m < 12; m++) {
+                        const colLetter = String.fromCharCode(67 + m); // C=67
+                        sheet.getRange(`${colLetter}5`).formulas = [[`=DATE($P$3,${m + 1},1)`]];
+                    }
+                    sheet.getRange("O5").values = [["YTD Total"]];
+                    await context.sync();
+                    
+                    // Format headers
+                    const headerRange = sheet.getRange("A5:O5");
+                    headerRange.format.font.bold = true;
+                    headerRange.format.font.color = "#FFFFFF";
+                    headerRange.format.fill.color = "#09235C";
+                    
+                    const monthRange = sheet.getRange("C5:N5");
+                    monthRange.numberFormat = [['mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm']];
+                    await context.sync();
+                    
+                    // Helper to build TYPEBALANCE formula for each month
+                    const buildTypeBalanceFormula = (acctType, colIndex) => {
+                        const monthNum = colIndex - 2; // C=col 3 → month 1
+                        // Format: =XAVI.TYPEBALANCE(type, fromPeriod, toPeriod, subsidiary, dept, loc, class, acctBook)
+                        return `=XAVI.TYPEBALANCE("${acctType}",TEXT(DATE($P$3,${monthNum},1),"mmm yyyy"),TEXT(DATE($P$3,${monthNum},1),"mmm yyyy"),$Q$3,$R$3,$S$3,$T$3,$U$3)`;
+                    };
+                    
+                    // Helper to create named range for YTD column
+                    const createNamedRange = async (name, row) => {
+                        try {
+                            const range = sheet.getRange(`O${row}`);
+                            const namedItem = context.workbook.names.add(name, range);
+                            await context.sync();
+                        } catch (e) {
+                            console.warn(`Could not create named range ${name}:`, e.message);
+                        }
+                    };
+                    
+                    // ========== ROW 6: REVENUE (Income) ==========
+                    sheet.getRange("A6").values = [["REVENUE"]];
+                    sheet.getRange("A6").format.font.bold = true;
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        sheet.getRange(`${col}6`).formulas = [[buildTypeBalanceFormula("Income", 3 + m)]];
+                    }
+                    sheet.getRange("O6").formulas = [["=SUM(C6:N6)"]];
+                    await context.sync();
+                    await createNamedRange("_Revenue", 6);
+                    
+                    // ========== ROW 7: COGS ==========
+                    sheet.getRange("A7").values = [["COST OF GOODS SOLD"]];
+                    sheet.getRange("A7").format.font.bold = true;
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        sheet.getRange(`${col}7`).formulas = [[buildTypeBalanceFormula("COGS", 3 + m)]];
+                    }
+                    sheet.getRange("O7").formulas = [["=SUM(C7:N7)"]];
+                    await context.sync();
+                    await createNamedRange("_COGS", 7);
+                    
+                    // ========== ROW 8: GROSS PROFIT ==========
+                    sheet.getRange("A8").values = [["GROSS PROFIT"]];
+                    sheet.getRange("A8").format.font.bold = true;
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        // Gross Profit = Revenue - COGS (handle negative COGS)
+                        sheet.getRange(`${col}8`).formulas = [[`=IF(${col}7<0,ABS(${col}6)+ABS(${col}7),ABS(${col}6)-ABS(${col}7))`]];
+                    }
+                    sheet.getRange("O8").formulas = [["=SUM(C8:N8)"]];
+                    await context.sync();
+                    
+                    // Style Gross Profit row
+                    const gpRange = sheet.getRange("A8:O8");
+                    gpRange.format.fill.color = "#D4E6F1";
+                    gpRange.format.borders.getItem('EdgeTop').style = 'Continuous';
+                    gpRange.format.borders.getItem('EdgeBottom').style = 'Continuous';
+                    await context.sync();
+                    await createNamedRange("_Gross_Profit", 8);
+                    
+                    // ========== ROW 9: BLANK ==========
+                    
+                    // ========== ROW 10: OPERATING EXPENSES ==========
+                    sheet.getRange("A10").values = [["OPERATING EXPENSES"]];
+                    sheet.getRange("A10").format.font.bold = true;
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        sheet.getRange(`${col}10`).formulas = [[buildTypeBalanceFormula("Expense", 3 + m)]];
+                    }
+                    sheet.getRange("O10").formulas = [["=SUM(C10:N10)"]];
+                    await context.sync();
+                    await createNamedRange("_Operating_Expenses", 10);
+                    
+                    // ========== ROW 11: OPERATING INCOME ==========
+                    sheet.getRange("A11").values = [["OPERATING INCOME"]];
+                    sheet.getRange("A11").format.font.bold = true;
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        // Operating Income = Gross Profit - Operating Expenses
+                        sheet.getRange(`${col}11`).formulas = [[`=IF(${col}10<0,ABS(${col}8)+ABS(${col}10),ABS(${col}8)-ABS(${col}10))`]];
+                    }
+                    sheet.getRange("O11").formulas = [["=SUM(C11:N11)"]];
+                    await context.sync();
+                    
+                    // Style Operating Income row
+                    const oiRange = sheet.getRange("A11:O11");
+                    oiRange.format.fill.color = "#D5F5E3";
+                    oiRange.format.borders.getItem('EdgeTop').style = 'Continuous';
+                    await context.sync();
+                    await createNamedRange("_Operating_Income", 11);
+                    
+                    // ========== ROW 12: BLANK ==========
+                    
+                    // ========== ROW 13: OTHER INCOME ==========
+                    sheet.getRange("A13").values = [["Other Income"]];
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        sheet.getRange(`${col}13`).formulas = [[buildTypeBalanceFormula("OthIncome", 3 + m)]];
+                    }
+                    sheet.getRange("O13").formulas = [["=SUM(C13:N13)"]];
+                    await context.sync();
+                    await createNamedRange("_Other_Income", 13);
+                    
+                    // ========== ROW 14: OTHER EXPENSE ==========
+                    sheet.getRange("A14").values = [["Other Expense"]];
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        sheet.getRange(`${col}14`).formulas = [[buildTypeBalanceFormula("OthExpense", 3 + m)]];
+                    }
+                    sheet.getRange("O14").formulas = [["=SUM(C14:N14)"]];
+                    await context.sync();
+                    await createNamedRange("_Other_Expense", 14);
+                    
+                    // ========== ROW 15: BLANK ==========
+                    
+                    // ========== ROW 16: NET INCOME ==========
+                    sheet.getRange("A16").values = [["NET INCOME"]];
+                    sheet.getRange("A16").format.font.bold = true;
+                    sheet.getRange("A16").format.font.size = 12;
+                    for (let m = 0; m < 12; m++) {
+                        const col = String.fromCharCode(67 + m);
+                        // Net Income = Operating Income + Other Income - Other Expense
+                        sheet.getRange(`${col}16`).formulas = [[`=${col}11+ABS(${col}13)-ABS(${col}14)`]];
+                    }
+                    sheet.getRange("O16").formulas = [["=SUM(C16:N16)"]];
+                    await context.sync();
+                    
+                    // Style Net Income row
+                    const niRange = sheet.getRange("A16:O16");
+                    niRange.format.font.bold = true;
+                    niRange.format.fill.color = "#FEF3C7";
+                    niRange.format.borders.getItem('EdgeTop').style = 'Double';
+                    niRange.format.borders.getItem('EdgeBottom').style = 'Double';
+                    await context.sync();
+                    await createNamedRange("_Net_Income", 16);
+                    
+                    updateProgress(80, '🎨 Formatting', 'Applying currency formats...');
+                    
+                    // Format all data as currency
+                    const dataRange = sheet.getRange("C6:O16");
+                    dataRange.numberFormat = currencyFormat;
+                    await context.sync();
+                    
+                    // Set column widths
+                    sheet.getRange("A:A").format.columnWidth = 200;
+                    sheet.getRange("B:B").format.columnWidth = 20;
+                    sheet.getRange("C:O").format.columnWidth = 85;
+                    await context.sync();
+                    
+                    updateProgress(100, '✅ Complete!', 'Your Summary Income Statement is ready!');
+                });
+                
+                // Cleanup
+                clearInterval(tipInterval);
+                overlay.remove();
+                
+                // Show success overlay
+                showReportSuccessOverlay('Summary Income Statement', {
+                    totalAccounts: 5,
+                    sections: [
+                        { name: 'Revenue (Income)', count: 'TYPEBALANCE' },
+                        { name: 'COGS', count: 'TYPEBALANCE' },
+                        { name: 'Expenses', count: 'TYPEBALANCE' },
+                        { name: 'Other Inc/Exp', count: 'TYPEBALANCE' }
+                    ],
+                    tips: [
+                        { type: 'info', icon: '📅', title: 'Change Year:', text: 'Edit cell <strong>P3</strong> to view a different fiscal year. All formulas update automatically.' },
+                        { type: 'info', icon: '🏢', title: 'Change Subsidiary:', text: 'Edit cell <strong>Q3</strong> to filter by a different subsidiary.' },
+                        { type: 'info', icon: '⏳', title: '#BUSY:', text: 'You\'ll see <code>#BUSY</code> briefly as data loads from NetSuite. This is normal!' },
+                        { type: 'info', icon: '📋', title: 'Named Ranges:', text: '<code>_Revenue</code>, <code>_Gross_Profit</code>, <code>_Operating_Income</code>, <code>_Net_Income</code>' }
+                    ]
+                });
+                
+                closeQuickStart();
+                
+            } catch (error) {
+                console.error('Summary Income Statement error:', error);
+                clearInterval(tipInterval);
+                if (document.getElementById('summaryISOverlay')) {
+                    document.getElementById('summaryISOverlay').remove();
+                }
+                progress.style.display = 'block';
+                progress.textContent = `❌ Error: ${error.message}`;
             }
         }
 
