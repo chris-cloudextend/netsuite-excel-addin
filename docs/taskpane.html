@@ -3688,7 +3688,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.144</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.145</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4928,7 +4928,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.144"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.145"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -7297,9 +7297,9 @@ For licensing inquiries, contact: legal@celigo.com
                     
                     // ========== ROW 1: TITLE ==========
                     const titleCell = sheet.getRange("A1");
-                    titleCell.formulas = [['="Summary Income Statement — "&P3']];
+                    titleCell.values = [["Using XAVI.TYPEBALANCE"]];
                     titleCell.format.font.bold = true;
-                    titleCell.format.font.size = 18;
+                    titleCell.format.font.size = 14;
                     titleCell.format.font.color = "#09235C";
                     await context.sync();
                     
@@ -7371,11 +7371,15 @@ For licensing inquiries, contact: legal@celigo.com
                         await context.sync();
                     } catch (e) {}
                     
-                    // KPI formulas using named ranges (will be created below)
-                    sheet.getRange("A4").formulas = [['="📊 YTD REVENUE\n"&TEXT(IFERROR(@_Revenue,0),"#,##0")']];
-                    sheet.getRange("D4").formulas = [['="📈 GROSS MARGIN\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Gross_Profit,0)/IFERROR(@_Revenue,0),"0.0%"))']];
-                    sheet.getRange("G4").formulas = [['="💰 NET MARGIN\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Net_Income,0)/IFERROR(@_Revenue,0),"0.0%"))']];
-                    sheet.getRange("J4").formulas = [['="⚙️ OPEX RATIO\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Operating_Expenses,0)/IFERROR(@_Revenue,0),"0.0%"))']];
+                    // KPI formulas using named ranges - matching screenshot layout
+                    // Revenue: shows absolute value
+                    sheet.getRange("A4").formulas = [['="📊 YTD REVENUE\n"&TEXT(IFERROR(@_Revenue,0),"#,##0")&"\nTotal Revenue YTD"']];
+                    // Gross Margin: percentage
+                    sheet.getRange("D4").formulas = [['="📈 GROSS MARGIN\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Gross_Margin,0)/IFERROR(@_Revenue,0),"0.0%"))&"\nGross Profit / Revenue"']];
+                    // Net Income: percentage of revenue
+                    sheet.getRange("G4").formulas = [['="💰 NET INCOME\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Net_Income,0)/IFERROR(@_Revenue,0),"0.0%"))&"\nNet Income / Revenue"']];
+                    // OpEx Ratio: percentage
+                    sheet.getRange("J4").formulas = [['="⚙️ OPEX RATIO\n"&IF(IFERROR(@_Revenue,0)=0,"N/A",TEXT(IFERROR(@_Operating_Expenses,0)/IFERROR(@_Revenue,0),"0.0%"))&"\nOpEx / Revenue"']];
                     await context.sync();
                     
                     // Style KPI cards
@@ -7418,7 +7422,7 @@ For licensing inquiries, contact: legal@celigo.com
                     headerRange.format.fill.color = "#09235C";
                     
                     const monthRange = sheet.getRange("C5:N5");
-                    monthRange.numberFormat = [['mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm', 'mmm']];
+                    monthRange.numberFormat = [['mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy', 'mmm-yy']];
                     await context.sync();
                     
                     // Helper to build TYPEBALANCE formula for each month
@@ -7440,8 +7444,9 @@ For licensing inquiries, contact: legal@celigo.com
                     };
                     
                     // ========== ROW 6: REVENUE (Income) ==========
-                    sheet.getRange("A6").values = [["REVENUE"]];
+                    sheet.getRange("A6").values = [["Total Revenue"]];
                     sheet.getRange("A6").format.font.bold = true;
+                    sheet.getRange("A6").format.font.color = "#09235C";
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}6`).formulas = [[buildTypeBalanceFormula("Income", 3 + m)]];
@@ -7451,8 +7456,7 @@ For licensing inquiries, contact: legal@celigo.com
                     await createNamedRange("_Revenue", 6);
                     
                     // ========== ROW 7: COGS ==========
-                    sheet.getRange("A7").values = [["COST OF GOODS SOLD"]];
-                    sheet.getRange("A7").format.font.bold = true;
+                    sheet.getRange("A7").values = [["Cost of Goods Sold"]];
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}7`).formulas = [[buildTypeBalanceFormula("COGS", 3 + m)]];
@@ -7461,9 +7465,10 @@ For licensing inquiries, contact: legal@celigo.com
                     await context.sync();
                     await createNamedRange("_COGS", 7);
                     
-                    // ========== ROW 8: GROSS PROFIT ==========
-                    sheet.getRange("A8").values = [["GROSS PROFIT"]];
+                    // ========== ROW 8: GROSS MARGIN ==========
+                    sheet.getRange("A8").values = [["Gross Margin"]];
                     sheet.getRange("A8").format.font.bold = true;
+                    sheet.getRange("A8").format.font.color = "#09235C";
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
                         // Gross Profit = Revenue - COGS (handle negative COGS)
@@ -7472,19 +7477,18 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("O8").formulas = [["=SUM(C8:N8)"]];
                     await context.sync();
                     
-                    // Style Gross Profit row
-                    const gpRange = sheet.getRange("A8:O8");
-                    gpRange.format.fill.color = "#D4E6F1";
-                    gpRange.format.borders.getItem('EdgeTop').style = 'Continuous';
-                    gpRange.format.borders.getItem('EdgeBottom').style = 'Continuous';
+                    // Style Gross Margin row (light blue background)
+                    const gmRange = sheet.getRange("A8:O8");
+                    gmRange.format.fill.color = "#D4E6F1";
+                    gmRange.format.borders.getItem('EdgeTop').style = 'Continuous';
+                    gmRange.format.borders.getItem('EdgeBottom').style = 'Continuous';
                     await context.sync();
-                    await createNamedRange("_Gross_Profit", 8);
+                    await createNamedRange("_Gross_Margin", 8);
                     
                     // ========== ROW 9: BLANK ==========
                     
                     // ========== ROW 10: OPERATING EXPENSES ==========
-                    sheet.getRange("A10").values = [["OPERATING EXPENSES"]];
-                    sheet.getRange("A10").format.font.bold = true;
+                    sheet.getRange("A10").values = [["Operating Expenses"]];
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}10`).formulas = [[buildTypeBalanceFormula("Expense", 3 + m)]];
@@ -7493,9 +7497,10 @@ For licensing inquiries, contact: legal@celigo.com
                     await context.sync();
                     await createNamedRange("_Operating_Expenses", 10);
                     
-                    // ========== ROW 11: OPERATING INCOME ==========
-                    sheet.getRange("A11").values = [["OPERATING INCOME"]];
+                    // ========== ROW 11: NET OPERATING INCOME ==========
+                    sheet.getRange("A11").values = [["Net Operating Income"]];
                     sheet.getRange("A11").format.font.bold = true;
+                    sheet.getRange("A11").format.font.color = "#09235C";
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
                         // Operating Income = Gross Profit - Operating Expenses
@@ -7513,7 +7518,7 @@ For licensing inquiries, contact: legal@celigo.com
                     
                     // ========== ROW 12: BLANK ==========
                     
-                    // ========== ROW 13: OTHER INCOME ==========
+                    // ========== ROW 13: OTHER INCOME (with blank row 12) ==========
                     sheet.getRange("A13").values = [["Other Income"]];
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
@@ -7523,8 +7528,8 @@ For licensing inquiries, contact: legal@celigo.com
                     await context.sync();
                     await createNamedRange("_Other_Income", 13);
                     
-                    // ========== ROW 14: OTHER EXPENSE ==========
-                    sheet.getRange("A14").values = [["Other Expense"]];
+                    // ========== ROW 14: OTHER EXPENSES ==========
+                    sheet.getRange("A14").values = [["Other Expenses"]];
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
                         sheet.getRange(`${col}14`).formulas = [[buildTypeBalanceFormula("OthExpense", 3 + m)]];
@@ -7535,10 +7540,11 @@ For licensing inquiries, contact: legal@celigo.com
                     
                     // ========== ROW 15: BLANK ==========
                     
-                    // ========== ROW 16: NET INCOME ==========
-                    sheet.getRange("A16").values = [["NET INCOME"]];
+                    // ========== ROW 16: NET INCOME (with blank row 15) ==========
+                    sheet.getRange("A16").values = [["Net Income"]];
                     sheet.getRange("A16").format.font.bold = true;
                     sheet.getRange("A16").format.font.size = 12;
+                    sheet.getRange("A16").format.font.color = "#09235C";
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
                         // Net Income = Operating Income + Other Income - Other Expense
