@@ -959,6 +959,9 @@ For licensing inquiries, contact: legal@celigo.com
             word-wrap: break-word;
             overflow-wrap: break-word;
             padding: 8px 0;
+            min-height: 48px;
+            max-height: 72px;
+            overflow: hidden;
         }
         
         /* Success overlay for generated reports */
@@ -3688,7 +3691,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.145</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.146</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4928,7 +4931,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.145"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.146"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -6625,9 +6628,10 @@ For licensing inquiries, contact: legal@celigo.com
                 if (tipEl) {
                     tipEl.style.opacity = '0';
                     setTimeout(() => {
+                        tipEl.innerHTML = '';  // Clear completely
                         tipEl.textContent = excelTips[tipIndex];
                         tipEl.style.opacity = '1';
-                    }, 200);
+                    }, 300);
                 }
             }, 2500);
             
@@ -7141,7 +7145,7 @@ For licensing inquiries, contact: legal@celigo.com
                         { name: 'Rows ready to extend', count: extraRows }
                     ],
                     tips: [
-                        { type: 'info', icon: '📊', title: 'Parameters:', text: 'Change the <strong>YEAR</strong> (F2) or <strong>Subsidiary</strong> (I2) to refresh all formulas automatically!' },
+                        { type: 'info', icon: '📊', title: 'Change Parameters:', text: 'Edit the <strong>Year</strong> and <strong>Subsidiary</strong> values in the header to refresh all formulas automatically!' },
                         { type: 'info', icon: '⏳', title: '#BUSY:', text: 'You may see <code>#BUSY</code> in cells for a few seconds as data loads. This is normal!' },
                         { type: 'info', icon: '📋', title: 'Extend formulas:', text: `Select <strong>A${lastFormulaRow}:P${lastFormulaRow}</strong> and drag down to row ${lastDataRow}` },
                         { type: 'info', icon: '📖', title: 'Formulas used:', text: '<code>XAVI.TYPE</code>, <code>XAVI.NAME</code>, <code>XAVI.BALANCE</code>' }
@@ -7223,9 +7227,10 @@ For licensing inquiries, contact: legal@celigo.com
                 if (tipEl) {
                     tipEl.style.opacity = '0';
                     setTimeout(() => {
+                        tipEl.innerHTML = '';  // Clear completely
                         tipEl.textContent = excelTips[tipIndex];
                         tipEl.style.opacity = '1';
-                    }, 200);
+                    }, 300);
                 }
             }, 2500);
             
@@ -7690,9 +7695,10 @@ For licensing inquiries, contact: legal@celigo.com
                 if (tipEl) {
                     tipEl.style.opacity = '0';
                     setTimeout(() => {
+                        tipEl.innerHTML = '';  // Clear completely
                         tipEl.textContent = excelTips[tipIndex];
                         tipEl.style.opacity = '1';
-                    }, 200);
+                    }, 300);
                 }
             }, 3000);
             
@@ -8359,8 +8365,8 @@ For licensing inquiries, contact: legal@celigo.com
                     ],
                     tips: [
                         { type: 'warning', icon: '⚠️', title: 'Please verify:', text: 'This is auto-generated from your NetSuite data. Review account classifications and totals before using for official reporting.' },
-                        { type: 'info', icon: '📅', title: 'Change Year:', text: 'Edit cell <strong>F2</strong> to a different year. The structure will automatically sync with accounts for that year.' },
-                        { type: 'info', icon: '🏢', title: 'Change Subsidiary:', text: 'Navigate to cell <strong>I2</strong>, then use the <strong>Filters</strong> section in the task pane to select a different subsidiary.<br><span style="font-size: 11px; color: #6B7280; margin-top: 4px; display: block;">💡 The XAVI.BALANCE formula also supports <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> filters.</span>' }
+                        { type: 'info', icon: '📅', title: 'Change Year:', text: 'Edit cell <strong>P3</strong> to a different year. The structure will automatically sync with accounts for that year.' },
+                        { type: 'info', icon: '🏢', title: 'Change Subsidiary:', text: 'Edit cell <strong>Q3</strong> to filter by a different subsidiary. The XAVI.BALANCE formula also supports <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> filters.' }
                     ]
                 });
                 
@@ -12117,8 +12123,8 @@ export default {
                         <div style="margin-top: 10px; padding: 10px; background: rgba(10, 226, 193, 0.15); border-radius: 6px; border-left: 3px solid #0AE2C1;">
                             <strong style="font-size: 11px; color: #09235C;">💡 Filtering Tips:</strong>
                             <ul style="margin: 6px 0 0 16px; font-size: 11px; color: #374151; line-height: 1.5;">
-                                <li><strong>Subsidiary:</strong> Navigate to cell <strong>I2</strong>, then use the <strong>Filters</strong> section in the task pane to select a different subsidiary.</li>
-                                <li><strong>More filters:</strong> The XAVI.BALANCE formula also supports <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> parameters—you can add these manually to your formulas.</li>
+                                <li><strong>Year & Subsidiary:</strong> Edit the parameter values in the header section to filter your report.</li>
+                                <li><strong>More filters:</strong> XAVI formulas also support <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> parameters.</li>
                             </ul>
                         </div>
                     </div>`;
