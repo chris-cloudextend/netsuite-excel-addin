@@ -15600,6 +15600,16 @@ export default {
                                     const data = await response.json();
                                     const transactions = data.transactions || [];
                                     
+                                    console.log(`📊 TYPEBALANCE transactions received:`, {
+                                        count: transactions.length,
+                                        sample: transactions.slice(0, 2).map(t => ({
+                                            tranid: t.transaction_number,
+                                            debit: t.debit,
+                                            credit: t.credit,
+                                            net: t.net_amount
+                                        }))
+                                    });
+                                    
                                     if (transactions.length === 0) {
                                         showDrilldownSuccess('No transactions found', `Account ${account} has no activity for ${period}`);
                         return;
@@ -15924,7 +15934,11 @@ export default {
             drillSheet.getRange('A5:C5').format.font.color = 'white';
             
             // Store drill-down context in row 3 (hidden) for drill-down function to use
-            drillSheet.getRange('A3').values = [[`DRILLDOWN_CONTEXT:${params.toPeriod || ''}:${params.subsidiary || ''}`]];
+            // Format: DRILLDOWN_CONTEXT:toPeriod:subsidiary:fromPeriod
+            // We extract the year from toPeriod for the drill-down (to get all YTD transactions)
+            const yearMatch = (params.toPeriod || '').match(/\d{4}/);
+            const drilldownPeriod = yearMatch ? yearMatch[0] : params.toPeriod || '';
+            drillSheet.getRange('A3').values = [[`DRILLDOWN_CONTEXT:${drilldownPeriod}:${params.subsidiary || ''}`]];
             drillSheet.getRange('A3').format.font.color = 'white'; // Hide it visually
             
             if (accounts.length > 0) {
