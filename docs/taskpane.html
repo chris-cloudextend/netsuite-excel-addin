@@ -3691,7 +3691,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.147</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.148</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4931,7 +4931,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.147"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.148"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -7476,8 +7476,8 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("A8").format.font.color = "#09235C";
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
-                        // Gross Profit = Revenue - COGS (handle negative COGS)
-                        sheet.getRange(`${col}8`).formulas = [[`=IF(${col}7<0,ABS(${col}6)+ABS(${col}7),ABS(${col}6)-ABS(${col}7))`]];
+                        // Gross Margin = Revenue - COGS (natural signs flow correctly)
+                        sheet.getRange(`${col}8`).formulas = [[`=${col}6-${col}7`]];
                     }
                     sheet.getRange("O8").formulas = [["=SUM(C8:N8)"]];
                     await context.sync();
@@ -7508,8 +7508,8 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("A11").format.font.color = "#09235C";
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
-                        // Operating Income = Gross Profit - Operating Expenses
-                        sheet.getRange(`${col}11`).formulas = [[`=IF(${col}10<0,ABS(${col}8)+ABS(${col}10),ABS(${col}8)-ABS(${col}10))`]];
+                        // Operating Income = Gross Margin - Operating Expenses (natural signs)
+                        sheet.getRange(`${col}11`).formulas = [[`=${col}8-${col}10`]];
                     }
                     sheet.getRange("O11").formulas = [["=SUM(C11:N11)"]];
                     await context.sync();
@@ -7552,8 +7552,8 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("A16").format.font.color = "#09235C";
                     for (let m = 0; m < 12; m++) {
                         const col = String.fromCharCode(67 + m);
-                        // Net Income = Operating Income + Other Income - Other Expense
-                        sheet.getRange(`${col}16`).formulas = [[`=${col}11+ABS(${col}13)-ABS(${col}14)`]];
+                        // Net Income = Operating Income + Other Income - Other Expense (natural signs)
+                        sheet.getRange(`${col}16`).formulas = [[`=${col}11+${col}13-${col}14`]];
                     }
                     sheet.getRange("O16").formulas = [["=SUM(C16:N16)"]];
                     await context.sync();
