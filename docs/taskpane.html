@@ -3565,7 +3565,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.137</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.138</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3669,11 +3669,11 @@ For licensing inquiries, contact: legal@celigo.com
                 </summary>
                 <div class="collapsible-content" style="background: linear-gradient(135deg, rgba(9, 35, 92, 0.05) 0%, rgba(0, 79, 182, 0.05) 100%);">
                     
-                    <!-- Interactive Tutorial (NEW - highlighted) -->
-                    <div class="guide-choice tutorial-highlight" onclick="startOnboarding()" style="margin-bottom: 16px; background: linear-gradient(135deg, rgba(10, 226, 193, 0.15) 0%, rgba(6, 214, 160, 0.1) 100%); border: 2px solid var(--anenome);">
+                    <!-- Interactive Tutorial -->
+                    <div class="guide-choice" onclick="startOnboarding()" style="margin-bottom: 12px; background: rgba(255,255,255,0.8); border: 2px solid var(--deep-dive);">
                         <div class="guide-choice-icon">✨</div>
                         <div class="guide-choice-content">
-                            <div class="guide-choice-title" style="color: var(--anenome);">Interactive Tutorial</div>
+                            <div class="guide-choice-title" style="color: var(--deep-dive);">Interactive Tutorial</div>
                             <div class="guide-choice-desc" style="color: var(--bottlenose);">Learn by building — 60 seconds on an empty sheet</div>
                         </div>
                         <span style="background: var(--anenome); color: var(--deep-dive); font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 10px; margin-left: auto;">NEW</span>
@@ -4785,7 +4785,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.137"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.138"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -4794,6 +4794,41 @@ For licensing inquiries, contact: legal@celigo.com
     <!-- ExcelJS for styled Excel export -->
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script>
+        // ========================================================================
+        // CONTEXT MENU FUNCTION - MUST be registered FIRST before Office.onReady
+        // ExecuteFunction actions require the function to exist immediately
+        // ========================================================================
+        
+        // Forward declaration - the actual drillDownTransactions is defined later
+        let drillDownTransactionsReady = null;
+        
+        function drillDownFromContextMenu(event) {
+            console.log('=== CONTEXT MENU DRILL-DOWN START ===');
+            
+            // CRITICAL: Call event.completed() IMMEDIATELY to prevent developer window
+            // This tells Excel "I've received the command" - actual work continues async
+            if (event && event.completed) {
+                event.completed();
+                console.log('✅ event.completed() called immediately');
+            }
+            
+            // Wait a tick for the rest of the script to load, then call drillDownTransactions
+            setTimeout(() => {
+                if (typeof drillDownTransactions === 'function') {
+                    drillDownTransactions().catch(error => {
+                        console.error('=== CONTEXT MENU DRILL-DOWN ERROR ===');
+                        console.error('Error:', error);
+                    });
+                } else {
+                    console.error('drillDownTransactions not yet defined');
+                }
+            }, 100);
+        }
+        
+        // Register globally IMMEDIATELY so ExecuteFunction can find it
+        window.drillDownFromContextMenu = drillDownFromContextMenu;
+        console.log('✅ drillDownFromContextMenu registered EARLY on window object');
+        
         // SERVER_URL is defined in functions.js (loaded via shared runtime)
         // Do NOT redeclare it here to avoid duplicate variable error
         
@@ -5258,9 +5293,9 @@ For licensing inquiries, contact: legal@celigo.com
             const overlay = document.getElementById('onboardingOverlay');
             if (overlay) overlay.style.display = 'none';
             
-            // Trigger the drillDown function (same as Quick Actions bar)
+            // Trigger the drillDownTransactions function (same as Quick Actions bar)
             try {
-                await drillDown();
+                await drillDownTransactions();
             } catch (e) {
                 console.error('Drill down error:', e);
                 showOnboardingMessage('Drill Down', 'Select a cell with a XAVI.BALANCE formula first, then try again.', 'info');
@@ -5525,7 +5560,17 @@ For licensing inquiries, contact: legal@celigo.com
                     await context.sync();
                 });
                 
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // Wait for formulas to resolve, then auto-fit columns
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                
+                // Auto-fit all columns after formulas resolve
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const allColumns = sheet.getRange('A:N');
+                    allColumns.format.autofitColumns();
+                    await context.sync();
+                });
+                
                 goToOnboardingStep(5);
                 updateContextualUI();
                 
@@ -15352,29 +15397,8 @@ export default {
             console.log(`Inserted ${accounts.length} accounts at cursor position`);
         }
 
-        function drillDownFromContextMenu(event) {
-            console.log('=== CONTEXT MENU DRILL-DOWN START ===');
-            
-            // CRITICAL: Call event.completed() IMMEDIATELY to prevent developer window
-            // This tells Excel "I've received the command" - actual work continues async
-            if (event && event.completed) {
-                event.completed();
-                console.log('✅ event.completed() called immediately');
-            }
-            
-            // Now do the actual work asynchronously (after returning control to Excel)
-            drillDownTransactions().catch(error => {
-                console.error('=== CONTEXT MENU DRILL-DOWN ERROR ===');
-                console.error('Error:', error);
-            });
-        }
-
-        // Make function globally available for ExecuteFunction action
-        window.drillDownFromContextMenu = drillDownFromContextMenu;
-        
-        // Log that function is available
-        console.log('✅ drillDownFromContextMenu registered on window object');
-        console.log('Function type:', typeof window.drillDownFromContextMenu);
+        // NOTE: drillDownFromContextMenu is defined at the TOP of the script
+        // so it's available immediately for ExecuteFunction actions
     </script>
 </body>
 </html>
