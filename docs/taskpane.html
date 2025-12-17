@@ -3667,13 +3667,8 @@ For licensing inquiries, contact: legal@celigo.com
                     </div>
                     
                         <!-- Permissions list -->
-                        <details style="margin-top: 8px;">
-                            <summary style="font-size: 11px; color: var(--tidal-wave); cursor: pointer; font-weight: 500;">
-                                View Table Permissions
-                        </summary>
-                            <div id="permissionsList" style="font-size: 11px; margin-top: 8px;">
+                        <div id="permissionsList" style="margin-top: 8px;">
                         </div>
-                    </details>
                     </div>
                 </div>
 
@@ -10588,27 +10583,6 @@ export default {
                     `;
                 }
                 
-                // Accounting Books (collapsible)
-                const bookCheck = data.checks.find(c => ['AccountingBook', 'accountingbook'].includes(c.table));
-                if (bookCheck) {
-                    const bookResults = Array.isArray(bookCheck.query_result) ? bookCheck.query_result : [];
-                    const bookCount = bookResults.length;
-                    const bookStatus = bookCheck.enabled ? '✅' : 'ℹ️';
-                    featuresHTML += `
-                        <details style="margin-bottom: 10px; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
-                            <summary style="padding: 10px 12px; background: ${bookCheck.enabled ? '#ecfdf5' : '#eff6ff'}; cursor: pointer; font-size: 12px; font-weight: 600; color: #374151;">
-                                ${bookStatus} Accounting Books <span style="font-weight: normal; color: #6b7280;">(${bookCount} found)</span>
-                            </summary>
-                            <div style="padding: 8px 12px; font-size: 11px; max-height: 150px; overflow-y: auto;">
-                                ${bookCount > 0 
-                                    ? bookResults.map(b => `<div style="padding: 4px 0; border-bottom: 1px solid #f3f4f6;">${b.name || b.id || JSON.stringify(b)}</div>`).join('')
-                                    : '<div style="color: #6b7280;">No accounting books configured (single-book mode)</div>'
-                                }
-                            </div>
-                        </details>
-                    `;
-                }
-                
                 // Budgets check
                 const budgetCheck = data.checks.find(c => c.table === 'Budgets');
                 if (budgetCheck) {
@@ -10656,7 +10630,7 @@ export default {
                 }
                 
                 // Build table permissions list (collapsible)
-                const featureTableNames = ['Subsidiary', 'AccountingBook', 'accountingbook', 'Budgets'];
+                const featureTableNames = ['Subsidiary', 'Budgets'];
                 const tableChecks = data.checks.filter(c => !featureTableNames.includes(c.table));
                 
                 // Count verified permissions
