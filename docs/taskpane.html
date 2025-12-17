@@ -2573,31 +2573,50 @@ For licensing inquiries, contact: legal@celigo.com
         
         .onboarding-progress {
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
-            margin-bottom: 24px;
+            gap: 16px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        .progress-dots {
+        .progress-bar-container {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex: 1;
+            max-width: 200px;
+        }
+        
+        .progress-bar-container .segment {
+            flex: 1;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+        
+        .progress-bar-container .segment.completed {
+            background: #22c55e;
+        }
+        
+        .progress-bar-container .segment.active {
+            background: var(--anenome);
+            box-shadow: 0 0 8px rgba(10, 226, 193, 0.4);
+        }
+        
+        .progress-text {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        
+        .onboarding-actions {
             display: flex;
             gap: 8px;
-        }
-        
-        .progress-dots .dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.2);
-            transition: all 0.3s;
-        }
-        
-        .progress-dots .dot.active {
-            background: var(--anenome);
-            box-shadow: 0 0 10px rgba(10, 226, 193, 0.5);
-        }
-        
-        .progress-dots .dot.completed {
-            background: #22c55e;
+            margin-bottom: 20px;
         }
         
         .onboarding-skip, .onboarding-restart {
@@ -2614,6 +2633,24 @@ For licensing inquiries, contact: legal@celigo.com
         
         .onboarding-restart {
             margin-left: 8px;
+        }
+        
+        .overwrite-warning {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: rgba(251, 191, 36, 0.15);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.85);
+            text-align: left;
+        }
+        
+        .overwrite-warning strong {
+            color: #fbbf24;
         }
         
         .onboarding-tip {
@@ -4530,50 +4567,24 @@ For licensing inquiries, contact: legal@celigo.com
         <!-- Interactive Onboarding Wizard -->
         <div class="onboarding-overlay" id="onboardingOverlay">
             <div class="onboarding-wizard">
-                <!-- Progress Indicator -->
-                <div class="onboarding-progress">
-                    <div class="progress-dots" id="progressDots">
-                        <span class="dot active" data-step="1"></span>
-                        <span class="dot" data-step="2"></span>
-                        <span class="dot" data-step="3"></span>
-                        <span class="dot" data-step="4"></span>
-                        <span class="dot" data-step="4b"></span>
-                        <span class="dot" data-step="5"></span>
-                        <span class="dot" data-step="6"></span>
-                        <span class="dot" data-step="7"></span>
-                        <span class="dot" data-step="8"></span>
-                        <span class="dot" data-step="9"></span>
-                        <span class="dot" data-step="10"></span>
-                </div>
-                    <button class="onboarding-skip" onclick="skipOnboarding()">Skip</button>
+                <!-- Skip/Restart Actions -->
+                <div class="onboarding-actions">
+                    <button class="onboarding-skip" onclick="skipOnboarding()">Skip Tutorial</button>
                     <button class="onboarding-restart" onclick="restartOnboarding()">↺ Start Over</button>
                 </div>
                 
-                <!-- Step 1: Welcome -->
-                <div class="onboarding-step active" id="onboardingStep1">
-                    <div class="step-type-badge tip">💡 Getting Started</div>
-                    <div class="onboarding-icon">✨</div>
-                    <h2>Welcome to XAVI</h2>
-                    <p class="onboarding-subtitle">NetSuite data → Excel formulas in seconds</p>
-                    <p class="onboarding-desc">
-                        Let's build your first formula together. You'll learn to pull real account data and create dynamic reports.
-                    </p>
-                    <div class="onboarding-time">
-                        <span>⏱️ Takes about 60 seconds</span>
-                    </div>
-                    <button class="onboarding-btn primary" onclick="startOnboardingStep2()">
-                        Let's Go! →
-                    </button>
-                    </div>
-                
-                <!-- Step 2: Enter Account Number -->
-                <div class="onboarding-step" id="onboardingStep2">
-                    <div class="step-type-badge action">🎯 YOUR TURN</div>
+                <!-- Step 2: Enter Account Number (now first step) -->
+                <div class="onboarding-step active" id="onboardingStep2">
+                    <div class="step-type-badge action">🎯 Let's Build Your First Formula</div>
                     <div class="onboarding-icon">🔢</div>
                     <h2>Pick an Account</h2>
                     <p class="onboarding-desc">
                         Enter a G/L account number, or we'll show you accounts with Jan 2025 activity.
                     </p>
+                    <div class="overwrite-warning">
+                        <span>⚠️</span>
+                        <span><strong>Heads up:</strong> This tutorial may write to your active sheet. Use a blank sheet if you want to preserve existing data.</span>
+                    </div>
                     <div class="onboarding-input-group">
                         <input type="text" id="onboardingAccountInput" placeholder="e.g., 40110, 51000, 62100" class="onboarding-input" />
                         <button class="onboarding-btn secondary" onclick="showSampleAccounts()" id="showAccountsBtn">
@@ -4582,7 +4593,6 @@ For licensing inquiries, contact: legal@celigo.com
                     </div>
                     <div id="sampleAccountsList" class="sample-accounts-list" style="display: none;"></div>
                     <div class="onboarding-nav">
-                        <button class="onboarding-btn text" onclick="goToOnboardingStep(1)">← Back</button>
                         <button class="onboarding-btn primary" onclick="insertFirstFormula()" id="insertFormulaBtn" style="font-size: 13px; padding: 10px 16px;">
                             Build My Formula & Continue →
                         </button>
@@ -4825,6 +4835,23 @@ For licensing inquiries, contact: legal@celigo.com
                         Finish ✓
                     </button>
                     <p class="final-tip">💡 <strong>Pro tip:</strong> Parametrize your queries! Put your year in a cell (e.g., P3=2025), then use <code>=DATE($P$3,1,1)</code> for dates. Drag right to fill all months, then just change the year cell and all XAVI values recalculate!</p>
+                </div>
+                
+                <!-- Progress Indicator (bottom) -->
+                <div class="onboarding-progress" id="onboardingProgress">
+                    <div class="progress-bar-container" id="progressBar">
+                        <div class="segment active" data-step="2"></div>
+                        <div class="segment" data-step="3"></div>
+                        <div class="segment" data-step="4"></div>
+                        <div class="segment" data-step="4b"></div>
+                        <div class="segment" data-step="5"></div>
+                        <div class="segment" data-step="6"></div>
+                        <div class="segment" data-step="7"></div>
+                        <div class="segment" data-step="8"></div>
+                        <div class="segment" data-step="9"></div>
+                        <div class="segment" data-step="10"></div>
+                    </div>
+                    <span class="progress-text" id="progressText">1 of 10</span>
                 </div>
             </div>
         </div>
@@ -5229,7 +5256,7 @@ For licensing inquiries, contact: legal@celigo.com
         // INTERACTIVE ONBOARDING WIZARD
         // ========================================================================
         let onboardingState = {
-            currentStep: 1,
+            currentStep: 2,
             selectedAccount: null,
             selectedAccountName: null,
             insertedValue: null,
@@ -5248,7 +5275,7 @@ For licensing inquiries, contact: legal@celigo.com
         async function launchOnboardingWizard() {
             // Reset state completely
             onboardingState = {
-                currentStep: 1,
+                currentStep: 2,
                 selectedAccount: null,
                 selectedAccountName: null,
                 insertedValue: null,
@@ -5272,8 +5299,8 @@ For licensing inquiries, contact: legal@celigo.com
             overlay.style.display = '';  // Clear any inline display:none
             overlay.classList.add('active');
             
-            // Reset to step 1 explicitly
-            goToOnboardingStep(1);
+            // Reset to step 2 (first step - Welcome was removed)
+            goToOnboardingStep(2);
         }
         
         function showOnboardingMessage(title, message, type = 'info') {
@@ -5346,8 +5373,8 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         function goToOnboardingStep(step) {
-            // Hide all steps
-            const steps = ['1', '2', '3', '4', '4b', '5', '6', '7', '8', '9', '10'];
+            // Hide all steps (step 1 removed, starts at 2)
+            const steps = ['2', '3', '4', '4b', '5', '6', '7', '8', '9', '10'];
             steps.forEach(s => {
                 const el = document.getElementById(`onboardingStep${s}`);
                 if (el) el.classList.remove('active');
@@ -5360,17 +5387,22 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         function updateOnboardingProgress() {
-            const stepOrder = ['1', '2', '3', '4', '4b', '5', '6', '7', '8', '9', '10'];
+            const stepOrder = ['2', '3', '4', '4b', '5', '6', '7', '8', '9', '10'];
             const currentIdx = stepOrder.indexOf(String(onboardingState.currentStep));
-            const dots = document.querySelectorAll('.progress-dots .dot');
-            dots.forEach((dot, index) => {
-                dot.classList.remove('active', 'completed');
+            const segments = document.querySelectorAll('.progress-bar-container .segment');
+            segments.forEach((segment, index) => {
+                segment.classList.remove('active', 'completed');
                 if (index === currentIdx) {
-                    dot.classList.add('active');
+                    segment.classList.add('active');
                 } else if (index < currentIdx) {
-                    dot.classList.add('completed');
+                    segment.classList.add('completed');
                 }
             });
+            // Update progress text
+            const progressText = document.getElementById('progressText');
+            if (progressText) {
+                progressText.textContent = `${currentIdx + 1} of ${stepOrder.length}`;
+            }
         }
         
         async function demoSelectForDrill() {
@@ -5476,13 +5508,13 @@ For licensing inquiries, contact: legal@celigo.com
         
         function restartOnboarding() {
             onboardingState = {
-                currentStep: 1,
+                currentStep: 2,
                 selectedAccount: null,
                 selectedAccountName: null,
                 insertedValue: null,
                 selectedAccounts: []
             };
-            goToOnboardingStep(1);
+            goToOnboardingStep(2);
         }
         
         function startOnboardingStep2() {
