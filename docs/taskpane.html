@@ -3565,7 +3565,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.135</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.136</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4589,12 +4589,16 @@ For licensing inquiries, contact: legal@celigo.com
                         Need a list of your accounts? Use <strong>Bulk Add</strong>!
                     </p>
                     <div class="onboarding-steps-list">
-                        <div class="step-item">1️⃣ Click an empty cell</div>
-                        <div class="step-item">2️⃣ Go to "Account Lookup" → "Bulk Add"</div>
-                        <div class="step-item">3️⃣ Enter <code>*</code> for ALL accounts</div>
-                        <div class="step-item">4️⃣ Or <code>4*</code> for just revenue</div>
+                        <div class="step-item">1️⃣ Enter <code>*</code> for ALL accounts</div>
+                        <div class="step-item">2️⃣ Or <code>4*</code> for just revenue</div>
+                        <div class="step-item">3️⃣ Loads Account #, Name, Type & more!</div>
                     </div>
-                    <p class="onboarding-tip">💡 Loads Account #, Name, Type, and Special Type!</p>
+                    <div class="bulk-add-demo">
+                        <input type="text" id="onboardingBulkAddInput" class="onboarding-input" placeholder="Enter * or 4* or 5*" value="*" style="text-align: center; margin-bottom: 10px;" />
+                        <button class="onboarding-btn secondary" onclick="doBulkAddFromOnboarding()" style="width: 100%;">
+                            ➕ Bulk Add Accounts Now
+                        </button>
+                    </div>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(6)">← Back</button>
                         <button class="onboarding-btn primary" onclick="goToOnboardingStep(8)">Go Dynamic →</button>
@@ -4619,7 +4623,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <p class="onboarding-tip">💡 Change one cell → entire report updates!</p>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(7)">← Back</button>
-                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(9)">Finish →</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(9)">Drill Down →</button>
                     </div>
                 </div>
                 
@@ -4644,7 +4648,7 @@ For licensing inquiries, contact: legal@celigo.com
                     </div>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(8)">← Back</button>
-                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(10)">Almost Done! →</button>
+                        <button class="onboarding-btn primary" onclick="goToOnboardingStep(10)">Finish →</button>
                     </div>
                 </div>
                 
@@ -4774,7 +4778,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.135"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.136"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -5213,6 +5217,33 @@ For licensing inquiries, contact: legal@celigo.com
             } catch (e) {
                 console.error('Error selecting cell:', e);
             }
+        }
+        
+        async function doBulkAddFromOnboarding() {
+            // Get the pattern from the onboarding input
+            const pattern = document.getElementById('onboardingBulkAddInput')?.value?.trim() || '*';
+            
+            // Set the search input value and trigger the search
+            const searchInput = document.getElementById('accountSearchInput');
+            if (searchInput) {
+                searchInput.value = pattern;
+            }
+            
+            // Close the onboarding overlay temporarily
+            const overlay = document.getElementById('onboardingOverlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            // Trigger the searchAccounts function
+            try {
+                await searchAccounts();
+                showOnboardingMessage('Bulk Add Complete!', `Accounts matching "${pattern}" have been added to your sheet.`, 'success');
+            } catch (e) {
+                console.error('Bulk add error:', e);
+                showOnboardingMessage('Bulk Add', 'Check the Bulk Add GL Accounts section to try again.', 'info');
+            }
+            
+            // Reopen onboarding
+            if (overlay) overlay.style.display = 'flex';
         }
         
         function restartOnboarding() {
