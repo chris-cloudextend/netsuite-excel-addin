@@ -3689,7 +3689,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.153</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.154</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5828,9 +5828,18 @@ For licensing inquiries, contact: legal@celigo.com
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Find an empty area to write the celebration (below the tutorial data)
-                    const startRow = 8;
-                    const startCol = 'A';
+                    // Find the last used row to write BELOW any existing data
+                    let startRow = 8;  // Default if sheet is mostly empty
+                    try {
+                        const usedRange = sheet.getUsedRange();
+                        usedRange.load('rowCount', 'rowIndex');
+                        await context.sync();
+                        // Start 3 rows below the last used row
+                        startRow = usedRange.rowIndex + usedRange.rowCount + 3;
+                    } catch (e) {
+                        // Sheet might be empty, use default
+                        startRow = 8;
+                    }
                     
                     // Dot matrix patterns for letters (5 rows x variable width)
                     const letters = {
