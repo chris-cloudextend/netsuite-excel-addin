@@ -3689,7 +3689,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.157</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.158</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5976,6 +5976,22 @@ For licensing inquiries, contact: legal@celigo.com
             
             // Write the cool XAVI MASTER celebration to Excel
             await writeXaviMasterCelebration();
+            
+            // Switch back to the tutorial sheet so user sees the XAVI MASTER celebration
+            if (onboardingState.tutorialSheetName) {
+                try {
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getItem(onboardingState.tutorialSheetName);
+                        sheet.activate();
+                        // Select the celebration area so it's visible
+                        const celebrationCell = sheet.getRange('G12');
+                        celebrationCell.select();
+                        await context.sync();
+                    });
+                } catch (e) {
+                    console.log('Could not switch to tutorial sheet:', e);
+                }
+            }
             
             // Close the overlay properly
             const overlay = document.getElementById('onboardingOverlay');
