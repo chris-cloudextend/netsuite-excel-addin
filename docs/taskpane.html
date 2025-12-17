@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.165</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.166</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5078,6 +5078,9 @@ For licensing inquiries, contact: legal@celigo.com
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     const selection = context.workbook.getSelectedRange();
                     
+                    // Load sheet name for DrillDown_ detection
+                    sheet.load('name');
+                    
                     // Load used range for formula count
                     let usedRange;
                     try {
@@ -5089,7 +5092,7 @@ For licensing inquiries, contact: legal@celigo.com
                     }
                     
                     // Load selected cell info
-                    selection.load(['formulas', 'values', 'address']);
+                    selection.load(['formulas', 'values', 'address', 'rowIndex']);
                     
                     await context.sync();
                     
@@ -5112,6 +5115,7 @@ For licensing inquiries, contact: legal@celigo.com
                     // Check selected cell
                     let selectedCellHasXavi = false;
                     let selectedFormulaType = null;
+                    let isDrillDownSheetRow = false;
                     
                     const selectedFormula = selection.formulas[0][0];
                     if (selectedFormula && typeof selectedFormula === 'string') {
@@ -5134,11 +5138,31 @@ For licensing inquiries, contact: legal@celigo.com
                         }
                     }
                     
+                    // Check if on a DrillDown_ sheet in a data row (for secondary drill)
+                    if (sheet.name.startsWith('DrillDown_')) {
+                        // Row index is 0-based, data starts at row 6 (index 5)
+                        const rowNum = selection.rowIndex + 1; // Convert to 1-based
+                        if (rowNum >= 6) {
+                            // Check if this row has an account number (not TOTAL, not empty)
+                            const cellValue = String(selection.values[0][0] || '');
+                            const firstCellInRow = sheet.getRange(`A${rowNum}`);
+                            firstCellInRow.load('values');
+                            await context.sync();
+                            
+                            const acctValue = String(firstCellInRow.values[0][0] || '');
+                            if (acctValue && acctValue !== 'TOTAL' && !acctValue.startsWith('💡')) {
+                                isDrillDownSheetRow = true;
+                                selectedFormulaType = 'DRILLDOWN_ACCOUNT';
+                            }
+                        }
+                    }
+                    
                     // Update state
                     contextualState.formulaCount = formulaCount;
                     contextualState.hasXaviFormulas = hasXaviFormulas;
-                    contextualState.selectedCellHasXavi = selectedCellHasXavi;
+                    contextualState.selectedCellHasXavi = selectedCellHasXavi || isDrillDownSheetRow;
                     contextualState.selectedFormulaType = selectedFormulaType;
+                    contextualState.isDrillDownSheetRow = isDrillDownSheetRow;
                     
                     // Update UI
                     updateQuickActionsUI();
@@ -5191,13 +5215,18 @@ For licensing inquiries, contact: legal@celigo.com
                 refreshSelectedBtn.disabled = true;
                 drillBtn.disabled = true;
             } else if (contextualState.selectedCellHasXavi) {
-                // Cell with XAVI formula selected
+                // Cell with XAVI formula selected OR on drill-down sheet row
                 statusEl.classList.add('has-selection');
                 
                 if (contextualState.selectedFormulaType === 'BALANCE' || 
                     contextualState.selectedFormulaType === 'TYPEBALANCE') {
                     iconEl.textContent = '🔍';
                     textEl.textContent = `${contextualState.selectedFormulaType} selected • Drill Down ready`;
+                    drillBtn.disabled = false;
+                    drillBtn.classList.add('highlight');
+                } else if (contextualState.selectedFormulaType === 'DRILLDOWN_ACCOUNT') {
+                    iconEl.textContent = '🔍';
+                    textEl.textContent = 'Account row selected • Drill Down to transactions';
                     drillBtn.disabled = false;
                     drillBtn.classList.add('highlight');
                 } else if (contextualState.selectedFormulaType === 'BUDGET') {
