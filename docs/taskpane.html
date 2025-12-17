@@ -3714,7 +3714,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.168</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.169</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4072,12 +4072,6 @@ For licensing inquiries, contact: legal@celigo.com
                                 <span class="action-icon">📊</span>
                                 <span class="action-text">Recalculate Retained Earnings</span>
                                 <span class="help-icon small" data-tip="Retained Earnings, Net Income, and CTA require full transaction history scan with currency consolidation (up to 5 min). Use after: journal entries, period close, or when values seem stale.">?</span>
-                            </button>
-                            
-                            <button class="action-btn" onclick="batchRefreshTypeBalances()" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);">
-                                <span class="action-icon">📈</span>
-                                <span class="action-text">Preload Type Balances</span>
-                                <span class="help-icon small" data-tip="Pre-fetches ALL P&L account type totals (Income, COGS, Expense, etc.) for the current year in ONE query. Dramatically reduces NetSuite API calls for reports using XAVI.TYPEBALANCE formulas.">?</span>
                             </button>
                             
                             <button class="action-btn" onclick="formatCurrencies()" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);">
@@ -4521,9 +4515,6 @@ For licensing inquiries, contact: legal@celigo.com
                 </button>
                 <button class="quick-action-btn secondary" onclick="drillDownTransactions()" id="quickDrillBtn" disabled>
                     <span>🔍</span> Drill Down
-                </button>
-                <button class="quick-action-btn secondary" onclick="batchRefreshTypeBalances()" id="quickTypeBalanceBtn" title="Preload Type Balances for faster TYPEBALANCE formulas" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);">
-                    <span>📈</span> Preload
                 </button>
                 <button class="quick-action-help" onclick="showQuickActionsHelp()" title="Quick Actions Help">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -7552,7 +7543,52 @@ For licensing inquiries, contact: legal@celigo.com
                     defaultSubsidiary = 'Parent Company (Consolidated)';
                 }
                 
-                updateProgress(30, '📊 Step 2 of 3: Building Structure', 'Creating headers and parameters...');
+                // ========== PRE-FETCH TYPE BALANCES ==========
+                // Call batch typebalance refresh BEFORE adding formulas
+                // This pre-populates the cache so formulas resolve instantly
+                updateProgress(20, '📈 Pre-fetching Type Balances', 'Loading all P&L types in one query...');
+                
+                try {
+                    console.log('🚀 CFO Flash: Pre-fetching TYPEBALANCE data for instant formula resolution...');
+                    const typeBalanceResponse = await fetch(`${SERVER_URL}/batch/typebalance_refresh`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            year: currentYear,
+                            subsidiary: defaultSubsidiary,
+                            department: '',
+                            location: '',
+                            classId: '',
+                            accountingBook: ''
+                        })
+                    });
+                    
+                    if (typeBalanceResponse.ok) {
+                        const typeBalanceData = await typeBalanceResponse.json();
+                        const balances = typeBalanceData.balances || {};
+                        const typesLoaded = Object.keys(balances).length;
+                        
+                        console.log(`✅ CFO Flash: Pre-fetched ${typesLoaded} account types × 12 months`);
+                        
+                        // Populate the frontend cache so TYPEBALANCE formulas resolve instantly
+                        if (typeof window.setTypeBalanceCache === 'function') {
+                            window.setTypeBalanceCache(
+                                balances,
+                                currentYear,
+                                defaultSubsidiary,
+                                '', '', '', '', false
+                            );
+                            console.log('✅ CFO Flash: TypeBalance cache populated - formulas will resolve instantly!');
+                        }
+                    } else {
+                        console.warn('⚠️ CFO Flash: TypeBalance pre-fetch failed, formulas will load individually');
+                    }
+                } catch (e) {
+                    console.warn('⚠️ CFO Flash: TypeBalance pre-fetch error:', e.message);
+                    // Continue anyway - formulas will just load one at a time
+                }
+                
+                updateProgress(35, '📊 Step 2 of 3: Building Structure', 'Creating headers and parameters...');
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -11723,6 +11759,10 @@ export default {
         }
         
         // Check if new XAVI formulas were added and apply formatting
+        // Also auto-fetches TYPEBALANCE batch data when new TYPEBALANCE formulas are detected
+        let lastTypeBalanceCount = 0;
+        let typeBalanceBatchFetched = false;
+        
         async function checkForNewFormulas() {
             try {
                 await Excel.run(async (context) => {
@@ -11731,24 +11771,31 @@ export default {
                     usedRange.load('formulas');
                     await context.sync();
                     
-                    // Count XAVI.BALANCE formulas
-                    let formulaCount = 0;
+                    // Count XAVI.BALANCE and XAVI.TYPEBALANCE formulas
+                    let balanceCount = 0;
+                    let typeBalanceCount = 0;
                     const formulas = usedRange.formulas;
                     for (let row = 0; row < formulas.length; row++) {
                         for (let col = 0; col < formulas[row].length; col++) {
                             const formula = formulas[row][col];
-                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
-                                formulaCount++;
+                            if (typeof formula === 'string') {
+                                const upper = formula.toUpperCase();
+                                if (upper.includes('XAVI.BALANCE') && !upper.includes('XAVI.TYPEBALANCE')) {
+                                    balanceCount++;
+                                }
+                                if (upper.includes('XAVI.TYPEBALANCE')) {
+                                    typeBalanceCount++;
+                                }
                             }
                         }
                     }
                     
-                    // If formula count changed, we have new formulas - rescan and format
-                    if (formulaCount !== lastFormulaCount) {
-                        console.log(`📊 Formula count changed: ${lastFormulaCount} → ${formulaCount}`);
-                        lastFormulaCount = formulaCount;
+                    // If BALANCE formula count changed, we have new formulas - rescan and format
+                    if (balanceCount !== lastFormulaCount) {
+                        console.log(`📊 BALANCE formula count changed: ${lastFormulaCount} → ${balanceCount}`);
+                        lastFormulaCount = balanceCount;
                         
-                        if (formulaCount > 0) {
+                        if (balanceCount > 0) {
                             // Re-scan for subsidiary cells
                             await scanForSubsidiaryCells();
                             
@@ -11757,9 +11804,81 @@ export default {
                             await autoFormatCurrencies();
                         }
                     }
+                    
+                    // If TYPEBALANCE formulas detected and we haven't fetched batch data yet
+                    if (typeBalanceCount > 0 && typeBalanceCount !== lastTypeBalanceCount && !typeBalanceBatchFetched) {
+                        console.log(`📈 TYPEBALANCE formulas detected: ${typeBalanceCount} - triggering batch pre-fetch...`);
+                        lastTypeBalanceCount = typeBalanceCount;
+                        
+                        // Trigger batch fetch in background (don't await - let it run async)
+                        autoFetchTypeBalanceBatch();
+                    }
                 });
             } catch (e) {
                 console.warn('Formula detection check failed:', e.message);
+            }
+        }
+        
+        // Auto-fetch TYPEBALANCE batch data when new formulas are detected
+        // This runs in the background so formulas can resolve from cache
+        async function autoFetchTypeBalanceBatch() {
+            if (typeBalanceBatchFetched) {
+                console.log('📈 TypeBalance batch already fetched - skipping');
+                return;
+            }
+            
+            try {
+                const currentYear = new Date().getFullYear();
+                
+                // Try to get subsidiary from P3/Q3 cells (standard report layout)
+                let subsidiary = '';
+                try {
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const subCell = sheet.getRange('Q3');
+                        subCell.load('values');
+                        await context.sync();
+                        subsidiary = subCell.values[0][0] || '';
+                    });
+                } catch (e) {
+                    // Ignore - use empty subsidiary
+                }
+                
+                console.log(`🚀 Auto-fetching TYPEBALANCE batch for ${currentYear}, subsidiary: "${subsidiary || '(all)'}"`);
+                
+                const response = await fetch(`${SERVER_URL}/batch/typebalance_refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year: currentYear,
+                        subsidiary: subsidiary,
+                        department: '',
+                        location: '',
+                        classId: '',
+                        accountingBook: ''
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const balances = data.balances || {};
+                    const typesLoaded = Object.keys(balances).length;
+                    
+                    console.log(`✅ Auto-fetched ${typesLoaded} account types × 12 months`);
+                    
+                    // Populate the frontend cache
+                    if (typeof window.setTypeBalanceCache === 'function') {
+                        window.setTypeBalanceCache(
+                            balances, currentYear, subsidiary, '', '', '', '', false
+                        );
+                        typeBalanceBatchFetched = true;
+                        console.log('✅ TypeBalance cache populated - formulas should resolve instantly now!');
+                    }
+                } else {
+                    console.warn('⚠️ TypeBalance batch fetch failed:', response.status);
+                }
+            } catch (e) {
+                console.warn('⚠️ TypeBalance auto-fetch error:', e.message);
             }
         }
         
