@@ -42,21 +42,28 @@ For licensing inquiries, contact: legal@celigo.com
             box-sizing: border-box;
         }
 
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent body scroll - we scroll .content instead */
+        }
+        
         body {
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
             color: #333;
-            padding: 0;
-            height: 100vh;
-            overflow-y: auto;
         }
 
         .container {
             max-width: 600px;
             margin: 0 auto;
             background: white;
-            min-height: 100vh;
+            height: 100%;
             box-shadow: 0 0 40px rgba(9, 35, 92, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         .header {
@@ -64,6 +71,7 @@ For licensing inquiries, contact: legal@celigo.com
             color: white;
             padding: 16px 20px 0;
             position: relative;
+            flex-shrink: 0;
         }
 
         .header-top {
@@ -1131,9 +1139,7 @@ For licensing inquiries, contact: legal@celigo.com
             background: var(--deep-dive);
         }
 
-        .content {
-            padding: 16px;
-        }
+        /* .content styling moved to bottom of CSS - see "CRITICAL: Content area" section */
 
         .status-badge {
             display: inline-flex;
@@ -2162,10 +2168,8 @@ For licensing inquiries, contact: legal@celigo.com
            QUICK ACTIONS BAR - Always visible at bottom
            ================================================================ */
         .quick-actions-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            /* NOT position: fixed - part of flex layout to prevent overlap */
+            flex-shrink: 0;
             background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.08) 100%);
             border-top: 1px solid rgba(59, 130, 246, 0.2);
             padding: 12px 12px 14px 12px;
@@ -2540,6 +2544,35 @@ For licensing inquiries, contact: legal@celigo.com
         
         .onboarding-tip strong {
             color: var(--anenome);
+        }
+        
+        /* #BUSY notice for when formulas are loading */
+        .busy-notice {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: rgba(251, 191, 36, 0.15);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .busy-notice.small {
+            padding: 8px 12px;
+            font-size: 11px;
+        }
+        
+        .busy-notice .busy-icon {
+            font-size: 14px;
+        }
+        
+        .busy-notice strong {
+            color: #fbbf24;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
         }
         
         .onboarding-step {
@@ -3215,39 +3248,31 @@ For licensing inquiries, contact: legal@celigo.com
         }
 
         /* ================================================================
-           CRITICAL: Content area must not overlap fixed bottom bar
-           The quick-actions-bar is ~160px tall (buttons + status + footer)
+           CRITICAL: Content area is the ONLY scrollable area
+           Quick-actions-bar is now part of flex layout (not fixed)
            ================================================================ */
         .content {
-            padding-bottom: 180px !important;
-            /* Create scrollable container that respects fixed bottom bar */
-            max-height: calc(100vh - 180px);
+            flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
+            padding: 16px;
+            padding-bottom: 20px;
         }
         
         .tab-panel {
-            padding-bottom: 40px;
-            /* Prevent content from extending behind fixed elements */
-            margin-bottom: 20px;
+            padding-bottom: 20px;
         }
         
         /* Ensure accordions have proper bottom spacing */
         .accordion:last-child {
-            margin-bottom: 60px !important;
+            margin-bottom: 20px;
         }
         
-        /* Extra safety: collapsed content should never extend beyond visible area */
+        /* Collapsed content scrolls if too tall */
         .collapsible-content {
             padding-bottom: 16px;
-            max-height: 600px;
+            max-height: 500px;
             overflow-y: auto;
-        }
-        
-        /* Spacer element at bottom of accordion lists */
-        .accordion-bottom-spacer {
-            height: 80px;
-            flex-shrink: 0;
         }
 
         .info-box {
@@ -3540,7 +3565,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.134</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.135</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4453,6 +4478,10 @@ For licensing inquiries, contact: legal@celigo.com
                         <div class="formula-display" id="insertedFormulaDisplay">=XAVI.BALANCE("40110", "Jan 2025", "Jan 2025")</div>
                         <div class="result-display">→ <span id="insertedResultDisplay">$12,500.00</span></div>
                     </div>
+                    <div class="busy-notice">
+                        <span class="busy-icon">⏳</span>
+                        <span>You may see <strong>#BUSY</strong> briefly — that's us doing the heavy lifting with NetSuite!</span>
+                    </div>
                     <p class="onboarding-tip">💡 <strong>XAVI.NAME(account)</strong> returns the account name — great for labels!</p>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(2)">← Back</button>
@@ -4477,6 +4506,10 @@ For licensing inquiries, contact: legal@celigo.com
                             <div class="demo-cell empty">?</div>
                             <div class="demo-arrow">↓ Drag</div>
                         </div>
+                    </div>
+                    <div class="busy-notice small">
+                        <span class="busy-icon">⏳</span>
+                        <span><strong>#BUSY</strong> = we're fetching from NetSuite. It'll resolve in moments!</span>
                     </div>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(3)">← Back</button>
@@ -4741,7 +4774,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.134"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.135"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
