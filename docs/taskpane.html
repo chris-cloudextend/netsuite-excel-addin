@@ -2613,13 +2613,39 @@ For licensing inquiries, contact: legal@celigo.com
             white-space: nowrap;
         }
         
+        .onboarding-exit-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            z-index: 10;
+        }
+        
+        .onboarding-exit-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+            color: #ef4444;
+            transform: scale(1.1);
+        }
+        
         .onboarding-actions {
             display: flex;
             gap: 8px;
             margin-bottom: 20px;
         }
         
-        .onboarding-skip, .onboarding-restart {
+        .onboarding-restart {
             background: none;
             border: none;
             color: rgba(255, 255, 255, 0.4);
@@ -2627,12 +2653,8 @@ For licensing inquiries, contact: legal@celigo.com
             cursor: pointer;
         }
         
-        .onboarding-skip:hover, .onboarding-restart:hover {
+        .onboarding-restart:hover {
             color: rgba(255, 255, 255, 0.7);
-        }
-        
-        .onboarding-restart {
-            margin-left: 8px;
         }
         
         .overwrite-warning {
@@ -3714,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.178</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.179</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4567,9 +4589,12 @@ For licensing inquiries, contact: legal@celigo.com
         <!-- Interactive Onboarding Wizard -->
         <div class="onboarding-overlay" id="onboardingOverlay">
             <div class="onboarding-wizard">
-                <!-- Skip/Restart Actions -->
+                <!-- Exit Button - Always visible at top right -->
+                <button class="onboarding-exit-btn" onclick="skipOnboarding()" title="Exit Tutorial">
+                    ✕
+                </button>
+                <!-- Restart Action -->
                 <div class="onboarding-actions">
-                    <button class="onboarding-skip" onclick="skipOnboarding()">Skip Tutorial</button>
                     <button class="onboarding-restart" onclick="restartOnboarding()">↺ Start Over</button>
                 </div>
                 
@@ -7453,15 +7478,28 @@ For licensing inquiries, contact: legal@celigo.com
             const progress = document.getElementById('guideMeProgress');
             const currentYear = new Date().getFullYear();
             
-            // Excel tips for loading overlay
+            // Tips with formula explanations every 3rd item
             const excelTips = [
-                '=XAVI.TYPEBALANCE("Income", from, to) → Total of all Income accounts',
-                '💡 TYPEBALANCE uses account types for cleaner, faster reports',
-                '=XAVI.TYPEBALANCE("COGS", from, to) → Cost of Goods Sold total',
-                '📊 Summary P&L is perfect for executive dashboards',
-                '=XAVI.TYPEBALANCE("Expense", from, to) → Operating expenses total',
-                '💰 Change Year cell to instantly update all formulas',
-                '📈 KPI cards show real-time margins and ratios'
+                // XAVI Formula explanation
+                '📖 XAVI.TYPEBALANCE("Income", from, to) sums ALL accounts of type "Income" for the period',
+                '💡 TYPEBALANCE is faster than individual account formulas for summary reports',
+                // Excel tip
+                '📊 Summary P&L is perfect for executive dashboards and board meetings',
+                // XAVI Formula explanation  
+                '📖 XAVI.TYPEBALANCE("COGS", from, to) totals Cost of Goods Sold accounts',
+                '💡 Parameters: account_type, from_period, to_period, subsidiary, dept, class, location',
+                // Excel tip
+                '💰 Change the Year cell to instantly update all formulas on the sheet',
+                // XAVI Formula explanation
+                '📖 XAVI.TYPEBALANCE("Expense", from, to) sums all Operating Expense accounts',
+                '💡 Valid types: Income, COGS, Expense, OthIncome, OthExpense, plus Balance Sheet types',
+                // Excel tip
+                '📈 KPI cards automatically calculate margins and ratios from the data',
+                // XAVI Formula explanation
+                '📖 XAVI.TYPEBALANCE works with subsidiaries: add 5th parameter like "Celigo Inc."',
+                '💡 For P&L: use same from/to period for monthly, different for YTD ranges',
+                // Excel tip
+                '🏢 Filter by subsidiary, department, class, or location using optional parameters'
             ];
             let tipIndex = 0;
             
@@ -7997,32 +8035,36 @@ For licensing inquiries, contact: legal@celigo.com
             isSyncInProgress = true;
             lastSyncedYear = currentYear;
             
-            // Excel tips, history, and financial formulas interspersed
+            // Tips with XAVI.BALANCE formula explanations every 3rd item
             const excelTips = [
-                '=SUMIF(range, criteria, sum_range) → Sum by condition',
-                '📜 VisiCalc (1979) was the "killer app" that launched personal computing',
-                '=INDEX(array, MATCH(value, range, 0)) → Flexible lookup',
-                '📜 Excel launched in 1985—originally just for Macintosh',
-                'Ctrl+Shift+L → Toggle filters quickly',
-                '💡 Named ranges make formulas self-documenting',
-                '=IFERROR(formula, 0) → Handle errors gracefully',
-                '📜 The $ anchor for absolute refs dates back to VisiCalc',
-                'Alt+= → Auto-sum selected range',
-                '📜 Over 750 million people use Excel worldwide',
-                '=TEXT(date, "mmmm yyyy") → Format dates nicely',
-                '💡 Double-click fill handle to auto-fill down',
-                'F4 → Toggle absolute refs ($A$1)',
-                '📜 Lotus 1-2-3 dominated spreadsheets before Excel',
-                '=ROUND(value, -3) → Round to nearest thousand',
-                '💡 Ctrl+[ jumps to cells referenced by your formula',
-                '=(current-prior)/ABS(prior) → % change formula',
-                '📜 The first Excel easter egg was a flight simulator',
-                '=SUMPRODUCT((A:A="Revenue")*(B:B)) → Multi-criteria sum',
-                '💡 Tables (Ctrl+T) auto-expand with new data',
-                '=EOMONTH(date, 0) → Last day of month',
-                '📜 Dan Bricklin invented spreadsheets watching a professor erase a blackboard',
-                '=ABS(value) → Absolute value for variances',
-                '💡 Conditional formatting can flag budget variances'
+                // XAVI Formula explanation
+                '📖 XAVI.BALANCE(account, from, to) returns the balance for a specific G/L account',
+                '💡 Parameters: account number, from_period, to_period, subsidiary, dept, class, location',
+                // Excel tip
+                '💡 Drag formulas down to copy for multiple accounts—cell refs auto-adjust',
+                // XAVI Formula explanation
+                '📖 For monthly balances, use same from/to: XAVI.BALANCE("40110", "Jan 2025", "Jan 2025")',
+                '💡 For YTD: use different from/to: XAVI.BALANCE("40110", "Jan 2025", "Dec 2025")',
+                // Excel tip
+                'Ctrl+Shift+L → Toggle filters quickly on your data',
+                // XAVI Formula explanation
+                '📖 Use wildcards: XAVI.BALANCE("401*", from, to) sums all accounts starting with 401',
+                '💡 Wildcards work for ranges too: "40*" matches 4000-4999',
+                // Excel tip
+                '💡 Double-click the fill handle to auto-fill formulas down to adjacent data',
+                // XAVI Formula explanation
+                '📖 Add subsidiary filter: XAVI.BALANCE("40110", from, to, "Celigo Inc.")',
+                '💡 Use "(Consolidated)" suffix for subsidiary rollups',
+                // Excel tip
+                'F4 → Toggle absolute refs ($A$1) to lock row/column references',
+                // XAVI Formula explanation
+                '📖 XAVI.NAME(account) returns the account name—great for labels next to numbers',
+                '💡 XAVI.TYPE(account) returns the account type (Income, Expense, etc.)',
+                // Excel tip
+                '💡 Named ranges make formulas self-documenting and easier to maintain',
+                // XAVI Formula explanation
+                '📖 Balance Sheet accounts ignore from_period—just pass the to_period',
+                '💡 For BS: XAVI.BALANCE("10100", "", "Dec 2025") gets year-end balance'
             ];
             let tipIndex = 0;
             
@@ -8048,7 +8090,7 @@ For licensing inquiries, contact: legal@celigo.com
                 <div class="loading-step-desc" id="isStepDesc">Establishing secure connection</div>
                 
                 <div class="tips-section">
-                    <div class="tips-label">Excel Tips & History</div>
+                    <div class="tips-label">XAVI Formula Tips</div>
                     <div class="loading-tip" id="isTip">${excelTips[0]}</div>
                 </div>
             `;
