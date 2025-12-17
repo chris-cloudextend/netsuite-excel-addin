@@ -1696,6 +1696,10 @@ const STORAGE_KEY = 'netsuite_balance_cache';
 const STORAGE_TIMESTAMP_KEY = 'netsuite_balance_cache_timestamp';
 const STORAGE_TTL = 300000; // 5 minutes in milliseconds
 
+// TYPEBALANCE localStorage cache - critical for pre-fetch before functions.html loads!
+const TYPEBALANCE_STORAGE_KEY = 'netsuite_typebalance_cache';
+const TYPEBALANCE_STORAGE_TIMESTAMP_KEY = 'netsuite_typebalance_cache_timestamp';
+
 // In-memory cache that can be populated via window function
 // This is populated by taskpane when full_year_refresh completes
 let fullYearCache = null;
@@ -1879,7 +1883,23 @@ window.setTypeBalanceCache = function(balances, year, subsidiary = '', departmen
         }
     }
     
-    console.log(`   ✅ TypeBalance cache now has ${cachedCount} entries`);
+    console.log(`   ✅ TypeBalance in-memory cache now has ${cachedCount} entries`);
+    
+    // CRITICAL: Also save to localStorage for cross-context communication
+    // This ensures the cache is available even if functions.html loads AFTER taskpane populates
+    try {
+        const storageData = {
+            balances: cache.typebalance,
+            year: year,
+            subsidiary: subsidiary,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(TYPEBALANCE_STORAGE_KEY, JSON.stringify(storageData));
+        localStorage.setItem(TYPEBALANCE_STORAGE_TIMESTAMP_KEY, Date.now().toString());
+        console.log(`   💾 Also saved to localStorage (${cachedCount} entries)`);
+    } catch (e) {
+        console.warn('   ⚠️ localStorage save failed:', e.message);
+    }
     
     // Log a sample key to help debug cache misses
     const sampleKeys = Object.keys(cache.typebalance).slice(0, 3);
@@ -4797,18 +4817,39 @@ async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, depart
         const specialFlag = useSpecial ? '1' : '0';
         const cacheKey = `typebalance:${normalizedType}:${convertedFromPeriod}:${convertedToPeriod}:${subsidiaryStr}:${departmentStr}:${locationStr}:${classStr}:${bookStr}:${specialFlag}`;
         
-        // Check cache
+        // Check in-memory cache first
         if (cache.typebalance && cache.typebalance[cacheKey] !== undefined) {
-            console.log(`📋 TYPEBALANCE cache hit: ${cacheKey} = ${cache.typebalance[cacheKey]}`);
+            console.log(`📋 TYPEBALANCE cache hit (memory): ${cacheKey} = ${cache.typebalance[cacheKey]}`);
             return cache.typebalance[cacheKey];
+        }
+        
+        // Check localStorage if in-memory cache misses
+        // This is CRITICAL when functions.html loads AFTER taskpane has pre-fetched data
+        try {
+            const stored = localStorage.getItem(TYPEBALANCE_STORAGE_KEY);
+            if (stored) {
+                const storageData = JSON.parse(stored);
+                const storedBalances = storageData.balances || {};
+                
+                // Check if this key exists in localStorage
+                if (storedBalances[cacheKey] !== undefined) {
+                    console.log(`📋 TYPEBALANCE cache hit (localStorage): ${cacheKey} = ${storedBalances[cacheKey]}`);
+                    
+                    // Populate in-memory cache from localStorage for future lookups
+                    if (!cache.typebalance) cache.typebalance = {};
+                    cache.typebalance = { ...cache.typebalance, ...storedBalances };
+                    console.log(`   💾 Restored ${Object.keys(storedBalances).length} entries from localStorage to memory`);
+                    
+                    return storedBalances[cacheKey];
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ localStorage read failed:', e.message);
         }
         
         // Log cache miss with details for debugging
         const cacheSize = cache.typebalance ? Object.keys(cache.typebalance).length : 0;
-        console.log(`❌ TYPEBALANCE cache MISS: "${cacheKey}" (cache has ${cacheSize} entries)`);
-        if (cacheSize > 0 && cacheSize < 20) {
-            console.log(`   Available keys:`, Object.keys(cache.typebalance).slice(0, 10));
-        }
+        console.log(`❌ TYPEBALANCE cache MISS: "${cacheKey}" (memory: ${cacheSize} entries)`);
         
         // Check in-flight
         if (inFlightRequests.has(cacheKey)) {
