@@ -3677,7 +3677,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.161</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.162</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -3803,11 +3803,11 @@ For licensing inquiries, contact: legal@celigo.com
                         </div>
             </div>
                     
-                    <!-- Option 2: Summary Income Statement (NEW) -->
+                    <!-- Option 2: CFO Flash Report -->
                     <div class="guide-choice" onclick="generateSummaryIncomeStatement()" style="background: rgba(255,255,255,0.8); border: 2px solid #10B981;">
                         <div class="guide-choice-icon">📈</div>
                         <div class="guide-choice-content">
-                            <div class="guide-choice-title" style="color: #10B981;">Summary Income Statement</div>
+                            <div class="guide-choice-title" style="color: #10B981;">CFO Flash Report</div>
                             <div class="guide-choice-desc" style="color: var(--bottlenose);">High-level P&L with KPI cards — uses TYPEBALANCE formulas</div>
                         </div>
                     </div>
@@ -7397,7 +7397,7 @@ For licensing inquiries, contact: legal@celigo.com
             overlay.id = 'summaryISOverlay';
             overlay.innerHTML = `
                 <div class="loading-spinner"></div>
-                <h2>Building Summary Income Statement</h2>
+                <h2>Building CFO Flash Report</h2>
                 <div class="loading-subtitle">
                     ⏱️ This is a quick one — just a few seconds!
                 </div>
@@ -7783,7 +7783,7 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("C:O").format.columnWidth = 85;
                     await context.sync();
                     
-                    updateProgress(100, '✅ Complete!', 'Your Summary Income Statement is ready!');
+                    updateProgress(100, '✅ Complete!', 'Your CFO Flash Report is ready!');
                 });
                 
                 // Cleanup
@@ -7791,7 +7791,7 @@ For licensing inquiries, contact: legal@celigo.com
                 overlay.remove();
                 
                 // Show success overlay
-                showReportSuccessOverlay('Summary Income Statement', {
+                showReportSuccessOverlay('CFO Flash Report', {
                     totalAccounts: 5,
                     sections: [
                         { name: 'Revenue (Income)', count: 'TYPEBALANCE' },
@@ -7810,7 +7810,7 @@ For licensing inquiries, contact: legal@celigo.com
                 closeQuickStart();
                 
             } catch (error) {
-                console.error('Summary Income Statement error:', error);
+                console.error('CFO Flash Report error:', error);
                 clearInterval(tipInterval);
                 if (document.getElementById('summaryISOverlay')) {
                     document.getElementById('summaryISOverlay').remove();

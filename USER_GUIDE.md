@@ -264,7 +264,23 @@ This lets you change filters in ONE place and update the entire report!
 
 ## Pre-Built Reports
 
+### CFO Flash Report (Quick Start)
+
+Create an executive-level P&L summary in seconds:
+
+1. Open the **Quick Start** section in the task pane
+2. Select **CFO Flash Report**
+3. Choose your year and subsidiary
+4. XAVI builds a high-level P&L with totals for Revenue, COGS, Gross Profit, Operating Expenses, and Net Income
+
+This is perfect for:
+- Board presentations
+- Monthly flash reports
+- Quick variance checks
+
 ### Build Income Statement
+
+For a detailed P&L with all accounts:
 
 1. Click **Build Income Statement** in the task pane
 2. Select the year and (optionally) subsidiary
@@ -301,13 +317,6 @@ Use:
 =XAVI.BALANCE("4010", "2025", "2025")           ← 1 optimized query
 ```
 
-### Prep Data First
-
-Before entering many formulas:
-1. Click **Prep Data** in the task pane
-2. XAVI pre-loads all account data
-3. Your formulas fill instantly!
-
 ### Drag, Don't Type
 
 When adding multiple formulas:
@@ -315,11 +324,11 @@ When adding multiple formulas:
 2. Drag down/right to copy
 3. XAVI batches all requests automatically (60+ formulas → 1 API call)
 
-### Clear Cache When Needed
+### Refresh When Data Seems Stale
 
-If data seems stale:
-1. Click **Clear Cache** in the task pane
-2. Formulas will refresh with latest NetSuite data
+If data seems stale after posting new transactions:
+1. Click **Refresh All** in the task pane (automatically clears cache)
+2. Or use **Refresh Selected** to update just highlighted cells
 
 ---
 
@@ -356,15 +365,16 @@ If data seems stale:
 2. Tunnel URL changed
 
 **Solution:** 
-1. Click **Clear Cache** in the task pane
-2. If that doesn't work, contact your administrator
+1. Click **Refresh All** in the task pane (clears cache automatically)
+2. Check the connection status indicator in the task pane
+3. If connection shows disconnected, contact your administrator
 
 ### Slow Performance
 
 **Solution:**
-1. Use **Prep Data** before entering many formulas
-2. Use year-only format (`"2025"`) instead of month ranges
-3. Use wildcards for summary rows instead of many individual accounts
+1. Use year-only format (`"2025"`) instead of month ranges
+2. Use wildcards for summary rows instead of many individual accounts
+3. Drag formulas instead of typing each one (triggers batch optimization)
 
 ---
 
@@ -372,7 +382,7 @@ If data seems stale:
 
 ### Q: How often does data refresh?
 
-Data is cached for 5 minutes. Click **Clear Cache** to force a refresh, or **Refresh All** to recalculate all formulas.
+Data is cached for 5 minutes. Click **Refresh All** to force a refresh with the latest data from NetSuite, or use **Refresh Selected** for specific cells.
 
 ### Q: Can I use XAVI offline?
 
