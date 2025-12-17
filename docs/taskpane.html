@@ -3550,8 +3550,8 @@ For licensing inquiries, contact: legal@celigo.com
                 <!-- NetSuite Account Info -->
                 <div class="settings-section">
                     <h3>🏢 NetSuite Account</h3>
-                    <button class="settings-btn-action" onclick="checkNetSuitePermissions()" id="checkPermissionsBtn" style="width: 100%; margin-bottom: 12px;">
-                        🔍 Check Account Features
+                    <button class="settings-btn-action" id="checkPermissionsBtn" style="width: 100%; margin-bottom: 12px;">
+                        🔍 Test NetSuite
                     </button>
                     
                     <div id="permissionsResults" style="display: none;">
@@ -3595,7 +3595,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.141</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.142</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4826,7 +4826,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.141"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.142"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -6356,11 +6356,27 @@ For licensing inquiries, contact: legal@celigo.com
             mainView.classList.add('hidden');
             settingsInline.classList.add('active');
             
-            // Rebind the back button in the inline view
+            // Rebind button handlers in the inline view (onclick attrs don't transfer)
             const backBtn = settingsInline.querySelector('.settings-back');
             if (backBtn) {
                 backBtn.onclick = closeSettings;
             }
+            
+            const checkPermissionsBtn = settingsInline.querySelector('#checkPermissionsBtn');
+            if (checkPermissionsBtn) {
+                checkPermissionsBtn.onclick = checkNetSuitePermissions;
+            }
+            
+            const refreshBtn = settingsInline.querySelector('.settings-btn-action[onclick*="checkServerStatus"]');
+            const refreshBtnAlt = settingsInline.querySelectorAll('.settings-btn-action');
+            refreshBtnAlt.forEach(btn => {
+                if (btn.textContent.includes('Refresh')) {
+                    btn.onclick = checkServerStatus;
+                }
+                if (btn.textContent.includes('Reload Lookups')) {
+                    btn.onclick = reloadLookups;
+                }
+            });
             
             checkServerStatus();
             checkTunnelStatus();
@@ -10117,7 +10133,7 @@ export default {
             }
             
             btn.disabled = false;
-            btn.textContent = '🔍 Check Account Features';
+            btn.textContent = '🔍 Test NetSuite';
         }
 
         function copyTunnelInstructions() {
