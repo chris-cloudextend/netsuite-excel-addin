@@ -3565,7 +3565,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.139</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.140</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4689,9 +4689,9 @@ For licensing inquiries, contact: legal@celigo.com
                         <div class="cheat-item"><code>TYPEBALANCE(type, ...)</code> <span>By type</span></div>
                         <div class="cheat-item"><code>NAME(acct)</code> <span>Account name</span></div>
                     </div>
-                    <p class="more-formulas-hint">📋 Many more formulas available! Check the <strong>Formula Reference</strong> accordion.</p>
+                    <p class="more-formulas-hint">📋 Many more formulas available! Check the <strong>Formula Reference</strong> on the main menu.</p>
                     <button class="onboarding-btn primary celebration-btn" onclick="finishOnboarding()">
-                        =START_BUILDING() 🚀
+                        Finish ✓
                     </button>
                     <p class="final-tip">💡 <strong>Pro tip:</strong> Parametrize your queries! Put your year in a cell (e.g., P3=2025), then use <code>=DATE($P$3,1,1)</code> for dates. Drag right to fill all months, then just change the year cell and all XAVI values recalculate!</p>
                 </div>
@@ -4785,7 +4785,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.139"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.140"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -5265,35 +5265,55 @@ For licensing inquiries, contact: legal@celigo.com
             // Get the pattern from the onboarding input
             const pattern = document.getElementById('onboardingBulkAddInput')?.value?.trim() || '*';
             
-            // First, select cell C12 to ensure we don't overwrite any existing data
+            // Close the onboarding overlay temporarily
+            const overlay = document.getElementById('onboardingOverlay');
+            if (overlay) overlay.style.display = 'none';
+            
             try {
+                // First, select cell C12 to ensure we don't overwrite any existing data
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     const safeCell = sheet.getRange('C12');
                     safeCell.select();
                     await context.sync();
                 });
-            } catch (e) {
-                console.log('Could not select C12:', e);
-            }
-            
-            // Set the search input value and trigger the search
-            const searchInput = document.getElementById('accountSearchInput');
-            if (searchInput) {
-                searchInput.value = pattern;
-            }
-            
-            // Close the onboarding overlay temporarily
-            const overlay = document.getElementById('onboardingOverlay');
-            if (overlay) overlay.style.display = 'none';
-            
-            // Trigger the searchAccounts function
-            try {
-                await searchAccounts();
-                showOnboardingMessage('Bulk Add Complete!', `Accounts matching "${pattern}" have been added to your sheet.`, 'success');
+                
+                showLoading('Bulk Add', `Searching for accounts matching "${pattern}"...`, 20);
+                
+                // Call backend API directly (don't rely on searchAccounts which needs event.target)
+                const url = `${SERVER_URL}/accounts/search?pattern=${encodeURIComponent(pattern)}`;
+                console.log('Bulk Add API URL:', url);
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const accounts = data.accounts || [];
+                
+                if (accounts.length === 0) {
+                    hideLoading();
+                    showOnboardingMessage('No Accounts Found', `No accounts matched "${pattern}". Try a different pattern.`, 'info');
+                    if (overlay) overlay.style.display = 'flex';
+                    return;
+                }
+                
+                updateLoading(`Inserting ${accounts.length} accounts...`, 70);
+                
+                // Insert accounts into the sheet
+                await Excel.run(async (context) => {
+                    await createAccountSearchSheet(context, accounts, pattern);
+                });
+                
+                hideLoading();
+                showOnboardingMessage('Bulk Add Complete!', `${accounts.length} accounts matching "${pattern}" have been added to your sheet.`, 'success');
+                
             } catch (e) {
                 console.error('Bulk add error:', e);
-                showOnboardingMessage('Bulk Add', 'Check the Bulk Add GL Accounts section to try again.', 'info');
+                hideLoading();
+                showOnboardingMessage('Bulk Add Error', 'Could not fetch accounts. Check your connection and try again.', 'warning');
             }
             
             // Reopen onboarding
@@ -5611,9 +5631,42 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         function finishOnboarding() {
+            // Save completion status and timestamp
             localStorage.setItem('xavi_onboarding_completed', 'true');
-            document.getElementById('onboardingOverlay').classList.remove('active');
+            localStorage.setItem('xavi_onboarding_completed_at', new Date().toISOString());
+            
+            // Close the overlay properly
+            const overlay = document.getElementById('onboardingOverlay');
+            if (overlay) {
+                overlay.classList.remove('active');
+                overlay.style.display = 'none';
+            }
+            
+            // Update the tutorial button to show completion date
+            updateTutorialCompletionDisplay();
             updateContextualUI();
+        }
+        
+        function updateTutorialCompletionDisplay() {
+            const completedAt = localStorage.getItem('xavi_onboarding_completed_at');
+            if (completedAt) {
+                const date = new Date(completedAt);
+                const options = { 
+                    month: 'short', 
+                    day: 'numeric', 
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                };
+                const formatted = date.toLocaleDateString('en-US', options);
+                
+                // Update the tutorial description
+                const tutorialDesc = document.querySelector('.guide-choice[onclick="startOnboarding()"] .guide-choice-desc');
+                if (tutorialDesc) {
+                    tutorialDesc.innerHTML = `<span style="color: #059669;">✓ Completed ${formatted}</span>`;
+                }
+            }
         }
         
         // Sort subsidiaries hierarchically for display
@@ -10518,6 +10571,9 @@ export default {
             // CRITICAL: Preload ALL account titles to prevent 429 rate limit errors
             // This makes ONE query instead of 150+ concurrent queries
             preloadAccountTitles();
+            
+            // Show tutorial completion status if user has completed it before
+            updateTutorialCompletionDisplay();
             
             // Handle Quick Start accordion for first-time users
             initializeQuickStart();
