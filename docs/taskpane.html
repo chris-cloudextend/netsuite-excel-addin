@@ -48,7 +48,7 @@ For licensing inquiries, contact: legal@celigo.com
             padding: 0;
             overflow: hidden; /* Prevent body scroll - we scroll .content instead */
         }
-        
+
         body {
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background: linear-gradient(135deg, var(--deep-dive) 0%, var(--blue-light) 100%);
@@ -937,7 +937,6 @@ For licensing inquiries, contact: legal@celigo.com
             border-radius: 12px;
             width: calc(100% - 48px);
             max-width: 450px;
-            min-height: 80px;
         }
 
         .guide-me-overlay .tips-label {
@@ -953,16 +952,110 @@ For licensing inquiries, contact: legal@celigo.com
             font-size: 14px;
             color: var(--anenome);
             transition: opacity 0.3s ease;
-            min-height: 48px;
             font-weight: 500;
-            line-height: 1.6;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            line-height: 1.7;
+            display: block;
             text-align: center;
             word-wrap: break-word;
             overflow-wrap: break-word;
-            padding: 4px 0;
+            padding: 8px 0;
+        }
+        
+        /* Success overlay for generated reports */
+        .report-success-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            padding: 20px;
+        }
+        
+        .report-success-card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 420px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .report-success-card h2 {
+            color: #059669;
+            font-size: 20px;
+            margin: 0 0 16px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .report-success-card .summary {
+            background: #f0fdf4;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .report-success-card .summary strong {
+            color: #065f46;
+        }
+        
+        .report-success-card .tip-box {
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        
+        .report-success-card .tip-box.warning {
+            background: rgba(255, 193, 7, 0.15);
+            border-left: 3px solid #FFC107;
+        }
+        
+        .report-success-card .tip-box.info {
+            background: rgba(10, 226, 193, 0.1);
+            border-left: 3px solid var(--anenome);
+        }
+        
+        .report-success-card .dismiss-btn {
+            width: 100%;
+            background: linear-gradient(135deg, var(--deep-dive) 0%, #1a365d 100%);
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 16px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .report-success-card .dismiss-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(9, 35, 92, 0.3);
         }
 
         /* Settings Panel (inline view, not modal) */
@@ -3595,7 +3688,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.142</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.143</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4194,15 +4287,15 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="formula-header-left">
                         <span class="formula-name">NAME</span>
                         <span class="formula-brief">Get account name</span>
-                    </div>
+                </div>
                     <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
                 <div class="formula-details">
                     <div class="formula-syntax">=XAVI.NAME(accountNumber)</div>
                     <div class="param-item"><span class="param-name">accountNumber</span> - Account # or ID</div>
-                    <div class="example">
-                        <div class="example-code">=XAVI.NAME(A4)</div>
-                        <div class="example-code">=XAVI.NAME("4220")</div>
+                <div class="example">
+                    <div class="example-code">=XAVI.NAME(A4)</div>
+                    <div class="example-code">=XAVI.NAME("4220")</div>
                     </div>
                 </div>
             </div>
@@ -4213,7 +4306,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="formula-header-left">
                         <span class="formula-name">TYPE</span>
                         <span class="formula-brief">Get account type</span>
-                    </div>
+                </div>
                     <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
                 <div class="formula-details">
@@ -4237,7 +4330,7 @@ For licensing inquiries, contact: legal@celigo.com
                 <div class="formula-details">
                     <div class="formula-syntax">=XAVI.PARENT(accountNumber)</div>
                     <div class="param-item"><span class="param-name">accountNumber</span> - Account # or ID</div>
-                    <div class="example">
+                <div class="example">
                         <div class="example-code">=XAVI.PARENT("4220")</div> <span class="example-result">→ "4210"</span>
                     </div>
                 </div>
@@ -4249,7 +4342,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="formula-header-left">
                         <span class="formula-name">BALANCE</span>
                         <span class="formula-brief">Account balance • Wildcards ✓</span>
-                    </div>
+                </div>
                     <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
                 <div class="formula-details">
@@ -4278,7 +4371,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="formula-syntax">=XAVI.BUDGET(acct, from, to, [sub], [dept], [loc], [class])</div>
                     <div class="param-item"><span class="param-name">acct</span> - Account # or wildcard ("6*")</div>
                     <div class="param-item"><span class="param-name">from/to</span> - Period range</div>
-                    <div class="example">
+                <div class="example">
                         <div class="example-code">=XAVI.BUDGET("5000", "2025", "2025")</div>
                         <div class="example-code">=XAVI.BUDGET("6*", "Jan 2025", "Dec 2025")</div>
                     </div>
@@ -4291,7 +4384,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="formula-header-left">
                         <span class="formula-name">TYPEBALANCE</span>
                         <span class="formula-brief">Sum by account type</span>
-                    </div>
+                </div>
                     <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
                 </div>
                 <div class="formula-details">
@@ -4301,8 +4394,8 @@ For licensing inquiries, contact: legal@celigo.com
                         <div class="example-code">=XAVI.TYPEBALANCE("Income", "Jan 2025", "Dec 2025")</div>
                         <div class="example-code">=XAVI.TYPEBALANCE("COGS", "2025", "2025")</div>
                     </div>
-                </div>
-            </div>
+                    </div>
+                    </div>
 
             <!-- XAVI.NETINCOME -->
             <div class="formula-card" onclick="this.classList.toggle('expanded')">
@@ -4312,7 +4405,7 @@ For licensing inquiries, contact: legal@celigo.com
                         <span class="formula-brief">Calculate net income</span>
                     </div>
                     <svg class="formula-expand-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>
-                </div>
+                    </div>
                 <div class="formula-details">
                     <div class="formula-syntax">=XAVI.NETINCOME(from, [to], [sub], [book], ...)</div>
                     <div class="param-item"><span class="param-name">from/to</span> - Period range (to defaults to from)</div>
@@ -4321,8 +4414,8 @@ For licensing inquiries, contact: legal@celigo.com
                         <div class="example-code">=XAVI.NETINCOME("2025",, "Celigo Inc.")</div>
                     </div>
                     <div style="font-size: 10px; color: var(--bottlenose); margin-top: 6px;">⏱️ 10–20 sec</div>
+                    </div>
                 </div>
-            </div>
 
             <!-- XAVI.RETAINEDEARNINGS -->
             <div class="formula-card" onclick="this.classList.toggle('expanded')">
@@ -4336,9 +4429,9 @@ For licensing inquiries, contact: legal@celigo.com
                 <div class="formula-details">
                     <div class="formula-syntax">=XAVI.RETAINEDEARNINGS(period, [sub], [book], ...)</div>
                     <div class="param-item">Cumulative P&L from inception through prior FY end</div>
-                    <div class="example">
+                <div class="example">
                         <div class="example-code">=XAVI.RETAINEDEARNINGS("Dec 2024")</div>
-                    </div>
+                </div>
                     <div style="font-size: 10px; color: var(--bottlenose); margin-top: 6px;">⏱️ Up to 2 min</div>
                 </div>
             </div>
@@ -4360,17 +4453,17 @@ For licensing inquiries, contact: legal@celigo.com
                     </div>
                     <div style="font-size: 10px; color: var(--bottlenose); margin-top: 6px;">⏱️ Up to 2 min</div>
                 </div>
-            </div>
+    </div>
     
                     <div class="help-tip" style="margin-top: 16px;">
                         <h4>💡 Pro Tip: Date Formatting</h4>
                         <p>Use TEXT() to format date cells:<br>
                         <code style="background: var(--deep-dive); color: var(--anenome); padding: 2px 6px; border-radius: 4px; font-size: 11px;">=XAVI.BALANCE("4010", TEXT(C3,"mmm yyyy"), TEXT(D3,"mmm yyyy"))</code></p>
-                    </div>
+                </div>
                 </div>
             </details>
             </div><!-- end panelFinancial -->
-        </div>
+                    </div>
 
         <!-- Quick Actions Bar - Always visible at bottom -->
         <div class="quick-actions-bar" id="quickActionsBar">
@@ -4378,7 +4471,7 @@ For licensing inquiries, contact: legal@celigo.com
             <div class="quick-actions-status" id="quickActionsStatus">
                 <span class="status-badge-icon" id="statusBadgeIcon">📊</span>
                 <span class="status-badge-text" id="statusBadgeText">Checking sheet...</span>
-            </div>
+                    </div>
             <div class="quick-actions-buttons">
                 <button class="quick-action-btn primary" onclick="refreshCurrentSheet()" id="quickRefreshBtn" disabled>
                     <span>⚡</span> Refresh All
@@ -4396,12 +4489,12 @@ For licensing inquiries, contact: legal@celigo.com
                         <line x1="12" y1="17" x2="12.01" y2="17"></line>
                 </svg>
             </button>
-        </div>
+                    </div>
             <!-- Formula Count (persistent at bottom) -->
             <div class="quick-actions-footer" id="quickActionsFooter">
                 <span id="formulaCountText">—</span>
-            </div>
-        </div>
+                    </div>
+                    </div>
         
         <!-- Quick Actions Help Modal -->
         <div class="quick-help-modal" id="quickHelpModal" onclick="hideQuickActionsHelp(event)">
@@ -4414,14 +4507,14 @@ For licensing inquiries, contact: legal@celigo.com
                         <div>
                             <strong>Refresh All</strong>
                             <p>Clears cache and recalculates ALL XAVI formulas on the current sheet. Use after posting new transactions.</p>
-                        </div>
+                    </div>
                     </div>
                     <div class="quick-help-item">
                         <span class="quick-help-icon">🎯</span>
                         <div>
                             <strong>Refresh Selected</strong>
                             <p>Recalculates only the cells you've highlighted. Much faster for spot-checking individual accounts.</p>
-                        </div>
+                </div>
                     </div>
                     <div class="quick-help-item">
                         <span class="quick-help-icon">🔍</span>
@@ -4434,9 +4527,9 @@ For licensing inquiries, contact: legal@celigo.com
                 <div class="quick-help-tip">
                     💡 <strong>Pro Tip:</strong> Toggle "Show All Sections" above to access Filters, Bulk Add, and Formula Reference.
                 </div>
+                </div>
             </div>
-        </div>
-        
+
         <!-- Interactive Onboarding Wizard -->
         <div class="onboarding-overlay" id="onboardingOverlay">
             <div class="onboarding-wizard">
@@ -4454,7 +4547,7 @@ For licensing inquiries, contact: legal@celigo.com
                         <span class="dot" data-step="8"></span>
                         <span class="dot" data-step="9"></span>
                         <span class="dot" data-step="10"></span>
-                    </div>
+                </div>
                     <button class="onboarding-skip" onclick="skipOnboarding()">Skip</button>
                     <button class="onboarding-restart" onclick="restartOnboarding()">↺ Start Over</button>
                 </div>
@@ -4474,7 +4567,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <button class="onboarding-btn primary" onclick="startOnboardingStep2()">
                         Let's Go! →
                     </button>
-                </div>
+                    </div>
                 
                 <!-- Step 2: Enter Account Number -->
                 <div class="onboarding-step" id="onboardingStep2">
@@ -4510,7 +4603,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-highlight-box">
                         <div class="formula-display" id="insertedFormulaDisplay">=XAVI.BALANCE("40110", "Jan 2025", "Jan 2025")</div>
                         <div class="result-display">→ <span id="insertedResultDisplay">$12,500.00</span></div>
-                    </div>
+                </div>
                     <div class="busy-notice">
                         <span class="busy-icon">⏳</span>
                         <span>You may see <strong>#BUSY</strong> briefly — that's us doing the heavy lifting with NetSuite!</span>
@@ -4521,9 +4614,9 @@ For licensing inquiries, contact: legal@celigo.com
                         <button class="onboarding-btn primary" onclick="teachDragFill()">
                             Add More Accounts →
                         </button>
-                    </div>
                 </div>
-                
+            </div>
+
                 <!-- Step 4: Drag & Fill Rows -->
                 <div class="onboarding-step" id="onboardingStep4">
                     <div class="step-type-badge action">🎯 YOUR TURN (or skip)</div>
@@ -4539,8 +4632,8 @@ For licensing inquiries, contact: legal@celigo.com
                             <div class="demo-cell empty">?</div>
                             <div class="demo-cell empty">?</div>
                             <div class="demo-arrow">↓ Drag</div>
-                        </div>
-                    </div>
+                </div>
+                </div>
                     <div class="busy-notice small">
                         <span class="busy-icon">⏳</span>
                         <span><strong>#BUSY</strong> = we're fetching from NetSuite. It'll resolve in moments!</span>
@@ -4550,7 +4643,7 @@ For licensing inquiries, contact: legal@celigo.com
                         <button class="onboarding-btn secondary" onclick="autoFillFormulas()">Auto-Fill Rows</button>
                         <button class="onboarding-btn primary" onclick="setupMonthsFill()">Next: Months →</button>
                     </div>
-                </div>
+                    </div>
                 
                 <!-- Step 4b: Drag & Fill Months -->
                 <div class="onboarding-step" id="onboardingStep4b">
@@ -4567,19 +4660,19 @@ For licensing inquiries, contact: legal@celigo.com
                             <div class="demo-cell empty">...</div>
                             <div class="demo-cell empty">Dec</div>
                             <div class="demo-arrow-right">→ Drag</div>
-                        </div>
                     </div>
+                </div>
                     <div class="busy-notice">
                         <span class="busy-icon">⏳</span>
                         <span>You'll see <strong>#BUSY</strong> while we fetch data from NetSuite — that's us doing all the heavy lifting! Each cell will resolve in moments.</span>
-                    </div>
+                </div>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(4)">← Back</button>
                         <button class="onboarding-btn secondary" onclick="autoFillMonths()">Auto-Fill Months</button>
                         <button class="onboarding-btn primary" onclick="goToOnboardingStep(5)">Wildcards →</button>
-                    </div>
                 </div>
-                
+            </div>
+
                 <!-- Step 5: Wildcards -->
                 <div class="onboarding-step" id="onboardingStep5">
                     <div class="step-type-badge tip">💡 FORMULA TIP</div>
@@ -4591,13 +4684,13 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-highlight-box">
                         <div class="formula-display">=XAVI.BALANCE("40*", "Jan 2025", "Jan 2025")</div>
                         <div class="result-display">→ Sum of ALL accounts starting with 40</div>
-                    </div>
+                </div>
                     <p class="onboarding-tip">💡 Great for totaling revenue (4*), expenses (6*), or any account group!</p>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep('4b')">← Back</button>
                         <button class="onboarding-btn primary" onclick="goToOnboardingStep(6)">More Power →</button>
-                    </div>
                 </div>
+                    </div>
                 
                 <!-- Step 6: TYPEBALANCE -->
                 <div class="onboarding-step" id="onboardingStep6">
@@ -4619,7 +4712,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(5)">← Back</button>
                         <button class="onboarding-btn primary" onclick="goToOnboardingStep(7)">Bulk Add →</button>
-                    </div>
+                </div>
                 </div>
                 
                 <!-- Step 7: Bulk Add -->
@@ -4644,9 +4737,9 @@ For licensing inquiries, contact: legal@celigo.com
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(6)">← Back</button>
                         <button class="onboarding-btn primary" onclick="goToOnboardingStep(8)">Go Dynamic →</button>
-                    </div>
                 </div>
-                
+            </div>
+    
                 <!-- Step 8: Dynamic Parameters -->
                 <div class="onboarding-step" id="onboardingStep8">
                     <div class="step-type-badge tip">💡 POWER TIP</div>
@@ -4662,14 +4755,14 @@ For licensing inquiries, contact: legal@celigo.com
                         <div class="param-item"><span class="param-label">$E$1</span> Subsidiary</div>
                         <div class="param-item"><span class="param-label">$F$1</span> Department</div>
                         <div class="param-item"><span class="param-label">$G$1</span> Class/Location</div>
-                    </div>
+                </div>
                     <p class="onboarding-tip">💡 Change one cell → entire report updates!</p>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(7)">← Back</button>
                         <button class="onboarding-btn primary" onclick="goToOnboardingStep(9)">Drill Down →</button>
                     </div>
-                </div>
-                
+        </div>
+
                 <!-- Step 9: Drill Down -->
                 <div class="onboarding-step" id="onboardingStep9">
                     <div class="step-type-badge action">🎯 TRY IT (optional)</div>
@@ -4682,16 +4775,16 @@ For licensing inquiries, contact: legal@celigo.com
                         <div class="step-item">1️⃣ Click any cell with a BALANCE formula</div>
                         <div class="step-item">2️⃣ <strong>Right-click</strong> → Select <strong>"CloudExtend"</strong></div>
                         <div class="step-item">3️⃣ Choose <strong>"View Transactions"</strong></div>
-                    </div>
+            </div>
                     <div class="drill-demo-box">
                         <button class="drill-demo-btn" onclick="demoSelectForDrill()">
                             🎯 Select a BALANCE Cell
-                        </button>
+            </button>
                         <button class="onboarding-btn secondary" onclick="doDrillDownFromOnboarding()" style="width: 100%; margin-top: 8px;">
                             🔍 Drill Down Now
                         </button>
                         <p class="drill-demo-hint" id="drillDemoHint">Select a cell, then click "Drill Down Now" above — or use right-click → CloudExtend → View Transactions</p>
-                    </div>
+        </div>
                     <p class="onboarding-tip">💡 You can also use the <strong>Drill Down</strong> button in the Quick Actions bar at the bottom!</p>
                     <div class="onboarding-nav">
                         <button class="onboarding-btn text" onclick="goToOnboardingStep(8)">← Back</button>
@@ -4826,7 +4919,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.142"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.143"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -7031,27 +7124,20 @@ For licensing inquiries, contact: legal@celigo.com
                 const lastFormulaRow = 4 + formulaRows; // Row 29 (4 header rows + 25 formula rows)
                 const lastDataRow = 4 + allAccounts.length; // Row 39 (4 header rows + 35 data rows)
                 
-                // Success message
-                progress.style.display = 'block';
-                progress.innerHTML = `✅ <strong>Here's your jump-start!</strong><br><br>
-                    We loaded <strong>${allAccounts.length} accounts</strong> with data for ${currentYear}. 
-                    The first <strong>${formulaRows} rows have formulas</strong>—the remaining ${extraRows} rows have account numbers ready for you to extend.<br><br>
-                    <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--anenome);">
-                        📊 <strong>Parameters:</strong> Change the <strong>YEAR</strong> (F2) or <strong>Subsidiary</strong> (I2) to refresh all formulas automatically!
-                    </div>
-                    <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--anenome);">
-                        ⏳ <strong>Note:</strong> You may see <code>#BUSY</code> in cells for a few seconds as data loads. This is normal!
-                    </div>
-                    <strong>To extend formulas to rows ${lastFormulaRow + 1}-${lastDataRow}:</strong><br>
-                    1. Select cells <strong>A${lastFormulaRow}:C${lastFormulaRow}</strong> (Type, Account#, Name)<br>
-                    2. Drag the fill handle down to row ${lastDataRow}<br>
-                    3. Then select <strong>D${lastFormulaRow}:P${lastFormulaRow}</strong> (Jan through YTD Total)<br>
-                    4. Drag down to row ${lastDataRow}<br><br>
-                    <strong>Formula Reference:</strong><br>
-                    • <code>=XAVI.TYPE(B5)</code> → Account Type<br>
-                    • <code>=XAVI.NAME(B5)</code> → Account Name<br>
-                    • <code>=XAVI.BALANCE($B5,TEXT(D$4,"mmm yyyy"),TEXT(D$4,"mmm yyyy"),$G$3)</code> → Balance with Subsidiary`;
-                if (progress) progress.style.lineHeight = '1.6';
+                // Success message - show as dismissible overlay
+                showReportSuccessOverlay('Sample Report', {
+                    totalAccounts: allAccounts.length,
+                    sections: [
+                        { name: 'Rows with formulas', count: formulaRows },
+                        { name: 'Rows ready to extend', count: extraRows }
+                    ],
+                    tips: [
+                        { type: 'info', icon: '📊', title: 'Parameters:', text: 'Change the <strong>YEAR</strong> (F2) or <strong>Subsidiary</strong> (I2) to refresh all formulas automatically!' },
+                        { type: 'info', icon: '⏳', title: '#BUSY:', text: 'You may see <code>#BUSY</code> in cells for a few seconds as data loads. This is normal!' },
+                        { type: 'info', icon: '📋', title: 'Extend formulas:', text: `Select <strong>A${lastFormulaRow}:P${lastFormulaRow}</strong> and drag down to row ${lastDataRow}` },
+                        { type: 'info', icon: '📖', title: 'Formulas used:', text: '<code>XAVI.TYPE</code>, <code>XAVI.NAME</code>, <code>XAVI.BALANCE</code>' }
+                    ]
+                });
                 
                 // Close Quick Start accordion after successful generation
                 closeQuickStart();
@@ -7806,31 +7892,24 @@ For licensing inquiries, contact: legal@celigo.com
                 clearInterval(tipInterval);
                 overlay.remove();
                 
-                // Success message
+                // Success message - show as dismissible overlay
                 const totalAccounts = categories.income.length + categories.othIncome.length + 
                                      categories.cogs.length + categories.expense.length + categories.othExpense.length;
                 
-                progress.style.display = 'block';
-                progress.innerHTML = `✅ <strong>Income Statement Generated!</strong><br><br>
-                    Created with <strong>${totalAccounts} accounts</strong> organized into sections:<br>
-                    • Revenue: ${categories.income.length} accounts<br>
-                    • Cost of Sales: ${categories.cogs.length} accounts<br>
-                    • Operating Expenses: ${categories.expense.length} accounts<br>
-                    • Other Income/Expense: ${categories.othIncome.length + categories.othExpense.length} accounts<br><br>
-                    <div style="background: rgba(255, 193, 7, 0.2); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid #FFC107;">
-                        ⚠️ <strong>Please verify:</strong> This is auto-generated from your NetSuite data. 
-                        Review account classifications and totals before using for official reporting.
-                    </div>
-                    <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--anenome);">
-                        📅 <strong>Change Year:</strong> Edit cell <strong>F2</strong> to a different year. The structure will automatically sync with accounts for that year.
-                    </div>
-                    <div style="background: rgba(10, 226, 193, 0.15); padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--anenome);">
-                        🏢 <strong>Change Subsidiary:</strong> Navigate to cell <strong>I2</strong>, then use the <strong>Filters</strong> section in the task pane to select a different subsidiary.<br>
-                        <span style="font-size: 11px; color: #6B7280; margin-top: 4px; display: block;">
-                            💡 The XAVI.BALANCE formula also supports <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> filters—add these manually to customize your formulas.
-                        </span>
-                    </div>`;
-                progress.style.lineHeight = '1.6';
+                showReportSuccessOverlay('Income Statement', {
+                    totalAccounts,
+                    sections: [
+                        { name: 'Revenue', count: categories.income.length },
+                        { name: 'Cost of Sales', count: categories.cogs.length },
+                        { name: 'Operating Expenses', count: categories.expense.length },
+                        { name: 'Other Income/Expense', count: categories.othIncome.length + categories.othExpense.length }
+                    ],
+                    tips: [
+                        { type: 'warning', icon: '⚠️', title: 'Please verify:', text: 'This is auto-generated from your NetSuite data. Review account classifications and totals before using for official reporting.' },
+                        { type: 'info', icon: '📅', title: 'Change Year:', text: 'Edit cell <strong>F2</strong> to a different year. The structure will automatically sync with accounts for that year.' },
+                        { type: 'info', icon: '🏢', title: 'Change Subsidiary:', text: 'Navigate to cell <strong>I2</strong>, then use the <strong>Filters</strong> section in the task pane to select a different subsidiary.<br><span style="font-size: 11px; color: #6B7280; margin-top: 4px; display: block;">💡 The XAVI.BALANCE formula also supports <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> filters.</span>' }
+                    ]
+                });
                 
                 // Clear sync flag after a delay to let any queued change events fire first
                 setTimeout(() => {
@@ -10174,6 +10253,58 @@ export default {
                         section.removeAttribute('open');
                     }
                 });
+            }
+        }
+        
+        // Show success overlay for generated reports
+        function showReportSuccessOverlay(reportType, data) {
+            const overlay = document.createElement('div');
+            overlay.className = 'report-success-overlay';
+            overlay.id = 'reportSuccessOverlay';
+            
+            const sectionsHtml = data.sections.map(s => 
+                `<div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                    <span>• ${s.name}</span>
+                    <strong>${s.count} accounts</strong>
+                </div>`
+            ).join('');
+            
+            const tipsHtml = data.tips.map(t => 
+                `<div class="tip-box ${t.type}">
+                    ${t.icon} <strong>${t.title}</strong> ${t.text}
+                </div>`
+            ).join('');
+            
+            overlay.innerHTML = `
+                <div class="report-success-card">
+                    <h2>✅ ${reportType} Generated!</h2>
+                    <div class="summary">
+                        <div style="margin-bottom: 8px;">Created with <strong>${data.totalAccounts} accounts</strong> organized into sections:</div>
+                        ${sectionsHtml}
+                    </div>
+                    ${tipsHtml}
+                    <button class="dismiss-btn" onclick="dismissReportSuccess()">
+                        Got it! ✓
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Allow clicking outside to dismiss
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    dismissReportSuccess();
+                }
+            });
+        }
+        
+        function dismissReportSuccess() {
+            const overlay = document.getElementById('reportSuccessOverlay');
+            if (overlay) {
+                overlay.style.opacity = '0';
+                overlay.style.transition = 'opacity 0.2s ease';
+                setTimeout(() => overlay.remove(), 200);
             }
         }
         
