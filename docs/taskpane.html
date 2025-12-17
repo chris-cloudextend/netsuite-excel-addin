@@ -2602,6 +2602,36 @@ For licensing inquiries, contact: legal@celigo.com
             font-weight: 700;
         }
         
+        /* Step type badges */
+        .step-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .step-type-badge.action {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+        }
+        
+        .step-type-badge.tip {
+            background: linear-gradient(135deg, rgba(10, 226, 193, 0.2) 0%, rgba(6, 214, 160, 0.2) 100%);
+            color: var(--anenome);
+            border: 1px solid var(--anenome);
+        }
+        
+        .step-type-badge.celebrate {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4);
+        }
+        
         .onboarding-subtitle {
             color: var(--anenome);
             font-size: 14px;
@@ -3565,7 +3595,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.140</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.141</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4431,6 +4461,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 1: Welcome -->
                 <div class="onboarding-step active" id="onboardingStep1">
+                    <div class="step-type-badge tip">💡 Getting Started</div>
                     <div class="onboarding-icon">✨</div>
                     <h2>Welcome to XAVI</h2>
                     <p class="onboarding-subtitle">NetSuite data → Excel formulas in seconds</p>
@@ -4447,6 +4478,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 2: Enter Account Number -->
                 <div class="onboarding-step" id="onboardingStep2">
+                    <div class="step-type-badge action">🎯 YOUR TURN</div>
                     <div class="onboarding-icon">🔢</div>
                     <h2>Pick an Account</h2>
                     <p class="onboarding-desc">
@@ -4469,6 +4501,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 3: See the Magic -->
                 <div class="onboarding-step" id="onboardingStep3">
+                    <div class="step-type-badge tip">💡 SEE THE RESULT</div>
                     <div class="onboarding-icon">🎉</div>
                     <h2>Look at That!</h2>
                     <p class="onboarding-desc">
@@ -4493,6 +4526,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 4: Drag & Fill Rows -->
                 <div class="onboarding-step" id="onboardingStep4">
+                    <div class="step-type-badge action">🎯 YOUR TURN (or skip)</div>
                     <div class="onboarding-icon">⚡</div>
                     <h2>Fill Down for Accounts</h2>
                     <p class="onboarding-desc">
@@ -4520,6 +4554,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 4b: Drag & Fill Months -->
                 <div class="onboarding-step" id="onboardingStep4b">
+                    <div class="step-type-badge action">🎯 YOUR TURN (or skip)</div>
                     <div class="onboarding-icon">📅</div>
                     <h2>Fill Right for Months</h2>
                     <p class="onboarding-desc">
@@ -4547,6 +4582,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 5: Wildcards -->
                 <div class="onboarding-step" id="onboardingStep5">
+                    <div class="step-type-badge tip">💡 FORMULA TIP</div>
                     <div class="onboarding-icon">⚡</div>
                     <h2>Level Up: Wildcards</h2>
                     <p class="onboarding-desc">
@@ -4565,6 +4601,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 6: TYPEBALANCE -->
                 <div class="onboarding-step" id="onboardingStep6">
+                    <div class="step-type-badge tip">💡 FORMULA TIP</div>
                     <div class="onboarding-icon">📊</div>
                     <h2>Level Up: Account Types</h2>
                     <p class="onboarding-desc">
@@ -4587,6 +4624,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 7: Bulk Add -->
                 <div class="onboarding-step" id="onboardingStep7">
+                    <div class="step-type-badge action">🎯 TRY IT (optional)</div>
                     <div class="onboarding-icon">📋</div>
                     <h2>Pro Tip: Bulk Add</h2>
                     <p class="onboarding-desc">
@@ -4611,6 +4649,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 8: Dynamic Parameters -->
                 <div class="onboarding-step" id="onboardingStep8">
+                    <div class="step-type-badge tip">💡 POWER TIP</div>
                     <div class="onboarding-icon">🎯</div>
                     <h2>Go Dynamic!</h2>
                     <p class="onboarding-desc">
@@ -4633,6 +4672,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 9: Drill Down -->
                 <div class="onboarding-step" id="onboardingStep9">
+                    <div class="step-type-badge action">🎯 TRY IT (optional)</div>
                     <div class="onboarding-icon">🔍</div>
                     <h2>Drill Into the Data</h2>
                     <p class="onboarding-desc">
@@ -4661,6 +4701,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 <!-- Step 10: Complete -->
                 <div class="onboarding-step" id="onboardingStep10">
+                    <div class="step-type-badge celebrate">🎉 COMPLETE!</div>
                     <div class="onboarding-celebration">
                         <div class="spreadsheet-party">
                             <div class="cell-char cell-a1">📊</div>
@@ -4785,7 +4826,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.140"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.141"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
