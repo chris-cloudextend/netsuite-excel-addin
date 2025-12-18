@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.185</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.186</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4968,7 +4968,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.185"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.186"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -6752,9 +6752,69 @@ For licensing inquiries, contact: legal@celigo.com
         // ========================================================================
         let lastDrilldownTimestamp = 0;
         
+        let lastDrilldownStatusTimestamp = 0;
+        
         function startDrilldownRequestListener() {
             console.log('🔍 Starting drilldown request listener');
             
+            // Listen for drill-down status updates (from developer window)
+            setInterval(() => {
+                try {
+                    const statusJson = localStorage.getItem('xavi_drilldown_status');
+                    if (!statusJson) return;
+                    
+                    const status = JSON.parse(statusJson);
+                    if (status.timestamp <= lastDrilldownStatusTimestamp) return;
+                    
+                    lastDrilldownStatusTimestamp = status.timestamp;
+                    
+                    // Only show in MAIN taskpane (not the duplicate)
+                    const widget = document.getElementById('drilldownStatus');
+                    if (!widget || document.body.style.display === 'none') return;
+                    
+                    if (status.type === 'hide') {
+                        widget.style.display = 'none';
+                    } else if (status.type === 'success') {
+                        // Show success UI
+                        const msgEl = document.getElementById('drilldownMessage');
+                        const detailEl = document.getElementById('drilldownDetail');
+                        const iconEl = document.getElementById('drilldownIcon');
+                        const titleEl = document.getElementById('drilldownTitle');
+                        const dismissBtn = document.getElementById('drilldownDismiss');
+                        const spinnerEl = document.getElementById('drilldownSpinner');
+                        
+                        widget.className = 'drilldown-status success';
+                        iconEl.textContent = '✅';
+                        titleEl.textContent = 'Drill-Down Complete';
+                        msgEl.textContent = status.message || '';
+                        detailEl.textContent = status.detail || '';
+                        dismissBtn.style.display = 'block';
+                        if (spinnerEl) spinnerEl.style.display = 'none';
+                        widget.style.display = 'block';
+                    } else if (status.type === 'progress') {
+                        // Show progress UI
+                        const msgEl = document.getElementById('drilldownMessage');
+                        const detailEl = document.getElementById('drilldownDetail');
+                        const iconEl = document.getElementById('drilldownIcon');
+                        const titleEl = document.getElementById('drilldownTitle');
+                        const dismissBtn = document.getElementById('drilldownDismiss');
+                        const spinnerEl = document.getElementById('drilldownSpinner');
+                        
+                        widget.className = 'drilldown-status';
+                        iconEl.textContent = '🔍';
+                        titleEl.textContent = 'Transaction Drill-Down';
+                        msgEl.textContent = status.message || '';
+                        detailEl.textContent = status.detail || '';
+                        dismissBtn.style.display = 'none';
+                        if (spinnerEl) spinnerEl.style.display = 'block';
+                        widget.style.display = 'block';
+                    }
+                } catch (e) {
+                    // Ignore
+                }
+            }, 100);  // Check frequently for responsive status updates
+            
+            // Listen for drill-down requests
             setInterval(async () => {
                 try {
                     const requestJson = localStorage.getItem('xavi_drilldown_request');
@@ -12063,21 +12123,38 @@ export default {
         }
 
         Office.onReady((info) => {
-            // Check if this is a hidden/background runtime context
-            // On Mac, ExecuteFunction may load the page in a hidden context
-            // We only want to initialize the full UI for the VISIBLE taskpane
-            const isHiddenContext = document.hidden || 
-                                    document.body.clientHeight < 50 ||
-                                    window.innerHeight < 50;
+            // DUPLICATE TASKPANE DETECTION
+            // On Mac, ExecuteFunction opens a "Developer Window" with a duplicate taskpane.
+            // We detect this by checking if another instance was initialized very recently.
+            const instanceKey = 'xavi_taskpane_instance';
+            const now = Date.now();
+            const lastInstanceTime = parseInt(localStorage.getItem(instanceKey) || '0');
             
-            if (isHiddenContext) {
-                console.log('📋 Hidden context detected - skipping full UI init');
-                console.log('   document.hidden:', document.hidden);
-                console.log('   body.clientHeight:', document.body.clientHeight);
-                console.log('   window.innerHeight:', window.innerHeight);
-                // Still start the drilldown listener since ExecuteFunction might need it
+            // If another instance started within the last 3 seconds, this is likely the duplicate
+            const isDuplicateInstance = (now - lastInstanceTime) < 3000;
+            
+            // Also check if this looks like a popup window (developer window)
+            const isPopupWindow = window.opener !== null || 
+                                  window.name.includes('dialog') ||
+                                  (window.outerWidth < 600 && window.outerHeight < 800);
+            
+            // Mark this instance's start time
+            localStorage.setItem(instanceKey, now.toString());
+            
+            if (isDuplicateInstance || isPopupWindow) {
+                console.log('📋 DUPLICATE/POPUP detected - minimal init only');
+                console.log('   isDuplicateInstance:', isDuplicateInstance, '(last:', lastInstanceTime, 'now:', now, ')');
+                console.log('   isPopupWindow:', isPopupWindow);
+                console.log('   window.opener:', window.opener);
+                console.log('   window.name:', window.name);
+                console.log('   dimensions:', window.outerWidth, 'x', window.outerHeight);
+                
+                // Hide the entire body to prevent any UI from showing
+                document.body.style.display = 'none';
+                
+                // Only start the drilldown listener
                 startDrilldownRequestListener();
-                return;  // Skip rest of initialization
+                return;
             }
             
             console.log('NetSuite Excel Add-in task pane loaded');
@@ -16305,7 +16382,18 @@ export default {
         // DRILL-DOWN STATUS HELPERS
         // ================================================================
         function showDrilldownStatus(message, detail = '', isProcessing = true) {
+            // Broadcast via localStorage so MAIN taskpane shows the status
+            // (important when this runs in the duplicate developer window)
+            localStorage.setItem('xavi_drilldown_status', JSON.stringify({
+                type: 'progress',
+                message,
+                detail,
+                timestamp: Date.now()
+            }));
+            
             const widget = document.getElementById('drilldownStatus');
+            if (!widget) return;  // May not exist if body is hidden
+            
             const msgEl = document.getElementById('drilldownMessage');
             const detailEl = document.getElementById('drilldownDetail');
             const iconEl = document.getElementById('drilldownIcon');
@@ -16324,7 +16412,17 @@ export default {
         }
         
         function showDrilldownSuccess(message, detail = '') {
+            // Broadcast via localStorage so MAIN taskpane shows the status
+            localStorage.setItem('xavi_drilldown_status', JSON.stringify({
+                type: 'success',
+                message,
+                detail,
+                timestamp: Date.now()
+            }));
+            
             const widget = document.getElementById('drilldownStatus');
+            if (!widget) return;  // May not exist if body is hidden
+            
             const msgEl = document.getElementById('drilldownMessage');
             const detailEl = document.getElementById('drilldownDetail');
             const iconEl = document.getElementById('drilldownIcon');
@@ -16364,7 +16462,14 @@ export default {
         }
         
         function hideDrilldownStatus() {
-            document.getElementById('drilldownStatus').style.display = 'none';
+            // Broadcast via localStorage so MAIN taskpane hides the status
+            localStorage.setItem('xavi_drilldown_status', JSON.stringify({
+                type: 'hide',
+                timestamp: Date.now()
+            }));
+            
+            const widget = document.getElementById('drilldownStatus');
+            if (widget) widget.style.display = 'none';
         }
         
         // ================================================================
