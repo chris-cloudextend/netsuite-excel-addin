@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.211</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.212</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5643,6 +5643,45 @@ For licensing inquiries, contact: legal@celigo.com
                 console.log('🏢 Subsidiary lookup cached:', Object.keys(subsidiaryLookupCache).length, 'entries');
             }
             return subsidiaryLookupCache;
+        }
+        
+        // ========================================================================
+        // CURRENCY TO FLAG MAPPING - Maps currency symbols to country flags
+        // ========================================================================
+        function getCurrencyFlag(currencySymbol) {
+            const flagMap = {
+                '$': '🇺🇸',       // USD (United States)
+                'A$': '🇦🇺',      // AUD (Australia)
+                'AU$': '🇦🇺',     // AUD alternate
+                '€': '🇪🇺',       // EUR (European Union)
+                '£': '🇬🇧',       // GBP (United Kingdom)
+                '¥': '🇯🇵',       // JPY (Japan) - also CNY
+                '₹': '🇮🇳',       // INR (India)
+                'R$': '🇧🇷',      // BRL (Brazil)
+                'C$': '🇨🇦',      // CAD (Canada)
+                'CA$': '🇨🇦',     // CAD alternate
+                'CHF': '🇨🇭',     // Swiss Franc
+                'kr': '🇸🇪',      // SEK/NOK/DKK (Scandinavia - default to Sweden)
+                'NZ$': '🇳🇿',     // NZD (New Zealand)
+                'HK$': '🇭🇰',     // HKD (Hong Kong)
+                'S$': '🇸🇬',      // SGD (Singapore)
+                'SG$': '🇸🇬',     // SGD alternate
+                '₩': '🇰🇷',       // KRW (South Korea)
+                'MX$': '🇲🇽',     // MXN (Mexico)
+                'R': '🇿🇦',       // ZAR (South Africa)
+                '₱': '🇵🇭',       // PHP (Philippines)
+                '฿': '🇹🇭',       // THB (Thailand)
+                'RM': '🇲🇾',      // MYR (Malaysia)
+                'Rp': '🇮🇩',      // IDR (Indonesia)
+                '₫': '🇻🇳',       // VND (Vietnam)
+                'zł': '🇵🇱',      // PLN (Poland)
+                'Kč': '🇨🇿',      // CZK (Czech Republic)
+                'Ft': '🇭🇺',      // HUF (Hungary)
+                '₪': '🇮🇱',       // ILS (Israel)
+                'AED': '🇦🇪',     // UAE Dirham
+                'SAR': '🇸🇦',     // Saudi Riyal
+            };
+            return flagMap[currencySymbol] || '💰';  // Default to money bag
         }
         
         // ========================================================================
@@ -12121,10 +12160,18 @@ export default {
                     ⏱️ Completed in <strong>${data.elapsedTime}s</strong>
                 </div>` : '';
             
+            // Custom header for Structure Sync (shows subsidiary + flag)
+            const headerHtml = data.customHeader ? 
+                `<div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">${data.customHeader}</div>` : '';
+            
+            // Determine title suffix based on report type
+            const titleSuffix = reportType === 'Structure Sync' ? 'Complete!' : 'Generated!';
+            
             overlay.innerHTML = `
                 <div class="report-success-card">
                     <button class="close-x" onclick="dismissReportSuccess()" title="Close">×</button>
-                    <h2>✅ ${reportType} Generated!</h2>
+                    ${headerHtml}
+                    <h2>✅ ${reportType} ${titleSuffix}</h2>
                     <div class="summary">
                         <div style="margin-bottom: 6px; font-size: 12px;"><strong>${data.totalAccounts} accounts</strong> in sections:</div>
                         ${sectionsHtml}
@@ -12824,6 +12871,12 @@ export default {
                             }
                             window.subsidiaryChangeTimer = setTimeout(async () => {
                                 console.log('🏢 SUBSIDIARY debounce complete - triggering updates...');
+                                
+                                // CRITICAL: Suppress statusBar BEFORE triggering any updates
+                                // This prevents the small "Fetching P&L data" window from appearing
+                                suppressStatusBar = true;
+                                localStorage.removeItem('netsuite_status');
+                                
                                 // Always run currency format update when Q3 changes
                                 await smartCurrencyFormatUpdate();
                                 // Also check for structure sync (Income Statement only)
@@ -13484,6 +13537,27 @@ export default {
             suppressStatusBar = true;
             localStorage.removeItem('netsuite_status');
             
+            // Get currency info EARLY so we can show it on the overlay
+            let currencyFormat = '$#,##0.00';  // Default to USD
+            let currencySymbol = '$';
+            let currencyFlag = '🇺🇸';
+            
+            try {
+                const currencyData = await getCurrencyData();
+                if (currencyData && currentSubsidiary) {
+                    const subsidiaryNameToId = await getSubsidiaryLookup();
+                    const subId = /^\d+$/.test(currentSubsidiary) ? 
+                        currentSubsidiary : 
+                        (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
+                    currencySymbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
+                    currencyFormat = currencyData.formats[currencySymbol] || '$#,##0.00';
+                    currencyFlag = getCurrencyFlag(currencySymbol);
+                    console.log(`💱 Structure Sync currency: "${currentSubsidiary}" → ${currencyFlag} ${currencySymbol}`);
+                }
+            } catch (e) {
+                console.warn('Currency lookup failed:', e.message);
+            }
+            
             // Show prominent FULL-SCREEN overlay for Structure Sync (impossible to miss!)
             const syncOverlay = document.createElement('div');
             syncOverlay.id = 'structureSyncOverlay';
@@ -13493,6 +13567,14 @@ export default {
                 <h2>🔄 Structure Sync</h2>
                 <div class="loading-subtitle">
                     Analyzing accounts for <strong>${targetYear}</strong> and <strong>"${currentSubsidiary || 'All Subsidiaries'}"</strong>
+                </div>
+                <div style="margin: 16px auto; display: flex; align-items: center; justify-content: center; gap: 12px; 
+                            padding: 12px 24px; background: rgba(10, 226, 193, 0.15); border-radius: 12px; border: 1px solid rgba(10, 226, 193, 0.3);">
+                    <span style="font-size: 32px;">${currencyFlag}</span>
+                    <div style="text-align: left;">
+                        <div style="font-size: 11px; color: #93c5fd; text-transform: uppercase;">Currency</div>
+                        <div style="font-size: 22px; font-weight: bold; color: #0AE2C1;">${currencySymbol}</div>
+                    </div>
                 </div>
                 <div class="progress-container">
                     <div class="progress-bar-bg">
@@ -13519,44 +13601,12 @@ export default {
             `;
             document.head.appendChild(style);
             
-            // Also update status element if visible
+            // Hide the small status element - the overlay is the main UI
             if (statusEl) {
-                statusEl.innerHTML = `
-                    <div style="background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%); 
-                                padding: 14px 16px; 
-                                border-radius: 8px; 
-                                border-left: 4px solid var(--tidal-wave);
-                                margin: 10px 0;">
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-                            <span style="font-size: 18px;">🔄</span>
-                            <strong style="color: #1e40af; font-size: 13px;">Structure Sync in Progress</strong>
-                        </div>
-                        <div style="color: #1e3a8a; font-size: 12px; line-height: 1.5;">
-                            Analyzing accounts for <strong>${targetYear}</strong> and <strong>"${currentSubsidiary || 'All Subsidiaries'}"</strong>...<br>
-                            We're filtering out rows with no activity to keep your report clean.
-                        </div>
-                    </div>`;
+                statusEl.innerHTML = '';
             }
             
             try {
-                // Get currency format for the selected subsidiary
-                let currencyFormat = '$#,##0.00';  // Default to USD
-                let currencySymbol = '$';  // Track symbol for success message
-                try {
-                    const currencyData = await getCurrencyData();
-                    if (currencyData && currentSubsidiary) {
-                        const subsidiaryNameToId = await getSubsidiaryLookup();
-                        const subId = /^\d+$/.test(currentSubsidiary) ? 
-                            currentSubsidiary : 
-                            (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
-                        currencySymbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
-                        currencyFormat = currencyData.formats[currencySymbol] || '$#,##0.00';
-                        console.log(`💱 performStructureSync currency: "${currentSubsidiary}" → ${currencySymbol} (${currencyFormat})`);
-                    }
-                } catch (e) {
-                    console.warn('Currency lookup failed:', e.message);
-                }
-                
                 // Update overlay to show we're fetching data
                 const syncStep = document.querySelector('#structureSyncOverlay .loading-step');
                 if (syncStep) syncStep.textContent = '📥 Fetching account data from NetSuite...';
@@ -13965,18 +14015,21 @@ export default {
                 // Update overlay to show we're waiting for formulas
                 const syncStepFinal = document.querySelector('#structureSyncOverlay .loading-step');
                 const syncDesc = document.querySelector('#structureSyncOverlay .loading-step-desc');
-                if (syncStepFinal) syncStepFinal.textContent = '🧹 Tidying up...';
-                if (syncDesc) syncDesc.textContent = 'Waiting for formulas to populate with data.';
+                if (syncStepFinal) syncStepFinal.innerHTML = '<span class="spreadsheet-animation">📊</span> Tucking everything into place...';
+                if (syncDesc) syncDesc.textContent = 'Your data is being populated. Almost done!';
+                
+                // Track start time for elapsed calculation
+                const syncStartTime = Date.now();
                 
                 // Wait for formulas to resolve before showing success
                 await waitForFormulasToComplete(120000, null);
                 
                 // Remove the full-screen overlay
-                const syncOverlay = document.getElementById('structureSyncOverlay');
-                if (syncOverlay) {
-                    syncOverlay.style.opacity = '0';
-                    syncOverlay.style.transition = 'opacity 0.3s ease';
-                    setTimeout(() => syncOverlay.remove(), 300);
+                const syncOverlayEl = document.getElementById('structureSyncOverlay');
+                if (syncOverlayEl) {
+                    syncOverlayEl.style.opacity = '0';
+                    syncOverlayEl.style.transition = 'opacity 0.3s ease';
+                    setTimeout(() => syncOverlayEl.remove(), 300);
                 }
                 const syncStyle = document.getElementById('syncPulseStyle');
                 if (syncStyle) syncStyle.remove();
@@ -13984,25 +14037,30 @@ export default {
                 // Re-enable status bar
                 suppressStatusBar = false;
                 
-                // Show success toast with currency info
-                showToast({
-                    title: '✅ Structure Sync Complete',
-                    message: `Rebuilt for "${currentSubsidiary || 'All'}" with ${totalAccounts} accounts. Currency: ${currencySymbol}`,
-                    type: 'success',
-                    icon: '✅',
-                    duration: 6000
+                // Calculate elapsed time
+                const elapsedSeconds = ((Date.now() - syncStartTime) / 1000).toFixed(1);
+                
+                // Show success using the SAME large overlay as Income Statement generation
+                showReportSuccessOverlay('Structure Sync', {
+                    totalAccounts,
+                    elapsedTime: elapsedSeconds,
+                    sections: [
+                        { name: 'Revenue', count: categories.income.length },
+                        { name: 'Cost of Sales', count: categories.cogs.length },
+                        { name: 'Operating Expenses', count: categories.expense.length },
+                        { name: 'Other Income/Expense', count: categories.othIncome.length + categories.othExpense.length }
+                    ],
+                    tips: [
+                        { type: 'info', icon: currencyFlag, title: 'Currency:', text: `<strong>${currencySymbol}</strong> applied to all cells` },
+                        { type: 'info', icon: '🏢', title: 'Subsidiary:', text: `<strong>${currentSubsidiary || 'All Subsidiaries'}</strong>` },
+                        { type: 'info', icon: '📅', title: 'Year:', text: `<strong>${targetYear}</strong>` }
+                    ],
+                    customHeader: `${currencyFlag} ${currentSubsidiary || 'All Subsidiaries'}`
                 });
                 
-                // Update status element if visible
+                // Clear status element
                 if (statusEl) {
-                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px;">
-                        <strong style="color: #065f46;">✓ Structure Synced for ${targetYear}</strong><br>
-                        <span style="font-size: 12px; color: #047857;">
-                            • Subsidiary: <strong>${currentSubsidiary || 'All'}</strong><br>
-                            • Accounts: <strong>${totalAccounts}</strong><br>
-                            • Currency: <strong>${currencySymbol}</strong>
-                        </span>
-                    </div>`;
+                    statusEl.innerHTML = '';
                 }
                 
                 console.log(`✅ Auto-sync complete for ${targetYear}`);
