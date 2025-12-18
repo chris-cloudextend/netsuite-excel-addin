@@ -2437,6 +2437,153 @@ For licensing inquiries, contact: legal@celigo.com
             transform: none;
             box-shadow: none;
         }
+        
+        /* ========================================
+           CONTEXT-AWARE PARAMETER POPUP
+           Shows filter when parameter cell selected
+           ======================================== */
+        .param-context-popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #09235C 0%, #0d3068 100%);
+            padding: 12px 16px;
+            z-index: 1000;
+            transform: translateY(-100%);
+            opacity: 0;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
+            box-shadow: 0 4px 20px rgba(9, 35, 92, 0.3);
+            border-bottom: 3px solid var(--anenome);
+        }
+        
+        .param-context-popup.visible {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        
+        .param-context-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .param-context-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .param-context-title .param-icon {
+            font-size: 16px;
+        }
+        
+        .param-context-cell {
+            background: rgba(10, 226, 193, 0.2);
+            color: var(--anenome);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        
+        .param-context-close {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: rgba(255,255,255,0.7);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .param-context-close:hover {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+        
+        .param-context-body {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .param-context-select {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid rgba(10, 226, 193, 0.3);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.95);
+            font-size: 13px;
+            color: var(--deep-sea);
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        
+        .param-context-select:focus {
+            outline: none;
+            border-color: var(--anenome);
+        }
+        
+        .param-context-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid rgba(10, 226, 193, 0.3);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.95);
+            font-size: 13px;
+            color: var(--deep-sea);
+            transition: border-color 0.2s;
+        }
+        
+        .param-context-input:focus {
+            outline: none;
+            border-color: var(--anenome);
+        }
+        
+        .param-context-btn {
+            background: var(--anenome);
+            color: var(--deep-sea);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        
+        .param-context-btn:hover {
+            background: #00e6d0;
+            transform: translateY(-1px);
+        }
+        
+        .param-context-hint {
+            margin-top: 8px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .param-context-hint code {
+            background: rgba(255,255,255,0.15);
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
 
         /* Quick Actions Help Modal */
         .quick-help-modal {
@@ -3605,6 +3752,28 @@ For licensing inquiries, contact: legal@celigo.com
 <body>
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
+    
+    <!-- Context-Aware Parameter Popup -->
+    <div class="param-context-popup" id="paramContextPopup">
+        <div class="param-context-header">
+            <div class="param-context-title">
+                <span class="param-icon" id="paramContextIcon">🏢</span>
+                <span id="paramContextLabel">Subsidiary</span>
+                <span class="param-context-cell" id="paramContextCell">Q3</span>
+            </div>
+            <button class="param-context-close" onclick="hideParamContextPopup()" title="Close">×</button>
+        </div>
+        <div class="param-context-body">
+            <select class="param-context-select" id="paramContextSelect" style="display: none;">
+                <option value="">Loading...</option>
+            </select>
+            <input type="text" class="param-context-input" id="paramContextInput" placeholder="Enter value..." style="display: none;">
+            <button class="param-context-btn" onclick="applyParamContextValue()">Apply</button>
+        </div>
+        <div class="param-context-hint" id="paramContextHint">
+            💡 <span id="paramContextHintText">Select a value and click Apply to update the cell</span>
+        </div>
+    </div>
 
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
@@ -3736,7 +3905,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.200</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.201</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5462,7 +5631,20 @@ For licensing inquiries, contact: legal@celigo.com
             hasXaviFormulas: false,
             selectedCellHasXavi: false,
             selectedFormulaType: null, // 'BALANCE', 'BUDGET', 'TYPEBALANCE', 'NETINCOME', etc.
-            isCalculating: false
+            isCalculating: false,
+            // Parameter cell detection
+            selectedParamType: null,  // 'year', 'subsidiary', 'department', 'location', 'class', 'accountingBook'
+            selectedCellAddress: null
+        };
+        
+        // Parameter cell mapping - maps cell addresses to parameter types
+        const PARAM_CELL_CONFIG = {
+            'P3': { type: 'year', icon: '📅', label: 'Year', inputType: 'input', placeholder: 'e.g., 2025', hint: 'Enter a 4-digit year' },
+            'Q3': { type: 'subsidiary', icon: '🏢', label: 'Subsidiary', inputType: 'select', source: 'subsidiarySelect', hint: 'Add "(Consolidated)" for rollups' },
+            'R3': { type: 'department', icon: '🏷️', label: 'Department', inputType: 'select', source: 'departmentSelect', hint: 'Leave empty for all departments' },
+            'S3': { type: 'location', icon: '📍', label: 'Location', inputType: 'select', source: 'locationSelect', hint: 'Leave empty for all locations' },
+            'T3': { type: 'class', icon: '📂', label: 'Class', inputType: 'select', source: 'classSelect', hint: 'Leave empty for all classes' },
+            'U3': { type: 'accountingBook', icon: '📚', label: 'Accounting Book', inputType: 'select', source: 'accountingBookSelect', hint: 'Default is Primary Book' }
         };
         
         async function updateContextualUI() {
@@ -5557,6 +5739,31 @@ For licensing inquiries, contact: legal@celigo.com
                     contextualState.selectedFormulaType = selectedFormulaType;
                     contextualState.isDrillDownSheetRow = isDrillDownSheetRow;
                     
+                    // ========================================
+                    // PARAMETER CELL DETECTION
+                    // Check if selected cell is a known parameter cell (P3, Q3, R3, S3, T3, U3)
+                    // ========================================
+                    let normalizedAddress = selection.address;
+                    // Remove sheet name prefix if present (e.g., "Sheet1!Q3" -> "Q3")
+                    if (normalizedAddress.includes('!')) {
+                        normalizedAddress = normalizedAddress.split('!')[1];
+                    }
+                    // Remove $ signs (e.g., "$Q$3" -> "Q3")
+                    normalizedAddress = normalizedAddress.replace(/\$/g, '').toUpperCase();
+                    
+                    contextualState.selectedCellAddress = normalizedAddress;
+                    
+                    // Check if this is a parameter cell
+                    const paramConfig = PARAM_CELL_CONFIG[normalizedAddress];
+                    if (paramConfig) {
+                        contextualState.selectedParamType = paramConfig.type;
+                        // Show the context popup with this parameter type
+                        showParamContextPopup(normalizedAddress, paramConfig, selection.values[0][0]);
+                    } else {
+                        contextualState.selectedParamType = null;
+                        hideParamContextPopup();
+                    }
+                    
                     // Update UI
                     updateQuickActionsUI();
                 });
@@ -5564,6 +5771,7 @@ For licensing inquiries, contact: legal@celigo.com
                 console.log('Contextual UI check skipped:', e.message);
                 // Show default state
                 updateQuickActionsUI();
+                hideParamContextPopup();
             }
         }
         
@@ -5681,6 +5889,124 @@ For licensing inquiries, contact: legal@celigo.com
         function setCalculatingState(isCalculating) {
             contextualState.isCalculating = isCalculating;
             updateQuickActionsUI();
+        }
+        
+        // ========================================================================
+        // PARAMETER CONTEXT POPUP - Smart filter UI when parameter cells selected
+        // ========================================================================
+        let currentParamConfig = null;
+        let currentParamCellAddress = null;
+        
+        function showParamContextPopup(cellAddress, config, currentValue) {
+            currentParamConfig = config;
+            currentParamCellAddress = cellAddress;
+            
+            const popup = document.getElementById('paramContextPopup');
+            const iconEl = document.getElementById('paramContextIcon');
+            const labelEl = document.getElementById('paramContextLabel');
+            const cellEl = document.getElementById('paramContextCell');
+            const selectEl = document.getElementById('paramContextSelect');
+            const inputEl = document.getElementById('paramContextInput');
+            const hintTextEl = document.getElementById('paramContextHintText');
+            
+            // Set header
+            iconEl.textContent = config.icon;
+            labelEl.textContent = config.label;
+            cellEl.textContent = cellAddress;
+            hintTextEl.textContent = config.hint;
+            
+            // Show appropriate input type
+            if (config.inputType === 'select') {
+                selectEl.style.display = 'block';
+                inputEl.style.display = 'none';
+                
+                // Copy options from the source select
+                const sourceSelect = document.getElementById(config.source);
+                if (sourceSelect) {
+                    selectEl.innerHTML = sourceSelect.innerHTML;
+                    // Try to select current value
+                    if (currentValue) {
+                        const currentStr = String(currentValue).trim();
+                        for (let option of selectEl.options) {
+                            if (option.value === currentStr || option.text === currentStr) {
+                                option.selected = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                selectEl.style.display = 'none';
+                inputEl.style.display = 'block';
+                inputEl.placeholder = config.placeholder || 'Enter value...';
+                inputEl.value = currentValue || '';
+            }
+            
+            // Show with animation
+            requestAnimationFrame(() => {
+                popup.classList.add('visible');
+            });
+            
+            console.log(`📍 Parameter cell detected: ${cellAddress} (${config.type})`);
+        }
+        
+        function hideParamContextPopup() {
+            const popup = document.getElementById('paramContextPopup');
+            popup.classList.remove('visible');
+            currentParamConfig = null;
+            currentParamCellAddress = null;
+        }
+        
+        async function applyParamContextValue() {
+            if (!currentParamConfig || !currentParamCellAddress) return;
+            
+            const selectEl = document.getElementById('paramContextSelect');
+            const inputEl = document.getElementById('paramContextInput');
+            
+            // Get the value based on input type
+            let newValue;
+            if (currentParamConfig.inputType === 'select') {
+                newValue = selectEl.value;
+            } else {
+                newValue = inputEl.value.trim();
+            }
+            
+            // Apply the value to the cell
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const cell = sheet.getRange(currentParamCellAddress);
+                    
+                    // For year, convert to number
+                    if (currentParamConfig.type === 'year' && newValue) {
+                        const yearNum = parseInt(newValue, 10);
+                        if (!isNaN(yearNum) && yearNum >= 1900 && yearNum <= 2100) {
+                            cell.values = [[yearNum]];
+                        } else {
+                            cell.values = [[newValue]];
+                        }
+                    } else {
+                        cell.values = [[newValue]];
+                    }
+                    
+                    await context.sync();
+                    console.log(`✅ Applied "${newValue}" to ${currentParamCellAddress}`);
+                });
+                
+                // Show brief success feedback
+                const btn = document.querySelector('.param-context-btn');
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Applied';
+                btn.style.background = '#22c55e';
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                }, 1500);
+                
+            } catch (error) {
+                console.error('Failed to apply parameter value:', error);
+            }
         }
         
         // ========================================================================
