@@ -3936,7 +3936,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.208</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.209</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8388,7 +8388,7 @@ For licensing inquiries, contact: legal@celigo.com
             };
             
             try {
-                updateProgress(10, '🔍 Step 1 of 3: Getting Settings', 'Loading subsidiary and currency info...');
+                updateProgress(10, '🔍 Step 1 of 4: Getting Settings', 'Loading subsidiary and currency info...');
                 
                 // Get default subsidiary and currency format
                 let defaultSubsidiary = '';
@@ -8507,7 +8507,7 @@ For licensing inquiries, contact: legal@celigo.com
                     // Continue anyway - formulas will just load one at a time
                 }
                 
-                updateProgress(35, '📊 Step 2 of 3: Building Structure', 'Creating headers and parameters...');
+                updateProgress(35, '📊 Step 2 of 4: Building Structure', 'Creating headers and parameters...');
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -8630,7 +8630,7 @@ For licensing inquiries, contact: legal@celigo.com
                         await context.sync();
                     } catch (e) {}
                     
-                    updateProgress(50, '📝 Step 3 of 3: Adding Formulas', 'Writing TYPEBALANCE formulas...');
+                    updateProgress(50, '📝 Step 3 of 4: Adding Formulas', 'Writing TYPEBALANCE formulas...');
                     
                     // ========== ROW 5: COLUMN HEADERS ==========
                     sheet.getRange("A5").values = [["Line Item"]];
@@ -8826,10 +8826,10 @@ For licensing inquiries, contact: legal@celigo.com
                 const overlayProgress = overlay.querySelector('.progress-bar-fill');
                 const overlayProgressText = overlay.querySelector('.progress-text');
                 
-                if (overlayTitle) overlayTitle.textContent = '⏳ Fetching Data from NetSuite...';
-                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Report structure complete! Waiting for formulas to fetch data and populate cells.';
-                if (overlayStep) overlayStep.textContent = '📊 Waiting for NetSuite data...';
-                if (overlayStepDesc) overlayStepDesc.textContent = 'Phase 1: Fetch data → Phase 2: Populate cells';
+                if (overlayTitle) overlayTitle.textContent = '🧹 Step 4 of 4: Tidying Up';
+                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Tidying up the results. This is the last step...';
+                if (overlayStep) overlayStep.textContent = '📊 Waiting for data from NetSuite...';
+                if (overlayStepDesc) overlayStepDesc.textContent = '';
                 
                 // Hide any other loading overlays and status bars
                 hideLoading();
@@ -8990,13 +8990,13 @@ For licensing inquiries, contact: legal@celigo.com
             
             try {
                 // Step 1: Fetch ALL account data
-                updateProgress(5, '📥 Step 1 of 5: Loading Accounts', 'Fetching all P&L accounts from NetSuite...');
+                updateProgress(5, '📥 Step 1 of 6: Loading Accounts', 'Fetching all P&L accounts from NetSuite...');
                 
                 let artificialProgress = 5;
                 const progressInterval = setInterval(() => {
                     if (artificialProgress < 30) {
                         artificialProgress += 2;
-                        updateProgress(artificialProgress, '📥 Step 1 of 5: Loading Accounts', 
+                        updateProgress(artificialProgress, '📥 Step 1 of 6: Loading Accounts', 
                             'Querying NetSuite for all account balances...');
                     }
                 }, 4000);
@@ -9042,7 +9042,7 @@ For licensing inquiries, contact: legal@celigo.com
                 }
                 
                 // Step 2: Categorize accounts by type
-                updateProgress(35, '🔍 Step 2 of 5: Categorizing', 'Grouping accounts by type...');
+                updateProgress(35, '🔍 Step 2 of 6: Categorizing', 'Grouping accounts by type...');
                 
                 const categories = {
                     income: [],      // Revenue
@@ -9134,7 +9134,7 @@ For licensing inquiries, contact: legal@celigo.com
                 }
                 
                 // Step 3: Build Excel structure
-                updateProgress(45, '📊 Step 3 of 5: Building Structure', 'Creating sections and headers...');
+                updateProgress(45, '📊 Step 3 of 6: Building Structure', 'Creating sections and headers...');
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -9419,7 +9419,7 @@ For licensing inquiries, contact: legal@celigo.com
                     let othExpenseStartRow, othExpenseEndRow, othExpenseTotalRow;
                     let netIncomeRow;
                     
-                    updateProgress(50, '📝 Step 4 of 5: Writing Data', 'Adding Revenue accounts...');
+                    updateProgress(50, '📝 Step 4 of 6: Writing Data', 'Adding Revenue accounts...');
                     
                     // ========== REVENUE SECTION ==========
                     if (categories.income.length > 0) {
@@ -9440,7 +9440,7 @@ For licensing inquiries, contact: legal@celigo.com
                         currentRow += 2; // Blank row after
                     }
                     
-                    updateProgress(60, '📝 Step 4 of 5: Writing Data', 'Adding Cost of Sales...');
+                    updateProgress(60, '📝 Step 4 of 6: Writing Data', 'Adding Cost of Sales...');
                     
                     // ========== COST OF SALES SECTION ==========
                     if (categories.cogs.length > 0) {
@@ -9488,7 +9488,7 @@ For licensing inquiries, contact: legal@celigo.com
                         currentRow += 2;
                     }
                     
-                    updateProgress(70, '📝 Step 4 of 5: Writing Data', 'Adding Operating Expenses...');
+                    updateProgress(70, '📝 Step 4 of 6: Writing Data', 'Adding Operating Expenses...');
                     
                     // ========== OPERATING EXPENSES SECTION ==========
                     if (categories.expense.length > 0) {
@@ -9534,7 +9534,7 @@ For licensing inquiries, contact: legal@celigo.com
                         currentRow += 2;
                     }
                     
-                    updateProgress(80, '📝 Step 4 of 5: Writing Data', 'Adding Other Income/Expense...');
+                    updateProgress(80, '📝 Step 4 of 6: Writing Data', 'Adding Other Income/Expense...');
                     
                     // ========== OTHER INCOME SECTION ==========
                     if (categories.othIncome.length > 0) {
@@ -9574,7 +9574,7 @@ For licensing inquiries, contact: legal@celigo.com
                         currentRow += 2;
                     }
                     
-                    updateProgress(90, '📝 Step 4 of 5: Writing Data', 'Calculating Net Income...');
+                    updateProgress(90, '📝 Step 4 of 6: Writing Data', 'Calculating Net Income...');
                     
                     // ========== NET INCOME ROW ==========
                     sheet.getRange(`B${currentRow}`).values = [['NET INCOME']];
@@ -9607,7 +9607,7 @@ For licensing inquiries, contact: legal@celigo.com
                     netIncomeRow = currentRow;
                     await createNamedRange('_Net_Income', currentRow);
                     
-                    updateProgress(95, '🎨 Step 5 of 5: Formatting', 'Applying currency formats...');
+                    updateProgress(95, '🎨 Step 5 of 6: Formatting', 'Applying currency formats...');
                     
                     // Format all number cells with the correct currency symbol (data starts at row 6)
                     try {
@@ -9648,10 +9648,10 @@ For licensing inquiries, contact: legal@celigo.com
                 const overlayProgress = overlay.querySelector('.progress-bar-fill');
                 const overlayProgressText = overlay.querySelector('.progress-text');
                 
-                if (overlayTitle) overlayTitle.textContent = '⏳ Fetching Data from NetSuite...';
-                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Sheet structure complete! Waiting for formulas to fetch data and populate cells.';
-                if (overlayStep) overlayStep.textContent = '📊 Waiting for NetSuite data...';
-                if (overlayStepDesc) overlayStepDesc.textContent = 'Phase 1: Fetch data → Phase 2: Populate cells';
+                if (overlayTitle) overlayTitle.textContent = '🧹 Step 6 of 6: Tidying Up';
+                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Tidying up the results. This is the last step...';
+                if (overlayStep) overlayStep.textContent = '📊 Waiting for data from NetSuite...';
+                if (overlayStepDesc) overlayStepDesc.textContent = '';
                 
                 // Hide any other loading overlays and status bars
                 hideLoading();
@@ -12156,7 +12156,7 @@ export default {
             
             // PHASE 1: Wait for data fetching to complete
             if (updateOverlayFn) {
-                updateOverlayFn('Waiting for NetSuite data...', 5);
+                updateOverlayFn('Fetching data from NetSuite...', 5);
             }
             
             while (Date.now() - startTime < maxWaitMs && !dataFetchComplete) {
@@ -12192,9 +12192,9 @@ export default {
             }
             
             // PHASE 2: Wait for Excel to finish recalculating (#BUSY cells to clear)
-            console.log('⏳ Phase 2: Waiting for Excel to finish recalculating...');
+            console.log('⏳ Waiting for cells to populate...');
             if (updateOverlayFn) {
-                updateOverlayFn('Unpacking data into cells...', 85);
+                updateOverlayFn('Populating cells...', 85);
             }
             
             // Give Excel a moment to start recalculating
@@ -12226,8 +12226,7 @@ export default {
                         }
                         
                         if (hasBusy && updateOverlayFn) {
-                            const elapsed = Math.round((Date.now() - startTime) / 1000);
-                            updateOverlayFn(`Waiting for ${busyCount} cells to resolve...`, 90);
+                            updateOverlayFn(`${busyCount} cells remaining...`, 90);
                             console.log(`📊 Phase 2: ${busyCount} #BUSY cells remaining (${elapsed}s elapsed)`);
                         }
                     });
@@ -12237,9 +12236,9 @@ export default {
                         console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})`);
                         
                         if (consecutiveNoBusy >= requiredConsecutive) {
-                            console.log('✅ Phase 2 complete: All cells resolved!');
+                            console.log('✅ All cells populated!');
                             if (updateOverlayFn) {
-                                updateOverlayFn('All formulas resolved!', 100);
+                                updateOverlayFn('Done!', 100);
                             }
                             suppressStatusBar = false;
                             localStorage.removeItem('netsuite_status');
