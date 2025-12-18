@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.181</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.182</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4991,7 +4991,7 @@ For licensing inquiries, contact: legal@celigo.com
         const DRILL_SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
         
         function drillDownFromContextMenu(event) {
-            console.log('=== CONTEXT MENU DRILL-DOWN START ===');
+            console.log('=== CONTEXT MENU DRILL-DOWN START (taskpane.html) ===');
             
             // CRITICAL: Call event.completed() IMMEDIATELY to prevent developer window
             if (event && event.completed) {
@@ -4999,8 +4999,30 @@ For licensing inquiries, contact: legal@celigo.com
                 console.log('✅ event.completed() called immediately');
             }
             
-            // Do the work asynchronously - self-contained, no external dependencies
-            inlineDrillDown().catch(err => console.error('Drill-down error:', err));
+            // Store the request in localStorage for the drilldown listener to pick up
+            // This ensures we get proper UI feedback in the taskpane
+            Excel.run(async (context) => {
+                try {
+                    const range = context.workbook.getSelectedRange();
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    range.load(['formulas', 'values', 'address']);
+                    sheet.load('name');
+                    await context.sync();
+                    
+                    const request = {
+                        timestamp: Date.now(),
+                        address: range.address,
+                        formula: range.formulas[0][0],
+                        value: range.values[0][0],
+                        sheetName: sheet.name
+                    };
+                    
+                    localStorage.setItem('xavi_drilldown_request', JSON.stringify(request));
+                    console.log('📤 Drill-down request stored for listener:', request);
+                } catch (err) {
+                    console.error('Error storing drill-down request:', err);
+                }
+            });
         }
         
         // Self-contained drill-down logic - doesn't depend on anything else in taskpane
@@ -6666,6 +6688,131 @@ For licensing inquiries, contact: legal@celigo.com
                 // Ignore parsing errors
             }
         }, 500);  // Check every 500ms
+        }
+        
+        // ========================================================================
+        // DRILLDOWN REQUEST LISTENER - picks up requests from commands.html
+        // commands.html stores a request in localStorage, we process it here with UI
+        // ========================================================================
+        let lastDrilldownTimestamp = 0;
+        
+        function startDrilldownRequestListener() {
+            console.log('🔍 Starting drilldown request listener');
+            
+            setInterval(async () => {
+                try {
+                    const requestJson = localStorage.getItem('xavi_drilldown_request');
+                    if (!requestJson) return;
+                    
+                    const request = JSON.parse(requestJson);
+                    
+                    // Only process if it's new (within last 5 seconds)
+                    if (request.timestamp <= lastDrilldownTimestamp || 
+                        Date.now() - request.timestamp > 5000) {
+                        return;
+                    }
+                    
+                    lastDrilldownTimestamp = request.timestamp;
+                    localStorage.removeItem('xavi_drilldown_request');
+                    
+                    console.log('📥 Processing drilldown request from commands.html:', request);
+                    
+                    // Now run the full drill-down with UI feedback
+                    await processDrilldownRequest(request);
+                    
+                } catch (e) {
+                    console.error('Drilldown listener error:', e);
+                }
+            }, 200);  // Check every 200ms for responsive feel
+        }
+        
+        async function processDrilldownRequest(request) {
+            const { formula, sheetName, address } = request;
+            const upperFormula = String(formula || '').toUpperCase();
+            
+            try {
+                // Handle XAVI.BALANCE
+                if (upperFormula.includes('XAVI.BALANCE')) {
+                    showDrilldownStatus('Parsing formula parameters...');
+                    const match = formula.match(/XAVI\.BALANCE\s*\((.*)\)/i);
+                    if (!match) { hideDrilldownStatus(); return; }
+                    
+                    const params = parseFormulaCellRefs(match[1]);
+                    const resolved = await resolveFormulaParams(params);
+                    
+                    showDrilldownStatus('Fetching transactions from NetSuite...');
+                    const account = resolved[0] || '';
+                    const period = resolved[2] || resolved[1] || '';
+                    const subsidiary = resolved[3] || '';
+                    
+                    const qp = new URLSearchParams({ account, period });
+                    if (subsidiary) qp.append('subsidiary', subsidiary);
+                    
+                    const resp = await fetch(`${SERVER_URL}/transactions?${qp}`);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        showDrilldownStatus(`Creating sheet with ${data.transactions?.length || 0} transactions...`);
+                        await drillDownTransactions(account, period, subsidiary);
+                    }
+                    hideDrilldownStatus();
+                    return;
+                }
+                
+                // Handle XAVI.TYPEBALANCE
+                if (upperFormula.includes('XAVI.TYPEBALANCE')) {
+                    showDrilldownStatus('Parsing TYPEBALANCE formula...');
+                    const match = formula.match(/XAVI\.TYPEBALANCE\s*\((.*)\)/i);
+                    if (!match) { hideDrilldownStatus(); return; }
+                    
+                    const params = parseTypeBalanceParams(match[1]);
+                    const resolved = await resolveTypeBalanceParams(params);
+                    
+                    showDrilldownStatus('Fetching accounts by type from NetSuite...');
+                    await handleTypeBalanceDrillDown(resolved);
+                    hideDrilldownStatus();
+                    return;
+                }
+                
+                // Handle secondary drill-down from DrillDown_ sheet
+                if (sheetName && sheetName.startsWith('DrillDown_')) {
+                    showDrilldownStatus('Preparing secondary drill-down...');
+                    
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const rowMatch = address.match(/(\d+)(?:\D*)?$/);
+                        const row = rowMatch ? parseInt(rowMatch[1]) : 0;
+                        
+                        if (row >= 6) {
+                            const acctCell = sheet.getRange(`A${row}`);
+                            const ctxCell = sheet.getRange('A3');
+                            acctCell.load('values');
+                            ctxCell.load('values');
+                            await context.sync();
+                            
+                            const account = String(acctCell.values[0][0] || '');
+                            const ctx = String(ctxCell.values[0][0] || '');
+                            
+                            if (account && ctx.startsWith('DRILLDOWN_CONTEXT:')) {
+                                const parts = ctx.replace('DRILLDOWN_CONTEXT:', '').split(':');
+                                const period = parts[0] || '';
+                                const subsidiary = parts[1] || '';
+                                
+                                showDrilldownStatus(`Fetching transactions for ${account}...`);
+                                await drillDownTransactions(account, period, subsidiary);
+                            }
+                        }
+                    });
+                    
+                    hideDrilldownStatus();
+                    return;
+                }
+                
+                console.log('No drilldown action for this cell');
+                
+            } catch (err) {
+                console.error('processDrilldownRequest error:', err);
+                hideDrilldownStatus();
+            }
         }
 
         // Poll for toast notifications from custom functions (via localStorage)
@@ -11877,6 +12024,9 @@ export default {
             
             // Start status polling AFTER cleanup - ignores any stale statuses
             startStatusPolling();
+            
+            // Start listening for drill-down requests from commands.html
+            startDrilldownRequestListener();
             
             // Set version in UI elements
             initializeVersion();
