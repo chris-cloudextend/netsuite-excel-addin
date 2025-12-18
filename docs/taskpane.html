@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.191</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.192</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4994,6 +4994,14 @@ For licensing inquiries, contact: legal@celigo.com
         
         let lastPendingDrilldownTimestamp = 0;
         
+        // ================================================================
+        // CONTEXT MENU DRILL-DOWN (via localStorage from sharedruntime.html)
+        // NOTE: This feature has Mac platform limitations. The right-click 
+        // context menu often fails on Mac Excel due to WebView handling.
+        // Users should prefer the Quick Actions "Drill Down" button instead.
+        // This code is kept for potential Windows support and future fixes.
+        // ================================================================
+        
         // Check for pending drilldown immediately
         async function checkPendingDrilldown() {
             try {
@@ -5034,22 +5042,10 @@ For licensing inquiries, contact: legal@celigo.com
             const upperFormula = String(formula || '').toUpperCase();
             
             try {
-                // Handle XAVI.BALANCE
+                // Handle XAVI.BALANCE - delegate to drillDownTransactions which reads selected cell
                 if (upperFormula.includes('XAVI.BALANCE')) {
-                    showDrilldownStatus('Parsing BALANCE formula...');
-                    const match = formula.match(/XAVI\.BALANCE\s*\((.*)\)/i);
-                    if (!match) { hideDrilldownStatus(); return; }
-                    
-                    const params = parseFormulaCellRefs(match[1]);
-                    const resolved = await resolveFormulaParams(params);
-                    
-                    const account = resolved[0] || '';
-                    const period = resolved[2] || resolved[1] || '';
-                    const subsidiary = resolved[3] || '';
-                    
-                    showDrilldownStatus(`Fetching transactions for ${account}...`);
-                    await drillDownTransactions(account, period, subsidiary);
-                    hideDrilldownStatus();
+                    showDrilldownStatus('Processing BALANCE formula...');
+                    await drillDownTransactions();
                     return;
                 }
                 
@@ -5063,37 +5059,10 @@ For licensing inquiries, contact: legal@celigo.com
                     return;
                 }
                 
-                // Handle secondary drill-down from DrillDown_ sheet
+                // Handle secondary drill-down from DrillDown_ sheet - delegate to drillDownTransactions
                 if (sheetName && sheetName.startsWith('DrillDown_')) {
-                    showDrilldownStatus('Preparing secondary drill-down...');
-                    
-                    await Excel.run(async (context) => {
-                        const sheet = context.workbook.worksheets.getActiveWorksheet();
-                        const rowMatch = address.match(/(\d+)(?:\D*)?$/);
-                        const row = rowMatch ? parseInt(rowMatch[1]) : 0;
-                        
-                        if (row >= 6) {
-                            const acctCell = sheet.getRange(`A${row}`);
-                            const ctxCell = sheet.getRange('A3');
-                            acctCell.load('values');
-                            ctxCell.load('values');
-                            await context.sync();
-                            
-                            const account = String(acctCell.values[0][0] || '');
-                            const ctx = String(ctxCell.values[0][0] || '');
-                            
-                            if (account && ctx.startsWith('DRILLDOWN_CONTEXT:')) {
-                                const parts = ctx.replace('DRILLDOWN_CONTEXT:', '').split(':');
-                                const period = parts[0] || '';
-                                const subsidiary = parts[1] || '';
-                                
-                                showDrilldownStatus(`Fetching transactions for ${account}...`);
-                                await drillDownTransactions(account, period, subsidiary);
-                            }
-                        }
-                    });
-                    
-                    hideDrilldownStatus();
+                    showDrilldownStatus('Processing secondary drill-down...');
+                    await drillDownTransactions();
                     return;
                 }
                 
@@ -16472,11 +16441,13 @@ export default {
         async function drillDownTransactions() {
             const statusEl = document.getElementById('drillStatus');
             const btn = event?.target;
+            const isQuickActionsBtn = btn?.id === 'quickDrillBtn';
+            const originalBtnHTML = btn?.innerHTML; // Save original to restore later
             
             try {
                 if (btn) {
                 btn.disabled = true;
-                btn.textContent = 'Loading...';
+                btn.innerHTML = isQuickActionsBtn ? '<span>⏳</span> Loading...' : 'Loading...';
                 }
                 statusEl.textContent = '';
                 showDrilldownStatus('Analyzing selected cell...', 'Detecting formula type');
@@ -16707,7 +16678,7 @@ export default {
             } finally {
                 if (btn) {
                 btn.disabled = false;
-                btn.textContent = 'View Transactions';
+                btn.innerHTML = originalBtnHTML || (isQuickActionsBtn ? '<span>🔍</span> Drill Down' : 'View Transactions');
                 }
             }
         }
@@ -16891,7 +16862,7 @@ export default {
             drillSheet.getRange('A2').values = [[`Account Type: ${params.accountType}${useSpecialLabel} | Period: ${params.toPeriod || 'All Time'}`]];
             drillSheet.getRange('A2').format.font.bold = true;
             
-            drillSheet.getRange('A3').values = [['💡 To drill into an account: Select the Account Number cell, then click "View Transactions" in the task pane.']];
+            drillSheet.getRange('A3').values = [['💡 To drill into an account: Select the Account Number cell, then click "Drill Down" in the Quick Actions bar.']];
             drillSheet.getRange('A3').format.font.italic = true;
             drillSheet.getRange('A3').format.font.color = '#6b7280';
             
@@ -16936,7 +16907,7 @@ export default {
                 
                 // Add instructions row
                 const infoRow = totalRow + 2;
-                drillSheet.getRange(`A${infoRow}`).values = [[`${accounts.length} accounts | Click any row, then "View Transactions" to drill into that account`]];
+                drillSheet.getRange(`A${infoRow}`).values = [[`${accounts.length} accounts | Click any row, then "Drill Down" in Quick Actions to see transactions`]];
                 drillSheet.getRange(`A${infoRow}`).format.font.italic = true;
                 drillSheet.getRange(`A${infoRow}`).format.font.color = '#6b7280';
             }
