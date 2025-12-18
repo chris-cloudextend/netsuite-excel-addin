@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.197</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.198</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12731,14 +12731,17 @@ export default {
                             await Excel.run(async (context) => {
                                 const sheet = context.workbook.worksheets.getActiveWorksheet();
                                 const usedRange = sheet.getUsedRange();
-                                usedRange.load("formulas");
+                                // IMPORTANT: Must load rowCount, columnCount, AND formulas before using
+                                usedRange.load(["formulas", "rowCount", "columnCount"]);
                                 await context.sync();
                                 
                                 const formulas = usedRange.formulas;
+                                const rowCount = usedRange.rowCount;
+                                const columnCount = usedRange.columnCount;
                                 let typebalanceCount = 0;
                                 
-                                for (let row = 0; row < usedRange.rowCount; row++) {
-                                    for (let col = 0; col < usedRange.columnCount; col++) {
+                                for (let row = 0; row < rowCount; row++) {
+                                    for (let col = 0; col < columnCount; col++) {
                                         const formula = formulas[row][col];
                                         if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.TYPEBALANCE')) {
                                             const cell = usedRange.getCell(row, col);

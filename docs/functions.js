@@ -4733,6 +4733,24 @@ async function NETINCOME(fromPeriod, toPeriod, subsidiary, accountingBook, class
  * @returns {Promise<number>} Total balance for all accounts of the specified type
  */
 async function TYPEBALANCE(accountType, fromPeriod, toPeriod, subsidiary, department, location, classId, accountingBook, useSpecialAccount) {
+    
+    // Cross-context cache invalidation - taskpane signals via localStorage
+    // This is CRITICAL for subsidiary changes - must clear in-memory cache to read fresh localStorage data
+    try {
+        const clearSignal = localStorage.getItem('netsuite_cache_clear_signal');
+        if (clearSignal) {
+            const { timestamp, reason } = JSON.parse(clearSignal);
+            if (Date.now() - timestamp < 10000) {
+                console.log(`🔄 TYPEBALANCE: Cache cleared (${reason})`);
+                // Clear the in-memory typebalance cache so we read from localStorage
+                if (cache.typebalance) {
+                    cache.typebalance = {};
+                }
+                // Note: Don't remove the signal here - BALANCE will do that
+            }
+        }
+    } catch (e) { /* ignore */ }
+    
     try {
         // Normalize account type
         const normalizedType = String(accountType || '').trim();
