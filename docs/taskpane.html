@@ -1204,6 +1204,27 @@ For licensing inquiries, contact: legal@celigo.com
             50% { opacity: 0.5; }
         }
 
+        /* Subtle spreadsheet animation for tidying up step */
+        .spreadsheet-animation {
+            display: inline-block;
+            animation: spreadsheet-bounce 1.2s ease-in-out infinite;
+        }
+        
+        @keyframes spreadsheet-bounce {
+            0%, 100% { 
+                transform: translateY(0) scale(1);
+            }
+            25% { 
+                transform: translateY(-2px) scale(1.05);
+            }
+            50% { 
+                transform: translateY(0) scale(1);
+            }
+            75% { 
+                transform: translateY(-1px) scale(1.02);
+            }
+        }
+
         .settings-input {
             width: 100%;
             padding: 10px 12px;
@@ -3936,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.210</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.211</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8828,7 +8849,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 if (overlayTitle) overlayTitle.textContent = '🧹 Step 4 of 4: Tidying Up';
                 if (overlaySubtitle) overlaySubtitle.innerHTML = 'Tidying up the results. This is the last step...';
-                if (overlayStep) overlayStep.textContent = '📊 Waiting for data from NetSuite...';
+                if (overlayStep) overlayStep.innerHTML = '<span class="spreadsheet-animation">📊</span> Tucking everything into place...';
                 if (overlayStepDesc) overlayStepDesc.textContent = '';
                 
                 // Hide any other loading overlays and status bars
@@ -9646,7 +9667,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 if (overlayTitle) overlayTitle.textContent = '🧹 Step 6 of 6: Tidying Up';
                 if (overlaySubtitle) overlaySubtitle.innerHTML = 'Tidying up the results. This is the last step...';
-                if (overlayStep) overlayStep.textContent = '📊 Waiting for data from NetSuite...';
+                if (overlayStep) overlayStep.innerHTML = '<span class="spreadsheet-animation">📊</span> Tucking everything into place...';
                 if (overlayStepDesc) overlayStepDesc.textContent = '';
                 
                 // Hide any other loading overlays and status bars
@@ -12142,14 +12163,17 @@ export default {
             // Clear any existing status broadcasts
             localStorage.removeItem('netsuite_status');
             
-            // Give Excel a moment to start recalculating
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // IMPORTANT: Wait longer for Excel to start calculating
+            // The sheet was just created, formulas need time to initialize
+            console.log('⏳ Giving Excel time to start calculating...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
             
             let consecutiveNoBusy = 0;
             const requiredConsecutive = 3; // Need 3 consecutive checks with no #BUSY
+            let sawBusyAtLeastOnce = false; // Track if we ever saw #BUSY
             
             while (Date.now() - startTime < maxWaitMs) {
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
+                await new Promise(resolve => setTimeout(resolve, 1500)); // Check every 1.5 seconds
                 
                 let hasBusy = false;
                 let busyCount = 0;
@@ -12164,7 +12188,8 @@ export default {
                         const values = usedRange.values;
                         for (const row of values) {
                             for (const cell of row) {
-                                if (cell && String(cell).includes('#BUSY')) {
+                                const cellStr = String(cell || '');
+                                if (cellStr.includes('#BUSY') || cellStr.includes('#BUSY!')) {
                                     hasBusy = true;
                                     busyCount++;
                                 }
@@ -12175,21 +12200,29 @@ export default {
                     const elapsed = Math.round((Date.now() - startTime) / 1000);
                     
                     if (hasBusy) {
+                        sawBusyAtLeastOnce = true;
                         consecutiveNoBusy = 0; // Reset counter
                         console.log(`📊 ${busyCount} #BUSY cells remaining (${elapsed}s elapsed)`);
                     } else {
-                        consecutiveNoBusy++;
-                        console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})`);
-                        
-                        if (consecutiveNoBusy >= requiredConsecutive) {
-                            console.log('✅ All cells populated!');
-                            suppressStatusBar = false;
-                            localStorage.removeItem('netsuite_status');
-                            return true;
+                        // Only count as "no busy" if we've seen busy at least once
+                        // OR if enough time has passed (cells might have resolved very quickly)
+                        if (sawBusyAtLeastOnce || elapsed > 15) {
+                            consecutiveNoBusy++;
+                            console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})`);
+                            
+                            if (consecutiveNoBusy >= requiredConsecutive) {
+                                console.log('✅ All cells populated!');
+                                suppressStatusBar = false;
+                                localStorage.removeItem('netsuite_status');
+                                return true;
+                            }
+                        } else {
+                            console.log(`⏳ Waiting for formulas to start calculating... (${elapsed}s)`);
                         }
                     }
                 } catch (e) {
                     console.warn('Error checking #BUSY:', e.message);
+                    // Don't count errors as success - keep waiting
                 }
             }
             
