@@ -3914,7 +3914,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.203</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.204</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -13305,6 +13305,37 @@ export default {
         async function performStructureSync(targetYear, currentSubsidiary) {
             const statusEl = document.getElementById('refreshStatus');
             
+            // Show prominent toast notification for Structure Sync progress
+            let syncToastId = showToast({
+                title: '🔄 Structure Sync in Progress',
+                message: `Analyzing accounts for ${targetYear} and "${currentSubsidiary || 'All Subsidiaries'}"...\nFiltering out rows with no activity. This takes ~10-15 seconds.`,
+                type: 'info',
+                icon: '🔄',
+                duration: 60000  // Long duration - we'll manually dismiss when done
+            });
+            
+            // Also show in status element if visible
+            if (statusEl) {
+                statusEl.innerHTML = `
+                    <div style="background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%); 
+                                padding: 14px 16px; 
+                                border-radius: 8px; 
+                                border-left: 4px solid var(--tidal-wave);
+                                margin: 10px 0;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                            <span style="font-size: 18px;">🔄</span>
+                            <strong style="color: #1e40af; font-size: 13px;">Structure Sync in Progress</strong>
+                        </div>
+                        <div style="color: #1e3a8a; font-size: 12px; line-height: 1.5;">
+                            Analyzing accounts for <strong>${targetYear}</strong> and <strong>"${currentSubsidiary || 'All Subsidiaries'}"</strong>...<br>
+                            We're filtering out rows with no activity to keep your report clean.
+                        </div>
+                        <div style="color: #3b82f6; font-size: 11px; margin-top: 8px; font-style: italic;">
+                            ⏱️ This typically takes 10-15 seconds while we query NetSuite
+                        </div>
+                    </div>`;
+            }
+            
             try {
                 // Get currency format for the selected subsidiary
                 let currencyFormat = '$#,##0.00';  // Default to USD
@@ -13724,7 +13755,19 @@ export default {
                     try { sheet.freezePanes.freezeRows(5); await context.sync(); } catch (e) {}
                 });
                 
-                // Success message
+                // Dismiss the in-progress toast
+                removeToast(syncToastId);
+                
+                // Show success toast
+                showToast({
+                    title: '✅ Structure Sync Complete',
+                    message: `Rebuilt report with ${totalAccounts} accounts for ${targetYear}. Formulas will resolve shortly.`,
+                    type: 'success',
+                    icon: '✅',
+                    duration: 5000
+                });
+                
+                // Update status element if visible
                 if (statusEl) {
                     statusEl.innerHTML = `<div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px;">
                         <strong style="color: #065f46;">✓ Structure Synced for ${targetYear}</strong><br>
@@ -13757,6 +13800,19 @@ export default {
                 
             } catch (error) {
                 console.error('Structure sync error:', error);
+                
+                // Dismiss the in-progress toast
+                removeToast(syncToastId);
+                
+                // Show error toast
+                showToast({
+                    title: '❌ Structure Sync Failed',
+                    message: error.message,
+                    type: 'error',
+                    icon: '❌',
+                    duration: 8000
+                });
+                
                 if (statusEl) {
                     statusEl.innerHTML = `<div style="background: #fee2e2; padding: 10px; border-radius: 6px;">
                         <strong style="color: #dc2626;">Sync Error:</strong> ${error.message}
