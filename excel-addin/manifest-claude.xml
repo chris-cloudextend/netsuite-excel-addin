@@ -24,13 +24,13 @@ consistent behavior on both Windows and Mac without duplicate windows.
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-5678-90ab-cdef-123456789abc</Id>
-  <Version>3.0.5.187</Version>
+  <Version>3.0.5.188</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="XAVI for NetSuite"/>
   <Description DefaultValue="XAVI - Financial reporting formulas for NetSuite"/>
-  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.187"/>
-  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.187"/>
+  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.188"/>
+  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.188"/>
   <SupportUrl DefaultValue="https://www.cloudextend.io"/>
 
   <Hosts>
@@ -46,7 +46,7 @@ consistent behavior on both Windows and Mac without duplicate windows.
 
   <!-- Task Pane (fallback for older Office versions) -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.187"/>
+    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.188"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -175,17 +175,17 @@ consistent behavior on both Windows and Mac without duplicate windows.
 
       <!-- Icons -->
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=3.0.5.187"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.187"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=3.0.5.187"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=3.0.5.188"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.188"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=3.0.5.188"/>
       </bt:Images>
 
       <!-- External Files (cache-busted) -->
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.187"/>
-        <bt:Url id="DrillDown.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.187&amp;action=drilldown"/>
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.187"/>
-        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.5.187"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.188"/>
+        <bt:Url id="DrillDown.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.188&amp;action=drilldown"/>
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.188"/>
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.5.188"/>
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://www.cloudextend.io"/>
       </bt:Urls>
 
