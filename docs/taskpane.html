@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.196</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.197</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12620,22 +12620,39 @@ export default {
                     console.warn('   ⚠️ Cache signal failed:', e.message);
                 }
                 
-                // Get year and new subsidiary from the sheet
+                // Get year, subsidiary, and other filters from the sheet
+                // CFO Flash uses: Q3=subsidiary, R3=department, S3=location, T3=class, U3=accountingBook
                 let year = new Date().getFullYear();
                 let subsidiary = '';
+                let department = '';
+                let location = '';
+                let classId = '';
+                let accountingBook = '';
                 try {
                     await Excel.run(async (context) => {
                         const sheet = context.workbook.worksheets.getActiveWorksheet();
                         const yearCell = sheet.getRange("P3");
                         const subCell = sheet.getRange("Q3");
+                        const deptCell = sheet.getRange("R3");
+                        const locCell = sheet.getRange("S3");
+                        const classCell = sheet.getRange("T3");
+                        const bookCell = sheet.getRange("U3");
                         yearCell.load("values");
                         subCell.load("values");
+                        deptCell.load("values");
+                        locCell.load("values");
+                        classCell.load("values");
+                        bookCell.load("values");
                         await context.sync();
                         year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                         subsidiary = String(subCell.values[0][0] || '').trim();
+                        department = String(deptCell.values[0][0] || '').trim();
+                        location = String(locCell.values[0][0] || '').trim();
+                        classId = String(classCell.values[0][0] || '').trim();
+                        accountingBook = String(bookCell.values[0][0] || '').trim();
                     });
                 } catch (e) {
-                    console.warn('Could not read year/subsidiary:', e.message);
+                    console.warn('Could not read year/subsidiary/filters:', e.message);
                 }
                 
                 // Show user feedback
@@ -12655,12 +12672,17 @@ export default {
                 // ============================================
                 try {
                     console.log(`📊 Pre-fetching TYPEBALANCE data for ${year}, subsidiary="${subsidiary}"...`);
+                    console.log(`   Filters: dept="${department}", loc="${location}", class="${classId}", book="${accountingBook}"`);
                     const typeBalanceResponse = await fetch(`${SERVER_URL}/batch/typebalance_refresh`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             year: year,
-                            subsidiary: subsidiary
+                            subsidiary: subsidiary,
+                            department: department,
+                            location: location,
+                            classId: classId,
+                            accountingBook: accountingBook
                         })
                     });
                     
@@ -12670,26 +12692,66 @@ export default {
                         console.log(`✅ Pre-fetched ${Object.keys(balances).length} account types for TYPEBALANCE`);
                         
                         // Save to localStorage for functions.js to use
+                        // IMPORTANT: functions.js expects { balances: { key: value, ... } } format
+                        // Cache key must match exactly what TYPEBALANCE function generates
                         try {
                             const cacheEntries = {};
                             for (const accountType in balances) {
                                 const monthData = balances[accountType];
                                 for (const period in monthData) {
-                                    // Single month entries
-                                    const key = `typebalance:${accountType}:${period}:${period}:${subsidiary}:::::0`;
+                                    // Single month entries - key format must match TYPEBALANCE function
+                                    // Format: typebalance:${type}:${from}:${to}:${sub}:${dept}:${loc}:${class}:${book}:${special}
+                                    // NOTE: We include all filter values to match what the formulas will generate
+                                    const key = `typebalance:${accountType}:${period}:${period}:${subsidiary}:${department}:${location}:${classId}:${accountingBook}:0`;
                                     cacheEntries[key] = monthData[period];
                                 }
                             }
-                            localStorage.setItem('netsuite_typebalance_cache', JSON.stringify(cacheEntries));
+                            // Wrap in { balances: ... } format that functions.js expects
+                            localStorage.setItem('netsuite_typebalance_cache', JSON.stringify({ balances: cacheEntries }));
                             localStorage.setItem('netsuite_typebalance_cache_timestamp', Date.now().toString());
-                            console.log(`💾 Saved ${Object.keys(cacheEntries).length} TYPEBALANCE cache entries`);
+                            console.log(`💾 Saved ${Object.keys(cacheEntries).length} TYPEBALANCE cache entries to localStorage`);
+                            console.log(`   Filters: sub="${subsidiary}", dept="${department}", loc="${location}", class="${classId}", book="${accountingBook}"`);
+                            console.log(`   Sample keys: ${Object.keys(cacheEntries).slice(0, 2).join(', ')}`);
                         } catch (e) {
                             console.warn('TYPEBALANCE cache save failed:', e.message);
                         }
                         
                         // Also populate in-memory cache if setTypeBalanceCache is available
                         if (typeof window.setTypeBalanceCache === 'function') {
-                            window.setTypeBalanceCache(balances, year, subsidiary, '', '', '', '', false);
+                            window.setTypeBalanceCache(balances, year, subsidiary, department, location, classId, accountingBook, false);
+                        }
+                        
+                        // ============================================
+                        // CRITICAL: Force TYPEBALANCE formulas to recalculate NOW
+                        // Excel already recalculated them BEFORE our pre-fetch completed,
+                        // so we need to trigger a SECOND recalculation to hit the cache
+                        // ============================================
+                        console.log(`🔄 Triggering TYPEBALANCE formula recalculation to use pre-fetched cache...`);
+                        try {
+                            await Excel.run(async (context) => {
+                                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                                const usedRange = sheet.getUsedRange();
+                                usedRange.load("formulas");
+                                await context.sync();
+                                
+                                const formulas = usedRange.formulas;
+                                let typebalanceCount = 0;
+                                
+                                for (let row = 0; row < usedRange.rowCount; row++) {
+                                    for (let col = 0; col < usedRange.columnCount; col++) {
+                                        const formula = formulas[row][col];
+                                        if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.TYPEBALANCE')) {
+                                            const cell = usedRange.getCell(row, col);
+                                            cell.calculate();
+                                            typebalanceCount++;
+                                        }
+                                    }
+                                }
+                                await context.sync();
+                                console.log(`✅ Triggered recalculation of ${typebalanceCount} TYPEBALANCE formulas - they should now hit cache`);
+                            });
+                        } catch (recalcError) {
+                            console.warn('TYPEBALANCE recalculation trigger failed:', recalcError.message);
                         }
                     }
                 } catch (e) {
