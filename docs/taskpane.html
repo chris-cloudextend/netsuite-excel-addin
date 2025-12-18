@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.179</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.180</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4985,43 +4985,225 @@ For licensing inquiries, contact: legal@celigo.com
         // Forward declaration - the actual drillDownTransactions is defined later
         let drillDownTransactionsReady = null;
         
+        // ========================================================================
+        // CONTEXT MENU DRILL-DOWN - Self-contained, works before page fully loads
+        // ========================================================================
+        const DRILL_SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
+        
         function drillDownFromContextMenu(event) {
             console.log('=== CONTEXT MENU DRILL-DOWN START ===');
             
             // CRITICAL: Call event.completed() IMMEDIATELY to prevent developer window
-            // This tells Excel "I've received the command" - actual work continues async
             if (event && event.completed) {
                 event.completed();
                 console.log('✅ event.completed() called immediately');
             }
             
-            // Wait a tick for the rest of the script to load, then call drillDownTransactions
-            setTimeout(() => {
-                if (typeof drillDownTransactions === 'function') {
-                    drillDownTransactions().catch(error => {
-                        console.error('=== CONTEXT MENU DRILL-DOWN ERROR ===');
-                        console.error('Error:', error);
-                    });
-                } else {
-                    console.error('drillDownTransactions not yet defined');
-                }
-            }, 100);
+            // Do the work asynchronously - self-contained, no external dependencies
+            inlineDrillDown().catch(err => console.error('Drill-down error:', err));
         }
         
-        // Register globally IMMEDIATELY so ExecuteFunction can find it
-        window.drillDownFromContextMenu = drillDownFromContextMenu;
+        // Self-contained drill-down logic - doesn't depend on anything else in taskpane
+        async function inlineDrillDown() {
+            await Excel.run(async (context) => {
+                const range = context.workbook.getSelectedRange();
+                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                range.load(['formulas', 'values', 'address']);
+                sheet.load('name');
+                await context.sync();
+                
+                const formula = range.formulas[0][0];
+                const address = range.address;
+                const sheetName = sheet.name;
+                const upperFormula = String(formula || '').toUpperCase();
+                
+                console.log('Cell:', address, 'Sheet:', sheetName, 'Formula:', formula);
+                
+                // Handle XAVI.BALANCE
+                if (upperFormula.includes('XAVI.BALANCE')) {
+                    const match = formula.match(/XAVI\.BALANCE\s*\((.*)\)/i);
+                    if (match) {
+                        const params = parseParams(match[1]);
+                        const resolved = await resolveRefs(context, params);
+                        console.log('BALANCE params:', resolved);
+                        
+                        const qp = new URLSearchParams({
+                            account: resolved[0] || '',
+                            period: resolved[2] || resolved[1] || ''
+                        });
+                        if (resolved[3]) qp.append('subsidiary', resolved[3]);
+                        
+                        const resp = await fetch(`${DRILL_SERVER_URL}/transactions?${qp}`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            await createTxnSheet(context, data.transactions || [], resolved[0], resolved[2] || resolved[1]);
+                        }
+                    }
+                    return;
+                }
+                
+                // Handle XAVI.TYPEBALANCE
+                if (upperFormula.includes('XAVI.TYPEBALANCE')) {
+                    const match = formula.match(/XAVI\.TYPEBALANCE\s*\((.*)\)/i);
+                    if (match) {
+                        const params = parseParams(match[1]);
+                        const resolved = await resolveRefs(context, params);
+                        console.log('TYPEBALANCE params:', resolved);
+                        
+                        const qp = new URLSearchParams({
+                            account_type: resolved[0] || '',
+                            to_period: resolved[2] || ''
+                        });
+                        if (resolved[3]) qp.append('subsidiary', resolved[3]);
+                        
+                        const resp = await fetch(`${DRILL_SERVER_URL}/accounts/by-type?${qp}`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            await createAcctsSheet(context, data.accounts || [], resolved[0], resolved[2], resolved[3]);
+                        }
+                    }
+                    return;
+                }
+                
+                // Handle secondary drill-down from DrillDown_ sheet
+                if (sheetName.startsWith('DrillDown_')) {
+                    const rowMatch = address.match(/\d+/);
+                    const row = rowMatch ? parseInt(rowMatch[0]) : 0;
+                    if (row >= 6) {
+                        const acctCell = sheet.getRange(`A${row}`);
+                        const ctxCell = sheet.getRange('A3');
+                        acctCell.load('values');
+                        ctxCell.load('values');
+                        await context.sync();
+                        
+                        const acct = String(acctCell.values[0][0] || '');
+                        const ctx = String(ctxCell.values[0][0] || '');
+                        
+                        if (acct && ctx.startsWith('DRILLDOWN_CONTEXT:')) {
+                            const parts = ctx.replace('DRILLDOWN_CONTEXT:', '').split(':');
+                            const qp = new URLSearchParams({ account: acct, period: parts[0] || '' });
+                            if (parts[1]) qp.append('subsidiary', parts[1]);
+                            
+                            const resp = await fetch(`${DRILL_SERVER_URL}/transactions?${qp}`);
+                            if (resp.ok) {
+                                const data = await resp.json();
+                                await createTxnSheet(context, data.transactions || [], acct, parts[0]);
+                            }
+                        }
+                    }
+                }
+            });
+        }
         
-        // Also register via Office.actions if available (preferred method for ExecuteFunction)
-        // This MUST happen synchronously at script load time
+        function parseParams(str) {
+            const params = [];
+            let cur = '', inQ = false, depth = 0;
+            for (const c of str) {
+                if (c === '"') { inQ = !inQ; cur += c; }
+                else if (c === '(' && !inQ) { depth++; cur += c; }
+                else if (c === ')' && !inQ) { depth--; cur += c; }
+                else if (c === ',' && !inQ && depth === 0) { params.push(cur.trim()); cur = ''; }
+                else { cur += c; }
+            }
+            if (cur.trim()) params.push(cur.trim());
+            return params;
+        }
+        
+        async function resolveRefs(context, params) {
+            const resolved = [];
+            for (const p of params) {
+                const clean = p.replace(/^["']|["']$/g, '');
+                if (/^[\$]?[A-Z]+[\$]?\d+$/i.test(clean)) {
+                    try {
+                        const cell = context.workbook.worksheets.getActiveWorksheet().getRange(clean);
+                        cell.load('values');
+                        await context.sync();
+                        let v = cell.values[0][0];
+                        if (typeof v === 'number' && v > 1000 && v < 100000) {
+                            const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+                            v = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                        }
+                        resolved.push(String(v || ''));
+                    } catch (e) { resolved.push(''); }
+                } else {
+                    resolved.push(clean);
+                }
+            }
+            return resolved;
+        }
+        
+        async function createTxnSheet(context, txns, acct, period) {
+            const name = `Transactions_${acct}`.substring(0, 31);
+            const sheets = context.workbook.worksheets;
+            sheets.load('items/name');
+            await context.sync();
+            
+            const existing = sheets.items.find(s => s.name === name);
+            if (existing) { existing.delete(); await context.sync(); }
+            
+            const sh = sheets.add(name);
+            sh.activate();
+            sh.getRange('A1').values = [[`Transactions: ${acct} - ${period}`]];
+            sh.getRange('A1').format.font.bold = true;
+            sh.getRange('A1').format.font.size = 14;
+            
+            sh.getRange('A3:G3').values = [['Date', 'Type', 'Doc #', 'Memo', 'Debit', 'Credit', 'Amount']];
+            sh.getRange('A3:G3').format.font.bold = true;
+            sh.getRange('A3:G3').format.fill.color = '#667eea';
+            sh.getRange('A3:G3').format.font.color = 'white';
+            
+            if (txns.length > 0) {
+                const rows = txns.map(t => [t.date || '', t.type || '', t.doc_number || '', t.memo || '', t.debit || 0, t.credit || 0, t.amount || 0]);
+                sh.getRange(`A4:G${3 + txns.length}`).values = rows;
+                sh.getRange(`E4:G${3 + txns.length}`).numberFormat = [['$#,##0.00']];
+            }
+            sh.getRange('A:G').format.autofitColumns();
+            await context.sync();
+        }
+        
+        async function createAcctsSheet(context, accts, type, period, sub) {
+            const name = `DrillDown_${type}`.substring(0, 31);
+            const sheets = context.workbook.worksheets;
+            sheets.load('items/name');
+            await context.sync();
+            
+            const existing = sheets.items.find(s => s.name === name);
+            if (existing) { existing.delete(); await context.sync(); }
+            
+            const sh = sheets.add(name);
+            sh.activate();
+            sh.getRange('A1').values = [['TYPEBALANCE DRILL-DOWN']];
+            sh.getRange('A1').format.font.bold = true;
+            sh.getRange('A2').values = [[`Type: ${type} | Period: ${period || 'All'}`]];
+            
+            const ym = (period || '').match(/\d{4}/);
+            sh.getRange('A3').values = [[`DRILLDOWN_CONTEXT:${ym ? ym[0] : period || ''}:${sub || ''}`]];
+            sh.getRange('A3').format.font.color = 'white';
+            
+            sh.getRange('A5:C5').values = [['Account', 'Account Name', 'Balance']];
+            sh.getRange('A5:C5').format.font.bold = true;
+            sh.getRange('A5:C5').format.fill.color = '#667eea';
+            sh.getRange('A5:C5').format.font.color = 'white';
+            
+            if (accts.length > 0) {
+                const rows = accts.map(a => [a.account_number || a.acctnumber || '', a.account_name || a.accountname || '', a.balance || 0]);
+                sh.getRange(`A6:C${5 + accts.length}`).values = rows;
+                sh.getRange(`C6:C${5 + accts.length}`).numberFormat = [['$#,##0.00']];
+                sh.getRange(`A6:A${5 + accts.length}`).format.font.color = '#0ea5e9';
+            }
+            sh.getRange('A:C').format.autofitColumns();
+            await context.sync();
+        }
+        
+        // Register globally and via Office.actions
+        window.drillDownFromContextMenu = drillDownFromContextMenu;
         try {
             if (typeof Office !== 'undefined' && Office.actions && Office.actions.associate) {
                 Office.actions.associate("drillDownFromContextMenu", drillDownFromContextMenu);
                 console.log('✅ drillDownFromContextMenu registered via Office.actions.associate');
-            } else {
-                console.log('✅ drillDownFromContextMenu registered on window (Office.actions not ready yet)');
             }
         } catch (e) {
-            console.log('✅ drillDownFromContextMenu registered on window (Office.actions error: ' + e.message + ')');
+            console.log('⚠️ Office.actions registration error:', e.message);
         }
         
         // SERVER_URL is defined in functions.js (loaded via shared runtime)
@@ -11653,6 +11835,16 @@ export default {
         }
 
         Office.onReady((info) => {
+            // Check if we're being loaded just for ExecuteFunction (not the main taskpane)
+            // In that case, skip ALL heavy initialization to prevent duplicate rendering
+            const isTaskpaneVisible = document.body.clientHeight > 100;
+            const hasTaskpaneUI = document.getElementById('panelFinancial') !== null;
+            
+            if (!isTaskpaneVisible || !hasTaskpaneUI) {
+                console.log('📋 Loaded for ExecuteFunction - skipping taskpane initialization');
+                return; // Exit early - drillDownFromContextMenu is already registered above
+            }
+            
             console.log('NetSuite Excel Add-in task pane loaded');
             
             // SAFETY: Hide any stale loading overlays from previous sessions/crashes
