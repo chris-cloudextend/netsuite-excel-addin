@@ -7911,6 +7911,17 @@ For licensing inquiries, contact: legal@celigo.com
                 // Close Quick Start accordion after successful generation
                 closeQuickStart();
                 
+                // After report is built, scan for subsidiary cells and apply currency formatting
+                setTimeout(async () => {
+                    try {
+                        console.log('💱 Trial Balance: Scanning for subsidiary cells and formatting currencies...');
+                        await scanForSubsidiaryCells();
+                        await autoFormatCurrencies();
+                    } catch (e) {
+                        console.warn('Post-report currency format failed:', e.message);
+                    }
+                }, 2000);
+                
             } catch (error) {
                 console.error('Guide Me error:', error);
                 clearInterval(tipInterval);
@@ -8449,7 +8460,7 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 // Show success overlay with timing
                 const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
-                showReportSuccessOverlay('CFO Flash Report', {
+showReportSuccessOverlay('CFO Flash Report', {
                     totalAccounts: 5,
                     elapsedTime: elapsedSeconds,
                     sections: [
@@ -8467,6 +8478,17 @@ For licensing inquiries, contact: legal@celigo.com
                 });
                 
                 closeQuickStart();
+                
+                // After report is built, scan for subsidiary cells and apply currency formatting
+                setTimeout(async () => {
+                    try {
+                        console.log('💱 CFO Flash Report: Scanning for subsidiary cells and formatting currencies...');
+                        await scanForSubsidiaryCells();
+                        await autoFormatCurrencies();
+                    } catch (e) {
+                        console.warn('Post-report currency format failed:', e.message);
+                    }
+                }, 2000); // Wait for formulas to start evaluating
                 
             } catch (error) {
                 console.error('CFO Flash Report error:', error);
@@ -9263,6 +9285,17 @@ For licensing inquiries, contact: legal@celigo.com
                 // Close Quick Start accordion after successful generation
                 closeQuickStart();
                 
+                // After report is built, scan for subsidiary cells and apply currency formatting
+                setTimeout(async () => {
+                    try {
+                        console.log('💱 Full Income Statement: Scanning for subsidiary cells and formatting currencies...');
+                        await scanForSubsidiaryCells();
+                        await autoFormatCurrencies();
+                    } catch (e) {
+                        console.warn('Post-report currency format failed:', e.message);
+                    }
+                }, 2000); // Wait for formulas to start evaluating
+                
             } catch (error) {
                 console.error('Income Statement error:', error);
                 clearInterval(tipInterval);
@@ -9782,9 +9815,15 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 updateProgress(100, '✅ Complete!', `Budget report created with ${totalAccounts} accounts`);
                 
-                // Auto-format currencies
+                // Scan for subsidiary cells and auto-format currencies
                 setTimeout(async () => {
-                    await autoFormatCurrencies();
+                    try {
+                        console.log('💱 Budget Report: Scanning for subsidiary cells and formatting currencies...');
+                        await scanForSubsidiaryCells();
+                        await autoFormatCurrencies();
+                    } catch (e) {
+                        console.warn('Post-report currency format failed:', e.message);
+                    }
                 }, 500);
                 
                 // Close overlay after short delay
@@ -12296,11 +12335,19 @@ export default {
                         // SMART CURRENCY FORMAT UPDATE
                         // Check if changed cell is a known subsidiary reference
                         // ============================================
-                        const normalizedAddress = event.address.replace(/\$/g, '').toUpperCase();
+                        // Normalize address: remove sheet name prefix, dollar signs, convert to uppercase
+                        let normalizedAddress = event.address;
+                        if (normalizedAddress.includes('!')) {
+                            normalizedAddress = normalizedAddress.split('!')[1];
+                        }
+                        normalizedAddress = normalizedAddress.replace(/\$/g, '').toUpperCase();
                         
-                        if (knownSubsidiaryCells.has(normalizedAddress) || 
-                            knownSubsidiaryCells.has('$' + normalizedAddress) || 
-                            knownSubsidiaryCells.has(event.address)) {
+                        // Check if this is a known subsidiary cell
+                        const isSubsidiaryCell = knownSubsidiaryCells.has(normalizedAddress);
+                        
+                        if (isSubsidiaryCell) {
+                            console.log(`💱 Subsidiary cell changed: ${normalizedAddress}`);
+                            
                             // Debounce - wait for user to stop making changes
                             if (currencyFormatDebounceTimer) {
                                 clearTimeout(currencyFormatDebounceTimer);
@@ -13425,50 +13472,79 @@ export default {
                 await context.sync();
                 
                 // ============================================
-                // INCOME STATEMENT: Also format SUM cells (subtotals/totals)
-                // These don't have XAVI formulas but should use the same currency
+                // NATIVE FORMULAS: Also format SUM cells, subtotals, etc.
+                // Determine the "sheet currency" from the most common subsidiary used
                 // ============================================
-                if (isIncomeStatement) {
-                    
-                    // Get the subsidiary from Q3 and determine its currency
-                    const subValue = String(subCell.values[0][0] || '').trim();
-                    let sheetSubId = '';
-                    
-                    if (subValue) {
-                        if (/^\d+$/.test(subValue)) {
-                            sheetSubId = subValue;
-                        } else {
-                            sheetSubId = subsidiaryNameToId[subValue.toLowerCase()] || '';
-                        }
+                
+                // Determine sheet currency: prefer Q3 value, else use most common subsidiary from XAVI formulas
+                let sheetSubId = '';
+                
+                // First try Q3 (Income Statement standard location)
+                const subValue = String(subCell.values[0][0] || '').trim();
+                if (subValue) {
+                    if (/^\d+$/.test(subValue)) {
+                        sheetSubId = subValue;
+                    } else {
+                        sheetSubId = subsidiaryNameToId[subValue.toLowerCase()] || '';
                     }
-                    
-                    const sheetSymbol = sheetSubId && currencies[sheetSubId] ? currencies[sheetSubId] : defaultSymbol;
-                    const sheetFormat = formats[sheetSymbol] || defaultFormat;
-                    console.log(`💱 AUTO-FORMAT: Sheet subsidiary "${subValue}" → ID ${sheetSubId} → ${sheetSymbol}`);
-                    
-                    // Format ALL formula cells in the data area (columns C-O, starting from row 6)
-                    // This includes SUM, subtraction (GROSS PROFIT), and any other calculations
-                    let formulaFormatted = 0;
-                    for (let row = 5; row < usedRange.rowCount; row++) { // 0-indexed, so row 5 = Excel row 6
-                        for (let col = 2; col <= 14; col++) { // Columns C (2) through O (14)
-                            const formula = formulas[row][col];
-                            // Format if it's a formula (starts with =) but NOT any XAVI formula (already formatted above)
-                            const upperFormula = typeof formula === 'string' ? formula.toUpperCase() : '';
-                            const isXaviFormula = upperFormula.includes('XAVI.BALANCE') || 
-                                                  upperFormula.includes('XAVI.TYPEBALANCE') ||
-                                                  upperFormula.includes('XAVI.NETINCOME') ||
-                                                  upperFormula.includes('XAVI.BUDGET');
-                            if (typeof formula === 'string' && 
-                                formula.startsWith('=') && 
-                                !isXaviFormula) {
-                                const range = usedRange.getCell(row, col);
-                                range.numberFormat = [[sheetFormat]];
-                                formulaFormatted++;
+                }
+                
+                // If Q3 didn't have a value, use the most common subsidiary from XAVI formulas
+                if (!sheetSubId && pendingCells.length > 0) {
+                    const subCounts = {};
+                    for (const { subsidiaryParam } of pendingCells) {
+                        let subId = '';
+                        if (subsidiaryParam) {
+                            if (/^\d+$/.test(subsidiaryParam)) {
+                                subId = subsidiaryParam;
+                            } else if (subsidiaryParam.startsWith('"') || subsidiaryParam.startsWith("'")) {
+                                const cleaned = subsidiaryParam.replace(/['"]/g, '').trim();
+                                subId = /^\d+$/.test(cleaned) ? cleaned : (subsidiaryNameToId[cleaned.toLowerCase()] || '');
+                            } else if (resolvedRefs[subsidiaryParam] !== undefined) {
+                                const resolvedValue = resolvedRefs[subsidiaryParam];
+                                subId = /^\d+$/.test(resolvedValue) ? resolvedValue : (subsidiaryNameToId[resolvedValue.toLowerCase()] || '');
                             }
                         }
+                        if (subId) {
+                            subCounts[subId] = (subCounts[subId] || 0) + 1;
+                        }
                     }
-                    
+                    // Use the most frequently used subsidiary
+                    const sorted = Object.entries(subCounts).sort((a, b) => b[1] - a[1]);
+                    if (sorted.length > 0) {
+                        sheetSubId = sorted[0][0];
+                    }
+                }
+                
+                const sheetSymbol = sheetSubId && currencies[sheetSubId] ? currencies[sheetSubId] : defaultSymbol;
+                const sheetFormat = formats[sheetSymbol] || defaultFormat;
+                console.log(`💱 AUTO-FORMAT: Sheet currency → ${sheetSymbol} (sub ID: ${sheetSubId})`);
+                
+                // Format ALL native Excel formulas (SUM, subtotals, etc.) with the sheet currency
+                let nativeFormatted = 0;
+                for (let row = 0; row < usedRange.rowCount; row++) {
+                    for (let col = 0; col < usedRange.columnCount; col++) {
+                        const formula = formulas[row][col];
+                        if (typeof formula !== 'string' || !formula.startsWith('=')) continue;
+                        
+                        // Skip XAVI formulas (already formatted with their specific subsidiary)
+                        const upperFormula = formula.toUpperCase();
+                        const isXaviFormula = upperFormula.includes('XAVI.BALANCE') || 
+                                              upperFormula.includes('XAVI.TYPEBALANCE') ||
+                                              upperFormula.includes('XAVI.NETINCOME') ||
+                                              upperFormula.includes('XAVI.BUDGET');
+                        if (isXaviFormula) continue;
+                        
+                        // Format native formulas (SUM, arithmetic, etc.)
+                        const range = usedRange.getCell(row, col);
+                        range.numberFormat = [[sheetFormat]];
+                        nativeFormatted++;
+                    }
+                }
+                
+                if (nativeFormatted > 0) {
                     await context.sync();
+                    console.log(`💱 AUTO-FORMAT: Also formatted ${nativeFormatted} native Excel formulas`);
                 }
             });
         }
@@ -13664,13 +13740,60 @@ export default {
                         .map(([sym, count]) => `${sym} (${count})`)
                         .join(', ');
                     
-                    console.log(`✅ Formatted ${cellsToFormat.length} cells: ${symbolSummary}`);
+                    console.log(`✅ Formatted ${cellsToFormat.length} XAVI cells: ${symbolSummary}`);
+                    
+                    // ============================================
+                    // NATIVE FORMULAS: Also format SUM cells, subtotals, etc.
+                    // ============================================
+                    updateLoading('Formatting native Excel formulas...', 80);
+                    
+                    // Determine sheet currency from the most common subsidiary used in XAVI formulas
+                    const subCounts = {};
+                    for (const cell of cellsToFormat) {
+                        if (cell.subId) {
+                            subCounts[cell.subId] = (subCounts[cell.subId] || 0) + 1;
+                        }
+                    }
+                    const sortedSubs = Object.entries(subCounts).sort((a, b) => b[1] - a[1]);
+                    const sheetSubId = sortedSubs.length > 0 ? sortedSubs[0][0] : defaultSub;
+                    const sheetSymbol = currencies[sheetSubId] || defaultSymbol;
+                    const sheetFormat = formats[sheetSymbol] || defaultFormat;
+                    
+                    console.log(`💱 Sheet currency for native formulas: ${sheetSymbol} (sub ID: ${sheetSubId})`);
+                    
+                    // Format all native Excel formulas (non-XAVI) with the sheet currency
+                    let nativeFormatted = 0;
+                    for (let row = 0; row < usedRange.rowCount; row++) {
+                        for (let col = 0; col < usedRange.columnCount; col++) {
+                            const formula = formulas[row][col];
+                            if (typeof formula !== 'string' || !formula.startsWith('=')) continue;
+                            
+                            // Skip XAVI formulas (already formatted with their specific subsidiary)
+                            const upperFormula = formula.toUpperCase();
+                            const isXaviFormula = upperFormula.includes('XAVI.BALANCE') || 
+                                                  upperFormula.includes('XAVI.TYPEBALANCE') ||
+                                                  upperFormula.includes('XAVI.NETINCOME') ||
+                                                  upperFormula.includes('XAVI.BUDGET');
+                            if (isXaviFormula) continue;
+                            
+                            // Format native formulas (SUM, arithmetic, etc.)
+                            const range = usedRange.getCell(row, col);
+                            range.numberFormat = [[sheetFormat]];
+                            nativeFormatted++;
+                        }
+                    }
+                    
+                    if (nativeFormatted > 0) {
+                        await context.sync();
+                        console.log(`💱 Also formatted ${nativeFormatted} native Excel formulas`);
+                    }
                     
                     updateLoading('Done!', 100);
                     await new Promise(r => setTimeout(r, 500));
                     hideLoading();
                     
-                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Formatted ${cellsToFormat.length} cells</strong><br><span style="font-size: 11px;">Currencies: ${symbolSummary}</span></div>`;
+                    const nativeNote = nativeFormatted > 0 ? ` + ${nativeFormatted} Excel formulas` : '';
+                    statusEl.innerHTML = `<div style="background: #d1fae5; padding: 10px; border-radius: 6px;"><strong style="color: #059669;">✓ Formatted ${cellsToFormat.length} XAVI cells${nativeNote}</strong><br><span style="font-size: 11px;">Currency: ${sheetSymbol}</span></div>`;
                     setTimeout(() => statusEl.textContent = '', 5000);
                 });
                 
