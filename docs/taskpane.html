@@ -3936,7 +3936,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.206</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.207</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -7153,6 +7153,10 @@ For licensing inquiries, contact: legal@celigo.com
             
         setInterval(async () => {
                 if (!taskpaneReady) return;  // Don't poll until ready
+                
+                // Don't show statusBar if suppressed (during report generation)
+                if (suppressStatusBar) return;
+                
             try {
                 const statusJson = localStorage.getItem('netsuite_status');
                 if (statusJson) {
@@ -8819,16 +8823,24 @@ For licensing inquiries, contact: legal@celigo.com
                 const overlaySubtitle = overlay.querySelector('.loading-subtitle');
                 const overlayStep = overlay.querySelector('.loading-step');
                 const overlayStepDesc = overlay.querySelector('.loading-step-desc');
-                if (overlayTitle) overlayTitle.textContent = '⏳ Waiting for Formulas...';
-                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Report structure is complete! Waiting for TYPEBALANCE formulas to fetch data.';
-                if (overlayStep) overlayStep.textContent = '📊 Formulas are calculating...';
-                if (overlayStepDesc) overlayStepDesc.textContent = 'This may take a few moments. Please wait.';
+                const overlayProgress = overlay.querySelector('.progress-bar-fill');
+                const overlayProgressText = overlay.querySelector('.progress-text');
                 
-                // Hide any other loading overlays
+                if (overlayTitle) overlayTitle.textContent = '⏳ Fetching Data from NetSuite...';
+                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Report structure is complete! Now waiting for TYPEBALANCE formulas to fetch data.';
+                if (overlayStep) overlayStep.textContent = '📊 Initializing...';
+                if (overlayStepDesc) overlayStepDesc.textContent = 'This typically takes 15-30 seconds.';
+                
+                // Hide any other loading overlays and status bars
                 hideLoading();
+                hideStatus();
                 
-                // Wait for #BUSY to clear (max 30 seconds for CFO report - it's smaller)
-                await waitForFormulasToResolve(30000);
+                // Wait for formulas to complete with real-time updates
+                await waitForFormulasToComplete(60000, (message, progress) => {
+                    if (overlayStep) overlayStep.textContent = `📊 ${message}`;
+                    if (overlayProgress) overlayProgress.style.width = `${progress}%`;
+                    if (overlayProgressText) overlayProgressText.textContent = `${progress}% complete`;
+                });
                 
                 // NOW remove overlay and show success
                 overlay.remove();
@@ -9633,16 +9645,24 @@ For licensing inquiries, contact: legal@celigo.com
                 const overlaySubtitle = overlay.querySelector('.loading-subtitle');
                 const overlayStep = overlay.querySelector('.loading-step');
                 const overlayStepDesc = overlay.querySelector('.loading-step-desc');
-                if (overlayTitle) overlayTitle.textContent = '⏳ Waiting for Formulas...';
-                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Sheet structure is complete! Now waiting for XAVI formulas to fetch data from NetSuite.';
-                if (overlayStep) overlayStep.textContent = '📊 Formulas are calculating...';
-                if (overlayStepDesc) overlayStepDesc.textContent = 'This may take a few moments. Please wait.';
+                const overlayProgress = overlay.querySelector('.progress-bar-fill');
+                const overlayProgressText = overlay.querySelector('.progress-text');
                 
-                // Hide any other loading overlays that might be showing
+                if (overlayTitle) overlayTitle.textContent = '⏳ Fetching Data from NetSuite...';
+                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Sheet structure is complete! Now waiting for XAVI.BALANCE formulas to fetch data.';
+                if (overlayStep) overlayStep.textContent = '📊 Initializing...';
+                if (overlayStepDesc) overlayStepDesc.textContent = 'This may take 30-60 seconds depending on account count.';
+                
+                // Hide any other loading overlays and status bars
                 hideLoading();
+                hideStatus();
                 
-                // Wait for all #BUSY cells to resolve (max 60 seconds for large reports)
-                await waitForFormulasToResolve(60000);
+                // Wait for formulas to complete with real-time updates to our overlay
+                await waitForFormulasToComplete(120000, (message, progress) => {
+                    if (overlayStep) overlayStep.textContent = `📊 ${message}`;
+                    if (overlayProgress) overlayProgress.style.width = `${progress}%`;
+                    if (overlayProgressText) overlayProgressText.textContent = `${progress}% complete`;
+                });
                 
                 // NOW remove the overlay and show success
                 overlay.remove();
@@ -12114,48 +12134,118 @@ export default {
             });
         }
         
-        // Wait for all #BUSY cells to resolve before showing success
-        async function waitForFormulasToResolve(maxWaitMs = 30000) {
+        // Flag to suppress statusBar during report generation
+        let suppressStatusBar = false;
+        
+        // Wait for formulas to complete by monitoring netsuite_status broadcasts
+        // This is more reliable than checking for #BUSY cells
+        async function waitForFormulasToComplete(maxWaitMs = 120000, updateOverlayFn = null) {
             const startTime = Date.now();
             const checkInterval = 500; // Check every 500ms
+            let lastMessage = '';
+            
+            console.log('⏳ Waiting for formulas to complete (monitoring netsuite_status)...');
+            
+            // Suppress the statusBar while we're showing our own overlay
+            suppressStatusBar = true;
+            
+            // Clear any existing status
+            localStorage.removeItem('netsuite_status');
             
             while (Date.now() - startTime < maxWaitMs) {
+                await new Promise(resolve => setTimeout(resolve, checkInterval));
+                
                 try {
-                    let hasBusy = false;
-                    await Excel.run(async (context) => {
-                        const sheet = context.workbook.worksheets.getActiveWorksheet();
-                        const usedRange = sheet.getUsedRange();
-                        usedRange.load("values");
-                        await context.sync();
+                    const statusJson = localStorage.getItem('netsuite_status');
+                    if (statusJson) {
+                        const status = JSON.parse(statusJson);
                         
-                        // Check for #BUSY in any cell
-                        const values = usedRange.values;
-                        for (const row of values) {
-                            for (const cell of row) {
-                                if (cell && String(cell).includes('#BUSY')) {
-                                    hasBusy = true;
-                                    break;
-                                }
-                            }
-                            if (hasBusy) break;
+                        // Update our overlay with the current status
+                        if (updateOverlayFn && status.message !== lastMessage) {
+                            lastMessage = status.message;
+                            updateOverlayFn(status.message, status.progress);
+                            console.log(`📊 Formula status: ${status.message} (${status.progress}%)`);
                         }
-                    });
-                    
-                    if (!hasBusy) {
-                        console.log('✅ All formulas resolved - no #BUSY cells');
-                        return true;
+                        
+                        // Check if formulas are complete
+                        if (status.type === 'success' || status.message.toLowerCase().includes('complete')) {
+                            console.log('✅ Formulas complete! (success status received)');
+                            suppressStatusBar = false;
+                            localStorage.removeItem('netsuite_status');
+                            return true;
+                        }
+                        
+                        // Check for errors
+                        if (status.type === 'error') {
+                            console.warn('⚠️ Formula error detected:', status.message);
+                            suppressStatusBar = false;
+                            return true; // Proceed anyway
+                        }
                     }
                     
-                    console.log('⏳ Waiting for formulas to resolve (#BUSY detected)...');
-                    await new Promise(resolve => setTimeout(resolve, checkInterval));
+                    // Also check if #BUSY cells are gone (backup method)
+                    // Only check every 5 seconds to avoid performance issues
+                    if ((Date.now() - startTime) % 5000 < checkInterval) {
+                        let hasBusy = false;
+                        try {
+                            await Excel.run(async (context) => {
+                                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                                const usedRange = sheet.getUsedRange();
+                                usedRange.load("values");
+                                await context.sync();
+                                
+                                const values = usedRange.values;
+                                outer: for (const row of values) {
+                                    for (const cell of row) {
+                                        if (cell && String(cell).includes('#BUSY')) {
+                                            hasBusy = true;
+                                            break outer;
+                                        }
+                                    }
+                                }
+                            });
+                            
+                            if (!hasBusy) {
+                                // Wait a tiny bit more to be safe, then check again
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                let stillNoBusy = true;
+                                await Excel.run(async (context) => {
+                                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                                    const usedRange = sheet.getUsedRange();
+                                    usedRange.load("values");
+                                    await context.sync();
+                                    
+                                    const values = usedRange.values;
+                                    for (const row of values) {
+                                        for (const cell of row) {
+                                            if (cell && String(cell).includes('#BUSY')) {
+                                                stillNoBusy = false;
+                                                break;
+                                            }
+                                        }
+                                        if (!stillNoBusy) break;
+                                    }
+                                });
+                                
+                                if (stillNoBusy) {
+                                    console.log('✅ All #BUSY cells resolved!');
+                                    suppressStatusBar = false;
+                                    localStorage.removeItem('netsuite_status');
+                                    return true;
+                                }
+                            }
+                        } catch (e) {
+                            // Ignore - use status polling as primary method
+                        }
+                    }
                 } catch (e) {
-                    console.warn('Error checking for #BUSY:', e.message);
-                    return true; // Proceed anyway on error
+                    // Ignore parsing errors
                 }
             }
             
-            console.warn('⚠️ Timed out waiting for formulas to resolve');
-            return false; // Timed out
+            console.warn('⚠️ Timed out waiting for formulas to complete');
+            suppressStatusBar = false;
+            return false;
         }
         
         function dismissReportSuccess() {
