@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.212</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.213</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12198,29 +12198,25 @@ export default {
         let suppressStatusBar = false;
         
         // Wait for formulas to complete - simple #BUSY cell check
-        // Just waits for all #BUSY cells to clear (3 consecutive checks)
+        // Just waits for all #BUSY cells to clear (2 consecutive checks)
         async function waitForFormulasToComplete(maxWaitMs = 120000, updateOverlayFn = null) {
             const startTime = Date.now();
             
             console.log('⏳ Waiting for formulas to complete...');
             
-            // Suppress the statusBar while we're showing our own overlay
-            suppressStatusBar = true;
-            
             // Clear any existing status broadcasts
             localStorage.removeItem('netsuite_status');
             
-            // IMPORTANT: Wait longer for Excel to start calculating
-            // The sheet was just created, formulas need time to initialize
-            console.log('⏳ Giving Excel time to start calculating...');
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Brief initial wait for Excel to start calculating
+            console.log('⏳ Giving Excel a moment to start calculating...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             let consecutiveNoBusy = 0;
-            const requiredConsecutive = 3; // Need 3 consecutive checks with no #BUSY
-            let sawBusyAtLeastOnce = false; // Track if we ever saw #BUSY
+            const requiredConsecutive = 2; // Reduced: just 2 consecutive checks with no #BUSY
+            let sawBusyAtLeastOnce = false;
             
             while (Date.now() - startTime < maxWaitMs) {
-                await new Promise(resolve => setTimeout(resolve, 1500)); // Check every 1.5 seconds
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
                 
                 let hasBusy = false;
                 let busyCount = 0;
@@ -12251,30 +12247,28 @@ export default {
                         consecutiveNoBusy = 0; // Reset counter
                         console.log(`📊 ${busyCount} #BUSY cells remaining (${elapsed}s elapsed)`);
                     } else {
-                        // Only count as "no busy" if we've seen busy at least once
-                        // OR if enough time has passed (cells might have resolved very quickly)
-                        if (sawBusyAtLeastOnce || elapsed > 15) {
+                        // Count as "no busy" if we've seen busy at least once
+                        // OR if 8 seconds have passed (formulas might have resolved very quickly)
+                        if (sawBusyAtLeastOnce || elapsed > 8) {
                             consecutiveNoBusy++;
                             console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})`);
                             
                             if (consecutiveNoBusy >= requiredConsecutive) {
                                 console.log('✅ All cells populated!');
-                                suppressStatusBar = false;
+                                // Don't change suppressStatusBar here - let caller control it
                                 localStorage.removeItem('netsuite_status');
                                 return true;
                             }
                         } else {
-                            console.log(`⏳ Waiting for formulas to start calculating... (${elapsed}s)`);
+                            console.log(`⏳ Waiting for formulas to start... (${elapsed}s)`);
                         }
                     }
                 } catch (e) {
                     console.warn('Error checking #BUSY:', e.message);
-                    // Don't count errors as success - keep waiting
                 }
             }
             
             console.warn('⚠️ Timed out waiting for formulas to complete');
-            suppressStatusBar = false;
             return false;
         }
         
@@ -12285,6 +12279,12 @@ export default {
                 overlay.style.transition = 'opacity 0.2s ease';
                 setTimeout(() => overlay.remove(), 200);
             }
+            
+            // CRITICAL: Re-enable statusBar only AFTER user dismisses success overlay
+            // Clear any stale status messages that might have accumulated
+            suppressStatusBar = false;
+            localStorage.removeItem('netsuite_status');
+            hideStatus();  // Hide any visible status bar
         }
         
         // Close Quick Start accordion
@@ -12865,23 +12865,31 @@ export default {
                         // Check if the changed cell is Q3 (SUBSIDIARY parameter for auto-sync)
                         // Use debounce to prevent rapid-fire triggering
                         if (event.address === 'Q3' || event.address === '$Q$3') {
-                            console.log('🏢 SUBSIDIARY cell (Q3) changed - debouncing...');
+                            console.log('🏢 SUBSIDIARY cell (Q3) changed');
+                            
+                            // CRITICAL: Suppress and HIDE statusBar IMMEDIATELY (not after debounce!)
+                            // This prevents the "Fetching P&L data" window from ever appearing
+                            suppressStatusBar = true;
+                            localStorage.removeItem('netsuite_status');
+                            hideStatus();  // Hide immediately if already showing
+                            
                             if (window.subsidiaryChangeTimer) {
                                 clearTimeout(window.subsidiaryChangeTimer);
                             }
                             window.subsidiaryChangeTimer = setTimeout(async () => {
                                 console.log('🏢 SUBSIDIARY debounce complete - triggering updates...');
                                 
-                                // CRITICAL: Suppress statusBar BEFORE triggering any updates
-                                // This prevents the small "Fetching P&L data" window from appearing
+                                // Re-suppress in case polling started again
                                 suppressStatusBar = true;
                                 localStorage.removeItem('netsuite_status');
+                                hideStatus();
                                 
-                                // Always run currency format update when Q3 changes
-                                await smartCurrencyFormatUpdate();
-                                // Also check for structure sync (Income Statement only)
+                                // Check for structure sync FIRST (shows the overlay immediately)
+                                // This must happen BEFORE smartCurrencyFormatUpdate which triggers recalc
                                 await handleSubsidiaryChange();
-                            }, 1000); // 1 second debounce
+                                
+                                // Currency update happens inside performStructureSync now
+                            }, 500); // Reduced to 500ms - we're hiding status anyway
                         }
                         
                         // ============================================
@@ -14034,8 +14042,10 @@ export default {
                 const syncStyle = document.getElementById('syncPulseStyle');
                 if (syncStyle) syncStyle.remove();
                 
-                // Re-enable status bar
-                suppressStatusBar = false;
+                // KEEP suppressStatusBar = true - it will be set to false when user dismisses success overlay
+                // This prevents "Fetching P&L data" from appearing after sync completes
+                localStorage.removeItem('netsuite_status');
+                hideStatus();  // Hide any status bar just in case
                 
                 // Calculate elapsed time
                 const elapsedSeconds = ((Date.now() - syncStartTime) / 1000).toFixed(1);
