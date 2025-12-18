@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.192</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.193</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -16800,13 +16800,18 @@ export default {
                 if (!ref || ref === '""' || ref === '') return '';
                 const cleaned = cleanParam(ref);
                 
+                console.log(`📋 getValue: ref="${ref}", cleaned="${cleaned}", isDateParam=${isDateParam}, isCellRef=${isCellRef(cleaned)}`);
+                
                 if (isCellRef(cleaned)) {
                     try {
                         const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        sheet.load('name');
                         const refRange = sheet.getRange(cleaned);
                         refRange.load('values');
                         await context.sync();
                         const rawValue = refRange.values[0][0];
+                        
+                        console.log(`📋 Cell ${cleaned} on sheet "${sheet.name}": rawValue=${JSON.stringify(rawValue)}, typeof=${typeof rawValue}`);
                         
                         // Check if this is a date parameter and the value is a number (Excel date serial)
                         if (isDateParam && typeof rawValue === 'number' && rawValue > 1000) {
@@ -16815,8 +16820,25 @@ export default {
                             return converted;
                         }
                         
+                        // Also check if it's a string that looks like a date serial
+                        if (isDateParam && typeof rawValue === 'string') {
+                            // First check if it's already in "Mon YYYY" format
+                            if (/^[A-Z][a-z]{2}\s\d{4}$/.test(rawValue)) {
+                                console.log(`📅 Already in Mon YYYY format: "${rawValue}"`);
+                                return rawValue;
+                            }
+                            // Check if it's a numeric string (date serial)
+                            const numValue = parseFloat(rawValue);
+                            if (!isNaN(numValue) && numValue > 1000) {
+                                const converted = excelDateToMonthYear(numValue);
+                                console.log(`📅 Converted string date serial "${rawValue}" → "${converted}"`);
+                                return converted;
+                            }
+                        }
+                        
                         return String(rawValue || '');
                     } catch (e) {
+                        console.error(`📋 Error reading cell ${cleaned}:`, e);
                         return '';
                     }
                 }
