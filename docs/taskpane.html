@@ -3936,7 +3936,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.209</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.210</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8835,12 +8835,8 @@ For licensing inquiries, contact: legal@celigo.com
                 hideLoading();
                 hideStatus();
                 
-                // Wait for formulas to complete with real-time updates
-                await waitForFormulasToComplete(60000, (message, progress) => {
-                    if (overlayStep) overlayStep.textContent = `📊 ${message}`;
-                    if (overlayProgress) overlayProgress.style.width = `${progress}%`;
-                    if (overlayProgressText) overlayProgressText.textContent = `${progress}% complete`;
-                });
+                // Wait for formulas to complete - no sub-messages, just "Tidying Up"
+                await waitForFormulasToComplete(60000, null);
                 
                 // NOW remove overlay and show success
                 overlay.remove();
@@ -9657,12 +9653,8 @@ For licensing inquiries, contact: legal@celigo.com
                 hideLoading();
                 hideStatus();
                 
-                // Wait for formulas to complete with real-time updates to our overlay
-                await waitForFormulasToComplete(120000, (message, progress) => {
-                    if (overlayStep) overlayStep.textContent = `📊 ${message}`;
-                    if (overlayProgress) overlayProgress.style.width = `${progress}%`;
-                    if (overlayProgressText) overlayProgressText.textContent = `${progress}% complete`;
-                });
+                // Wait for formulas to complete - no sub-messages, just "Tidying Up"
+                await waitForFormulasToComplete(120000, null);
                 
                 // NOW remove the overlay and show success
                 overlay.remove();
@@ -12137,68 +12129,21 @@ export default {
         // Flag to suppress statusBar during report generation
         let suppressStatusBar = false;
         
-        // Wait for formulas to complete - TWO PHASES:
-        // Phase 1: Wait for functions.js to finish fetching data (netsuite_status broadcasts)
-        // Phase 2: Wait for Excel to finish recalculating (no more #BUSY cells)
+        // Wait for formulas to complete - simple #BUSY cell check
+        // Just waits for all #BUSY cells to clear (3 consecutive checks)
         async function waitForFormulasToComplete(maxWaitMs = 120000, updateOverlayFn = null) {
             const startTime = Date.now();
-            const checkInterval = 500; // Check every 500ms
-            let lastMessage = '';
-            let dataFetchComplete = false;
             
             console.log('⏳ Waiting for formulas to complete...');
             
             // Suppress the statusBar while we're showing our own overlay
             suppressStatusBar = true;
             
-            // Clear any existing status
+            // Clear any existing status broadcasts
             localStorage.removeItem('netsuite_status');
             
-            // PHASE 1: Wait for data fetching to complete
-            if (updateOverlayFn) {
-                updateOverlayFn('Fetching data from NetSuite...', 5);
-            }
-            
-            while (Date.now() - startTime < maxWaitMs && !dataFetchComplete) {
-                await new Promise(resolve => setTimeout(resolve, checkInterval));
-                
-                try {
-                    const statusJson = localStorage.getItem('netsuite_status');
-                    if (statusJson) {
-                        const status = JSON.parse(statusJson);
-                        
-                        // Update our overlay with the current status
-                        if (updateOverlayFn && status.message !== lastMessage) {
-                            lastMessage = status.message;
-                            updateOverlayFn(status.message, status.progress);
-                            console.log(`📊 Phase 1 - Data fetch: ${status.message} (${status.progress}%)`);
-                        }
-                        
-                        // Check if data fetching is complete
-                        if (status.type === 'success' || status.message.toLowerCase().includes('complete')) {
-                            console.log('✅ Phase 1 complete: Data fetching done!');
-                            dataFetchComplete = true;
-                        }
-                        
-                        // Check for errors
-                        if (status.type === 'error') {
-                            console.warn('⚠️ Data fetch error:', status.message);
-                            dataFetchComplete = true; // Proceed to phase 2 anyway
-                        }
-                    }
-                } catch (e) {
-                    // Ignore parsing errors
-                }
-            }
-            
-            // PHASE 2: Wait for Excel to finish recalculating (#BUSY cells to clear)
-            console.log('⏳ Waiting for cells to populate...');
-            if (updateOverlayFn) {
-                updateOverlayFn('Populating cells...', 85);
-            }
-            
             // Give Excel a moment to start recalculating
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             let consecutiveNoBusy = 0;
             const requiredConsecutive = 3; // Need 3 consecutive checks with no #BUSY
@@ -12207,6 +12152,8 @@ export default {
                 await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
                 
                 let hasBusy = false;
+                let busyCount = 0;
+                
                 try {
                     await Excel.run(async (context) => {
                         const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -12215,7 +12162,6 @@ export default {
                         await context.sync();
                         
                         const values = usedRange.values;
-                        let busyCount = 0;
                         for (const row of values) {
                             for (const cell of row) {
                                 if (cell && String(cell).includes('#BUSY')) {
@@ -12224,28 +12170,23 @@ export default {
                                 }
                             }
                         }
-                        
-                        if (hasBusy && updateOverlayFn) {
-                            updateOverlayFn(`${busyCount} cells remaining...`, 90);
-                            console.log(`📊 Phase 2: ${busyCount} #BUSY cells remaining (${elapsed}s elapsed)`);
-                        }
                     });
                     
-                    if (!hasBusy) {
+                    const elapsed = Math.round((Date.now() - startTime) / 1000);
+                    
+                    if (hasBusy) {
+                        consecutiveNoBusy = 0; // Reset counter
+                        console.log(`📊 ${busyCount} #BUSY cells remaining (${elapsed}s elapsed)`);
+                    } else {
                         consecutiveNoBusy++;
                         console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})`);
                         
                         if (consecutiveNoBusy >= requiredConsecutive) {
                             console.log('✅ All cells populated!');
-                            if (updateOverlayFn) {
-                                updateOverlayFn('Done!', 100);
-                            }
                             suppressStatusBar = false;
                             localStorage.removeItem('netsuite_status');
                             return true;
                         }
-                    } else {
-                        consecutiveNoBusy = 0; // Reset counter
                     }
                 } catch (e) {
                     console.warn('Error checking #BUSY:', e.message);
@@ -13506,6 +13447,10 @@ export default {
         async function performStructureSync(targetYear, currentSubsidiary) {
             const statusEl = document.getElementById('refreshStatus');
             
+            // Suppress the small status bar - we're showing our own overlay
+            suppressStatusBar = true;
+            localStorage.removeItem('netsuite_status');
+            
             // Show prominent FULL-SCREEN overlay for Structure Sync (impossible to miss!)
             const syncOverlay = document.createElement('div');
             syncOverlay.id = 'structureSyncOverlay';
@@ -13563,6 +13508,7 @@ export default {
             try {
                 // Get currency format for the selected subsidiary
                 let currencyFormat = '$#,##0.00';  // Default to USD
+                let currencySymbol = '$';  // Track symbol for success message
                 try {
                     const currencyData = await getCurrencyData();
                     if (currencyData && currentSubsidiary) {
@@ -13570,13 +13516,17 @@ export default {
                         const subId = /^\d+$/.test(currentSubsidiary) ? 
                             currentSubsidiary : 
                             (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
-                        const symbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
-                        currencyFormat = currencyData.formats[symbol] || '$#,##0.00';
-                        console.log(`💱 performStructureSync currency: "${currentSubsidiary}" → ${currencyFormat}`);
+                        currencySymbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
+                        currencyFormat = currencyData.formats[currencySymbol] || '$#,##0.00';
+                        console.log(`💱 performStructureSync currency: "${currentSubsidiary}" → ${currencySymbol} (${currencyFormat})`);
                     }
                 } catch (e) {
                     console.warn('Currency lookup failed:', e.message);
                 }
+                
+                // Update overlay to show we're fetching data
+                const syncStep = document.querySelector('#structureSyncOverlay .loading-step');
+                if (syncStep) syncStep.textContent = '📥 Fetching account data from NetSuite...';
                 
                 // Fetch accounts for the target year AND selected subsidiary
                 console.log(`performStructureSync: year=${targetYear}, subsidiary="${currentSubsidiary}"`);
@@ -13979,6 +13929,15 @@ export default {
                     try { sheet.freezePanes.freezeRows(5); await context.sync(); } catch (e) {}
                 });
                 
+                // Update overlay to show we're waiting for formulas
+                const syncStepFinal = document.querySelector('#structureSyncOverlay .loading-step');
+                const syncDesc = document.querySelector('#structureSyncOverlay .loading-step-desc');
+                if (syncStepFinal) syncStepFinal.textContent = '🧹 Tidying up...';
+                if (syncDesc) syncDesc.textContent = 'Waiting for formulas to populate with data.';
+                
+                // Wait for formulas to resolve before showing success
+                await waitForFormulasToComplete(120000, null);
+                
                 // Remove the full-screen overlay
                 const syncOverlay = document.getElementById('structureSyncOverlay');
                 if (syncOverlay) {
@@ -13989,13 +13948,16 @@ export default {
                 const syncStyle = document.getElementById('syncPulseStyle');
                 if (syncStyle) syncStyle.remove();
                 
-                // Show success toast
+                // Re-enable status bar
+                suppressStatusBar = false;
+                
+                // Show success toast with currency info
                 showToast({
                     title: '✅ Structure Sync Complete',
-                    message: `Rebuilt report with ${totalAccounts} accounts for ${targetYear}. Formulas will resolve shortly.`,
+                    message: `Rebuilt for "${currentSubsidiary || 'All'}" with ${totalAccounts} accounts. Currency: ${currencySymbol}`,
                     type: 'success',
                     icon: '✅',
-                    duration: 5000
+                    duration: 6000
                 });
                 
                 // Update status element if visible
@@ -14003,15 +13965,10 @@ export default {
                     statusEl.innerHTML = `<div style="background: #d1fae5; padding: 12px; border-radius: 8px; margin-top: 10px;">
                         <strong style="color: #065f46;">✓ Structure Synced for ${targetYear}</strong><br>
                         <span style="font-size: 12px; color: #047857;">
-                            Rebuilt with ${totalAccounts} accounts. Formulas will resolve shortly.
+                            • Subsidiary: <strong>${currentSubsidiary || 'All'}</strong><br>
+                            • Accounts: <strong>${totalAccounts}</strong><br>
+                            • Currency: <strong>${currencySymbol}</strong>
                         </span>
-                        <div style="margin-top: 10px; padding: 10px; background: rgba(10, 226, 193, 0.15); border-radius: 6px; border-left: 3px solid #0AE2C1;">
-                            <strong style="font-size: 11px; color: #09235C;">💡 Filtering Tips:</strong>
-                            <ul style="margin: 6px 0 0 16px; font-size: 11px; color: #374151; line-height: 1.5;">
-                                <li><strong>Year & Subsidiary:</strong> Edit the parameter values in the header section to filter your report.</li>
-                                <li><strong>More filters:</strong> XAVI formulas also support <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> parameters.</li>
-                            </ul>
-                        </div>
                     </div>`;
                 }
                 
@@ -14031,6 +13988,9 @@ export default {
                 
             } catch (error) {
                 console.error('Structure sync error:', error);
+                
+                // Re-enable status bar
+                suppressStatusBar = false;
                 
                 // Remove the full-screen overlay
                 const syncOverlay = document.getElementById('structureSyncOverlay');
