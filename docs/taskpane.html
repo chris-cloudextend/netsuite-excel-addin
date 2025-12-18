@@ -969,14 +969,15 @@ For licensing inquiries, contact: legal@celigo.com
         
         .report-success-card {
             background: white;
-            border-radius: 16px;
-            padding: 24px;
-            max-width: 420px;
+            border-radius: 12px;
+            padding: 16px;
+            max-width: 360px;
             width: 100%;
-            max-height: 80vh;
+            max-height: 70vh;
             overflow-y: auto;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             animation: slideUp 0.3s ease-out;
+            position: relative;
         }
         
         @keyframes slideUp {
@@ -990,22 +991,41 @@ For licensing inquiries, contact: legal@celigo.com
             }
         }
         
+        .report-success-card .close-x {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #9ca3af;
+            cursor: pointer;
+            padding: 4px 8px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        
+        .report-success-card .close-x:hover {
+            color: #374151;
+        }
+        
         .report-success-card h2 {
             color: #059669;
-            font-size: 20px;
-            margin: 0 0 16px 0;
+            font-size: 16px;
+            margin: 0 0 10px 0;
+            padding-right: 24px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         
         .report-success-card .summary {
             background: #f0fdf4;
-            border-radius: 10px;
-            padding: 14px 16px;
-            margin-bottom: 16px;
-            font-size: 13px;
-            line-height: 1.6;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            line-height: 1.5;
         }
         
         .report-success-card .summary strong {
@@ -1013,11 +1033,11 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         .report-success-card .tip-box {
-            padding: 12px 14px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            font-size: 12px;
-            line-height: 1.5;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 11px;
+            line-height: 1.4;
         }
         
         .report-success-card .tip-box.warning {
@@ -1035,17 +1055,19 @@ For licensing inquiries, contact: legal@celigo.com
             background: linear-gradient(135deg, var(--deep-dive) 0%, #1a365d 100%);
             color: white;
             border: none;
-            padding: 14px 20px;
-            border-radius: 10px;
-            font-size: 14px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 16px;
+            margin-top: 10px;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: sticky;
+            bottom: 0;
         }
         
         .report-success-card .dismiss-btn:hover {
-            transform: translateY(-2px);
+            transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(9, 35, 92, 0.3);
         }
 
@@ -3914,7 +3936,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.205</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.206</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8789,26 +8811,43 @@ For licensing inquiries, contact: legal@celigo.com
                     updateProgress(100, '✅ Complete!', 'Your CFO Flash Report is ready!');
                 });
                 
-                // Cleanup
+                // Cleanup - update overlay to show waiting for formulas
                 clearInterval(tipInterval);
+                
+                // Update overlay to show we're waiting for formulas
+                const overlayTitle = overlay.querySelector('h2');
+                const overlaySubtitle = overlay.querySelector('.loading-subtitle');
+                const overlayStep = overlay.querySelector('.loading-step');
+                const overlayStepDesc = overlay.querySelector('.loading-step-desc');
+                if (overlayTitle) overlayTitle.textContent = '⏳ Waiting for Formulas...';
+                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Report structure is complete! Waiting for TYPEBALANCE formulas to fetch data.';
+                if (overlayStep) overlayStep.textContent = '📊 Formulas are calculating...';
+                if (overlayStepDesc) overlayStepDesc.textContent = 'This may take a few moments. Please wait.';
+                
+                // Hide any other loading overlays
+                hideLoading();
+                
+                // Wait for #BUSY to clear (max 30 seconds for CFO report - it's smaller)
+                await waitForFormulasToResolve(30000);
+                
+                // NOW remove overlay and show success
                 overlay.remove();
                 
                 // Show success overlay with timing
                 const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
-showReportSuccessOverlay('CFO Flash Report', {
+                showReportSuccessOverlay('CFO Flash Report', {
                     totalAccounts: 5,
                     elapsedTime: elapsedSeconds,
                     sections: [
-                        { name: 'Revenue (Income)', count: 'TYPEBALANCE' },
+                        { name: 'Revenue', count: 'TYPEBALANCE' },
                         { name: 'COGS', count: 'TYPEBALANCE' },
                         { name: 'Expenses', count: 'TYPEBALANCE' },
-                        { name: 'Other Inc/Exp', count: 'TYPEBALANCE' }
+                        { name: 'Other', count: 'TYPEBALANCE' }
                     ],
                     tips: [
-                        { type: 'info', icon: '📅', title: 'Change Year:', text: 'Edit cell <strong>P3</strong> to view a different fiscal year. All formulas update automatically.' },
-                        { type: 'info', icon: '🏢', title: 'Change Subsidiary:', text: 'Edit cell <strong>Q3</strong> to filter by a different subsidiary.' },
-                        { type: 'info', icon: '⏳', title: '#BUSY:', text: 'You\'ll see <code>#BUSY</code> briefly as data loads from NetSuite. This is normal!' },
-                        { type: 'info', icon: '📋', title: 'Named Ranges:', text: '<code>_Revenue</code>, <code>_COGS</code>, <code>_Gross_Margin</code>, <code>_Operating_Expenses</code>, <code>_Operating_Income</code>, <code>_Other_Income</code>, <code>_Other_Expense</code>, <code>_Net_Income</code>' }
+                        { type: 'info', icon: '📅', title: 'Year:', text: 'Edit <strong>P3</strong> to change year.' },
+                        { type: 'info', icon: '🏢', title: 'Subsidiary:', text: 'Edit <strong>Q3</strong> to filter.' },
+                        { type: 'info', icon: '📋', title: 'Named Ranges:', text: '_Revenue, _COGS, _Gross_Margin, _Operating_Income, _Net_Income' }
                     ]
                 });
                 
@@ -9586,8 +9625,26 @@ showReportSuccessOverlay('CFO Flash Report', {
                     updateProgress(100, '✅ Complete!', 'Your Income Statement is ready!');
                 });
                 
-                // Cleanup
+                // Cleanup the progress overlay but show a "waiting for formulas" message
                 clearInterval(tipInterval);
+                
+                // Update overlay to show we're waiting for formulas
+                const overlayTitle = overlay.querySelector('h2');
+                const overlaySubtitle = overlay.querySelector('.loading-subtitle');
+                const overlayStep = overlay.querySelector('.loading-step');
+                const overlayStepDesc = overlay.querySelector('.loading-step-desc');
+                if (overlayTitle) overlayTitle.textContent = '⏳ Waiting for Formulas...';
+                if (overlaySubtitle) overlaySubtitle.innerHTML = 'Sheet structure is complete! Now waiting for XAVI formulas to fetch data from NetSuite.';
+                if (overlayStep) overlayStep.textContent = '📊 Formulas are calculating...';
+                if (overlayStepDesc) overlayStepDesc.textContent = 'This may take a few moments. Please wait.';
+                
+                // Hide any other loading overlays that might be showing
+                hideLoading();
+                
+                // Wait for all #BUSY cells to resolve (max 60 seconds for large reports)
+                await waitForFormulasToResolve(60000);
+                
+                // NOW remove the overlay and show success
                 overlay.remove();
                 
                 // Success message - show as dismissible overlay
@@ -9605,9 +9662,9 @@ showReportSuccessOverlay('CFO Flash Report', {
                         { name: 'Other Income/Expense', count: categories.othIncome.length + categories.othExpense.length }
                     ],
                     tips: [
-                        { type: 'warning', icon: '⚠️', title: 'Please verify:', text: 'This is auto-generated from your NetSuite data. Review account classifications and totals before using for official reporting.' },
-                        { type: 'info', icon: '📅', title: 'Change Year:', text: 'Edit cell <strong>P3</strong> to a different year. The structure will automatically sync with accounts for that year.' },
-                        { type: 'info', icon: '🏢', title: 'Change Subsidiary:', text: 'Edit cell <strong>Q3</strong> to filter by a different subsidiary. The XAVI.BALANCE formula also supports <strong>Department</strong>, <strong>Class</strong>, and <strong>Location</strong> filters.' }
+                        { type: 'warning', icon: '⚠️', title: 'Verify:', text: 'Auto-generated from NetSuite. Review before official use.' },
+                        { type: 'info', icon: '📅', title: 'Year:', text: 'Edit <strong>P3</strong> to change year. Structure auto-syncs.' },
+                        { type: 'info', icon: '🏢', title: 'Subsidiary:', text: 'Edit <strong>Q3</strong> to filter. Also supports Dept, Class, Location.' }
                     ]
                 });
                 
@@ -12013,9 +12070,9 @@ export default {
             overlay.id = 'reportSuccessOverlay';
             
             const sectionsHtml = data.sections.map(s => 
-                `<div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                `<div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px;">
                     <span>• ${s.name}</span>
-                    <strong>${s.count} accounts</strong>
+                    <strong>${s.count}</strong>
                 </div>`
             ).join('');
             
@@ -12025,17 +12082,18 @@ export default {
                 </div>`
             ).join('');
             
-            // Format elapsed time nicely
+            // Format elapsed time nicely (compact)
             const timeDisplay = data.elapsedTime ? 
-                `<div style="margin-top: 8px; padding: 6px 10px; background: rgba(16, 185, 129, 0.1); border-radius: 6px; font-size: 12px; color: #059669;">
+                `<div style="margin-top: 6px; font-size: 11px; color: #059669;">
                     ⏱️ Completed in <strong>${data.elapsedTime}s</strong>
                 </div>` : '';
             
             overlay.innerHTML = `
                 <div class="report-success-card">
+                    <button class="close-x" onclick="dismissReportSuccess()" title="Close">×</button>
                     <h2>✅ ${reportType} Generated!</h2>
                     <div class="summary">
-                        <div style="margin-bottom: 8px;">Created with <strong>${data.totalAccounts} accounts</strong> organized into sections:</div>
+                        <div style="margin-bottom: 6px; font-size: 12px;"><strong>${data.totalAccounts} accounts</strong> in sections:</div>
                         ${sectionsHtml}
                         ${timeDisplay}
                     </div>
@@ -12054,6 +12112,50 @@ export default {
                     dismissReportSuccess();
                 }
             });
+        }
+        
+        // Wait for all #BUSY cells to resolve before showing success
+        async function waitForFormulasToResolve(maxWaitMs = 30000) {
+            const startTime = Date.now();
+            const checkInterval = 500; // Check every 500ms
+            
+            while (Date.now() - startTime < maxWaitMs) {
+                try {
+                    let hasBusy = false;
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const usedRange = sheet.getUsedRange();
+                        usedRange.load("values");
+                        await context.sync();
+                        
+                        // Check for #BUSY in any cell
+                        const values = usedRange.values;
+                        for (const row of values) {
+                            for (const cell of row) {
+                                if (cell && String(cell).includes('#BUSY')) {
+                                    hasBusy = true;
+                                    break;
+                                }
+                            }
+                            if (hasBusy) break;
+                        }
+                    });
+                    
+                    if (!hasBusy) {
+                        console.log('✅ All formulas resolved - no #BUSY cells');
+                        return true;
+                    }
+                    
+                    console.log('⏳ Waiting for formulas to resolve (#BUSY detected)...');
+                    await new Promise(resolve => setTimeout(resolve, checkInterval));
+                } catch (e) {
+                    console.warn('Error checking for #BUSY:', e.message);
+                    return true; // Proceed anyway on error
+                }
+            }
+            
+            console.warn('⚠️ Timed out waiting for formulas to resolve');
+            return false; // Timed out
         }
         
         function dismissReportSuccess() {
