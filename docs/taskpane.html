@@ -2441,20 +2441,21 @@ For licensing inquiries, contact: legal@celigo.com
         /* ========================================
            CONTEXT-AWARE PARAMETER POPUP
            Shows filter when parameter cell selected
+           Light theme with Tidal Wave accent for contrast with dark header
            ======================================== */
         .param-context-popup {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(135deg, #09235C 0%, #0d3068 100%);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
             padding: 12px 16px;
             z-index: 1000;
             transform: translateY(-100%);
             opacity: 0;
             transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
-            box-shadow: 0 4px 20px rgba(9, 35, 92, 0.3);
-            border-bottom: 3px solid var(--anenome);
+            box-shadow: 0 4px 20px rgba(0, 121, 255, 0.15), 0 2px 8px rgba(0,0,0,0.1);
+            border-bottom: 3px solid var(--tidal-wave);
         }
         
         .param-context-popup.visible {
@@ -2473,7 +2474,7 @@ For licensing inquiries, contact: legal@celigo.com
             display: flex;
             align-items: center;
             gap: 8px;
-            color: white;
+            color: var(--deep-dive);
             font-weight: 600;
             font-size: 13px;
         }
@@ -2483,19 +2484,19 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         .param-context-cell {
-            background: rgba(10, 226, 193, 0.2);
-            color: var(--anenome);
+            background: var(--tidal-wave);
+            color: white;
             padding: 2px 8px;
             border-radius: 4px;
             font-family: monospace;
             font-size: 11px;
-            font-weight: 500;
+            font-weight: 600;
         }
         
         .param-context-close {
-            background: rgba(255,255,255,0.1);
+            background: rgba(0, 121, 255, 0.1);
             border: none;
-            color: rgba(255,255,255,0.7);
+            color: var(--tidal-wave);
             width: 24px;
             height: 24px;
             border-radius: 50%;
@@ -2508,7 +2509,7 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         .param-context-close:hover {
-            background: rgba(255,255,255,0.2);
+            background: var(--tidal-wave);
             color: white;
         }
         
@@ -2521,39 +2522,39 @@ For licensing inquiries, contact: legal@celigo.com
         .param-context-select {
             flex: 1;
             padding: 8px 12px;
-            border: 2px solid rgba(10, 226, 193, 0.3);
+            border: 2px solid var(--barnacle);
             border-radius: 6px;
-            background: rgba(255,255,255,0.95);
+            background: white;
             font-size: 13px;
-            color: var(--deep-sea);
+            color: var(--deep-dive);
             cursor: pointer;
             transition: border-color 0.2s;
         }
         
         .param-context-select:focus {
             outline: none;
-            border-color: var(--anenome);
+            border-color: var(--tidal-wave);
         }
         
         .param-context-input {
             flex: 1;
             padding: 8px 12px;
-            border: 2px solid rgba(10, 226, 193, 0.3);
+            border: 2px solid var(--barnacle);
             border-radius: 6px;
-            background: rgba(255,255,255,0.95);
+            background: white;
             font-size: 13px;
-            color: var(--deep-sea);
+            color: var(--deep-dive);
             transition: border-color 0.2s;
         }
         
         .param-context-input:focus {
             outline: none;
-            border-color: var(--anenome);
+            border-color: var(--tidal-wave);
         }
         
         .param-context-btn {
-            background: var(--anenome);
-            color: var(--deep-sea);
+            background: var(--tidal-wave);
+            color: white;
             border: none;
             padding: 8px 16px;
             border-radius: 6px;
@@ -2565,21 +2566,22 @@ For licensing inquiries, contact: legal@celigo.com
         }
         
         .param-context-btn:hover {
-            background: #00e6d0;
+            background: #0066dd;
             transform: translateY(-1px);
         }
         
         .param-context-hint {
             margin-top: 8px;
             font-size: 11px;
-            color: rgba(255,255,255,0.6);
+            color: var(--bottlenose);
             display: flex;
             align-items: center;
             gap: 6px;
         }
         
         .param-context-hint code {
-            background: rgba(255,255,255,0.15);
+            background: rgba(0, 121, 255, 0.1);
+            color: var(--tidal-wave);
             padding: 1px 6px;
             border-radius: 3px;
             font-family: monospace;
@@ -3905,7 +3907,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.201</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.202</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -13172,12 +13174,20 @@ export default {
                     isSyncInProgress = true;
                     lastSyncedYear = newYear;
                     
-                    // Show a brief notification
+                    // Show a detailed notification explaining Structure Sync
                     const statusEl = document.getElementById('refreshStatus');
                     if (statusEl) {
-                        statusEl.innerHTML = `<div style="background: #dbeafe; padding: 10px; border-radius: 6px; border-left: 4px solid #3b82f6;">
-                            <strong style="color: #1e40af;">🔄 Syncing for ${newYear}...</strong><br>
-                            <small style="color: #1e3a8a;">Rebuilding structure with accounts for ${newYear}</small>
+                        statusEl.innerHTML = `<div style="background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%); padding: 14px; border-radius: 8px; border-left: 4px solid var(--tidal-wave);">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <span style="font-size: 18px;">🔄</span>
+                                <strong style="color: #1e40af; font-size: 13px;">Structure Sync in Progress</strong>
+                            </div>
+                            <div style="color: #1e3a8a; font-size: 12px; line-height: 1.5;">
+                                <strong>What's happening:</strong> We're analyzing your accounts to rebuild the sheet with only rows that have transaction data for <strong>${newYear}</strong>.
+                            </div>
+                            <div style="margin-top: 8px; padding: 8px; background: rgba(59, 130, 246, 0.1); border-radius: 4px; font-size: 11px; color: #3b82f6;">
+                                ⏳ This may take 10-15 seconds while we query NetSuite...
+                            </div>
                         </div>`;
                     }
                     
@@ -13250,12 +13260,20 @@ export default {
                     isSyncInProgress = true;
                     lastSyncedSubsidiary = newSubsidiary;
                     
-                    // Show a brief notification
+                    // Show a detailed notification explaining Structure Sync
                     const statusEl = document.getElementById('refreshStatus');
                     if (statusEl) {
-                        statusEl.innerHTML = `<div style="background: #dbeafe; padding: 10px; border-radius: 6px; border-left: 4px solid #3b82f6;">
-                            <strong style="color: #1e40af;">🔄 Syncing for ${newSubsidiary || 'Consolidated'}...</strong><br>
-                            <small style="color: #1e3a8a;">Rebuilding structure with accounts for this subsidiary</small>
+                        statusEl.innerHTML = `<div style="background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%); padding: 14px; border-radius: 8px; border-left: 4px solid var(--tidal-wave);">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <span style="font-size: 18px;">🔄</span>
+                                <strong style="color: #1e40af; font-size: 13px;">Structure Sync in Progress</strong>
+                            </div>
+                            <div style="color: #1e3a8a; font-size: 12px; line-height: 1.5;">
+                                <strong>What's happening:</strong> We're analyzing your accounts to rebuild the sheet with only rows that have transaction data for <strong>${newSubsidiary || 'Consolidated'}</strong>.
+                            </div>
+                            <div style="margin-top: 8px; padding: 8px; background: rgba(59, 130, 246, 0.1); border-radius: 4px; font-size: 11px; color: #3b82f6;">
+                                ⏳ This may take 10-15 seconds while we query NetSuite...
+                            </div>
                         </div>`;
                     }
                     
