@@ -3914,7 +3914,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.204</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.205</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -13305,16 +13305,42 @@ export default {
         async function performStructureSync(targetYear, currentSubsidiary) {
             const statusEl = document.getElementById('refreshStatus');
             
-            // Show prominent toast notification for Structure Sync progress
-            let syncToastId = showToast({
-                title: '🔄 Structure Sync in Progress',
-                message: `Analyzing accounts for ${targetYear} and "${currentSubsidiary || 'All Subsidiaries'}"...\nFiltering out rows with no activity. This takes ~10-15 seconds.`,
-                type: 'info',
-                icon: '🔄',
-                duration: 60000  // Long duration - we'll manually dismiss when done
-            });
+            // Show prominent FULL-SCREEN overlay for Structure Sync (impossible to miss!)
+            const syncOverlay = document.createElement('div');
+            syncOverlay.id = 'structureSyncOverlay';
+            syncOverlay.className = 'guide-me-overlay';  // Reuse existing full-screen overlay style
+            syncOverlay.innerHTML = `
+                <div class="loading-spinner"></div>
+                <h2>🔄 Structure Sync</h2>
+                <div class="loading-subtitle">
+                    Analyzing accounts for <strong>${targetYear}</strong> and <strong>"${currentSubsidiary || 'All Subsidiaries'}"</strong>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="syncProgressBar" style="width: 20%; animation: syncPulse 1.5s infinite;"></div>
+                    </div>
+                    <div class="progress-text">Querying NetSuite...</div>
+                </div>
+                <div class="loading-step">📊 Filtering out rows with no activity</div>
+                <div class="loading-step-desc">This keeps your report clean and focused on accounts that matter.</div>
+                <div style="margin-top: 20px; padding: 12px 20px; background: rgba(59, 130, 246, 0.15); border-radius: 8px; font-size: 12px; color: #93c5fd;">
+                    ⏱️ This typically takes 10-15 seconds
+                </div>
+            `;
+            document.body.appendChild(syncOverlay);
             
-            // Also show in status element if visible
+            // Add pulse animation for progress bar
+            const style = document.createElement('style');
+            style.id = 'syncPulseStyle';
+            style.textContent = `
+                @keyframes syncPulse {
+                    0%, 100% { width: 20%; opacity: 0.8; }
+                    50% { width: 60%; opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Also update status element if visible
             if (statusEl) {
                 statusEl.innerHTML = `
                     <div style="background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%); 
@@ -13329,9 +13355,6 @@ export default {
                         <div style="color: #1e3a8a; font-size: 12px; line-height: 1.5;">
                             Analyzing accounts for <strong>${targetYear}</strong> and <strong>"${currentSubsidiary || 'All Subsidiaries'}"</strong>...<br>
                             We're filtering out rows with no activity to keep your report clean.
-                        </div>
-                        <div style="color: #3b82f6; font-size: 11px; margin-top: 8px; font-style: italic;">
-                            ⏱️ This typically takes 10-15 seconds while we query NetSuite
                         </div>
                     </div>`;
             }
@@ -13755,8 +13778,15 @@ export default {
                     try { sheet.freezePanes.freezeRows(5); await context.sync(); } catch (e) {}
                 });
                 
-                // Dismiss the in-progress toast
-                removeToast(syncToastId);
+                // Remove the full-screen overlay
+                const syncOverlay = document.getElementById('structureSyncOverlay');
+                if (syncOverlay) {
+                    syncOverlay.style.opacity = '0';
+                    syncOverlay.style.transition = 'opacity 0.3s ease';
+                    setTimeout(() => syncOverlay.remove(), 300);
+                }
+                const syncStyle = document.getElementById('syncPulseStyle');
+                if (syncStyle) syncStyle.remove();
                 
                 // Show success toast
                 showToast({
@@ -13801,8 +13831,11 @@ export default {
             } catch (error) {
                 console.error('Structure sync error:', error);
                 
-                // Dismiss the in-progress toast
-                removeToast(syncToastId);
+                // Remove the full-screen overlay
+                const syncOverlay = document.getElementById('structureSyncOverlay');
+                if (syncOverlay) syncOverlay.remove();
+                const syncStyle = document.getElementById('syncPulseStyle');
+                if (syncStyle) syncStyle.remove();
                 
                 // Show error toast
                 showToast({
