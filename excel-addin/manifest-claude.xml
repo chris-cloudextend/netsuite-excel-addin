@@ -11,10 +11,12 @@ is strictly prohibited without the express written permission of Celigo, Inc.
 
 For licensing inquiries, contact: legal@celigo.com
 
-CONTEXT MENU USES ShowTaskpane (not ExecuteFunction):
-On Mac, ExecuteFunction opens a visible "Developer Window" with duplicate UI.
-This is a known Mac platform limitation. Using ShowTaskpane instead ensures
-consistent behavior on both Windows and Mac without duplicate windows.
+ARCHITECTURE (v3.0.5.189+):
+- SharedRuntime page: sharedruntime.html (BLANK - no UI)
+- Taskpane UI page: taskpane.html (actual UI)
+- This separation ensures Mac's "Developer Window" is blank, not a duplicate UI
+
+Context menu uses ShowTaskpane + localStorage flag for drilldown trigger.
 -->
 <OfficeApp 
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" 
@@ -24,13 +26,13 @@ consistent behavior on both Windows and Mac without duplicate windows.
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-5678-90ab-cdef-123456789abc</Id>
-  <Version>3.0.5.188</Version>
+  <Version>3.0.5.189</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="XAVI for NetSuite"/>
   <Description DefaultValue="XAVI - Financial reporting formulas for NetSuite"/>
-  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.188"/>
-  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.188"/>
+  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.189"/>
+  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.189"/>
   <SupportUrl DefaultValue="https://www.cloudextend.io"/>
 
   <Hosts>
@@ -46,7 +48,7 @@ consistent behavior on both Windows and Mac without duplicate windows.
 
   <!-- Task Pane (fallback for older Office versions) -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.188"/>
+    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.189"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -57,19 +59,20 @@ consistent behavior on both Windows and Mac without duplicate windows.
     <Hosts>
       <Host xsi:type="Workbook">
 
-        <!-- SHARED RUNTIME - Single runtime for everything -->
+        <!-- SHARED RUNTIME - Points to BLANK page (no UI) -->
+        <!-- On Mac, this opens as "Developer Window" - keeping it blank prevents duplicate UI -->
         <Runtimes>
-          <Runtime resid="Taskpane.Url" lifetime="long"/>
+          <Runtime resid="SharedRuntime.Url" lifetime="long"/>
         </Runtimes>
 
-        <!-- Custom Functions - Uses shared runtime -->
+        <!-- Custom Functions - Uses shared runtime (blank page) -->
         <AllFormFactors>
           <ExtensionPoint xsi:type="CustomFunctions">
             <Script>
               <SourceLocation resid="Functions.Script.Url"/>
             </Script>
             <Page>
-              <SourceLocation resid="Taskpane.Url"/>
+              <SourceLocation resid="SharedRuntime.Url"/>
             </Page>
             <Metadata>
               <SourceLocation resid="Functions.Metadata.Url"/>
@@ -87,8 +90,8 @@ consistent behavior on both Windows and Mac without duplicate windows.
             <LearnMoreUrl resid="GetStarted.LearnMoreUrl"/>
           </GetStarted>
 
-          <!-- FunctionFile uses shared runtime (same as taskpane) -->
-          <FunctionFile resid="Taskpane.Url"/>
+          <!-- FunctionFile uses shared runtime (blank page) -->
+          <FunctionFile resid="SharedRuntime.Url"/>
 
           <!-- Ribbon Button on DATA Tab -->
           <ExtensionPoint xsi:type="PrimaryCommandSurface">
@@ -152,7 +155,7 @@ consistent behavior on both Windows and Mac without duplicate windows.
                       <bt:Image size="80" resid="Icon.80x80"/>
                     </Icon>
 
-                    <!-- ShowTaskpane instead of ExecuteFunction to avoid Mac duplicate window bug -->
+                    <!-- ShowTaskpane - uses localStorage flag for drilldown trigger -->
                     <Action xsi:type="ShowTaskpane">
                       <TaskpaneId>CloudExtend.Taskpane</TaskpaneId>
                       <SourceLocation resid="DrillDown.Url"/>
@@ -175,17 +178,18 @@ consistent behavior on both Windows and Mac without duplicate windows.
 
       <!-- Icons -->
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=3.0.5.188"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.188"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=3.0.5.188"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=3.0.5.189"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.189"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=3.0.5.189"/>
       </bt:Images>
 
       <!-- External Files (cache-busted) -->
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.188"/>
-        <bt:Url id="DrillDown.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.188&amp;action=drilldown"/>
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.188"/>
-        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.5.188"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.189"/>
+        <bt:Url id="DrillDown.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.189&amp;action=drilldown"/>
+        <bt:Url id="SharedRuntime.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/sharedruntime.html?v=3.0.5.189"/>
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.189"/>
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.5.189"/>
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://www.cloudextend.io"/>
       </bt:Urls>
 

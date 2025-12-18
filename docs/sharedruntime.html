@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>XAVI Shared Runtime</title>
+    <!-- Office.js for shared runtime -->
+    <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+    <!-- Custom functions -->
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.189"></script>
+    <style>
+        /* Completely blank - no UI */
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background: transparent; 
+            display: none; 
+        }
+    </style>
+</head>
+<body>
+    <!-- 
+    SHARED RUNTIME PAGE - NO UI
+    
+    This page is loaded by Mac Excel as the "Developer Window" when the shared runtime
+    starts. By keeping it completely blank, the developer window appears empty instead
+    of showing a duplicate taskpane UI.
+    
+    The actual UI is in taskpane.html which is shown via ShowTaskpane actions.
+    -->
+    <script>
+        console.log('📋 sharedruntime.html loaded (no UI)');
+        
+        // Signal that shared runtime is ready
+        Office.onReady((info) => {
+            console.log('✅ Shared runtime ready');
+            console.log('   Platform:', info.platform);
+            console.log('   Host:', info.host);
+        });
+    </script>
+</body>
+</html>
+

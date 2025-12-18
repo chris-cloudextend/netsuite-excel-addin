@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.188</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.189</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4968,7 +4968,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.188"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.189"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -12019,11 +12019,15 @@ export default {
             }
         }
 
-        Office.onReady((info) => {
+        Office.onReady(async (info) => {
             console.log('NetSuite Excel Add-in task pane loaded');
             console.log('   Platform:', info.platform);
             console.log('   Host:', info.host);
             console.log('   URL:', window.location.href);
+            
+            // TIMING FIX: On Mac, even inside Office.onReady, Excel.run can fail
+            // if called too quickly during activation. Add small delay.
+            await new Promise(r => setTimeout(r, 150));
             
             // Check if opened via context menu with action=drilldown
             const urlParams = new URLSearchParams(window.location.search);
@@ -12033,10 +12037,9 @@ export default {
             
             if (actionParam === 'drilldown') {
                 console.log('🔍 Opened via context menu - auto-triggering drill-down');
-                // Small delay to ensure Office APIs are fully ready
-                setTimeout(() => {
-                    triggerContextMenuDrillDown();
-                }, 200);
+                // Additional delay to ensure Excel APIs are fully ready
+                await new Promise(r => setTimeout(r, 100));
+                triggerContextMenuDrillDown();
             }
             
             // SAFETY: Hide any stale loading overlays from previous sessions/crashes
