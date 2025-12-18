@@ -12313,7 +12313,10 @@ export default {
                                 clearTimeout(window.subsidiaryChangeTimer);
                             }
                             window.subsidiaryChangeTimer = setTimeout(async () => {
-                                console.log('🏢 SUBSIDIARY debounce complete - checking for auto-sync...');
+                                console.log('🏢 SUBSIDIARY debounce complete - triggering updates...');
+                                // Always run currency format update when Q3 changes
+                                await smartCurrencyFormatUpdate();
+                                // Also check for structure sync (Income Statement only)
                                 await handleSubsidiaryChange();
                             }, 1000); // 1 second debounce
                         }
@@ -12600,6 +12603,8 @@ export default {
                 try {
                     localStorage.removeItem('netsuite_balance_cache');
                     localStorage.removeItem('netsuite_balance_cache_timestamp');
+                    localStorage.removeItem('netsuite_typebalance_cache');
+                    localStorage.removeItem('netsuite_typebalance_cache_timestamp');
                 } catch (e) {
                     console.warn('   ⚠️ localStorage clear failed:', e.message);
                 }
@@ -12615,6 +12620,82 @@ export default {
                     console.warn('   ⚠️ Cache signal failed:', e.message);
                 }
                 
+                // Get year and new subsidiary from the sheet
+                let year = new Date().getFullYear();
+                let subsidiary = '';
+                try {
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const yearCell = sheet.getRange("P3");
+                        const subCell = sheet.getRange("Q3");
+                        yearCell.load("values");
+                        subCell.load("values");
+                        await context.sync();
+                        year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
+                        subsidiary = String(subCell.values[0][0] || '').trim();
+                    });
+                } catch (e) {
+                    console.warn('Could not read year/subsidiary:', e.message);
+                }
+                
+                // Show user feedback
+                try {
+                    const statusEl = document.getElementById('filterStatus');
+                    if (statusEl) {
+                        statusEl.innerHTML = `<div style="background: #dbeafe; padding: 8px; border-radius: 4px; font-size: 11px;">
+                            <strong style="color: #1e40af;">🔄 Subsidiary changed to "${subsidiary}"</strong><br>
+                            <small>Pre-fetching data for fast formula resolution...</small>
+                        </div>`;
+                    }
+                } catch (e) {}
+                
+                // ============================================
+                // PRE-FETCH TYPEBALANCE DATA FOR NEW SUBSIDIARY
+                // This dramatically speeds up CFO Flash Report when subsidiary changes
+                // ============================================
+                try {
+                    console.log(`📊 Pre-fetching TYPEBALANCE data for ${year}, subsidiary="${subsidiary}"...`);
+                    const typeBalanceResponse = await fetch(`${SERVER_URL}/batch/typebalance_refresh`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            year: year,
+                            subsidiary: subsidiary
+                        })
+                    });
+                    
+                    if (typeBalanceResponse.ok) {
+                        const data = await typeBalanceResponse.json();
+                        const balances = data.balances || {};
+                        console.log(`✅ Pre-fetched ${Object.keys(balances).length} account types for TYPEBALANCE`);
+                        
+                        // Save to localStorage for functions.js to use
+                        try {
+                            const cacheEntries = {};
+                            for (const accountType in balances) {
+                                const monthData = balances[accountType];
+                                for (const period in monthData) {
+                                    // Single month entries
+                                    const key = `typebalance:${accountType}:${period}:${period}:${subsidiary}:::::0`;
+                                    cacheEntries[key] = monthData[period];
+                                }
+                            }
+                            localStorage.setItem('netsuite_typebalance_cache', JSON.stringify(cacheEntries));
+                            localStorage.setItem('netsuite_typebalance_cache_timestamp', Date.now().toString());
+                            console.log(`💾 Saved ${Object.keys(cacheEntries).length} TYPEBALANCE cache entries`);
+                        } catch (e) {
+                            console.warn('TYPEBALANCE cache save failed:', e.message);
+                        }
+                        
+                        // Also populate in-memory cache if setTypeBalanceCache is available
+                        if (typeof window.setTypeBalanceCache === 'function') {
+                            window.setTypeBalanceCache(balances, year, subsidiary, '', '', '', '', false);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('TYPEBALANCE pre-fetch failed:', e.message);
+                }
+                
                 // Re-scan for subsidiary cells (in case new formulas were added)
                 await scanForSubsidiaryCells();
                 
@@ -12623,12 +12704,12 @@ export default {
                 
                 console.log('💱 Currency formats updated - formulas will now refetch data with new subsidiary');
                 
-                // Show user feedback
+                // Update status to show completion
                 try {
                     const statusEl = document.getElementById('filterStatus');
                     if (statusEl) {
-                        statusEl.innerHTML = `<div style="background: #dbeafe; padding: 8px; border-radius: 4px; font-size: 11px;">
-                            <strong style="color: #1e40af;">🔄 Subsidiary changed</strong> - Data refreshing with new filters...
+                        statusEl.innerHTML = `<div style="background: #d1fae5; padding: 8px; border-radius: 4px; font-size: 11px;">
+                            <strong style="color: #059669;">✓ Ready!</strong> Data pre-fetched for "${subsidiary}"
                         </div>`;
                         setTimeout(() => { statusEl.textContent = ''; }, 5000);
                     }
