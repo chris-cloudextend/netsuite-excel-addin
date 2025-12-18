@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.190</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.191</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5630,6 +5630,15 @@ For licensing inquiries, contact: legal@celigo.com
                 refreshBtn.disabled = true;
                 refreshSelectedBtn.disabled = true;
                 drillBtn.disabled = true;
+            } else if (contextualState.isDrillDownSheetRow) {
+                // On a DrillDown_ sheet in an account row - always allow drill
+                statusEl.classList.add('has-selection');
+                iconEl.textContent = '🔍';
+                textEl.textContent = 'Account row selected • Drill Down to transactions';
+                drillBtn.disabled = false;
+                drillBtn.classList.add('highlight');
+                refreshBtn.disabled = true; // No formulas to refresh
+                refreshSelectedBtn.disabled = true;
             } else if (contextualState.formulaCount === 0) {
                 // Empty sheet - no XAVI formulas
                 statusEl.classList.add('empty-sheet');
