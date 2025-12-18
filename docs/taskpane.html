@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.214</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.215</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8612,6 +8612,10 @@ For licensing inquiries, contact: legal@celigo.com
                     await context.sync();
                     
                     // ========== ROW 3: PARAMETER VALUES ==========
+                    // CRITICAL: Set sync trackers BEFORE context.sync() to prevent race condition
+                    lastSyncedYear = String(currentYear);
+                    lastSyncedSubsidiary = defaultSubsidiary;
+                    
                     sheet.getRange("P3").values = [[currentYear]];
                     sheet.getRange("Q3").values = [[defaultSubsidiary]];
                     sheet.getRange("R3").values = [[""]];
@@ -8908,6 +8912,7 @@ For licensing inquiries, contact: legal@celigo.com
                 showReportSuccessOverlay('CFO Flash Report', {
                     totalAccounts: 5,
                     elapsedTime: elapsedSeconds,
+                    countLabel: 'Formula Type',  // Header label for the count column
                     sections: [
                         { name: 'Revenue', count: 'TYPEBALANCE' },
                         { name: 'COGS', count: 'TYPEBALANCE' },
@@ -8915,8 +8920,8 @@ For licensing inquiries, contact: legal@celigo.com
                         { name: 'Other', count: 'TYPEBALANCE' }
                     ],
                     tips: [
-                        { type: 'info', icon: '📅', title: 'Year:', text: 'Edit <strong>P3</strong> to change year.' },
-                        { type: 'info', icon: '🏢', title: 'Subsidiary:', text: 'Edit <strong>Q3</strong> to filter.' },
+                        { type: 'info', icon: '📅', title: 'Year:', text: 'Edit <strong>P3</strong> to change year. Auto-syncs.' },
+                        { type: 'info', icon: '🏢', title: 'Subsidiary:', text: 'Edit <strong>Q3</strong> to filter. Auto-syncs.' },
                         { type: 'info', icon: '📋', title: 'Named Ranges:', text: '_Revenue, _COGS, _Gross_Margin, _Operating_Income, _Net_Income' }
                     ]
                 });
@@ -12143,6 +12148,13 @@ export default {
             overlay.className = 'report-success-overlay';
             overlay.id = 'reportSuccessOverlay';
             
+            // Add header row if countLabel is provided (e.g., "Formula Type" for CFO Flash)
+            const sectionHeaderHtml = data.countLabel ? 
+                `<div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 10px; color: #6b7280; border-bottom: 1px solid #e5e7eb; margin-bottom: 4px;">
+                    <span>Section</span>
+                    <span>${data.countLabel}</span>
+                </div>` : '';
+            
             const sectionsHtml = data.sections.map(s => 
                 `<div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px;">
                     <span>• ${s.name}</span>
@@ -12167,7 +12179,7 @@ export default {
                 `<div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">${data.customHeader}</div>` : '';
             
             // Determine title suffix based on report type
-            const titleSuffix = reportType === 'Structure Sync' ? 'Complete!' : 'Generated!';
+            const titleSuffix = (reportType === 'Structure Sync' || reportType === 'CFO Flash Sync') ? 'Complete!' : 'Generated!';
             
             overlay.innerHTML = `
                 <div class="report-success-card">
@@ -12175,7 +12187,8 @@ export default {
                     ${headerHtml}
                     <h2>✅ ${reportType} ${titleSuffix}</h2>
                     <div class="summary">
-                        <div style="margin-bottom: 6px; font-size: 12px;"><strong>${data.totalAccounts} accounts</strong> in sections:</div>
+                        <div style="margin-bottom: 6px; font-size: 12px;"><strong>${data.totalAccounts} ${data.countLabel ? 'lines' : 'accounts'}</strong> in sections:</div>
+                        ${sectionHeaderHtml}
                         ${sectionsHtml}
                         ${timeDisplay}
                     </div>
@@ -12860,7 +12873,13 @@ export default {
                     sheet.onChanged.add(async (event) => {
                         // Check if the changed cell is P3 (YEAR parameter for auto-sync)
                         if (event.address === 'P3' || event.address === '$P$3') {
-                            console.log('📊 YEAR cell (P3) changed - checking for auto-sync...');
+                            console.log('📊 YEAR cell (P3) changed');
+                            
+                            // CRITICAL: Suppress statusBar IMMEDIATELY to prevent "Fetching P&L" flash
+                            suppressStatusBar = true;
+                            localStorage.removeItem('netsuite_status');
+                            hideStatus();
+                            
                             await handleYearChange();
                         }
                         
@@ -13635,6 +13654,7 @@ export default {
                 showReportSuccessOverlay('CFO Flash Sync', {
                     totalAccounts: 5,
                     elapsedTime: elapsedSeconds,
+                    countLabel: 'Formula Type',  // Header label for the count column
                     sections: [
                         { name: 'Revenue', count: 'TYPEBALANCE' },
                         { name: 'COGS', count: 'TYPEBALANCE' },
