@@ -11,12 +11,15 @@ is strictly prohibited without the express written permission of Celigo, Inc.
 
 For licensing inquiries, contact: legal@celigo.com
 
-ARCHITECTURE (v3.0.5.189+):
-- SharedRuntime page: sharedruntime.html (BLANK - no UI)
+ARCHITECTURE (v3.0.5.190+):
+- SharedRuntime page: sharedruntime.html (BLANK - no UI, hosts commands)
 - Taskpane UI page: taskpane.html (actual UI)
 - This separation ensures Mac's "Developer Window" is blank, not a duplicate UI
 
-Context menu uses ShowTaskpane + localStorage flag for drilldown trigger.
+Context menu uses ExecuteFunction (runs in blank sharedruntime.html):
+1. ExecuteFunction sets localStorage flag with cell info
+2. ExecuteFunction calls Office.addin.showAsTaskpane()
+3. Taskpane reads flag and performs drill-down with UI
 -->
 <OfficeApp 
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" 
@@ -26,13 +29,13 @@ Context menu uses ShowTaskpane + localStorage flag for drilldown trigger.
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-5678-90ab-cdef-123456789abc</Id>
-  <Version>3.0.5.189</Version>
+  <Version>3.0.5.190</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="XAVI for NetSuite"/>
   <Description DefaultValue="XAVI - Financial reporting formulas for NetSuite"/>
-  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.189"/>
-  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.189"/>
+  <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.190"/>
+  <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.190"/>
   <SupportUrl DefaultValue="https://www.cloudextend.io"/>
 
   <Hosts>
@@ -48,7 +51,7 @@ Context menu uses ShowTaskpane + localStorage flag for drilldown trigger.
 
   <!-- Task Pane (fallback for older Office versions) -->
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.189"/>
+    <SourceLocation DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.190"/>
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -155,10 +158,10 @@ Context menu uses ShowTaskpane + localStorage flag for drilldown trigger.
                       <bt:Image size="80" resid="Icon.80x80"/>
                     </Icon>
 
-                    <!-- ShowTaskpane - uses localStorage flag for drilldown trigger -->
-                    <Action xsi:type="ShowTaskpane">
-                      <TaskpaneId>CloudExtend.Taskpane</TaskpaneId>
-                      <SourceLocation resid="DrillDown.Url"/>
+                    <!-- ExecuteFunction runs in sharedruntime.html (blank page) -->
+                    <!-- Sets localStorage flag, then shows taskpane -->
+                    <Action xsi:type="ExecuteFunction">
+                      <FunctionName>drillDownFromContextMenu</FunctionName>
                     </Action>
 
                   </Item>
@@ -178,18 +181,18 @@ Context menu uses ShowTaskpane + localStorage flag for drilldown trigger.
 
       <!-- Icons -->
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=3.0.5.189"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.189"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=3.0.5.189"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-16.png?v=3.0.5.190"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.190"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-80.png?v=3.0.5.190"/>
       </bt:Images>
 
       <!-- External Files (cache-busted) -->
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.189"/>
-        <bt:Url id="DrillDown.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.189&amp;action=drilldown"/>
-        <bt:Url id="SharedRuntime.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/sharedruntime.html?v=3.0.5.189"/>
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.189"/>
-        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.5.189"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.190"/>
+        <bt:Url id="DrillDown.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/taskpane.html?v=3.0.5.190&amp;action=drilldown"/>
+        <bt:Url id="SharedRuntime.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/sharedruntime.html?v=3.0.5.190"/>
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.190"/>
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.json?v=3.0.5.190"/>
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://www.cloudextend.io"/>
       </bt:Urls>
 
