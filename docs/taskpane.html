@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.213</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.214</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8599,10 +8599,11 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("S2").values = [["Location"]];
                     sheet.getRange("T2").values = [["Class"]];
                     sheet.getRange("U2").values = [["Acct Book"]];
+                    sheet.getRange("V2").values = [["🔄 CFO Sync"]];  // Different marker for CFO Flash
                     await context.sync();
                     
                     // Style parameter labels
-                    const labelCells = ["P2", "Q2", "R2", "S2", "T2", "U2"];
+                    const labelCells = ["P2", "Q2", "R2", "S2", "T2", "U2", "V2"];
                     for (const cell of labelCells) {
                         sheet.getRange(cell).format.font.bold = true;
                         sheet.getRange(cell).format.font.color = "#09235C";
@@ -8617,10 +8618,11 @@ For licensing inquiries, contact: legal@celigo.com
                     sheet.getRange("S3").values = [[""]];
                     sheet.getRange("T3").values = [[""]];
                     sheet.getRange("U3").values = [[""]];
+                    sheet.getRange("V3").values = [["TRUE"]];  // Enable sync
                     await context.sync();
                     
                     // Style parameter value cells (teal background)
-                    const valueCells = ["P3", "Q3", "R3", "S3", "T3", "U3"];
+                    const valueCells = ["P3", "Q3", "R3", "S3", "T3", "U3", "V3"];
                     for (const cell of valueCells) {
                         sheet.getRange(cell).format.fill.color = "#0AE2C1";
                         sheet.getRange(cell).format.font.bold = true;
@@ -13375,13 +13377,14 @@ export default {
             
             try {
                 let shouldSync = false;
+                let isCFOFlash = false;
                 let newYear = null;
                 let subsidiary = '';
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Check for sync marker (V2 = label, V3 = value - Structure Sync is now in column V)
+                    // Check for sync marker (V2 = label, V3 = value)
                     const markerCell = sheet.getRange("V2");
                     markerCell.load("values");
                     const syncCell = sheet.getRange("V3");
@@ -13397,48 +13400,45 @@ export default {
                     const sync = String(syncCell.values[0][0] || '').toUpperCase();
                     newYear = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                     
+                    // Check for CFO Flash Report marker
+                    if (marker.includes('cfo sync') || marker.includes('cfo')) {
+                        isCFOFlash = true;
+                    }
+                    
                     // Only sync if: has marker, sync enabled, AND year actually changed
-                    // Use String() comparison to avoid type mismatch (parseInt vs String)
-                    if ((marker.includes('structure sync') || marker.includes('🔄')) &&
+                    if ((marker.includes('structure sync') || marker.includes('cfo sync') || marker.includes('🔄')) &&
                         (sync === 'TRUE' || sync === 'YES' || sync === '1') &&
                         String(newYear) !== String(lastSyncedYear)) {
                         shouldSync = true;
                         subsidiary = subCell.values[0][0] || '';
-                        console.log(`📊 Year change detected: ${lastSyncedYear} → ${newYear}`);
+                        console.log(`📊 Year change detected: ${lastSyncedYear} → ${newYear} (CFO: ${isCFOFlash})`);
                     } else {
                         console.log(`📊 Year sync check: marker="${marker}", sync="${sync}", year=${newYear}, lastSynced=${lastSyncedYear}`);
                     }
                 });
                 
                 if (shouldSync && newYear) {
-                    console.log(`🔄 Auto-syncing structure for year ${newYear}...`);
+                    console.log(`🔄 Auto-syncing for year ${newYear}... (CFO Flash: ${isCFOFlash})`);
                     
                     // Set flag to prevent re-entry
                     isSyncInProgress = true;
                     lastSyncedYear = newYear;
                     
-                    // Show a detailed notification explaining Structure Sync
-                    const statusEl = document.getElementById('refreshStatus');
-                    if (statusEl) {
-                        statusEl.innerHTML = `<div style="background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%); padding: 14px; border-radius: 8px; border-left: 4px solid var(--tidal-wave);">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                <span style="font-size: 18px;">🔄</span>
-                                <strong style="color: #1e40af; font-size: 13px;">Structure Sync in Progress</strong>
-                            </div>
-                            <div style="color: #1e3a8a; font-size: 12px; line-height: 1.5;">
-                                <strong>What's happening:</strong> We're analyzing your accounts to rebuild the sheet with only rows that have transaction data for <strong>${newYear}</strong>.
-                            </div>
-                            <div style="margin-top: 8px; padding: 8px; background: rgba(59, 130, 246, 0.1); border-radius: 4px; font-size: 11px; color: #3b82f6;">
-                                ⏳ This may take 10-15 seconds while we query NetSuite...
-                            </div>
-                        </div>`;
-                    }
+                    // Suppress statusBar immediately
+                    suppressStatusBar = true;
+                    localStorage.removeItem('netsuite_status');
+                    hideStatus();
                     
                     try {
-                        // Trigger the sync
-                        await performStructureSync(newYear, subsidiary);
+                        if (isCFOFlash) {
+                            // CFO Flash: Simpler sync
+                            await performCFOSync(newYear, subsidiary);
+                        } else {
+                            // Full Income Statement: Full structure rebuild
+                            await performStructureSync(newYear, subsidiary);
+                        }
                     } finally {
-                        // Clear sync flag after a delay to let any queued change events fire first
+                        // Clear sync flag after a delay
                         setTimeout(() => {
                             isSyncInProgress = false;
                             console.log('✅ Year sync protection cleared');
@@ -13461,13 +13461,14 @@ export default {
             
             try {
                 let shouldSync = false;
+                let isCFOFlash = false;  // Track if this is CFO Flash Report
                 let year = null;
                 let newSubsidiary = '';
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Check for sync marker (V2 = label, V3 = value - Structure Sync is now in column V)
+                    // Check for sync marker (V2 = label, V3 = value)
                     const markerCell = sheet.getRange("V2");
                     markerCell.load("values");
                     const syncCell = sheet.getRange("V3");
@@ -13484,45 +13485,37 @@ export default {
                     year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                     newSubsidiary = subCell.values[0][0] || '';
                     
+                    // Check for CFO Flash Report marker
+                    if (marker.includes('cfo sync') || marker.includes('cfo')) {
+                        isCFOFlash = true;
+                    }
+                    
                     // Only sync if: has marker, sync enabled, AND subsidiary actually changed
-                    // Use String() comparison for consistency
-                    if ((marker.includes('structure sync') || marker.includes('🔄')) &&
+                    if ((marker.includes('structure sync') || marker.includes('cfo sync') || marker.includes('🔄')) &&
                         (sync === 'TRUE' || sync === 'YES' || sync === '1') &&
                         String(newSubsidiary).trim() !== String(lastSyncedSubsidiary).trim()) {
                         shouldSync = true;
-                        console.log(`🏢 Subsidiary change detected: "${lastSyncedSubsidiary}" → "${newSubsidiary}"`);
+                        console.log(`🏢 Subsidiary change detected: "${lastSyncedSubsidiary}" → "${newSubsidiary}" (CFO: ${isCFOFlash})`);
                     } else {
                         console.log(`🏢 Subsidiary sync check: marker="${marker}", sync="${sync}", sub="${newSubsidiary}", lastSynced="${lastSyncedSubsidiary}"`);
                     }
                 });
                 
                 if (shouldSync && year) {
-                    console.log(`🔄 Auto-syncing structure for subsidiary "${newSubsidiary}"...`);
+                    console.log(`🔄 Auto-syncing for subsidiary "${newSubsidiary}"... (CFO Flash: ${isCFOFlash})`);
                     
                     // Set flag to prevent re-entry
                     isSyncInProgress = true;
                     lastSyncedSubsidiary = newSubsidiary;
                     
-                    // Show a detailed notification explaining Structure Sync
-                    const statusEl = document.getElementById('refreshStatus');
-                    if (statusEl) {
-                        statusEl.innerHTML = `<div style="background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%); padding: 14px; border-radius: 8px; border-left: 4px solid var(--tidal-wave);">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                <span style="font-size: 18px;">🔄</span>
-                                <strong style="color: #1e40af; font-size: 13px;">Structure Sync in Progress</strong>
-                            </div>
-                            <div style="color: #1e3a8a; font-size: 12px; line-height: 1.5;">
-                                <strong>What's happening:</strong> We're analyzing your accounts to rebuild the sheet with only rows that have transaction data for <strong>${newSubsidiary || 'Consolidated'}</strong>.
-                            </div>
-                            <div style="margin-top: 8px; padding: 8px; background: rgba(59, 130, 246, 0.1); border-radius: 4px; font-size: 11px; color: #3b82f6;">
-                                ⏳ This may take 10-15 seconds while we query NetSuite...
-                            </div>
-                        </div>`;
-                    }
-                    
                     try {
-                        // Trigger the sync with the new subsidiary
-                        await performStructureSync(year, newSubsidiary);
+                        if (isCFOFlash) {
+                            // CFO Flash: Simpler sync - just show progress while formulas recalculate
+                            await performCFOSync(year, newSubsidiary);
+                        } else {
+                            // Full Income Statement: Full structure rebuild
+                            await performStructureSync(year, newSubsidiary);
+                        }
                     } finally {
                         // Clear sync flag after a delay to let any queued change events fire first
                         setTimeout(() => {
@@ -13534,6 +13527,148 @@ export default {
             } catch (e) {
                 console.warn('Auto-sync (subsidiary) error:', e.message);
                 setTimeout(() => { isSyncInProgress = false; }, 3000);
+            }
+        }
+        
+        // Perform CFO Flash sync - simpler than full Structure Sync (no row rebuilding needed)
+        async function performCFOSync(targetYear, currentSubsidiary) {
+            console.log(`📈 CFO Sync starting for year=${targetYear}, subsidiary="${currentSubsidiary}"`);
+            
+            // Suppress the small status bar - we're showing our own overlay
+            suppressStatusBar = true;
+            localStorage.removeItem('netsuite_status');
+            hideStatus();
+            
+            const syncStartTime = Date.now();
+            
+            // Get currency info
+            let currencyFormat = '$#,##0.00';
+            let currencySymbol = '$';
+            let currencyFlag = '🇺🇸';
+            
+            try {
+                const currencyData = await getCurrencyData();
+                if (currencyData && currentSubsidiary) {
+                    const subsidiaryNameToId = await getSubsidiaryLookup();
+                    const subId = /^\d+$/.test(currentSubsidiary) ? 
+                        currentSubsidiary : 
+                        (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
+                    currencySymbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
+                    currencyFormat = currencyData.formats[currencySymbol] || '$#,##0.00';
+                    currencyFlag = getCurrencyFlag(currencySymbol);
+                    console.log(`💱 CFO Sync currency: "${currentSubsidiary}" → ${currencyFlag} ${currencySymbol}`);
+                }
+            } catch (e) {
+                console.warn('Currency lookup failed:', e.message);
+            }
+            
+            // Show full-screen overlay
+            const syncOverlay = document.createElement('div');
+            syncOverlay.id = 'structureSyncOverlay';
+            syncOverlay.className = 'guide-me-overlay';
+            syncOverlay.innerHTML = `
+                <div class="loading-spinner"></div>
+                <h2>🔄 CFO Flash Sync</h2>
+                <div class="loading-subtitle">
+                    Updating report for <strong>${targetYear}</strong> and <strong>"${currentSubsidiary || 'All Subsidiaries'}"</strong>
+                </div>
+                <div style="margin: 16px auto; display: flex; align-items: center; justify-content: center; gap: 12px; 
+                            padding: 12px 24px; background: rgba(10, 226, 193, 0.15); border-radius: 12px; border: 1px solid rgba(10, 226, 193, 0.3);">
+                    <span style="font-size: 32px;">${currencyFlag}</span>
+                    <div style="text-align: left;">
+                        <div style="font-size: 11px; color: #93c5fd; text-transform: uppercase;">Currency</div>
+                        <div style="font-size: 22px; font-weight: bold; color: #0AE2C1;">${currencySymbol}</div>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="syncProgressBar" style="width: 30%; animation: syncPulse 1.5s infinite;"></div>
+                    </div>
+                    <div class="progress-text">Recalculating...</div>
+                </div>
+                <div class="loading-step"><span class="spreadsheet-animation">📊</span> Tucking everything into place...</div>
+                <div class="loading-step-desc">TYPEBALANCE formulas are refreshing with new filter values.</div>
+            `;
+            document.body.appendChild(syncOverlay);
+            
+            // Add pulse animation
+            const style = document.createElement('style');
+            style.id = 'syncPulseStyle';
+            style.textContent = `
+                @keyframes syncPulse {
+                    0%, 100% { width: 30%; opacity: 0.8; }
+                    50% { width: 70%; opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            try {
+                // Wait for formulas to resolve
+                await waitForFormulasToComplete(60000, null);
+                
+                // Apply currency formatting
+                try {
+                    await scanForSubsidiaryCells();
+                    await autoFormatCurrencies();
+                } catch (e) {
+                    console.warn('Currency format failed:', e.message);
+                }
+                
+                // Remove overlay
+                const syncOverlayEl = document.getElementById('structureSyncOverlay');
+                if (syncOverlayEl) {
+                    syncOverlayEl.style.opacity = '0';
+                    syncOverlayEl.style.transition = 'opacity 0.3s ease';
+                    setTimeout(() => syncOverlayEl.remove(), 300);
+                }
+                const syncStyle = document.getElementById('syncPulseStyle');
+                if (syncStyle) syncStyle.remove();
+                
+                // Keep suppressStatusBar true - dismissReportSuccess will handle it
+                localStorage.removeItem('netsuite_status');
+                hideStatus();
+                
+                // Calculate elapsed time
+                const elapsedSeconds = ((Date.now() - syncStartTime) / 1000).toFixed(1);
+                
+                // Show success overlay
+                showReportSuccessOverlay('CFO Flash Sync', {
+                    totalAccounts: 5,
+                    elapsedTime: elapsedSeconds,
+                    sections: [
+                        { name: 'Revenue', count: 'TYPEBALANCE' },
+                        { name: 'COGS', count: 'TYPEBALANCE' },
+                        { name: 'Gross Margin', count: 'Calculated' },
+                        { name: 'Operating Expenses', count: 'TYPEBALANCE' },
+                        { name: 'Net Income', count: 'Calculated' }
+                    ],
+                    tips: [
+                        { type: 'info', icon: currencyFlag, title: 'Currency:', text: `<strong>${currencySymbol}</strong> applied to all cells` },
+                        { type: 'info', icon: '🏢', title: 'Subsidiary:', text: `<strong>${currentSubsidiary || 'All Subsidiaries'}</strong>` },
+                        { type: 'info', icon: '📅', title: 'Year:', text: `<strong>${targetYear}</strong>` }
+                    ],
+                    customHeader: `${currencyFlag} ${currentSubsidiary || 'All Subsidiaries'}`
+                });
+                
+                console.log(`✅ CFO Sync complete for ${targetYear}`);
+                
+            } catch (error) {
+                console.error('CFO Sync error:', error);
+                
+                suppressStatusBar = false;
+                
+                const syncOverlay = document.getElementById('structureSyncOverlay');
+                if (syncOverlay) syncOverlay.remove();
+                const syncStyle = document.getElementById('syncPulseStyle');
+                if (syncStyle) syncStyle.remove();
+                
+                showToast({
+                    title: '❌ CFO Sync Failed',
+                    message: error.message,
+                    type: 'error',
+                    icon: '❌',
+                    duration: 8000
+                });
             }
         }
 
