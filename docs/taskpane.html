@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.182</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.183</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -4968,7 +4968,7 @@ For licensing inquiries, contact: legal@celigo.com
     
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
     <!-- SHARED RUNTIME: functions.js must be loaded here for custom functions to work -->
-    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.161"></script>
+    <script src="https://chris-cloudextend.github.io/netsuite-excel-addin/functions.js?v=3.0.5.183"></script>
     <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
@@ -4991,7 +4991,7 @@ For licensing inquiries, contact: legal@celigo.com
         const DRILL_SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
         
         function drillDownFromContextMenu(event) {
-            console.log('=== CONTEXT MENU DRILL-DOWN START (taskpane.html) ===');
+            console.log('=== CONTEXT MENU DRILL-DOWN START (SHARED RUNTIME) ===');
             
             // CRITICAL: Call event.completed() IMMEDIATELY to prevent developer window
             if (event && event.completed) {
@@ -4999,29 +4999,93 @@ For licensing inquiries, contact: legal@celigo.com
                 console.log('✅ event.completed() called immediately');
             }
             
-            // Store the request in localStorage for the drilldown listener to pick up
-            // This ensures we get proper UI feedback in the taskpane
-            Excel.run(async (context) => {
-                try {
-                    const range = context.workbook.getSelectedRange();
-                    const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    range.load(['formulas', 'values', 'address']);
-                    sheet.load('name');
-                    await context.sync();
+            // With SHARED RUNTIME, we can directly call the drill-down logic
+            // because we're in the SAME JavaScript context as the taskpane
+            performSharedRuntimeDrillDown().catch(err => {
+                console.error('Drill-down error:', err);
+                hideDrilldownStatus();
+            });
+        }
+        
+        async function performSharedRuntimeDrillDown() {
+            await Excel.run(async (context) => {
+                const range = context.workbook.getSelectedRange();
+                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                range.load(['formulas', 'values', 'address']);
+                sheet.load('name');
+                await context.sync();
+                
+                const formula = range.formulas[0][0];
+                const address = range.address;
+                const sheetName = sheet.name;
+                const upperFormula = String(formula || '').toUpperCase();
+                
+                console.log('📊 Drill-down cell:', address, 'Sheet:', sheetName);
+                console.log('📊 Formula:', formula);
+                
+                // Handle XAVI.BALANCE formulas
+                if (upperFormula.includes('XAVI.BALANCE')) {
+                    showDrilldownStatus('Parsing BALANCE formula...');
+                    const match = formula.match(/XAVI\.BALANCE\s*\((.*)\)/i);
+                    if (!match) { hideDrilldownStatus(); return; }
                     
-                    const request = {
-                        timestamp: Date.now(),
-                        address: range.address,
-                        formula: range.formulas[0][0],
-                        value: range.values[0][0],
-                        sheetName: sheet.name
-                    };
+                    const params = parseFormulaCellRefs(match[1]);
+                    const resolved = await resolveFormulaParams(params);
                     
-                    localStorage.setItem('xavi_drilldown_request', JSON.stringify(request));
-                    console.log('📤 Drill-down request stored for listener:', request);
-                } catch (err) {
-                    console.error('Error storing drill-down request:', err);
+                    const account = resolved[0] || '';
+                    const period = resolved[2] || resolved[1] || '';
+                    const subsidiary = resolved[3] || '';
+                    
+                    showDrilldownStatus(`Fetching transactions for ${account}...`);
+                    await drillDownTransactions(account, period, subsidiary);
+                    hideDrilldownStatus();
+                    return;
                 }
+                
+                // Handle XAVI.TYPEBALANCE formulas
+                if (upperFormula.includes('XAVI.TYPEBALANCE')) {
+                    showDrilldownStatus('Parsing TYPEBALANCE formula...');
+                    const match = formula.match(/XAVI\.TYPEBALANCE\s*\((.*)\)/i);
+                    if (!match) { hideDrilldownStatus(); return; }
+                    
+                    const params = parseTypeBalanceParams(match[1]);
+                    const resolved = await resolveTypeBalanceParams(params);
+                    
+                    showDrilldownStatus(`Fetching ${resolved[0]} accounts...`);
+                    await handleTypeBalanceDrillDown(resolved);
+                    hideDrilldownStatus();
+                    return;
+                }
+                
+                // Handle secondary drill-down from DrillDown_ sheet
+                if (sheetName.startsWith('DrillDown_')) {
+                    const rowMatch = address.match(/(\d+)(?:\D*)?$/);
+                    const row = rowMatch ? parseInt(rowMatch[1]) : 0;
+                    
+                    if (row >= 6) {
+                        const acctCell = sheet.getRange(`A${row}`);
+                        const ctxCell = sheet.getRange('A3');
+                        acctCell.load('values');
+                        ctxCell.load('values');
+                        await context.sync();
+                        
+                        const account = String(acctCell.values[0][0] || '');
+                        const ctx = String(ctxCell.values[0][0] || '');
+                        
+                        if (account && ctx.startsWith('DRILLDOWN_CONTEXT:')) {
+                            const parts = ctx.replace('DRILLDOWN_CONTEXT:', '').split(':');
+                            const period = parts[0] || '';
+                            const subsidiary = parts[1] || '';
+                            
+                            showDrilldownStatus(`Fetching transactions for ${account}...`);
+                            await drillDownTransactions(account, period, subsidiary);
+                            hideDrilldownStatus();
+                            return;
+                        }
+                    }
+                }
+                
+                console.log('No drill-down action for this cell');
             });
         }
         
