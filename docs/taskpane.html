@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.198</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.199</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12763,6 +12763,10 @@ export default {
                 
                 // Re-scan for subsidiary cells (in case new formulas were added)
                 await scanForSubsidiaryCells();
+                
+                // Wait a bit for formulas to resolve before formatting
+                // This ensures we format cells AFTER they show values, not #BUSY
+                await new Promise(resolve => setTimeout(resolve, 3000));
                 
                 // Re-apply currency formatting (uses cached data, very fast)
                 await autoFormatCurrencies();
