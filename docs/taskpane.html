@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.199</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.200</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8557,7 +8557,7 @@ showReportSuccessOverlay('CFO Flash Report', {
                 <div class="loading-spinner"></div>
                 <h2>Building Your Income Statement</h2>
                 <div class="loading-subtitle">
-                    ⏱️ This may take 2-3 minutes for large account sets
+                    ☕ We're reviewing your NetSuite data and doing the hard work for you. It takes a couple of minutes but is worth the wait. Coffee refills optional.
                 </div>
                 
                 <div class="progress-container">
@@ -12827,11 +12827,15 @@ export default {
                     newYear = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                     
                     // Only sync if: has marker, sync enabled, AND year actually changed
+                    // Use String() comparison to avoid type mismatch (parseInt vs String)
                     if ((marker.includes('structure sync') || marker.includes('🔄')) &&
                         (sync === 'TRUE' || sync === 'YES' || sync === '1') &&
-                        newYear !== lastSyncedYear) {
+                        String(newYear) !== String(lastSyncedYear)) {
                         shouldSync = true;
                         subsidiary = subCell.values[0][0] || '';
+                        console.log(`📊 Year change detected: ${lastSyncedYear} → ${newYear}`);
+                    } else {
+                        console.log(`📊 Year sync check: marker="${marker}", sync="${sync}", year=${newYear}, lastSynced=${lastSyncedYear}`);
                     }
                 });
                 
@@ -12902,10 +12906,14 @@ export default {
                     newSubsidiary = subCell.values[0][0] || '';
                     
                     // Only sync if: has marker, sync enabled, AND subsidiary actually changed
+                    // Use String() comparison for consistency
                     if ((marker.includes('structure sync') || marker.includes('🔄')) &&
                         (sync === 'TRUE' || sync === 'YES' || sync === '1') &&
-                        newSubsidiary !== lastSyncedSubsidiary) {
+                        String(newSubsidiary).trim() !== String(lastSyncedSubsidiary).trim()) {
                         shouldSync = true;
+                        console.log(`🏢 Subsidiary change detected: "${lastSyncedSubsidiary}" → "${newSubsidiary}"`);
+                    } else {
+                        console.log(`🏢 Subsidiary sync check: marker="${marker}", sync="${sync}", sub="${newSubsidiary}", lastSynced="${lastSyncedSubsidiary}"`);
                     }
                 });
                 
@@ -13383,6 +13391,18 @@ export default {
                 }
                 
                 console.log(`✅ Auto-sync complete for ${targetYear}`);
+                
+                // Apply currency formatting after structure rebuild
+                // Wait a bit for formulas to start resolving
+                setTimeout(async () => {
+                    try {
+                        console.log('💱 Applying currency formatting after structure sync...');
+                        await scanForSubsidiaryCells();
+                        await autoFormatCurrencies();
+                    } catch (e) {
+                        console.warn('Post-sync currency format failed:', e.message);
+                    }
+                }, 2000);
                 
             } catch (error) {
                 console.error('Structure sync error:', error);
