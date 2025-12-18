@@ -1,6 +1,6 @@
 # XAVI for NetSuite - User Guide
 
-**Version 3.0.5.161** | Last Updated: December 2025
+**Version 3.0.5.193** | Last Updated: December 2025
 
 ---
 
@@ -335,6 +335,58 @@ The report includes:
 2. Select the year, subsidiary, and budget category
 3. Click **Build**
 4. Compare actuals vs. budget side-by-side!
+
+---
+
+## Drill-Down Feature
+
+### What is Drill-Down?
+
+Drill-down lets you see the underlying transactions behind any balance. Click into a formula to see exactly what makes up that number!
+
+### How to Drill Down
+
+**Recommended Method: Quick Actions Button**
+
+1. Select a cell containing a XAVI formula
+2. Look at the **Quick Actions** bar at the bottom of the task pane
+3. Click the **Drill Down** button
+4. A new sheet is created with the transaction details
+
+**Alternative Method: Right-Click Menu**
+
+1. Right-click on a cell with a XAVI formula
+2. Select **CloudExtend** → **View Transactions**
+
+> ⚠️ **Note for Mac Users:** The right-click menu may not work reliably on Mac Excel due to platform limitations. We recommend using the Quick Actions "Drill Down" button instead.
+
+### Drill-Down Types
+
+| Formula Type | First Drill-Down | Second Drill-Down |
+|--------------|------------------|-------------------|
+| **XAVI.BALANCE** | Shows all transactions for that account | N/A |
+| **XAVI.TYPEBALANCE** | Shows all accounts of that type with balances | Select an account row → shows transactions |
+
+### TYPEBALANCE Two-Level Drill-Down
+
+TYPEBALANCE formulas aggregate multiple accounts, so drill-down works in two steps:
+
+1. **First Level:** Click a TYPEBALANCE cell → See all accounts of that type with their balances
+2. **Second Level:** Select an account row on the drill-down sheet → Click "Drill Down" again → See individual transactions
+
+The Quick Actions bar shows "Account row selected • Drill Down to transactions" when you're ready for the second level.
+
+### Transaction Sheet Features
+
+Each drill-down sheet includes:
+- **Account Number** (for wildcard or TYPEBALANCE drills)
+- **Date** - Transaction date
+- **Type** - Invoice, Bill, Journal Entry, etc.
+- **Number** - Transaction number (click to open in NetSuite!)
+- **Entity** - Customer, Vendor, or Employee
+- **Memo** - Transaction description
+- **Debit/Credit** - Individual line amounts
+- **Net Amount** - Net impact on the account
 
 ---
 

@@ -41,6 +41,53 @@ fy_start = fy_info['fy_start']
 
 ---
 
+## 🏗️ Architecture Overview
+
+### Shared Runtime Configuration
+
+The add-in uses Office's **Shared Runtime** where all components share a single JavaScript context:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   SHARED RUNTIME                        │
+│                                                         │
+│  ┌─────────────────┐  ┌─────────────────┐              │
+│  │ taskpane.html   │  │ functions.js    │              │
+│  │ (UI + Logic)    │  │ (Custom Funcs)  │              │
+│  └─────────────────┘  └─────────────────┘              │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ sharedruntime.html (blank - hosts commands)     │   │
+│  └─────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Files:**
+- `docs/taskpane.html` - Main UI and all drill-down logic
+- `docs/functions.js` - Custom function implementations
+- `docs/sharedruntime.html` - Blank page for shared runtime (no UI)
+
+### Known Platform Issues
+
+#### Right-Click Context Menu on Mac
+
+⚠️ **The right-click "View Transactions" context menu has Mac platform limitations:**
+
+- On Mac, `ExecuteFunction` commands can cause a "Developer Window" to open
+- This is a known Office for Mac WebView handling issue, not a code bug
+- The code is kept for Windows compatibility where it may work better
+
+**Recommended Workaround:** Use the Quick Actions "Drill Down" button in the taskpane instead of right-click. This works reliably on both Mac and Windows.
+
+**Current Implementation:**
+1. `sharedruntime.html` hosts the `drillDownFromContextMenu` function
+2. When triggered, it stores the cell context in `localStorage`
+3. It then calls `Office.addin.showAsTaskpane()` to show the taskpane
+4. `taskpane.html` polls `localStorage` for pending drill-down requests
+5. When found, it executes the drill-down with full UI feedback
+
+---
+
 ## 🔧 Adding or Modifying a Formula
 
 ### 1. Frontend - Function Implementation
@@ -58,7 +105,7 @@ fy_start = fy_info['fy_start']
 | `docs/functions.json` | Function entry | `id`, `name`, `description` |
 | `docs/functions.json` | Parameters array | Names, descriptions, types, optional flags |
 | `docs/functions.json` | Options | `stream`, `cancelable`, `volatile` settings |
-| `docs/functions.js` | **`CustomFunctions.associate()`** | **MUST add function binding (~line 4986)** |
+| `docs/functions.js` | **`CustomFunctions.associate()`** | **MUST add function binding (~line 5280)** |
 
 > ⚠️ **CRITICAL #1**: Missing `CustomFunctions.associate('FUNCTIONNAME', FUNCTIONNAME)` will cause  
 > the entire add-in to fail with "We can't start this add-in because it isn't set up properly."
@@ -71,7 +118,7 @@ fy_start = fy_info['fy_start']
 ### 3. Frontend - Taskpane Integration
 | File | Location | What to Update |
 |------|----------|----------------|
-| `docs/taskpane.html` | `refreshSelected()` | Add formula type detection (~line 11283) |
+| `docs/taskpane.html` | `refreshSelected()` | Add formula type detection |
 | `docs/taskpane.html` | `refreshCurrentSheet()` | If formula needs special handling |
 | `docs/taskpane.html` | `recalculateSpecialFormulas()` | For RE/NI/CTA type formulas |
 | `docs/taskpane.html` | `clearCache()` | If new localStorage keys used |
@@ -89,25 +136,25 @@ fy_start = fy_info['fy_start']
 | `backend/server.py` | Name-to-ID conversion | `convert_name_to_id()` for filters |
 | `backend/server.py` | Response format | JSON structure returned |
 
-### 5. Manifest & Versioning ⚠️ CRITICAL SHARED RUNTIME
+### 5. Manifest & Versioning ⚠️ CRITICAL
 | File | Location | What to Update |
 |------|----------|----------------|
-| `excel-addin/manifest-claude.xml` | `<Version>` tag | Main version (line ~22) |
+| `excel-addin/manifest-claude.xml` | `<Version>` tag | Main version (line ~32) |
 | `excel-addin/manifest-claude.xml` | ALL `?v=X.X.X.X` URLs | Cache-busting parameters |
-| `docs/taskpane.html` | Footer version | Hardcoded display (~line 2292) |
+| `docs/taskpane.html` | Footer version | Hardcoded display (~line 3739) |
+| `docs/sharedruntime.html` | functions.js URL | Cache-busting parameter |
 
 > ⚠️ **CRITICAL SHARED RUNTIME CONFIGURATION:**  
-> - `<Runtime resid>` MUST point to `Taskpane.Url` (NOT a separate functions.html)  
-> - CustomFunctions `<Page>` MUST also use `Taskpane.Url`  
-> - `taskpane.html` MUST include `<script src="functions.js">` tag  
-> - All components (taskpane, functions, commands) use the SAME HTML file  
-> 
-> **Violating this causes "We can't start this add-in because it isn't set up properly" error.**
+> - `<Runtime resid>` points to `SharedRuntime.Url` (`sharedruntime.html`)
+> - CustomFunctions `<Page>` also uses `SharedRuntime.Url`
+> - `<FunctionFile>` uses `SharedRuntime.Url` for ExecuteFunction commands
+> - `taskpane.html` MUST include `<script src="functions.js">` tag
+> - `sharedruntime.html` is BLANK (no visible UI) to prevent duplicate taskpanes on Mac
 
 ### 6. Documentation
 | File | What to Update |
 |------|----------------|
-| `README.md` | Version number, feature list |
+| `README.md` | Version number, feature list, known issues |
 | `docs/README.md` | Version number |
 | `docs/USER_GUIDE_TYPEBALANCE.md` | TYPEBALANCE usage, account types |
 | `docs/SPECIAL_ACCOUNT_TYPES.md` | Special account type reference |
@@ -138,35 +185,32 @@ System-assigned tags for accounts with special internal roles:
 - `RetEarnings`, `CumulTransAdj` - Equity system accounts
 - `RealizedERV`, `UnrERV` - FX gain/loss accounts
 
-**Use for:** Identifying system control accounts, troubleshooting posting behavior, understanding transaction flows
+**Use for:** Identifying system control accounts, troubleshooting posting behavior
 
-### Backend Implementation Pattern
+---
 
-```python
-# Determine which field to filter on
-account_field = 'a.sspecacct' if use_special_account else 'a.accttype'
+## 🔍 Drill-Down Implementation
 
-# Query uses the dynamic field
-query = f"... WHERE {account_field} = '{account_type}' ..."
-```
+### Two-Level Drill-Down for TYPEBALANCE
 
-### Frontend Implementation Pattern
+1. **Level 1: TYPEBALANCE → Account List**
+   - Shows all accounts of that type with balances
+   - Creates `DrillDown_<AccountType>` sheet
+   - Stores context in hidden cell A3: `DRILLDOWN_CONTEXT:<period>:<subsidiary>`
 
-```javascript
-// Parameter at position 9 controls which field
-const useSpecial = useSpecialAccount === 1 || useSpecialAccount === '1';
+2. **Level 2: Account Row → Transactions**
+   - User selects account row on DrillDown_ sheet
+   - Quick Actions bar shows "Account row selected • Drill Down to transactions"
+   - Drill button fetches transactions for that account
 
-// Different validation sets for each mode
-if (useSpecial) {
-    // Validate against BS_SPECIAL_TYPES and PL_SPECIAL_TYPES
-} else {
-    // Validate against BS_TYPES and PL_TYPES
-}
-```
+### Quick Actions Bar Logic
 
-### Documentation
-- User guide: `docs/USER_GUIDE_TYPEBALANCE.md`
-- Reference: `docs/SPECIAL_ACCOUNT_TYPES.md`
+The Quick Actions "Drill Down" button is enabled when:
+1. Cell contains `XAVI.BALANCE` formula
+2. Cell contains `XAVI.TYPEBALANCE` formula
+3. **Cell is on a `DrillDown_` sheet in a data row** (row 6+, not TOTAL)
+
+This allows secondary drill-down even without a formula in the cell.
 
 ---
 
@@ -187,7 +231,7 @@ These formulas have additional integration points:
 
 Before committing changes:
 
-- [ ] All version numbers synchronized (manifest, taskpane footer)
+- [ ] All version numbers synchronized (manifest, taskpane footer, sharedruntime.html)
 - [ ] Console logging added for debugging
 - [ ] Error handling returns appropriate codes (#ERROR#, #TIMEOUT#, #SYNTAX#)
 - [ ] Cache keys are unique and descriptive
@@ -203,6 +247,7 @@ Update this file when:
 2. Architecture changes (new files, restructured code)
 3. New formula types are added
 4. New caching mechanisms are introduced
+5. Platform-specific issues are identified
 
 ---
 
@@ -216,8 +261,8 @@ Update this file when:
 | 2025-12-15 | 3.0.5.98 | Added CRITICAL shared runtime configuration notes |
 | 2025-12-15 | 3.0.5.107 | Added Account Type vs Special Account Type section |
 | 2025-12-17 | 3.0.5.161 | Code cleanup for engineering handoff |
+| 2025-12-17 | 3.0.5.193 | Updated architecture docs, added Mac platform issue note |
 
 ---
 
 *Last updated: December 17, 2025*
-
