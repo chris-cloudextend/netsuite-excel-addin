@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.216</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.217</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8529,7 +8529,8 @@ For licensing inquiries, contact: legal@celigo.com
                                 for (const period in monthData) {
                                     const value = monthData[period];
                                     // Key format: typebalance:${type}:${from}:${to}:${sub}:${dept}:${loc}:${class}:${book}:${special}
-                                    const cacheKey = `typebalance:${accountType}:${period}:${period}:${defaultSubsidiary}:::::${specialFlag}`;
+                                    // 4 empty fields: department, location, class, book
+                                    const cacheKey = `typebalance:${accountType}:${period}:${period}:${defaultSubsidiary}::::${specialFlag}`;
                                     cacheEntries[cacheKey] = value;
                                 }
                             }
@@ -12941,6 +12942,32 @@ export default {
                             }, 500); // Reduced to 500ms - we're hiding status anyway
                         }
                         
+                        // Check if the changed cell is a filter parameter (R3, S3, T3, U3)
+                        // These trigger CFO Sync (but not Structure Sync for Income Statement)
+                        const filterCells = ['R3', 'S3', 'T3', 'U3', '$R$3', '$S$3', '$T$3', '$U$3'];
+                        if (filterCells.includes(event.address)) {
+                            console.log(`🔧 Filter cell (${event.address}) changed`);
+                            
+                            // Suppress statusBar immediately
+                            suppressStatusBar = true;
+                            localStorage.removeItem('netsuite_status');
+                            hideStatus();
+                            
+                            if (window.filterChangeTimer) {
+                                clearTimeout(window.filterChangeTimer);
+                            }
+                            window.filterChangeTimer = setTimeout(async () => {
+                                console.log('🔧 Filter debounce complete - checking for CFO sync...');
+                                
+                                suppressStatusBar = true;
+                                localStorage.removeItem('netsuite_status');
+                                hideStatus();
+                                
+                                // Check if this is a CFO Flash Report and trigger sync
+                                await handleFilterChange();
+                            }, 500);
+                        }
+                        
                         // ============================================
                         // DETECT NEW XAVI FORMULAS
                         // When user adds/pastes/drags formulas, we need to:
@@ -13427,6 +13454,10 @@ export default {
                 let isCFOFlash = false;
                 let newYear = null;
                 let subsidiary = '';
+                let department = '';
+                let location = '';
+                let classId = '';
+                let accountingBook = '';
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -13440,12 +13471,24 @@ export default {
                     yearCell.load("values");
                     const subCell = sheet.getRange("Q3");
                     subCell.load("values");
+                    const deptCell = sheet.getRange("R3");
+                    deptCell.load("values");
+                    const locCell = sheet.getRange("S3");
+                    locCell.load("values");
+                    const classCell = sheet.getRange("T3");
+                    classCell.load("values");
+                    const bookCell = sheet.getRange("U3");
+                    bookCell.load("values");
                     
                     await context.sync();
                     
                     const marker = String(markerCell.values[0][0] || '').toLowerCase();
                     const sync = String(syncCell.values[0][0] || '').toUpperCase();
                     newYear = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
+                    department = deptCell.values[0][0] || '';
+                    location = locCell.values[0][0] || '';
+                    classId = classCell.values[0][0] || '';
+                    accountingBook = bookCell.values[0][0] || '';
                     
                     // Check for CFO Flash Report marker
                     if (marker.includes('cfo sync') || marker.includes('cfo')) {
@@ -13478,8 +13521,8 @@ export default {
                     
                     try {
                         if (isCFOFlash) {
-                            // CFO Flash: Simpler sync
-                            await performCFOSync(newYear, subsidiary);
+                            // CFO Flash: Simpler sync with all filter values
+                            await performCFOSync(newYear, subsidiary, department, location, classId, accountingBook);
                         } else {
                             // Full Income Statement: Full structure rebuild
                             await performStructureSync(newYear, subsidiary);
@@ -13511,6 +13554,10 @@ export default {
                 let isCFOFlash = false;  // Track if this is CFO Flash Report
                 let year = null;
                 let newSubsidiary = '';
+                let department = '';
+                let location = '';
+                let classId = '';
+                let accountingBook = '';
                 
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
@@ -13524,6 +13571,14 @@ export default {
                     yearCell.load("values");
                     const subCell = sheet.getRange("Q3");
                     subCell.load("values");
+                    const deptCell = sheet.getRange("R3");
+                    deptCell.load("values");
+                    const locCell = sheet.getRange("S3");
+                    locCell.load("values");
+                    const classCell = sheet.getRange("T3");
+                    classCell.load("values");
+                    const bookCell = sheet.getRange("U3");
+                    bookCell.load("values");
                     
                     await context.sync();
                     
@@ -13531,6 +13586,10 @@ export default {
                     const sync = String(syncCell.values[0][0] || '').toUpperCase();
                     year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                     newSubsidiary = subCell.values[0][0] || '';
+                    department = deptCell.values[0][0] || '';
+                    location = locCell.values[0][0] || '';
+                    classId = classCell.values[0][0] || '';
+                    accountingBook = bookCell.values[0][0] || '';
                     
                     // Check for CFO Flash Report marker
                     if (marker.includes('cfo sync') || marker.includes('cfo')) {
@@ -13557,8 +13616,8 @@ export default {
                     
                     try {
                         if (isCFOFlash) {
-                            // CFO Flash: Simpler sync - just show progress while formulas recalculate
-                            await performCFOSync(year, newSubsidiary);
+                            // CFO Flash: Simpler sync with all filter values
+                            await performCFOSync(year, newSubsidiary, department, location, classId, accountingBook);
                         } else {
                             // Full Income Statement: Full structure rebuild
                             await performStructureSync(year, newSubsidiary);
@@ -13577,8 +13636,89 @@ export default {
             }
         }
         
+        // Handle filter change (R3, S3, T3, U3) - triggers CFO Sync only
+        async function handleFilterChange() {
+            // Prevent infinite loop
+            if (isSyncInProgress) {
+                console.log('⏸️ Sync already in progress, skipping filter change...');
+                return;
+            }
+            
+            try {
+                let shouldSync = false;
+                let year = null;
+                let subsidiary = '';
+                let department = '';
+                let location = '';
+                let classId = '';
+                let accountingBook = '';
+                
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    
+                    // Check for CFO Sync marker
+                    const markerCell = sheet.getRange("V2");
+                    markerCell.load("values");
+                    const syncCell = sheet.getRange("V3");
+                    syncCell.load("values");
+                    
+                    // Read all filter values
+                    const yearCell = sheet.getRange("P3");
+                    yearCell.load("values");
+                    const subCell = sheet.getRange("Q3");
+                    subCell.load("values");
+                    const deptCell = sheet.getRange("R3");
+                    deptCell.load("values");
+                    const locCell = sheet.getRange("S3");
+                    locCell.load("values");
+                    const classCell = sheet.getRange("T3");
+                    classCell.load("values");
+                    const bookCell = sheet.getRange("U3");
+                    bookCell.load("values");
+                    
+                    await context.sync();
+                    
+                    const marker = String(markerCell.values[0][0] || '').toLowerCase();
+                    const sync = String(syncCell.values[0][0] || '').toUpperCase();
+                    
+                    // Only trigger for CFO Flash Reports (not full Income Statement)
+                    if ((marker.includes('cfo sync') || marker.includes('cfo')) &&
+                        (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                        shouldSync = true;
+                        year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
+                        subsidiary = subCell.values[0][0] || '';
+                        department = deptCell.values[0][0] || '';
+                        location = locCell.values[0][0] || '';
+                        classId = classCell.values[0][0] || '';
+                        accountingBook = bookCell.values[0][0] || '';
+                        console.log(`🔧 Filter change detected on CFO Flash - triggering sync`);
+                    } else {
+                        console.log(`🔧 Filter change: marker="${marker}", sync="${sync}" - not a CFO report, skipping`);
+                    }
+                });
+                
+                if (shouldSync && year) {
+                    console.log(`🔄 CFO Sync for filters: dept="${department}", loc="${location}", class="${classId}"`);
+                    
+                    isSyncInProgress = true;
+                    
+                    try {
+                        await performCFOSync(year, subsidiary, department, location, classId, accountingBook);
+                    } finally {
+                        setTimeout(() => {
+                            isSyncInProgress = false;
+                            console.log('✅ Filter sync protection cleared');
+                        }, 3000);
+                    }
+                }
+            } catch (e) {
+                console.warn('Filter change error:', e.message);
+                setTimeout(() => { isSyncInProgress = false; }, 3000);
+            }
+        }
+        
         // Perform CFO Flash sync - simpler than full Structure Sync (no row rebuilding needed)
-        async function performCFOSync(targetYear, currentSubsidiary) {
+        async function performCFOSync(targetYear, currentSubsidiary, department = '', location = '', classId = '', accountingBook = '') {
             console.log(`📈 CFO Sync starting for year=${targetYear}, subsidiary="${currentSubsidiary}"`);
             
             // Suppress the small status bar - we're showing our own overlay
@@ -13650,6 +13790,90 @@ export default {
             document.head.appendChild(style);
             
             try {
+                // ========== PRE-FETCH TYPEBALANCE DATA ==========
+                // This dramatically speeds up formula resolution
+                const loadingStep = document.querySelector('#structureSyncOverlay .loading-step');
+                const loadingDesc = document.querySelector('#structureSyncOverlay .loading-step-desc');
+                
+                if (loadingStep) loadingStep.innerHTML = '📡 Fetching data from NetSuite...';
+                if (loadingDesc) loadingDesc.textContent = 'Pre-loading TYPEBALANCE data for instant formula resolution.';
+                
+                console.log(`📊 Pre-fetching TYPEBALANCE data for ${targetYear}...`);
+                console.log(`   Filters: sub="${currentSubsidiary}", dept="${department}", loc="${location}", class="${classId}", book="${accountingBook}"`);
+                
+                // Clear existing TYPEBALANCE cache to ensure fresh data
+                localStorage.removeItem('netsuite_typebalance_cache');
+                localStorage.removeItem('netsuite_typebalance_cache_timestamp');
+                
+                // Signal functions.js to clear its in-memory cache
+                localStorage.setItem('netsuite_cache_clear_signal', Date.now().toString());
+                
+                try {
+                    const typeBalanceResponse = await fetch(`${SERVER_URL}/batch/typebalance_refresh`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            year: targetYear,
+                            subsidiary: currentSubsidiary,
+                            department: department,
+                            location: location,
+                            classId: classId,
+                            accountingBook: accountingBook
+                        })
+                    });
+                    
+                    if (typeBalanceResponse.ok) {
+                        const typeBalanceData = await typeBalanceResponse.json();
+                        const balances = typeBalanceData.balances || {};
+                        const typesLoaded = Object.keys(balances).length;
+                        
+                        console.log(`✅ CFO Sync: Pre-fetched ${typesLoaded} account types`);
+                        
+                        // Save to localStorage for functions.js to use
+                        try {
+                            const cacheEntries = {};
+                            const specialFlag = '0';
+                            
+                            // Month name mapping
+                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                            
+                            for (const [acctType, monthData] of Object.entries(balances)) {
+                                for (let month = 0; month < 12; month++) {
+                                    const period = `${monthNames[month]} ${targetYear}`;
+                                    const value = monthData[period] || 0;
+                                    
+                                    // CRITICAL: Cache key format must match TYPEBALANCE function exactly!
+                                    // Format: typebalance:${type}:${fromPeriod}:${toPeriod}:${subsidiary}:${dept}:${loc}:${class}:${book}:${specialFlag}
+                                    const cacheKey = `typebalance:${acctType}:${period}:${period}:${currentSubsidiary || ''}:${department || ''}:${location || ''}:${classId || ''}:${accountingBook || ''}:${specialFlag}`;
+                                    
+                                    cacheEntries[cacheKey] = value;
+                                }
+                            }
+                            
+                            const storageData = {
+                                balances: cacheEntries,
+                                timestamp: Date.now(),
+                                year: targetYear,
+                                subsidiary: currentSubsidiary
+                            };
+                            localStorage.setItem('netsuite_typebalance_cache', JSON.stringify(storageData));
+                            localStorage.setItem('netsuite_typebalance_cache_timestamp', Date.now().toString());
+                            
+                            console.log(`✅ CFO Sync: Saved ${Object.keys(cacheEntries).length} cache entries`);
+                        } catch (e) {
+                            console.error('CFO Sync: localStorage save failed:', e.message);
+                        }
+                    } else {
+                        console.warn('⚠️ CFO Sync: Pre-fetch failed, formulas will load individually');
+                    }
+                } catch (e) {
+                    console.warn('⚠️ CFO Sync: Pre-fetch error:', e.message);
+                }
+                
+                if (loadingStep) loadingStep.innerHTML = '<span class="spreadsheet-animation">📊</span> Tucking everything into place...';
+                if (loadingDesc) loadingDesc.textContent = 'Formulas are refreshing with cached data.';
+                
                 // Wait for formulas to resolve
                 await waitForFormulasToComplete(60000, null);
                 
