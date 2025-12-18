@@ -3736,7 +3736,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.180</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.181</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -5065,11 +5065,17 @@ For licensing inquiries, contact: legal@celigo.com
                     return;
                 }
                 
-                // Handle secondary drill-down from DrillDown_ sheet
+                // Handle secondary drill-down from DrillDown_ sheet (accounts list → transactions)
                 if (sheetName.startsWith('DrillDown_')) {
-                    const rowMatch = address.match(/\d+/);
-                    const row = rowMatch ? parseInt(rowMatch[0]) : 0;
+                    console.log('🔍 Secondary drill-down from DrillDown_ sheet');
+                    
+                    // Extract row number from address (handles formats like "'DrillDown_Income'!C7" or "C7")
+                    const rowMatch = address.match(/(\d+)(?:\D*)?$/);
+                    const row = rowMatch ? parseInt(rowMatch[1]) : 0;
+                    console.log(`   Address: ${address}, Extracted row: ${row}`);
+                    
                     if (row >= 6) {
+                        // Get account number from column A of same row
                         const acctCell = sheet.getRange(`A${row}`);
                         const ctxCell = sheet.getRange('A3');
                         acctCell.load('values');
@@ -5079,19 +5085,38 @@ For licensing inquiries, contact: legal@celigo.com
                         const acct = String(acctCell.values[0][0] || '');
                         const ctx = String(ctxCell.values[0][0] || '');
                         
+                        console.log(`   Account: "${acct}", Context: "${ctx}"`);
+                        
                         if (acct && ctx.startsWith('DRILLDOWN_CONTEXT:')) {
                             const parts = ctx.replace('DRILLDOWN_CONTEXT:', '').split(':');
-                            const qp = new URLSearchParams({ account: acct, period: parts[0] || '' });
-                            if (parts[1]) qp.append('subsidiary', parts[1]);
+                            const period = parts[0] || '';
+                            const subsidiary = parts[1] || '';
+                            
+                            console.log(`   Fetching transactions for ${acct}, period=${period}, subsidiary=${subsidiary}`);
+                            
+                            const qp = new URLSearchParams({ account: acct, period: period });
+                            if (subsidiary) qp.append('subsidiary', subsidiary);
                             
                             const resp = await fetch(`${DRILL_SERVER_URL}/transactions?${qp}`);
+                            console.log(`   API response status: ${resp.status}`);
+                            
                             if (resp.ok) {
                                 const data = await resp.json();
-                                await createTxnSheet(context, data.transactions || [], acct, parts[0]);
+                                console.log(`   Got ${(data.transactions || []).length} transactions`);
+                                await createTxnSheet(context, data.transactions || [], acct, period);
+                            } else {
+                                console.error('   API error:', resp.status);
                             }
+                        } else {
+                            console.log('   No valid account or context found');
                         }
+                    } else {
+                        console.log(`   Row ${row} is a header row, skipping`);
                     }
+                    return;
                 }
+                
+                console.log('No drill-down action for this cell');
             });
         }
         
@@ -11835,16 +11860,6 @@ export default {
         }
 
         Office.onReady((info) => {
-            // Check if we're being loaded just for ExecuteFunction (not the main taskpane)
-            // In that case, skip ALL heavy initialization to prevent duplicate rendering
-            const isTaskpaneVisible = document.body.clientHeight > 100;
-            const hasTaskpaneUI = document.getElementById('panelFinancial') !== null;
-            
-            if (!isTaskpaneVisible || !hasTaskpaneUI) {
-                console.log('📋 Loaded for ExecuteFunction - skipping taskpane initialization');
-                return; // Exit early - drillDownFromContextMenu is already registered above
-            }
-            
             console.log('NetSuite Excel Add-in task pane loaded');
             
             // SAFETY: Hide any stale loading overlays from previous sessions/crashes
