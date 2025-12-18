@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.215</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.216</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8904,6 +8904,9 @@ For licensing inquiries, contact: legal@celigo.com
                 // Wait for formulas to complete - no sub-messages, just "Tidying Up"
                 await waitForFormulasToComplete(60000, null);
                 
+                // Auto-fit columns AFTER all formulas have resolved
+                await autoFitColumns();
+                
                 // NOW remove overlay and show success
                 overlay.remove();
                 
@@ -9722,6 +9725,9 @@ For licensing inquiries, contact: legal@celigo.com
                 
                 // Wait for formulas to complete - no sub-messages, just "Tidying Up"
                 await waitForFormulasToComplete(120000, null);
+                
+                // Auto-fit columns AFTER all formulas have resolved
+                await autoFitColumns();
                 
                 // NOW remove the overlay and show success
                 overlay.remove();
@@ -12287,6 +12293,28 @@ export default {
             return false;
         }
         
+        // Auto-fit all columns with data - call AFTER all formulas have resolved
+        async function autoFitColumns() {
+            console.log('📐 Auto-fitting column widths...');
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load(['columnCount', 'address']);
+                    await context.sync();
+                    
+                    // Auto-fit each column in the used range
+                    const format = usedRange.format;
+                    format.autofitColumns();
+                    await context.sync();
+                    
+                    console.log('✅ Columns auto-fitted');
+                });
+            } catch (e) {
+                console.warn('Auto-fit columns failed:', e.message);
+            }
+        }
+        
         function dismissReportSuccess() {
             const overlay = document.getElementById('reportSuccessOverlay');
             if (overlay) {
@@ -13625,6 +13653,9 @@ export default {
                 // Wait for formulas to resolve
                 await waitForFormulasToComplete(60000, null);
                 
+                // Auto-fit columns AFTER all formulas have resolved
+                await autoFitColumns();
+                
                 // Apply currency formatting
                 try {
                     await scanForSubsidiaryCells();
@@ -14186,6 +14217,9 @@ export default {
                 
                 // Wait for formulas to resolve before showing success
                 await waitForFormulasToComplete(120000, null);
+                
+                // Auto-fit columns AFTER all formulas have resolved
+                await autoFitColumns();
                 
                 // Remove the full-screen overlay
                 const syncOverlayEl = document.getElementById('structureSyncOverlay');
