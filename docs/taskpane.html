@@ -12468,6 +12468,7 @@ export default {
         }
         
         // Scan sheet to find all cells referenced as subsidiary parameters
+        // Handles BALANCE, TYPEBALANCE, NETINCOME, and BUDGET formulas
         async function scanForSubsidiaryCells() {
             try {
                 await Excel.run(async (context) => {
@@ -12483,18 +12484,41 @@ export default {
                     for (let row = 0; row < formulas.length; row++) {
                         for (let col = 0; col < formulas[row].length; col++) {
                             const formula = formulas[row][col];
-                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
+                            if (typeof formula !== 'string') continue;
+                            
+                            const upperFormula = formula.toUpperCase();
+                            let subsidiaryParam = '';
+                            
+                            // Extract subsidiary param based on formula type
+                            // Subsidiary param positions:
+                            // - XAVI.BALANCE(acct, from, to, [sub], ...) - index 3
+                            // - XAVI.TYPEBALANCE(type, from, to, [sub], ...) - index 3
+                            // - XAVI.NETINCOME(from, [to], [sub], ...) - index 2
+                            // - XAVI.BUDGET(acct, from, to, [sub], ...) - index 3
+                            if (upperFormula.includes('XAVI.BALANCE') && !upperFormula.includes('XAVI.TYPEBALANCE')) {
                                 formulaCount++;
-                                const subsidiaryParam = extractFormulaParam(formula, 3);
-                                // If it's a cell reference (not a number or quoted string)
-                                if (subsidiaryParam && 
-                                    !subsidiaryParam.startsWith('"') && 
-                                    !subsidiaryParam.startsWith("'") && 
-                                    !/^\d+$/.test(subsidiaryParam)) {
-                                    // Normalize and add to known cells
-                                    const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
-                                    knownSubsidiaryCells.add(normalized);
-                                }
+                                subsidiaryParam = extractFormulaParam(formula, 3);
+                            } else if (upperFormula.includes('XAVI.TYPEBALANCE')) {
+                                formulaCount++;
+                                subsidiaryParam = extractFormulaParam(formula, 3);
+                            } else if (upperFormula.includes('XAVI.NETINCOME')) {
+                                formulaCount++;
+                                subsidiaryParam = extractFormulaParam(formula, 2);
+                            } else if (upperFormula.includes('XAVI.BUDGET')) {
+                                formulaCount++;
+                                subsidiaryParam = extractFormulaParam(formula, 3);
+                            } else {
+                                continue;
+                            }
+                            
+                            // If it's a cell reference (not a number or quoted string)
+                            if (subsidiaryParam && 
+                                !subsidiaryParam.startsWith('"') && 
+                                !subsidiaryParam.startsWith("'") && 
+                                !/^\d+$/.test(subsidiaryParam)) {
+                                // Normalize and add to known cells
+                                const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
+                                knownSubsidiaryCells.add(normalized);
                             }
                         }
                     }
@@ -12505,7 +12529,7 @@ export default {
                     if (knownSubsidiaryCells.size > 0) {
                         console.log(`📍 Tracking ${knownSubsidiaryCells.size} subsidiary reference cells:`, [...knownSubsidiaryCells]);
                     }
-                    console.log(`📊 Initial formula count: ${formulaCount}`);
+                    console.log(`📊 Initial XAVI formula count: ${formulaCount}`);
                 });
             } catch (e) {
                 console.warn('Could not scan for subsidiary cells:', e.message);
@@ -13313,26 +13337,45 @@ export default {
                 // Clear and rebuild known subsidiary cells
                 knownSubsidiaryCells.clear();
                 
-                // First pass: Collect cell references
+                // First pass: Collect cell references for ALL XAVI formula types
+                // Subsidiary param positions:
+                // - XAVI.BALANCE(acct, from, to, [sub], ...) - index 3
+                // - XAVI.TYPEBALANCE(type, from, to, [sub], ...) - index 3
+                // - XAVI.NETINCOME(from, [to], [sub], ...) - index 2
+                // - XAVI.BUDGET(acct, from, to, [sub], ...) - index 3
                 for (let row = 0; row < usedRange.rowCount; row++) {
                     for (let col = 0; col < usedRange.columnCount; col++) {
                         const formula = formulas[row][col];
-                        if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
-                            const subsidiaryParam = extractFormulaParam(formula, 3);
-                            pendingCells.push({ row, col, subsidiaryParam });
-                            
-                            if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
-                                cellRefsToResolve.add(subsidiaryParam);
-                                // Track this cell reference for change detection
-                                const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
-                                knownSubsidiaryCells.add(normalized);
-                            }
+                        if (typeof formula !== 'string') continue;
+                        
+                        const upperFormula = formula.toUpperCase();
+                        let subsidiaryParam = '';
+                        
+                        if (upperFormula.includes('XAVI.BALANCE') && !upperFormula.includes('XAVI.TYPEBALANCE')) {
+                            subsidiaryParam = extractFormulaParam(formula, 3);
+                        } else if (upperFormula.includes('XAVI.TYPEBALANCE')) {
+                            subsidiaryParam = extractFormulaParam(formula, 3);
+                        } else if (upperFormula.includes('XAVI.NETINCOME')) {
+                            subsidiaryParam = extractFormulaParam(formula, 2);
+                        } else if (upperFormula.includes('XAVI.BUDGET')) {
+                            subsidiaryParam = extractFormulaParam(formula, 3);
+                        } else {
+                            continue; // Not a XAVI formula we format
+                        }
+                        
+                        pendingCells.push({ row, col, subsidiaryParam });
+                        
+                        if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
+                            cellRefsToResolve.add(subsidiaryParam);
+                            // Track this cell reference for change detection
+                            const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
+                            knownSubsidiaryCells.add(normalized);
                         }
                     }
                 }
                 
                 if (pendingCells.length === 0) {
-                    console.log('💱 AUTO-FORMAT: No BALANCE formulas found');
+                    console.log('💱 AUTO-FORMAT: No XAVI balance formulas found');
                     return;
                 }
                 
@@ -13383,7 +13426,7 @@ export default {
                 
                 // ============================================
                 // INCOME STATEMENT: Also format SUM cells (subtotals/totals)
-                // These don't have XAVI.BALANCE but should use the same currency
+                // These don't have XAVI formulas but should use the same currency
                 // ============================================
                 if (isIncomeStatement) {
                     
@@ -13409,10 +13452,15 @@ export default {
                     for (let row = 5; row < usedRange.rowCount; row++) { // 0-indexed, so row 5 = Excel row 6
                         for (let col = 2; col <= 14; col++) { // Columns C (2) through O (14)
                             const formula = formulas[row][col];
-                            // Format if it's a formula (starts with =) but NOT XAVI.BALANCE (already formatted above)
+                            // Format if it's a formula (starts with =) but NOT any XAVI formula (already formatted above)
+                            const upperFormula = typeof formula === 'string' ? formula.toUpperCase() : '';
+                            const isXaviFormula = upperFormula.includes('XAVI.BALANCE') || 
+                                                  upperFormula.includes('XAVI.TYPEBALANCE') ||
+                                                  upperFormula.includes('XAVI.NETINCOME') ||
+                                                  upperFormula.includes('XAVI.BUDGET');
                             if (typeof formula === 'string' && 
                                 formula.startsWith('=') && 
-                                !formula.toUpperCase().includes('XAVI.BALANCE')) {
+                                !isXaviFormula) {
                                 const range = usedRange.getCell(row, col);
                                 range.numberFormat = [[sheetFormat]];
                                 formulaFormatted++;
@@ -13426,7 +13474,8 @@ export default {
         }
         
         // ============================================
-        // FORMAT CURRENCIES - Apply currency symbols to BALANCE cells (with UI)
+        // FORMAT CURRENCIES - Apply currency symbols to XAVI formula cells (with UI)
+        // Handles BALANCE, TYPEBALANCE, NETINCOME, and BUDGET formulas
         // ============================================
         async function formatCurrencies() {
             const statusEl = document.getElementById('refreshStatus');
@@ -13455,9 +13504,9 @@ export default {
                 
                 console.log('   Using currency data:', Object.keys(currencies).length, 'subsidiaries');
                 
-                updateLoading('Scanning sheet for XAVI.BALANCE formulas...', 30);
+                updateLoading('Scanning sheet for XAVI formulas...', 30);
                 
-                // Step 2: Find all cells with XAVI.BALANCE formulas
+                // Step 2: Find all cells with XAVI balance formulas (BALANCE, TYPEBALANCE, NETINCOME, BUDGET)
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     const usedRange = sheet.getUsedRange();
@@ -13468,25 +13517,44 @@ export default {
                     const cellsToFormat = [];
                     const cellRefsToResolve = new Set();  // Unique cell references to evaluate
                     
-                    // First pass: Find all BALANCE formulas and collect cell references
+                    // First pass: Find all XAVI balance formulas and collect cell references
+                    // Subsidiary param positions:
+                    // - XAVI.BALANCE(acct, from, to, [sub], ...) - index 3
+                    // - XAVI.TYPEBALANCE(type, from, to, [sub], ...) - index 3
+                    // - XAVI.NETINCOME(from, [to], [sub], ...) - index 2
+                    // - XAVI.BUDGET(acct, from, to, [sub], ...) - index 3
                     const pendingCells = [];
                     for (let row = 0; row < usedRange.rowCount; row++) {
                         for (let col = 0; col < usedRange.columnCount; col++) {
                             const formula = formulas[row][col];
-                            if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.BALANCE')) {
-                                const subsidiaryParam = extractFormulaParam(formula, 3);
-                                pendingCells.push({ row, col, subsidiaryParam });
-                                
-                                // If it looks like a cell reference (contains $ or letter+number pattern)
-                                if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
-                                    // It's likely a cell reference like $Q$3, F2, etc.
-                                    cellRefsToResolve.add(subsidiaryParam);
-                                }
+                            if (typeof formula !== 'string') continue;
+                            
+                            const upperFormula = formula.toUpperCase();
+                            let subsidiaryParam = '';
+                            
+                            if (upperFormula.includes('XAVI.BALANCE') && !upperFormula.includes('XAVI.TYPEBALANCE')) {
+                                subsidiaryParam = extractFormulaParam(formula, 3);
+                            } else if (upperFormula.includes('XAVI.TYPEBALANCE')) {
+                                subsidiaryParam = extractFormulaParam(formula, 3);
+                            } else if (upperFormula.includes('XAVI.NETINCOME')) {
+                                subsidiaryParam = extractFormulaParam(formula, 2);
+                            } else if (upperFormula.includes('XAVI.BUDGET')) {
+                                subsidiaryParam = extractFormulaParam(formula, 3);
+                            } else {
+                                continue; // Not a XAVI formula we format
+                            }
+                            
+                            pendingCells.push({ row, col, subsidiaryParam });
+                            
+                            // If it looks like a cell reference (contains $ or letter+number pattern)
+                            if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
+                                // It's likely a cell reference like $Q$3, F2, etc.
+                                cellRefsToResolve.add(subsidiaryParam);
                             }
                         }
                     }
                     
-                    console.log(`   Found ${pendingCells.length} XAVI.BALANCE cells`);
+                    console.log(`   Found ${pendingCells.length} XAVI formula cells`);
                     console.log(`   Cell references to resolve: ${[...cellRefsToResolve].join(', ') || 'none'}`);
                     
                     // Second pass: Resolve cell references to their values
@@ -13560,7 +13628,7 @@ export default {
                     
                     if (cellsToFormat.length === 0) {
                         hideLoading();
-                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">ℹ️ No XAVI.BALANCE formulas found</strong><br><span style="font-size: 11px;">Add some balance formulas first!</span></div>`;
+                        statusEl.innerHTML = `<div style="background: #fef3c7; padding: 10px; border-radius: 6px;"><strong style="color: #d97706;">ℹ️ No XAVI formulas found</strong><br><span style="font-size: 11px;">Add some BALANCE, TYPEBALANCE, NETINCOME, or BUDGET formulas first!</span></div>`;
                         setTimeout(() => statusEl.textContent = '', 5000);
                         return;
                     }
