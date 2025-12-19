@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.227</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.228</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12932,165 +12932,187 @@ export default {
         let formulaDetectionTimer = null;  // Timer for detecting new XAVI formulas
         let lastFormulaCount = 0;  // Track formula count to detect new additions
         
+        // Track current sheet listener so we can re-register when switching sheets
+        let currentSheetChangeHandler = null;
+        let currentSheetName = null;
+        
+        // The actual change handler - extracted so it can be re-used when switching sheets
+        async function handleSheetChange(event) {
+            // Normalize the event address - strip sheet prefix and dollar signs
+            let eventAddr = event.address;
+            const rawAddr = eventAddr; // Keep for logging
+            if (eventAddr.includes('!')) {
+                eventAddr = eventAddr.split('!')[1];
+            }
+            eventAddr = eventAddr.replace(/\$/g, '').toUpperCase();
+            
+            // Debug: Log all cell changes to parameter row
+            if (eventAddr.endsWith('3')) {
+                console.log(`📝 Cell changed: raw="${rawAddr}" → normalized="${eventAddr}"`);
+            }
+            
+            // Check if the changed cell is P3 (YEAR parameter for auto-sync)
+            if (eventAddr === 'P3') {
+                console.log('📊 YEAR cell (P3) changed - raw address: ' + event.address);
+                
+                // CRITICAL: Suppress statusBar IMMEDIATELY to prevent "Fetching P&L" flash
+                suppressStatusBar = true;
+                localStorage.removeItem('netsuite_status');
+                hideStatus();
+                
+                await handleYearChange();
+            }
+            
+            // Check if the changed cell is Q3 (SUBSIDIARY parameter for auto-sync)
+            // Use debounce to prevent rapid-fire triggering
+            if (eventAddr === 'Q3') {
+                console.log('🏢 SUBSIDIARY cell (Q3) changed - raw address: ' + event.address);
+                
+                // CRITICAL: Suppress and HIDE statusBar IMMEDIATELY (not after debounce!)
+                // This prevents the "Fetching P&L data" window from ever appearing
+                suppressStatusBar = true;
+                localStorage.removeItem('netsuite_status');
+                hideStatus();  // Hide immediately if already showing
+                
+                if (window.subsidiaryChangeTimer) {
+                    clearTimeout(window.subsidiaryChangeTimer);
+                }
+                window.subsidiaryChangeTimer = setTimeout(async () => {
+                    console.log('🏢 SUBSIDIARY debounce complete - triggering updates...');
+                    
+                    // Re-suppress in case polling started again
+                    suppressStatusBar = true;
+                    localStorage.removeItem('netsuite_status');
+                    hideStatus();
+                    
+                    // Check for structure sync FIRST (shows the overlay immediately)
+                    // This must happen BEFORE smartCurrencyFormatUpdate which triggers recalc
+                    await handleSubsidiaryChange();
+                    
+                    // Currency update happens inside performStructureSync now
+                }, 500); // Reduced to 500ms - we're hiding status anyway
+            }
+            
+            // Check if the changed cell is a filter parameter (R3, S3, T3, U3)
+            // These trigger CFO Sync OR Income Statement Filter Sync
+            const filterCells = ['R3', 'S3', 'T3', 'U3'];
+            if (filterCells.includes(eventAddr)) {
+                console.log(`🔧🔧🔧 Filter cell ${eventAddr} changed! (raw: ${event.address}) 🔧🔧🔧`);
+                
+                // Suppress statusBar immediately
+                suppressStatusBar = true;
+                localStorage.removeItem('netsuite_status');
+                hideStatus();
+                
+                if (window.filterChangeTimer) {
+                    console.log('🔧 Clearing previous filter timer');
+                    clearTimeout(window.filterChangeTimer);
+                }
+                console.log('🔧 Setting 500ms debounce timer for handleFilterChange()...');
+                window.filterChangeTimer = setTimeout(async () => {
+                    console.log('🔧 Filter debounce complete - calling handleFilterChange() NOW');
+                    
+                    suppressStatusBar = true;
+                    localStorage.removeItem('netsuite_status');
+                    hideStatus();
+                    
+                    // Check if this is a CFO Flash Report or Income Statement and trigger sync
+                    try {
+                        await handleFilterChange();
+                    } catch (e) {
+                        console.error('❌ handleFilterChange() threw error:', e.message);
+                    }
+                }, 500);
+            }
+            
+            // ============================================
+            // DETECT NEW XAVI FORMULAS
+            // When user adds/pastes/drags formulas, we need to:
+            // 1. Re-scan for subsidiary cells
+            // 2. Re-apply currency formatting
+            // ============================================
+            if (formulaDetectionTimer) {
+                clearTimeout(formulaDetectionTimer);
+            }
+            formulaDetectionTimer = setTimeout(async () => {
+                await checkForNewFormulas();
+            }, 2000); // 2 second debounce after typing stops
+            
+            // ============================================
+            // SMART CURRENCY FORMAT UPDATE
+            // Check if changed cell is a known subsidiary reference
+            // ============================================
+            // Normalize address: remove sheet name prefix, dollar signs, convert to uppercase
+            let normalizedAddress = event.address;
+            if (normalizedAddress.includes('!')) {
+                normalizedAddress = normalizedAddress.split('!')[1];
+            }
+            normalizedAddress = normalizedAddress.replace(/\$/g, '').toUpperCase();
+            
+            if (knownSubsidiaryCells.has(normalizedAddress)) {
+                console.log(`🏢 Known subsidiary cell ${normalizedAddress} changed, triggering smart currency update...`);
+                await smartCurrencyFormatUpdate(normalizedAddress);
+            }
+        }
+        
+        // Register change listener for the current active sheet
+        async function registerSheetChangeListener() {
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    sheet.load('name');
+                    await context.sync();
+                    
+                    const sheetName = sheet.name;
+                    
+                    // Skip if already registered for this sheet
+                    if (currentSheetName === sheetName) {
+                        console.log(`📋 Change listener already registered for "${sheetName}"`);
+                        return;
+                    }
+                    
+                    // Register new listener
+                    sheet.onChanged.add(handleSheetChange);
+                    await context.sync();
+                    
+                    currentSheetName = sheetName;
+                    console.log(`✅ Change listener registered for sheet "${sheetName}"`);
+                });
+            } catch (e) {
+                console.warn('Could not register sheet change listener:', e.message);
+            }
+        }
+        
         // Set up listener to auto-sync Income Statement when YEAR changes
         // AND smart currency format updates when subsidiary cells change
         // AND detect new XAVI formulas being added
         async function setupAutoSyncListener() {
-            try {
-                await Excel.run(async (context) => {
-                    const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    
-                    // Register for changes on the worksheet
-                    sheet.onChanged.add(async (event) => {
-                        // Normalize the event address - strip sheet prefix and dollar signs
-                        let eventAddr = event.address;
-                        const rawAddr = eventAddr; // Keep for logging
-                        if (eventAddr.includes('!')) {
-                            eventAddr = eventAddr.split('!')[1];
-                        }
-                        eventAddr = eventAddr.replace(/\$/g, '').toUpperCase();
-                        
-                        // Debug: Log all cell changes to parameter row
-                        if (eventAddr.endsWith('3')) {
-                            console.log(`📝 Cell changed: raw="${rawAddr}" → normalized="${eventAddr}"`);
-                        }
-                        
-                        // Check if the changed cell is P3 (YEAR parameter for auto-sync)
-                        if (eventAddr === 'P3') {
-                            console.log('📊 YEAR cell (P3) changed - raw address: ' + event.address);
-                            
-                            // CRITICAL: Suppress statusBar IMMEDIATELY to prevent "Fetching P&L" flash
-                            suppressStatusBar = true;
-                            localStorage.removeItem('netsuite_status');
-                            hideStatus();
-                            
-                            await handleYearChange();
-                        }
-                        
-                        // Check if the changed cell is Q3 (SUBSIDIARY parameter for auto-sync)
-                        // Use debounce to prevent rapid-fire triggering
-                        if (eventAddr === 'Q3') {
-                            console.log('🏢 SUBSIDIARY cell (Q3) changed - raw address: ' + event.address);
-                            
-                            // CRITICAL: Suppress and HIDE statusBar IMMEDIATELY (not after debounce!)
-                            // This prevents the "Fetching P&L data" window from ever appearing
-                            suppressStatusBar = true;
-                            localStorage.removeItem('netsuite_status');
-                            hideStatus();  // Hide immediately if already showing
-                            
-                            if (window.subsidiaryChangeTimer) {
-                                clearTimeout(window.subsidiaryChangeTimer);
-                            }
-                            window.subsidiaryChangeTimer = setTimeout(async () => {
-                                console.log('🏢 SUBSIDIARY debounce complete - triggering updates...');
-                                
-                                // Re-suppress in case polling started again
-                                suppressStatusBar = true;
-                                localStorage.removeItem('netsuite_status');
-                                hideStatus();
-                                
-                                // Check for structure sync FIRST (shows the overlay immediately)
-                                // This must happen BEFORE smartCurrencyFormatUpdate which triggers recalc
-                                await handleSubsidiaryChange();
-                                
-                                // Currency update happens inside performStructureSync now
-                            }, 500); // Reduced to 500ms - we're hiding status anyway
-                        }
-                        
-                        // Check if the changed cell is a filter parameter (R3, S3, T3, U3)
-                        // These trigger CFO Sync OR Income Statement Filter Sync
-                        const filterCells = ['R3', 'S3', 'T3', 'U3'];
-                        if (filterCells.includes(eventAddr)) {
-                            console.log(`🔧🔧🔧 Filter cell ${eventAddr} changed! (raw: ${event.address}) 🔧🔧🔧`);
-                            
-                            // Suppress statusBar immediately
-                            suppressStatusBar = true;
-                            localStorage.removeItem('netsuite_status');
-                            hideStatus();
-                            
-                            if (window.filterChangeTimer) {
-                                console.log('🔧 Clearing previous filter timer');
-                                clearTimeout(window.filterChangeTimer);
-                            }
-                            console.log('🔧 Setting 500ms debounce timer for handleFilterChange()...');
-                            window.filterChangeTimer = setTimeout(async () => {
-                                console.log('🔧 Filter debounce complete - calling handleFilterChange() NOW');
-                                
-                                suppressStatusBar = true;
-                                localStorage.removeItem('netsuite_status');
-                                hideStatus();
-                                
-                                // Check if this is a CFO Flash Report or Income Statement and trigger sync
-                                try {
-                                    await handleFilterChange();
-                                } catch (e) {
-                                    console.error('❌ handleFilterChange() threw error:', e.message);
-                                }
-                            }, 500);
-                        }
-                        
-                        // ============================================
-                        // DETECT NEW XAVI FORMULAS
-                        // When user adds/pastes/drags formulas, we need to:
-                        // 1. Re-scan for subsidiary cells
-                        // 2. Re-apply currency formatting
-                        // ============================================
-                        if (formulaDetectionTimer) {
-                            clearTimeout(formulaDetectionTimer);
-                        }
-                        formulaDetectionTimer = setTimeout(async () => {
-                            await checkForNewFormulas();
-                        }, 2000); // 2 second debounce after typing stops
-                        
-                        // ============================================
-                        // SMART CURRENCY FORMAT UPDATE
-                        // Check if changed cell is a known subsidiary reference
-                        // ============================================
-                        // Normalize address: remove sheet name prefix, dollar signs, convert to uppercase
-                        let normalizedAddress = event.address;
-                        if (normalizedAddress.includes('!')) {
-                            normalizedAddress = normalizedAddress.split('!')[1];
-                        }
-                        normalizedAddress = normalizedAddress.replace(/\$/g, '').toUpperCase();
-                        
-                        // Check if this is a known subsidiary cell
-                        const isSubsidiaryCell = knownSubsidiaryCells.has(normalizedAddress);
-                        
-                        if (isSubsidiaryCell) {
-                            console.log(`💱 Subsidiary cell changed: ${normalizedAddress}`);
-                            
-                            // Debounce - wait for user to stop making changes
-                            if (currencyFormatDebounceTimer) {
-                                clearTimeout(currencyFormatDebounceTimer);
-                            }
-                            
-                            currencyFormatDebounceTimer = setTimeout(async () => {
-                                await smartCurrencyFormatUpdate();
-                            }, 1500); // 1.5 second debounce
-                        }
-                    });
-                    
-                    await context.sync();
-                    console.log('✅ Auto-sync listener registered for worksheet changes');
-                });
-                
-                // Do an initial scan to populate knownSubsidiaryCells
-                await scanForSubsidiaryCells();
-                
-            } catch (e) {
-                console.warn('Could not set up auto-sync listener:', e.message);
-            }
+            // Register change listener for initial active sheet
+            await registerSheetChangeListener();
+            
+            // Do an initial scan to populate knownSubsidiaryCells
+            await scanForSubsidiaryCells();
             
             // Set up worksheet activation listener (separate Excel.run)
+            // This re-registers the change listener when user switches sheets
             try {
                 await Excel.run(async (ctx) => {
                     ctx.workbook.worksheets.onActivated.add(async (event) => {
-                        console.log('📋 Worksheet activated - re-scanning for formulas...');
-                        // Reset formula count for new sheet
+                        console.log('📋 Worksheet activated - re-registering listeners and re-scanning...');
+                        
+                        // Reset formula count and subsidiary cells for new sheet
                         lastFormulaCount = 0;
                         knownSubsidiaryCells.clear();
                         
-                        // Re-scan the new sheet (this creates its own Excel.run)
+                        // Reset sync state for new sheet
+                        lastSyncedYear = '';
+                        lastSyncedSubsidiary = '';
+                        isSyncInProgress = false;
+                        
+                        // Re-register change listener for the new sheet
+                        await registerSheetChangeListener();
+                        
+                        // Re-scan the new sheet for subsidiary cells
                         await scanForSubsidiaryCells();
                     });
                     await ctx.sync();
