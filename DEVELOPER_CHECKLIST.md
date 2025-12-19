@@ -141,8 +141,34 @@ The add-in uses Office's **Shared Runtime** where all components share a single 
 |------|----------|----------------|
 | `excel-addin/manifest-claude.xml` | `<Version>` tag | Main version (line ~32) |
 | `excel-addin/manifest-claude.xml` | ALL `?v=X.X.X.X` URLs | Cache-busting parameters |
-| `docs/taskpane.html` | Footer version | Hardcoded display (~line 3739) |
+| `docs/taskpane.html` | Footer version | Hardcoded display (~line 3960) |
 | `docs/sharedruntime.html` | functions.js URL | Cache-busting parameter |
+| `docs/functions.js` | `FUNCTIONS_VERSION` constant | Version marker for debugging |
+
+### Mac Manifest Sideload Location ⚠️ IMPORTANT
+
+**The correct manifest sideload location on Mac (Microsoft 365) is:**
+
+```
+~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/
+```
+
+**NOT the old locations:**
+- ❌ `~/Library/Group Containers/UBF8T346G9.Office/User Content.localized/Wef/`
+- ❌ `~/Library/Group Containers/UBF8T346G9.Office/User Content/Wef/`
+
+**To clear cache and reinstall manifest:**
+```bash
+# Clear manifest folder
+rm -rf ~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/*
+
+# Copy manifest
+cp excel-addin/manifest-claude.xml ~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/
+
+# If add-in behaves strangely (old App ID cached), also clear:
+rm -rf ~/Library/Containers/com.microsoft.Excel/Data/Library/Application\ Support/Microsoft/Office/16.0/Wef/CustomFunctions
+rm -rf ~/Library/Containers/com.microsoft.Excel/Data/Library/Application\ Support/Microsoft/Office/16.0/Wef/AppCommands
+```
 
 > ⚠️ **CRITICAL SHARED RUNTIME CONFIGURATION:**  
 > - `<Runtime resid>` points to `SharedRuntime.Url` (`sharedruntime.html`)
@@ -262,7 +288,8 @@ Update this file when:
 | 2025-12-15 | 3.0.5.107 | Added Account Type vs Special Account Type section |
 | 2025-12-17 | 3.0.5.161 | Code cleanup for engineering handoff |
 | 2025-12-17 | 3.0.5.193 | Updated architecture docs, added Mac platform issue note |
+| 2025-12-19 | 3.0.5.233 | Added correct Mac manifest sideload location, cache clearing commands |
 
 ---
 
-*Last updated: December 17, 2025*
+*Last updated: December 19, 2025*
