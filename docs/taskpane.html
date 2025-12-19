@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.232</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.233</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -13823,10 +13823,10 @@ export default {
                             await performCFOSync(year, subsidiary, department, location, classId, accountingBook);
                             console.log('✅ performCFOSync() completed');
                         } else if (syncType === 'income') {
-                            // Use full Structure Sync for filter changes to ensure zero rows are removed
-                            console.log('🔄 Calling performStructureSync() for filter change...');
-                            await performStructureSync(year, subsidiary);
-                            console.log('✅ performStructureSync() completed');
+                            // Use filter sync which waits for recalc + removes zero rows (NOT full Structure Sync)
+                            console.log('🔄 Calling performIncomeStatementFilterSync()...');
+                            await performIncomeStatementFilterSync(year, subsidiary, department, location, classId, accountingBook);
+                            console.log('✅ performIncomeStatementFilterSync() completed');
                         }
                     } catch (syncError) {
                         console.error(`❌ Sync error (${syncType}):`, syncError.message);
@@ -13943,6 +13943,64 @@ export default {
             
             // Wait for formulas to resolve
             await waitForFormulasToComplete(90000, null);
+            
+            // Remove rows where ALL numeric values are zero (same as Structure Sync)
+            if (loadingStep) loadingStep.innerHTML = '<span class="spreadsheet-animation">📊</span> Removing zero rows...';
+            if (loadingDesc) loadingDesc.textContent = 'Cleaning up rows with no values.';
+            
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    const usedRange = sheet.getUsedRange();
+                    usedRange.load(['values', 'rowCount', 'columnCount']);
+                    await context.sync();
+                    
+                    const values = usedRange.values;
+                    const rowsToDelete = [];
+                    
+                    // Start from row 5 (index 4) - skip header rows and parameter row
+                    // Check each data row
+                    for (let i = 4; i < values.length; i++) {
+                        const row = values[i];
+                        // Check columns C through O (indices 2-14) for numeric values
+                        let allZero = true;
+                        let hasNumericValue = false;
+                        
+                        for (let j = 2; j <= 14 && j < row.length; j++) {
+                            const val = row[j];
+                            if (typeof val === 'number') {
+                                hasNumericValue = true;
+                                if (val !== 0) {
+                                    allZero = false;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Only delete if we found numeric values and they're all zero
+                        if (hasNumericValue && allZero) {
+                            rowsToDelete.push(i + 1); // Excel rows are 1-indexed
+                        }
+                    }
+                    
+                    // Delete rows from bottom to top to preserve indices
+                    if (rowsToDelete.length > 0) {
+                        console.log(`🗑️ Removing ${rowsToDelete.length} rows with all zeros`);
+                        rowsToDelete.sort((a, b) => b - a); // Sort descending
+                        
+                        for (const rowNum of rowsToDelete) {
+                            const rowRange = sheet.getRange(`${rowNum}:${rowNum}`);
+                            rowRange.delete(Excel.DeleteShiftDirection.up);
+                        }
+                        await context.sync();
+                        console.log(`✅ Removed ${rowsToDelete.length} zero rows`);
+                    } else {
+                        console.log('📊 No zero rows to remove');
+                    }
+                });
+            } catch (e) {
+                console.warn('Zero row removal failed:', e.message);
+            }
             
             // Auto-fit columns AFTER all formulas have resolved
             await autoFitColumns();
