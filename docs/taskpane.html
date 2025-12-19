@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.231</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.232</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -6094,6 +6094,13 @@ For licensing inquiries, contact: legal@celigo.com
                     await context.sync();
                     console.log(`✅ Applied "${newValue}" to ${currentParamCellAddress}`);
                 });
+                
+                // CRITICAL: Immediately unlock isSyncInProgress when user manually applies a value
+                // This allows the sync to trigger for this user-initiated change
+                if (syncTriggerCells.includes(normalizedAddr)) {
+                    console.log(`🔓 User applied value to ${normalizedAddr} - unlocking isSyncInProgress`);
+                    isSyncInProgress = false;
+                }
                 
                 // Show brief success feedback
                 const btn = document.querySelector('.param-context-btn');
