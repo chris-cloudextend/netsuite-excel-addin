@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.221</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.230</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -6060,6 +6060,17 @@ For licensing inquiries, contact: legal@celigo.com
                 newValue = selectEl.value;
             } else {
                 newValue = inputEl.value.trim();
+            }
+            
+            // CRITICAL: For parameter cells that trigger sync (P3, Q3, R3, S3, T3, U3),
+            // suppress the statusBar BEFORE writing to prevent "Fetching P&L" flash
+            const syncTriggerCells = ['P3', 'Q3', 'R3', 'S3', 'T3', 'U3'];
+            const normalizedAddr = currentParamCellAddress.replace(/\$/g, '').toUpperCase();
+            if (syncTriggerCells.includes(normalizedAddr)) {
+                console.log(`🔒 Pre-suppressing statusBar before writing to ${normalizedAddr}`);
+                suppressStatusBar = true;
+                localStorage.removeItem('netsuite_status');
+                hideStatus();
             }
             
             // Apply the value to the cell
@@ -8365,6 +8376,12 @@ For licensing inquiries, contact: legal@celigo.com
         // ================================================================
         
         async function generateSummaryIncomeStatement() {
+            // CRITICAL: Prevent filter change handlers from triggering during report generation
+            // When we write to P3, Q3, R3, S3, T3, U3, the event listeners would trigger
+            // another sync - we must block that until report is fully generated
+            isSyncInProgress = true;
+            console.log('🔒 CFO Flash: Blocking filter change handlers during generation');
+            
             const startTime = Date.now(); // Track timing
             const progress = document.getElementById('guideMeProgress');
             const currentYear = new Date().getFullYear();
@@ -8636,22 +8653,7 @@ For licensing inquiries, contact: legal@celigo.com
                     }
                     await context.sync();
                     
-                    // Add comments to parameter cells
-                    try {
-                        const comments = context.workbook.comments;
-                        const filterComments = {
-                            'P3': 'YEAR: Change this value to view a different fiscal year.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'DEPARTMENT: Filter by department. Leave empty for all.',
-                            'S3': 'LOCATION: Filter by location. Leave empty for all.',
-                            'T3': 'CLASS: Filter by class. Leave empty for all.',
-                            'U3': 'ACCOUNTING BOOK: Enter a book ID for specific book. Leave empty for primary.'
-                        };
-                        for (const [cell, text] of Object.entries(filterComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) {}
+                    // NOTE: Parameter cell comments removed - caused errors on Mac
                     
                     // ========== ROW 4: KPI DASHBOARD ==========
                     try {
@@ -8942,6 +8944,13 @@ For licensing inquiries, contact: legal@celigo.com
                     } catch (e) {
                         console.warn('Post-report currency format failed:', e.message);
                     }
+                    
+                    // Release the sync lock after currency formatting is done
+                    // Use a small delay to ensure any debounced cell change events have fired and been blocked
+                    setTimeout(() => {
+                        isSyncInProgress = false;
+                        console.log('🔓 CFO Flash: Filter change handlers unblocked - report generation complete');
+                    }, 1000);
                 }, 2000); // Wait for formulas to start evaluating
                 
             } catch (error) {
@@ -8952,6 +8961,10 @@ For licensing inquiries, contact: legal@celigo.com
                 }
                 progress.style.display = 'block';
                 progress.textContent = `❌ Error: ${error.message}`;
+                
+                // Release the sync lock on error too
+                isSyncInProgress = false;
+                console.log('🔓 CFO Flash: Filter change handlers unblocked (error case)');
             }
         }
 
@@ -9281,23 +9294,7 @@ For licensing inquiries, contact: legal@celigo.com
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ADD COMMENTS TO FILTER CELLS ==========
-                    try {
-                        const comments = context.workbook.comments;
-                        const filterComments = {
-                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
-                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
-                        };
-                        for (const [cell, text] of Object.entries(filterComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                    // NOTE: Filter cell comments removed - caused errors on Mac
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     // Set row height for KPI cards
@@ -9773,6 +9770,12 @@ For licensing inquiries, contact: legal@celigo.com
                     } catch (e) {
                         console.warn('Post-report currency format failed:', e.message);
                     }
+                    
+                    // Release the sync lock after currency formatting is done
+                    setTimeout(() => {
+                        isSyncInProgress = false;
+                        console.log('🔓 Full Income Statement: Filter change handlers unblocked - report generation complete');
+                    }, 1000);
                 }, 2000); // Wait for formulas to start evaluating
                 
             } catch (error) {
@@ -9787,6 +9790,7 @@ For licensing inquiries, contact: legal@celigo.com
                 // Clear sync flag after a delay on error too
                 setTimeout(() => {
                     isSyncInProgress = false;
+                    console.log('🔓 Full Income Statement: Filter change handlers unblocked (error case)');
                 }, 3000);
             }
         }
@@ -10048,23 +10052,7 @@ For licensing inquiries, contact: legal@celigo.com
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ADD COMMENTS TO FILTER CELLS ==========
-                    try {
-                        const comments = context.workbook.comments;
-                        const budgetComments = {
-                            'P3': 'YEAR: Enter the fiscal year for the budget report. Change this value to view different budget years.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter by subsidiary. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'BUDGET CATEGORY: Select a budget category name to filter. Leave empty for all categories.',
-                            'S3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                            'T3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                            'U3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                            'V3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.'
-                        };
-                        for (const [cell, text] of Object.entries(budgetComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) { console.warn('Could not add budget comments:', e.message); }
+                    // NOTE: Budget cell comments removed - caused errors on Mac
                     
                     // ========== ROW 4: BLANK ==========
                     currentRow = 4;
@@ -10611,23 +10599,7 @@ For licensing inquiries, contact: legal@celigo.com
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ADD COMMENTS TO FILTER CELLS ==========
-                    try {
-                        const comments = context.workbook.comments;
-                        const filterComments = {
-                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
-                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
-                        };
-                        for (const [cell, text] of Object.entries(filterComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                    // NOTE: Filter cell comments removed - caused errors on Mac
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     try {
@@ -12220,8 +12192,19 @@ export default {
         // Flag to suppress statusBar during report generation
         let suppressStatusBar = false;
         
-        // Wait for formulas to complete - simple #BUSY cell check
-        // Just waits for all #BUSY cells to clear (3 consecutive checks for stability)
+        // ========================================================================
+        // FORMULA COMPLETION DETECTION - CONFIGURATION
+        // ========================================================================
+        // Set to false to revert to old behavior (15s fallback wait)
+        // Set to true to use smart detection (checks for numeric values vs formula count)
+        const USE_SMART_FORMULA_DETECTION = true;  // <-- EASY REVERT: Change to false
+        const SMART_DETECTION_THRESHOLD = 0.90;    // Require 90% of formulas to have numeric values
+        const FALLBACK_WAIT_SECONDS = 15;          // Old behavior fallback (if smart detection disabled)
+        // ========================================================================
+        
+        // Wait for formulas to complete - smart detection based on actual formula count
+        // Counts XAVI formulas on sheet, then waits until ~90% have numeric values
+        // This avoids waiting 15+ seconds when formulas resolve instantly from cache
         async function waitForFormulasToComplete(maxWaitMs = 120000, updateOverlayFn = null) {
             const startTime = Date.now();
             
@@ -12230,6 +12213,35 @@ export default {
             // Clear any existing status broadcasts
             localStorage.removeItem('netsuite_status');
             
+            // First, count XAVI formulas on the sheet (for smart detection)
+            let expectedFormulaCount = 0;
+            if (USE_SMART_FORMULA_DETECTION) {
+                try {
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const usedRange = sheet.getUsedRange();
+                        usedRange.load("formulas");
+                        await context.sync();
+                        
+                        const formulas = usedRange.formulas;
+                        for (const row of formulas) {
+                            for (const cell of row) {
+                                if (typeof cell === 'string' && cell.toUpperCase().includes('XAVI.')) {
+                                    expectedFormulaCount++;
+                                }
+                            }
+                        }
+                    });
+                    console.log(`   Smart detection: ENABLED - expecting ${expectedFormulaCount} XAVI formulas to resolve`);
+                    console.log(`   Threshold: ${Math.round(SMART_DETECTION_THRESHOLD * 100)}% (${Math.ceil(expectedFormulaCount * SMART_DETECTION_THRESHOLD)} numeric values needed)`);
+                } catch (e) {
+                    console.warn('   Could not count formulas, using fallback mode');
+                    expectedFormulaCount = 0;
+                }
+            } else {
+                console.log(`   Smart detection: DISABLED (using ${FALLBACK_WAIT_SECONDS}s fallback)`);
+            }
+            
             // Brief initial wait for Excel to start calculating
             console.log('⏳ Giving Excel a moment to start calculating...');
             await new Promise(resolve => setTimeout(resolve, 3000));
@@ -12237,12 +12249,14 @@ export default {
             let consecutiveNoBusy = 0;
             const requiredConsecutive = 3; // Need 3 consecutive checks (3 seconds of stability)
             let sawBusyAtLeastOnce = false;
+            const targetNumeric = Math.ceil(expectedFormulaCount * SMART_DETECTION_THRESHOLD);
             
             while (Date.now() - startTime < maxWaitMs) {
                 await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
                 
                 let hasBusy = false;
                 let busyCount = 0;
+                let numericCount = 0;  // Smart detection: count actual numbers
                 
                 try {
                     await Excel.run(async (context) => {
@@ -12259,6 +12273,10 @@ export default {
                                     hasBusy = true;
                                     busyCount++;
                                 }
+                                // Smart detection: count numeric values (indicates resolved formulas)
+                                if (USE_SMART_FORMULA_DETECTION && typeof cell === 'number' && !isNaN(cell)) {
+                                    numericCount++;
+                                }
                             }
                         }
                     });
@@ -12270,20 +12288,43 @@ export default {
                         consecutiveNoBusy = 0; // Reset counter
                         console.log(`📊 ${busyCount} #BUSY cells remaining (${elapsed}s elapsed)`);
                     } else {
-                        // Count as "no busy" if we've seen busy at least once
-                        // OR if 15 seconds have passed (formulas might have resolved very quickly or cached)
-                        if (sawBusyAtLeastOnce || elapsed > 15) {
+                        // Determine if we should count this as "resolved"
+                        let shouldCountAsResolved = false;
+                        let resolveReason = '';
+                        
+                        if (sawBusyAtLeastOnce) {
+                            // We saw #BUSY before and now it's gone - definitely resolved
+                            shouldCountAsResolved = true;
+                            resolveReason = 'saw #BUSY clear';
+                        } else if (USE_SMART_FORMULA_DETECTION && expectedFormulaCount > 0 && numericCount >= targetNumeric) {
+                            // SMART DETECTION: We have enough numeric values = formulas resolved from cache
+                            console.log(`🧠 Smart detection: ${numericCount}/${expectedFormulaCount} formulas resolved (${Math.round(numericCount/expectedFormulaCount*100)}%) - cache hit!`);
+                            shouldCountAsResolved = true;
+                            resolveReason = 'smart detection';
+                        } else if (elapsed > FALLBACK_WAIT_SECONDS) {
+                            // Fallback: waited long enough, assume resolved
+                            shouldCountAsResolved = true;
+                            resolveReason = 'timeout fallback';
+                        }
+                        
+                        if (shouldCountAsResolved) {
                             consecutiveNoBusy++;
-                            console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})`);
+                            const smartInfo = USE_SMART_FORMULA_DETECTION && expectedFormulaCount > 0 
+                                ? ` [${numericCount}/${expectedFormulaCount} numeric]` 
+                                : '';
+                            console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})${smartInfo}`);
                             
                             if (consecutiveNoBusy >= requiredConsecutive) {
-                                console.log('✅ All cells populated!');
+                                console.log(`✅ All cells populated! (${resolveReason})`);
                                 // Don't change suppressStatusBar here - let caller control it
                                 localStorage.removeItem('netsuite_status');
                                 return true;
                             }
                         } else {
-                            console.log(`⏳ Waiting for formulas to start... (${elapsed}s)`);
+                            const smartInfo = USE_SMART_FORMULA_DETECTION && expectedFormulaCount > 0 
+                                ? ` [${numericCount}/${targetNumeric} needed]` 
+                                : '';
+                            console.log(`⏳ Waiting for formulas to resolve... (${elapsed}s)${smartInfo}`);
                         }
                     }
                 } catch (e) {
@@ -12891,159 +12932,187 @@ export default {
         let formulaDetectionTimer = null;  // Timer for detecting new XAVI formulas
         let lastFormulaCount = 0;  // Track formula count to detect new additions
         
+        // Track current sheet listener so we can re-register when switching sheets
+        let currentSheetChangeHandler = null;
+        let currentSheetName = null;
+        
+        // The actual change handler - extracted so it can be re-used when switching sheets
+        async function handleSheetChange(event) {
+            // Normalize the event address - strip sheet prefix and dollar signs
+            let eventAddr = event.address;
+            const rawAddr = eventAddr; // Keep for logging
+            if (eventAddr.includes('!')) {
+                eventAddr = eventAddr.split('!')[1];
+            }
+            eventAddr = eventAddr.replace(/\$/g, '').toUpperCase();
+            
+            // Debug: Log all cell changes to parameter row
+            if (eventAddr.endsWith('3')) {
+                console.log(`📝 Cell changed: raw="${rawAddr}" → normalized="${eventAddr}"`);
+            }
+            
+            // Check if the changed cell is P3 (YEAR parameter for auto-sync)
+            if (eventAddr === 'P3') {
+                console.log('📊 YEAR cell (P3) changed - raw address: ' + event.address);
+                
+                // CRITICAL: Suppress statusBar IMMEDIATELY to prevent "Fetching P&L" flash
+                suppressStatusBar = true;
+                localStorage.removeItem('netsuite_status');
+                hideStatus();
+                
+                await handleYearChange();
+            }
+            
+            // Check if the changed cell is Q3 (SUBSIDIARY parameter for auto-sync)
+            // Use debounce to prevent rapid-fire triggering
+            if (eventAddr === 'Q3') {
+                console.log('🏢 SUBSIDIARY cell (Q3) changed - raw address: ' + event.address);
+                
+                // CRITICAL: Suppress and HIDE statusBar IMMEDIATELY (not after debounce!)
+                // This prevents the "Fetching P&L data" window from ever appearing
+                suppressStatusBar = true;
+                localStorage.removeItem('netsuite_status');
+                hideStatus();  // Hide immediately if already showing
+                
+                if (window.subsidiaryChangeTimer) {
+                    clearTimeout(window.subsidiaryChangeTimer);
+                }
+                window.subsidiaryChangeTimer = setTimeout(async () => {
+                    console.log('🏢 SUBSIDIARY debounce complete - triggering updates...');
+                    
+                    // Re-suppress in case polling started again
+                    suppressStatusBar = true;
+                    localStorage.removeItem('netsuite_status');
+                    hideStatus();
+                    
+                    // Check for structure sync FIRST (shows the overlay immediately)
+                    // This must happen BEFORE smartCurrencyFormatUpdate which triggers recalc
+                    await handleSubsidiaryChange();
+                    
+                    // Currency update happens inside performStructureSync now
+                }, 500); // Reduced to 500ms - we're hiding status anyway
+            }
+            
+            // Check if the changed cell is a filter parameter (R3, S3, T3, U3)
+            // These trigger CFO Sync OR Income Statement Filter Sync
+            const filterCells = ['R3', 'S3', 'T3', 'U3'];
+            if (filterCells.includes(eventAddr)) {
+                console.log(`🔧🔧🔧 Filter cell ${eventAddr} changed! (raw: ${event.address}) 🔧🔧🔧`);
+                
+                // Suppress statusBar immediately
+                suppressStatusBar = true;
+                localStorage.removeItem('netsuite_status');
+                hideStatus();
+                
+                if (window.filterChangeTimer) {
+                    console.log('🔧 Clearing previous filter timer');
+                    clearTimeout(window.filterChangeTimer);
+                }
+                console.log('🔧 Setting 500ms debounce timer for handleFilterChange()...');
+                window.filterChangeTimer = setTimeout(async () => {
+                    console.log('🔧 Filter debounce complete - calling handleFilterChange() NOW');
+                    
+                    suppressStatusBar = true;
+                    localStorage.removeItem('netsuite_status');
+                    hideStatus();
+                    
+                    // Check if this is a CFO Flash Report or Income Statement and trigger sync
+                    try {
+                        await handleFilterChange();
+                    } catch (e) {
+                        console.error('❌ handleFilterChange() threw error:', e.message);
+                    }
+                }, 500);
+            }
+            
+            // ============================================
+            // DETECT NEW XAVI FORMULAS
+            // When user adds/pastes/drags formulas, we need to:
+            // 1. Re-scan for subsidiary cells
+            // 2. Re-apply currency formatting
+            // ============================================
+            if (formulaDetectionTimer) {
+                clearTimeout(formulaDetectionTimer);
+            }
+            formulaDetectionTimer = setTimeout(async () => {
+                await checkForNewFormulas();
+            }, 2000); // 2 second debounce after typing stops
+            
+            // ============================================
+            // SMART CURRENCY FORMAT UPDATE
+            // Check if changed cell is a known subsidiary reference
+            // ============================================
+            // Normalize address: remove sheet name prefix, dollar signs, convert to uppercase
+            let normalizedAddress = event.address;
+            if (normalizedAddress.includes('!')) {
+                normalizedAddress = normalizedAddress.split('!')[1];
+            }
+            normalizedAddress = normalizedAddress.replace(/\$/g, '').toUpperCase();
+            
+            if (knownSubsidiaryCells.has(normalizedAddress)) {
+                console.log(`🏢 Known subsidiary cell ${normalizedAddress} changed, triggering smart currency update...`);
+                await smartCurrencyFormatUpdate(normalizedAddress);
+            }
+        }
+        
+        // Register change listener for the current active sheet
+        async function registerSheetChangeListener() {
+            try {
+                await Excel.run(async (context) => {
+                    const sheet = context.workbook.worksheets.getActiveWorksheet();
+                    sheet.load('name');
+                    await context.sync();
+                    
+                    const sheetName = sheet.name;
+                    
+                    // Skip if already registered for this sheet
+                    if (currentSheetName === sheetName) {
+                        console.log(`📋 Change listener already registered for "${sheetName}"`);
+                        return;
+                    }
+                    
+                    // Register new listener
+                    sheet.onChanged.add(handleSheetChange);
+                    await context.sync();
+                    
+                    currentSheetName = sheetName;
+                    console.log(`✅ Change listener registered for sheet "${sheetName}"`);
+                });
+            } catch (e) {
+                console.warn('Could not register sheet change listener:', e.message);
+            }
+        }
+        
         // Set up listener to auto-sync Income Statement when YEAR changes
         // AND smart currency format updates when subsidiary cells change
         // AND detect new XAVI formulas being added
         async function setupAutoSyncListener() {
-            try {
-                await Excel.run(async (context) => {
-                    const sheet = context.workbook.worksheets.getActiveWorksheet();
-                    
-                    // Register for changes on the worksheet
-                    sheet.onChanged.add(async (event) => {
-                        // Normalize the event address - strip sheet prefix and dollar signs
-                        let eventAddr = event.address;
-                        const rawAddr = eventAddr; // Keep for logging
-                        if (eventAddr.includes('!')) {
-                            eventAddr = eventAddr.split('!')[1];
-                        }
-                        eventAddr = eventAddr.replace(/\$/g, '').toUpperCase();
-                        
-                        // Debug: Log all cell changes to parameter row
-                        if (eventAddr.endsWith('3')) {
-                            console.log(`📝 Cell changed: raw="${rawAddr}" → normalized="${eventAddr}"`);
-                        }
-                        
-                        // Check if the changed cell is P3 (YEAR parameter for auto-sync)
-                        if (eventAddr === 'P3') {
-                            console.log('📊 YEAR cell (P3) changed - raw address: ' + event.address);
-                            
-                            // CRITICAL: Suppress statusBar IMMEDIATELY to prevent "Fetching P&L" flash
-                            suppressStatusBar = true;
-                            localStorage.removeItem('netsuite_status');
-                            hideStatus();
-                            
-                            await handleYearChange();
-                        }
-                        
-                        // Check if the changed cell is Q3 (SUBSIDIARY parameter for auto-sync)
-                        // Use debounce to prevent rapid-fire triggering
-                        if (eventAddr === 'Q3') {
-                            console.log('🏢 SUBSIDIARY cell (Q3) changed - raw address: ' + event.address);
-                            
-                            // CRITICAL: Suppress and HIDE statusBar IMMEDIATELY (not after debounce!)
-                            // This prevents the "Fetching P&L data" window from ever appearing
-                            suppressStatusBar = true;
-                            localStorage.removeItem('netsuite_status');
-                            hideStatus();  // Hide immediately if already showing
-                            
-                            if (window.subsidiaryChangeTimer) {
-                                clearTimeout(window.subsidiaryChangeTimer);
-                            }
-                            window.subsidiaryChangeTimer = setTimeout(async () => {
-                                console.log('🏢 SUBSIDIARY debounce complete - triggering updates...');
-                                
-                                // Re-suppress in case polling started again
-                                suppressStatusBar = true;
-                                localStorage.removeItem('netsuite_status');
-                                hideStatus();
-                                
-                                // Check for structure sync FIRST (shows the overlay immediately)
-                                // This must happen BEFORE smartCurrencyFormatUpdate which triggers recalc
-                                await handleSubsidiaryChange();
-                                
-                                // Currency update happens inside performStructureSync now
-                            }, 500); // Reduced to 500ms - we're hiding status anyway
-                        }
-                        
-                        // Check if the changed cell is a filter parameter (R3, S3, T3, U3)
-                        // These trigger CFO Sync (but not Structure Sync for Income Statement)
-                        const filterCells = ['R3', 'S3', 'T3', 'U3'];
-                        if (filterCells.includes(eventAddr)) {
-                            console.log(`🔧 Filter cell ${eventAddr} changed (raw: ${event.address})`);
-                            
-                            // Suppress statusBar immediately
-                            suppressStatusBar = true;
-                            localStorage.removeItem('netsuite_status');
-                            hideStatus();
-                            
-                            if (window.filterChangeTimer) {
-                                clearTimeout(window.filterChangeTimer);
-                            }
-                            window.filterChangeTimer = setTimeout(async () => {
-                                console.log('🔧 Filter debounce complete - checking for CFO sync...');
-                                
-                                suppressStatusBar = true;
-                                localStorage.removeItem('netsuite_status');
-                                hideStatus();
-                                
-                                // Check if this is a CFO Flash Report and trigger sync
-                                await handleFilterChange();
-                            }, 500);
-                        }
-                        
-                        // ============================================
-                        // DETECT NEW XAVI FORMULAS
-                        // When user adds/pastes/drags formulas, we need to:
-                        // 1. Re-scan for subsidiary cells
-                        // 2. Re-apply currency formatting
-                        // ============================================
-                        if (formulaDetectionTimer) {
-                            clearTimeout(formulaDetectionTimer);
-                        }
-                        formulaDetectionTimer = setTimeout(async () => {
-                            await checkForNewFormulas();
-                        }, 2000); // 2 second debounce after typing stops
-                        
-                        // ============================================
-                        // SMART CURRENCY FORMAT UPDATE
-                        // Check if changed cell is a known subsidiary reference
-                        // ============================================
-                        // Normalize address: remove sheet name prefix, dollar signs, convert to uppercase
-                        let normalizedAddress = event.address;
-                        if (normalizedAddress.includes('!')) {
-                            normalizedAddress = normalizedAddress.split('!')[1];
-                        }
-                        normalizedAddress = normalizedAddress.replace(/\$/g, '').toUpperCase();
-                        
-                        // Check if this is a known subsidiary cell
-                        const isSubsidiaryCell = knownSubsidiaryCells.has(normalizedAddress);
-                        
-                        if (isSubsidiaryCell) {
-                            console.log(`💱 Subsidiary cell changed: ${normalizedAddress}`);
-                            
-                            // Debounce - wait for user to stop making changes
-                            if (currencyFormatDebounceTimer) {
-                                clearTimeout(currencyFormatDebounceTimer);
-                            }
-                            
-                            currencyFormatDebounceTimer = setTimeout(async () => {
-                                await smartCurrencyFormatUpdate();
-                            }, 1500); // 1.5 second debounce
-                        }
-                    });
-                    
-                    await context.sync();
-                    console.log('✅ Auto-sync listener registered for worksheet changes');
-                });
-                
-                // Do an initial scan to populate knownSubsidiaryCells
-                await scanForSubsidiaryCells();
-                
-            } catch (e) {
-                console.warn('Could not set up auto-sync listener:', e.message);
-            }
+            // Register change listener for initial active sheet
+            await registerSheetChangeListener();
+            
+            // Do an initial scan to populate knownSubsidiaryCells
+            await scanForSubsidiaryCells();
             
             // Set up worksheet activation listener (separate Excel.run)
+            // This re-registers the change listener when user switches sheets
             try {
                 await Excel.run(async (ctx) => {
                     ctx.workbook.worksheets.onActivated.add(async (event) => {
-                        console.log('📋 Worksheet activated - re-scanning for formulas...');
-                        // Reset formula count for new sheet
+                        console.log('📋 Worksheet activated - re-registering listeners and re-scanning...');
+                        
+                        // Reset formula count and subsidiary cells for new sheet
                         lastFormulaCount = 0;
                         knownSubsidiaryCells.clear();
                         
-                        // Re-scan the new sheet (this creates its own Excel.run)
+                        // Reset sync state for new sheet
+                        lastSyncedYear = '';
+                        lastSyncedSubsidiary = '';
+                        isSyncInProgress = false;
+                        
+                        // Re-register change listener for the new sheet
+                        await registerSheetChangeListener();
+                        
+                        // Re-scan the new sheet for subsidiary cells
                         await scanForSubsidiaryCells();
                     });
                     await ctx.sync();
@@ -13558,9 +13627,13 @@ export default {
         
         // Handle subsidiary change - trigger structure sync if enabled
         async function handleSubsidiaryChange() {
+            console.log('🏢 handleSubsidiaryChange() called');
+            console.log(`   isSyncInProgress: ${isSyncInProgress}`);
+            console.log(`   lastSyncedSubsidiary: "${lastSyncedSubsidiary}"`);
+            
             // Prevent infinite loop - don't sync if already syncing
             if (isSyncInProgress) {
-                console.log('⏸️ Sync already in progress, skipping...');
+                console.log('⏸️ Sync already in progress, skipping subsidiary change...');
                 return;
             }
             
@@ -13653,9 +13726,9 @@ export default {
         
         // Handle filter change (R3, S3, T3, U3) - triggers CFO Sync OR Income Statement Filter Sync
         async function handleFilterChange() {
-            console.log('🔧 handleFilterChange() called');
+            console.log('🔧 handleFilterChange() called - checking report type...');
             
-            // Prevent infinite loop
+            // Prevent infinite loop - but also add a safety valve
             if (isSyncInProgress) {
                 console.log('⏸️ Sync already in progress, skipping filter change...');
                 return;
@@ -13695,8 +13768,13 @@ export default {
                     
                     await context.sync();
                     
-                    const marker = String(markerCell.values[0][0] || '').toLowerCase();
-                    const sync = String(syncCell.values[0][0] || '').toUpperCase();
+                    const rawMarker = String(markerCell.values[0][0] || '');
+                    const marker = rawMarker.toLowerCase().trim();
+                    const rawSync = String(syncCell.values[0][0] || '');
+                    const sync = rawSync.toUpperCase().trim();
+                    
+                    console.log(`🔧 Filter change: V2 raw="${rawMarker}", V3 raw="${rawSync}"`);
+                    console.log(`🔧 Filter change: marker="${marker}", sync="${sync}"`);
                     
                     year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                     subsidiary = subCell.values[0][0] || '';
@@ -13705,42 +13783,56 @@ export default {
                     classId = classCell.values[0][0] || '';
                     accountingBook = bookCell.values[0][0] || '';
                     
-                    // Check for CFO Flash Reports
-                    if ((marker.includes('cfo sync') || marker.includes('cfo')) &&
-                        (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                    console.log(`🔧 Filter values: year=${year}, sub="${subsidiary}", dept="${department}", loc="${location}", class="${classId}", book="${accountingBook}"`);
+                    
+                    // Check for CFO Flash Reports - check multiple variations
+                    const isCFO = marker.includes('cfo sync') || marker.includes('cfo flash') || marker.includes('cfo');
+                    const syncEnabled = sync === 'TRUE' || sync === 'YES' || sync === '1';
+                    
+                    console.log(`🔧 Detection: isCFO=${isCFO}, isStructure=${marker.includes('structure sync')}, syncEnabled=${syncEnabled}`);
+                    
+                    if (isCFO && syncEnabled) {
                         syncType = 'cfo';
-                        console.log(`🔧 Filter change detected on CFO Flash - triggering CFO sync`);
+                        console.log(`🔧 ✅ Detected CFO Flash Report - will trigger performCFOSync()`);
                     }
-                    // Check for Income Statement (Structure Sync marker)
-                    else if ((marker.includes('structure sync') || marker.includes('🔄')) &&
-                             (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                    // Check for Income Statement (Structure Sync marker) - but NOT if it's a CFO report
+                    else if ((marker.includes('structure sync') || (marker.includes('🔄') && !marker.includes('cfo'))) && syncEnabled) {
                         syncType = 'income';
-                        console.log(`🔧 Filter change detected on Income Statement - triggering filter sync`);
+                        console.log(`🔧 ✅ Detected Income Statement - will trigger performIncomeStatementFilterSync()`);
                     } else {
-                        console.log(`🔧 Filter change: marker="${marker}", sync="${sync}" - no sync marker, skipping`);
+                        console.log(`🔧 ❌ No matching report type - no sync will be triggered`);
+                        console.log(`🔧    (isCFO=${isCFO}, isStructure=${marker.includes('structure sync')}, syncEnabled=${syncEnabled})`);
                     }
                 });
                 
                 if (syncType && year) {
-                    console.log(`🔄 Filter Sync (${syncType}): dept="${department}", loc="${location}", class="${classId}"`);
+                    console.log(`🔄 Starting Filter Sync (${syncType}): dept="${department}", loc="${location}", class="${classId}"`);
                     
                     isSyncInProgress = true;
                     
                     try {
                         if (syncType === 'cfo') {
+                            console.log('🔄 Calling performCFOSync()...');
                             await performCFOSync(year, subsidiary, department, location, classId, accountingBook);
+                            console.log('✅ performCFOSync() completed');
                         } else if (syncType === 'income') {
+                            console.log('🔄 Calling performIncomeStatementFilterSync()...');
                             await performIncomeStatementFilterSync(year, subsidiary, department, location, classId, accountingBook);
+                            console.log('✅ performIncomeStatementFilterSync() completed');
                         }
+                    } catch (syncError) {
+                        console.error(`❌ Sync error (${syncType}):`, syncError.message);
                     } finally {
                         setTimeout(() => {
                             isSyncInProgress = false;
                             console.log('✅ Filter sync protection cleared');
                         }, 3000);
                     }
+                } else {
+                    console.log(`🔧 No sync triggered: syncType=${syncType}, year=${year}`);
                 }
             } catch (e) {
-                console.warn('Filter change error:', e.message);
+                console.error('❌ Filter change error:', e.message);
                 setTimeout(() => { isSyncInProgress = false; }, 3000);
             }
         }
@@ -14379,23 +14471,7 @@ export default {
                         await context.sync();
                     } catch (e) {}
                     
-                    // ADD COMMENTS TO FILTER CELLS
-                    try {
-                        const comments = context.workbook.comments;
-                        const filterComments = {
-                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
-                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
-                        };
-                        for (const [cell, text] of Object.entries(filterComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                    // NOTE: Filter cell comments removed - caused errors on Mac
                     
                     // ROW 4: KPI METRICS DASHBOARD
                     try {
@@ -15028,8 +15104,8 @@ export default {
                     const sorted = Object.entries(subCounts).sort((a, b) => b[1] - a[1]);
                     if (sorted.length > 0) {
                         sheetSubId = sorted[0][0];
+                        }
                     }
-                }
                     
                     const sheetSymbol = sheetSubId && currencies[sheetSubId] ? currencies[sheetSubId] : defaultSymbol;
                     const sheetFormat = formats[sheetSymbol] || defaultFormat;
@@ -15641,23 +15717,7 @@ export default {
                                 await context.sync();
                             } catch (e) {}
                             
-                            // ADD COMMENTS TO FILTER CELLS
-                            try {
-                                const comments = context.workbook.comments;
-                                const filterComments = {
-                                    'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
-                                    'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
-                                    'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                                    'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                                    'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                                    'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
-                                    'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
-                                };
-                                for (const [cell, text] of Object.entries(filterComments)) {
-                                    comments.add(sheet.getRange(cell).address, text);
-                                }
-                                await context.sync();
-                            } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                            // NOTE: Filter cell comments removed - caused errors on Mac
                             
                             // ===== ROW 4: KPI METRICS =====
                             try {
