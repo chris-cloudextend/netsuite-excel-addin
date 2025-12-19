@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.217</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.218</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -10298,7 +10298,7 @@ For licensing inquiries, contact: legal@celigo.com
                     try {
                         console.log('💱 Budget Report: Scanning for subsidiary cells and formatting currencies...');
                         await scanForSubsidiaryCells();
-                        await autoFormatCurrencies();
+                    await autoFormatCurrencies();
                     } catch (e) {
                         console.warn('Post-report currency format failed:', e.message);
                     }
@@ -12900,9 +12900,16 @@ export default {
                     
                     // Register for changes on the worksheet
                     sheet.onChanged.add(async (event) => {
+                        // Normalize the event address - strip sheet prefix and dollar signs
+                        let eventAddr = event.address;
+                        if (eventAddr.includes('!')) {
+                            eventAddr = eventAddr.split('!')[1];
+                        }
+                        eventAddr = eventAddr.replace(/\$/g, '').toUpperCase();
+                        
                         // Check if the changed cell is P3 (YEAR parameter for auto-sync)
-                        if (event.address === 'P3' || event.address === '$P$3') {
-                            console.log('📊 YEAR cell (P3) changed');
+                        if (eventAddr === 'P3') {
+                            console.log('📊 YEAR cell (P3) changed - raw address: ' + event.address);
                             
                             // CRITICAL: Suppress statusBar IMMEDIATELY to prevent "Fetching P&L" flash
                             suppressStatusBar = true;
@@ -12914,8 +12921,8 @@ export default {
                         
                         // Check if the changed cell is Q3 (SUBSIDIARY parameter for auto-sync)
                         // Use debounce to prevent rapid-fire triggering
-                        if (event.address === 'Q3' || event.address === '$Q$3') {
-                            console.log('🏢 SUBSIDIARY cell (Q3) changed');
+                        if (eventAddr === 'Q3') {
+                            console.log('🏢 SUBSIDIARY cell (Q3) changed - raw address: ' + event.address);
                             
                             // CRITICAL: Suppress and HIDE statusBar IMMEDIATELY (not after debounce!)
                             // This prevents the "Fetching P&L data" window from ever appearing
@@ -12944,9 +12951,9 @@ export default {
                         
                         // Check if the changed cell is a filter parameter (R3, S3, T3, U3)
                         // These trigger CFO Sync (but not Structure Sync for Income Statement)
-                        const filterCells = ['R3', 'S3', 'T3', 'U3', '$R$3', '$S$3', '$T$3', '$U$3'];
-                        if (filterCells.includes(event.address)) {
-                            console.log(`🔧 Filter cell (${event.address}) changed`);
+                        const filterCells = ['R3', 'S3', 'T3', 'U3'];
+                        if (filterCells.includes(eventAddr)) {
+                            console.log(`🔧 Filter cell ${eventAddr} changed (raw: ${event.address})`);
                             
                             // Suppress statusBar immediately
                             suppressStatusBar = true;
@@ -13208,14 +13215,14 @@ export default {
                                 continue;
                             }
                             
-                            // If it's a cell reference (not a number or quoted string)
-                            if (subsidiaryParam && 
-                                !subsidiaryParam.startsWith('"') && 
-                                !subsidiaryParam.startsWith("'") && 
-                                !/^\d+$/.test(subsidiaryParam)) {
-                                // Normalize and add to known cells
-                                const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
-                                knownSubsidiaryCells.add(normalized);
+                                // If it's a cell reference (not a number or quoted string)
+                                if (subsidiaryParam && 
+                                    !subsidiaryParam.startsWith('"') && 
+                                    !subsidiaryParam.startsWith("'") && 
+                                    !/^\d+$/.test(subsidiaryParam)) {
+                                    // Normalize and add to known cells
+                                    const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
+                                    knownSubsidiaryCells.add(normalized);
                             }
                         }
                     }
@@ -13525,7 +13532,7 @@ export default {
                             await performCFOSync(newYear, subsidiary, department, location, classId, accountingBook);
                         } else {
                             // Full Income Statement: Full structure rebuild
-                            await performStructureSync(newYear, subsidiary);
+                        await performStructureSync(newYear, subsidiary);
                         }
                     } finally {
                         // Clear sync flag after a delay
@@ -13620,7 +13627,7 @@ export default {
                             await performCFOSync(year, newSubsidiary, department, location, classId, accountingBook);
                         } else {
                             // Full Income Statement: Full structure rebuild
-                            await performStructureSync(year, newSubsidiary);
+                        await performStructureSync(year, newSubsidiary);
                         }
                     } finally {
                         // Clear sync flag after a delay to let any queued change events fire first
@@ -13806,7 +13813,11 @@ export default {
                 localStorage.removeItem('netsuite_typebalance_cache_timestamp');
                 
                 // Signal functions.js to clear its in-memory cache
-                localStorage.setItem('netsuite_cache_clear_signal', Date.now().toString());
+                // CRITICAL: Must be JSON format with { timestamp, reason } that functions.js expects!
+                localStorage.setItem('netsuite_cache_clear_signal', JSON.stringify({
+                    timestamp: Date.now(),
+                    reason: 'cfo_filter_change'
+                }));
                 
                 try {
                     const typeBalanceResponse = await fetch(`${SERVER_URL}/batch/typebalance_refresh`, {
@@ -13861,9 +13872,53 @@ export default {
                             localStorage.setItem('netsuite_typebalance_cache_timestamp', Date.now().toString());
                             
                             console.log(`✅ CFO Sync: Saved ${Object.keys(cacheEntries).length} cache entries`);
+                            
+                            // Log sample keys for debugging
+                            const sampleKeys = Object.keys(cacheEntries).slice(0, 3);
+                            console.log('   Sample cache keys:', sampleKeys);
+                            
                         } catch (e) {
                             console.error('CFO Sync: localStorage save failed:', e.message);
                         }
+                        
+                        // ============================================
+                        // CRITICAL: Force TYPEBALANCE formulas to recalculate NOW
+                        // Excel already recalculated them BEFORE our pre-fetch completed,
+                        // so we need to trigger a SECOND recalculation to hit the cache
+                        // ============================================
+                        if (loadingStep) loadingStep.innerHTML = '🔄 Refreshing formulas...';
+                        if (loadingDesc) loadingDesc.textContent = 'Triggering formula recalculation with cached data.';
+                        
+                        console.log(`🔄 CFO Sync: Triggering TYPEBALANCE formula recalculation to use pre-fetched cache...`);
+                        try {
+                            await Excel.run(async (context) => {
+                                const sheet = context.workbook.worksheets.getActiveWorksheet();
+                                const usedRange = sheet.getUsedRange();
+                                usedRange.load(["formulas", "rowCount", "columnCount"]);
+                                await context.sync();
+                                
+                                const formulas = usedRange.formulas;
+                                const rowCount = usedRange.rowCount;
+                                const columnCount = usedRange.columnCount;
+                                let typebalanceCount = 0;
+                                
+                                for (let row = 0; row < rowCount; row++) {
+                                    for (let col = 0; col < columnCount; col++) {
+                                        const formula = formulas[row][col];
+                                        if (typeof formula === 'string' && formula.toUpperCase().includes('XAVI.TYPEBALANCE')) {
+                                            const cell = usedRange.getCell(row, col);
+                                            cell.calculate();
+                                            typebalanceCount++;
+                                        }
+                                    }
+                                }
+                                await context.sync();
+                                console.log(`✅ CFO Sync: Triggered recalculation of ${typebalanceCount} TYPEBALANCE formulas - they should now hit cache`);
+                            });
+                        } catch (recalcError) {
+                            console.warn('CFO Sync: TYPEBALANCE recalculation trigger failed:', recalcError.message);
+                        }
+                        
                     } else {
                         console.warn('⚠️ CFO Sync: Pre-fetch failed, formulas will load individually');
                     }
@@ -13956,25 +14011,25 @@ export default {
             localStorage.removeItem('netsuite_status');
             
             // Get currency info EARLY so we can show it on the overlay
-            let currencyFormat = '$#,##0.00';  // Default to USD
+                let currencyFormat = '$#,##0.00';  // Default to USD
             let currencySymbol = '$';
             let currencyFlag = '🇺🇸';
             
-            try {
-                const currencyData = await getCurrencyData();
-                if (currencyData && currentSubsidiary) {
-                    const subsidiaryNameToId = await getSubsidiaryLookup();
-                    const subId = /^\d+$/.test(currentSubsidiary) ? 
-                        currentSubsidiary : 
-                        (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
+                try {
+                    const currencyData = await getCurrencyData();
+                    if (currencyData && currentSubsidiary) {
+                        const subsidiaryNameToId = await getSubsidiaryLookup();
+                        const subId = /^\d+$/.test(currentSubsidiary) ? 
+                            currentSubsidiary : 
+                            (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
                     currencySymbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
                     currencyFormat = currencyData.formats[currencySymbol] || '$#,##0.00';
                     currencyFlag = getCurrencyFlag(currencySymbol);
                     console.log(`💱 Structure Sync currency: "${currentSubsidiary}" → ${currencyFlag} ${currencySymbol}`);
+                    }
+                } catch (e) {
+                    console.warn('Currency lookup failed:', e.message);
                 }
-            } catch (e) {
-                console.warn('Currency lookup failed:', e.message);
-            }
             
             // Show prominent FULL-SCREEN overlay for Structure Sync (impossible to miss!)
             const syncOverlay = document.createElement('div');
@@ -14695,13 +14750,13 @@ export default {
                             continue; // Not a XAVI formula we format
                         }
                         
-                        pendingCells.push({ row, col, subsidiaryParam });
-                        
-                        if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
-                            cellRefsToResolve.add(subsidiaryParam);
-                            // Track this cell reference for change detection
-                            const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
-                            knownSubsidiaryCells.add(normalized);
+                            pendingCells.push({ row, col, subsidiaryParam });
+                            
+                            if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
+                                cellRefsToResolve.add(subsidiaryParam);
+                                // Track this cell reference for change detection
+                                const normalized = subsidiaryParam.replace(/\$/g, '').toUpperCase();
+                                knownSubsidiaryCells.add(normalized);
                         }
                     }
                 }
@@ -14760,19 +14815,19 @@ export default {
                 // NATIVE FORMULAS: Also format SUM cells, subtotals, etc.
                 // Determine the "sheet currency" from the most common subsidiary used
                 // ============================================
-                
+                    
                 // Determine sheet currency: prefer Q3 value, else use most common subsidiary from XAVI formulas
-                let sheetSubId = '';
-                
+                    let sheetSubId = '';
+                    
                 // First try Q3 (Income Statement standard location)
                 const subValue = String(subCell.values[0][0] || '').trim();
-                if (subValue) {
-                    if (/^\d+$/.test(subValue)) {
-                        sheetSubId = subValue;
-                    } else {
-                        sheetSubId = subsidiaryNameToId[subValue.toLowerCase()] || '';
+                    if (subValue) {
+                        if (/^\d+$/.test(subValue)) {
+                            sheetSubId = subValue;
+                        } else {
+                            sheetSubId = subsidiaryNameToId[subValue.toLowerCase()] || '';
+                        }
                     }
-                }
                 
                 // If Q3 didn't have a value, use the most common subsidiary from XAVI formulas
                 if (!sheetSubId && pendingCells.length > 0) {
@@ -14800,16 +14855,16 @@ export default {
                         sheetSubId = sorted[0][0];
                     }
                 }
-                
-                const sheetSymbol = sheetSubId && currencies[sheetSubId] ? currencies[sheetSubId] : defaultSymbol;
-                const sheetFormat = formats[sheetSymbol] || defaultFormat;
+                    
+                    const sheetSymbol = sheetSubId && currencies[sheetSubId] ? currencies[sheetSubId] : defaultSymbol;
+                    const sheetFormat = formats[sheetSymbol] || defaultFormat;
                 console.log(`💱 AUTO-FORMAT: Sheet currency → ${sheetSymbol} (sub ID: ${sheetSubId})`);
                 
                 // Format ALL native Excel formulas (SUM, subtotals, etc.) with the sheet currency
                 let nativeFormatted = 0;
                 for (let row = 0; row < usedRange.rowCount; row++) {
                     for (let col = 0; col < usedRange.columnCount; col++) {
-                        const formula = formulas[row][col];
+                            const formula = formulas[row][col];
                         if (typeof formula !== 'string' || !formula.startsWith('=')) continue;
                         
                         // Skip XAVI formulas (already formatted with their specific subsidiary)
@@ -14821,12 +14876,12 @@ export default {
                         if (isXaviFormula) continue;
                         
                         // Format native formulas (SUM, arithmetic, etc.)
-                        const range = usedRange.getCell(row, col);
-                        range.numberFormat = [[sheetFormat]];
+                                const range = usedRange.getCell(row, col);
+                                range.numberFormat = [[sheetFormat]];
                         nativeFormatted++;
+                        }
                     }
-                }
-                
+                    
                 if (nativeFormatted > 0) {
                     await context.sync();
                     console.log(`💱 AUTO-FORMAT: Also formatted ${nativeFormatted} native Excel formulas`);
@@ -14905,12 +14960,12 @@ export default {
                                 continue; // Not a XAVI formula we format
                             }
                             
-                            pendingCells.push({ row, col, subsidiaryParam });
-                            
-                            // If it looks like a cell reference (contains $ or letter+number pattern)
-                            if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
-                                // It's likely a cell reference like $Q$3, F2, etc.
-                                cellRefsToResolve.add(subsidiaryParam);
+                                pendingCells.push({ row, col, subsidiaryParam });
+                                
+                                // If it looks like a cell reference (contains $ or letter+number pattern)
+                                if (subsidiaryParam && !subsidiaryParam.startsWith('"') && !subsidiaryParam.startsWith("'") && !/^\d+$/.test(subsidiaryParam)) {
+                                    // It's likely a cell reference like $Q$3, F2, etc.
+                                    cellRefsToResolve.add(subsidiaryParam);
                             }
                         }
                     }
