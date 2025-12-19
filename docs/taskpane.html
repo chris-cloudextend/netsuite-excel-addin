@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.225</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.226</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12248,23 +12248,51 @@ export default {
         // FORMULA COMPLETION DETECTION - CONFIGURATION
         // ========================================================================
         // Set to false to revert to old behavior (15s fallback wait)
-        // Set to true to use smart detection (checks for numeric values)
+        // Set to true to use smart detection (checks for numeric values vs formula count)
         const USE_SMART_FORMULA_DETECTION = true;  // <-- EASY REVERT: Change to false
-        const SMART_DETECTION_MIN_NUMERIC = 5;     // Require at least 5 numeric values
+        const SMART_DETECTION_THRESHOLD = 0.90;    // Require 90% of formulas to have numeric values
         const FALLBACK_WAIT_SECONDS = 15;          // Old behavior fallback (if smart detection disabled)
         // ========================================================================
         
-        // Wait for formulas to complete - smart #BUSY cell check
-        // Uses smart detection: If we see numeric values AND no #BUSY, assume resolved
+        // Wait for formulas to complete - smart detection based on actual formula count
+        // Counts XAVI formulas on sheet, then waits until ~90% have numeric values
         // This avoids waiting 15+ seconds when formulas resolve instantly from cache
         async function waitForFormulasToComplete(maxWaitMs = 120000, updateOverlayFn = null) {
             const startTime = Date.now();
             
             console.log('⏳ Waiting for formulas to complete...');
-            console.log(`   Smart detection: ${USE_SMART_FORMULA_DETECTION ? 'ENABLED' : 'DISABLED (using ' + FALLBACK_WAIT_SECONDS + 's fallback)'}`);
             
             // Clear any existing status broadcasts
             localStorage.removeItem('netsuite_status');
+            
+            // First, count XAVI formulas on the sheet (for smart detection)
+            let expectedFormulaCount = 0;
+            if (USE_SMART_FORMULA_DETECTION) {
+                try {
+                    await Excel.run(async (context) => {
+                        const sheet = context.workbook.worksheets.getActiveWorksheet();
+                        const usedRange = sheet.getUsedRange();
+                        usedRange.load("formulas");
+                        await context.sync();
+                        
+                        const formulas = usedRange.formulas;
+                        for (const row of formulas) {
+                            for (const cell of row) {
+                                if (typeof cell === 'string' && cell.toUpperCase().includes('XAVI.')) {
+                                    expectedFormulaCount++;
+                                }
+                            }
+                        }
+                    });
+                    console.log(`   Smart detection: ENABLED - expecting ${expectedFormulaCount} XAVI formulas to resolve`);
+                    console.log(`   Threshold: ${Math.round(SMART_DETECTION_THRESHOLD * 100)}% (${Math.ceil(expectedFormulaCount * SMART_DETECTION_THRESHOLD)} numeric values needed)`);
+                } catch (e) {
+                    console.warn('   Could not count formulas, using fallback mode');
+                    expectedFormulaCount = 0;
+                }
+            } else {
+                console.log(`   Smart detection: DISABLED (using ${FALLBACK_WAIT_SECONDS}s fallback)`);
+            }
             
             // Brief initial wait for Excel to start calculating
             console.log('⏳ Giving Excel a moment to start calculating...');
@@ -12273,6 +12301,7 @@ export default {
             let consecutiveNoBusy = 0;
             const requiredConsecutive = 3; // Need 3 consecutive checks (3 seconds of stability)
             let sawBusyAtLeastOnce = false;
+            const targetNumeric = Math.ceil(expectedFormulaCount * SMART_DETECTION_THRESHOLD);
             
             while (Date.now() - startTime < maxWaitMs) {
                 await new Promise(resolve => setTimeout(resolve, 1000)); // Check every second
@@ -12313,31 +12342,41 @@ export default {
                     } else {
                         // Determine if we should count this as "resolved"
                         let shouldCountAsResolved = false;
+                        let resolveReason = '';
                         
                         if (sawBusyAtLeastOnce) {
                             // We saw #BUSY before and now it's gone - definitely resolved
                             shouldCountAsResolved = true;
-                        } else if (USE_SMART_FORMULA_DETECTION && numericCount >= SMART_DETECTION_MIN_NUMERIC) {
-                            // SMART DETECTION: We have numeric values = formulas resolved from cache
-                            console.log(`🧠 Smart detection: ${numericCount} numeric values found - formulas resolved from cache!`);
+                            resolveReason = 'saw #BUSY clear';
+                        } else if (USE_SMART_FORMULA_DETECTION && expectedFormulaCount > 0 && numericCount >= targetNumeric) {
+                            // SMART DETECTION: We have enough numeric values = formulas resolved from cache
+                            console.log(`🧠 Smart detection: ${numericCount}/${expectedFormulaCount} formulas resolved (${Math.round(numericCount/expectedFormulaCount*100)}%) - cache hit!`);
                             shouldCountAsResolved = true;
+                            resolveReason = 'smart detection';
                         } else if (elapsed > FALLBACK_WAIT_SECONDS) {
                             // Fallback: waited long enough, assume resolved
                             shouldCountAsResolved = true;
+                            resolveReason = 'timeout fallback';
                         }
                         
                         if (shouldCountAsResolved) {
                             consecutiveNoBusy++;
-                            console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})${USE_SMART_FORMULA_DETECTION ? ' [' + numericCount + ' numeric values]' : ''}`);
+                            const smartInfo = USE_SMART_FORMULA_DETECTION && expectedFormulaCount > 0 
+                                ? ` [${numericCount}/${expectedFormulaCount} numeric]` 
+                                : '';
+                            console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})${smartInfo}`);
                             
                             if (consecutiveNoBusy >= requiredConsecutive) {
-                                console.log('✅ All cells populated!');
+                                console.log(`✅ All cells populated! (${resolveReason})`);
                                 // Don't change suppressStatusBar here - let caller control it
                                 localStorage.removeItem('netsuite_status');
                                 return true;
                             }
                         } else {
-                            console.log(`⏳ Waiting for formulas to start... (${elapsed}s)${USE_SMART_FORMULA_DETECTION ? ' [' + numericCount + ' numeric values so far]' : ''}`);
+                            const smartInfo = USE_SMART_FORMULA_DETECTION && expectedFormulaCount > 0 
+                                ? ` [${numericCount}/${targetNumeric} needed]` 
+                                : '';
+                            console.log(`⏳ Waiting for formulas to resolve... (${elapsed}s)${smartInfo}`);
                         }
                     }
                 } catch (e) {
