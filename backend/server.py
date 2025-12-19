@@ -7322,6 +7322,16 @@ def calculate_type_balance():
         else:
             print(f"   Subsidiary: {subsidiary_param} → ID {subsidiary}", file=sys.stderr)
         
+        # CRITICAL: Convert filter names to IDs - they come in as names like "CloudExtend"
+        # but SQL requires numeric IDs
+        department_id = convert_name_to_id('department', department) if department else ''
+        location_id = convert_name_to_id('location', location) if location else ''
+        class_id = convert_name_to_id('class', classId) if classId else ''
+        
+        print(f"   Department: '{department}' → ID '{department_id}'", file=sys.stderr)
+        print(f"   Location: '{location}' → ID '{location_id}'", file=sys.stderr)
+        print(f"   Class: '{classId}' → ID '{class_id}'", file=sys.stderr)
+        
         # Use default subsidiary if none specified (for consolidation)
         target_sub = subsidiary if subsidiary else (default_subsidiary_id or '1')
         
@@ -7333,12 +7343,12 @@ def calculate_type_balance():
         # Build segment filters - use tl.subsidiary for GL line-level filtering
         segment_filters = []
         segment_filters.append(f"tl.subsidiary IN ({sub_filter})")
-        if department:
-            segment_filters.append(f"tl.department = {department}")
-        if location:
-            segment_filters.append(f"tl.location = {location}")
-        if classId:
-            segment_filters.append(f"tl.class = {classId}")
+        if department_id:
+            segment_filters.append(f"tl.department = {department_id}")
+        if location_id:
+            segment_filters.append(f"tl.location = {location_id}")
+        if class_id:
+            segment_filters.append(f"tl.class = {class_id}")
         
         segment_where = ' AND '.join(segment_filters)
         
