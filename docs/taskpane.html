@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.220</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.221</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12221,7 +12221,7 @@ export default {
         let suppressStatusBar = false;
         
         // Wait for formulas to complete - simple #BUSY cell check
-        // Just waits for all #BUSY cells to clear (2 consecutive checks)
+        // Just waits for all #BUSY cells to clear (3 consecutive checks for stability)
         async function waitForFormulasToComplete(maxWaitMs = 120000, updateOverlayFn = null) {
             const startTime = Date.now();
             
@@ -12232,10 +12232,10 @@ export default {
             
             // Brief initial wait for Excel to start calculating
             console.log('⏳ Giving Excel a moment to start calculating...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 3000));
             
             let consecutiveNoBusy = 0;
-            const requiredConsecutive = 2; // Reduced: just 2 consecutive checks with no #BUSY
+            const requiredConsecutive = 3; // Need 3 consecutive checks (3 seconds of stability)
             let sawBusyAtLeastOnce = false;
             
             while (Date.now() - startTime < maxWaitMs) {
@@ -12271,8 +12271,8 @@ export default {
                         console.log(`📊 ${busyCount} #BUSY cells remaining (${elapsed}s elapsed)`);
                     } else {
                         // Count as "no busy" if we've seen busy at least once
-                        // OR if 8 seconds have passed (formulas might have resolved very quickly)
-                        if (sawBusyAtLeastOnce || elapsed > 8) {
+                        // OR if 15 seconds have passed (formulas might have resolved very quickly or cached)
+                        if (sawBusyAtLeastOnce || elapsed > 15) {
                             consecutiveNoBusy++;
                             console.log(`✓ No #BUSY cells (check ${consecutiveNoBusy}/${requiredConsecutive})`);
                             
@@ -13651,7 +13651,7 @@ export default {
             }
         }
         
-        // Handle filter change (R3, S3, T3, U3) - triggers CFO Sync only
+        // Handle filter change (R3, S3, T3, U3) - triggers CFO Sync OR Income Statement Filter Sync
         async function handleFilterChange() {
             console.log('🔧 handleFilterChange() called');
             
@@ -13662,7 +13662,7 @@ export default {
             }
             
             try {
-                let shouldSync = false;
+                let syncType = null; // 'cfo' or 'income'
                 let year = null;
                 let subsidiary = '';
                 let department = '';
@@ -13673,7 +13673,7 @@ export default {
                 await Excel.run(async (context) => {
                     const sheet = context.workbook.worksheets.getActiveWorksheet();
                     
-                    // Check for CFO Sync marker
+                    // Check for Sync marker
                     const markerCell = sheet.getRange("V2");
                     markerCell.load("values");
                     const syncCell = sheet.getRange("V3");
@@ -13698,29 +13698,40 @@ export default {
                     const marker = String(markerCell.values[0][0] || '').toLowerCase();
                     const sync = String(syncCell.values[0][0] || '').toUpperCase();
                     
-                    // Only trigger for CFO Flash Reports (not full Income Statement)
+                    year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
+                    subsidiary = subCell.values[0][0] || '';
+                    department = deptCell.values[0][0] || '';
+                    location = locCell.values[0][0] || '';
+                    classId = classCell.values[0][0] || '';
+                    accountingBook = bookCell.values[0][0] || '';
+                    
+                    // Check for CFO Flash Reports
                     if ((marker.includes('cfo sync') || marker.includes('cfo')) &&
                         (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
-                        shouldSync = true;
-                        year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
-                        subsidiary = subCell.values[0][0] || '';
-                        department = deptCell.values[0][0] || '';
-                        location = locCell.values[0][0] || '';
-                        classId = classCell.values[0][0] || '';
-                        accountingBook = bookCell.values[0][0] || '';
-                        console.log(`🔧 Filter change detected on CFO Flash - triggering sync`);
+                        syncType = 'cfo';
+                        console.log(`🔧 Filter change detected on CFO Flash - triggering CFO sync`);
+                    }
+                    // Check for Income Statement (Structure Sync marker)
+                    else if ((marker.includes('structure sync') || marker.includes('🔄')) &&
+                             (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                        syncType = 'income';
+                        console.log(`🔧 Filter change detected on Income Statement - triggering filter sync`);
                     } else {
-                        console.log(`🔧 Filter change: marker="${marker}", sync="${sync}" - not a CFO report, skipping`);
+                        console.log(`🔧 Filter change: marker="${marker}", sync="${sync}" - no sync marker, skipping`);
                     }
                 });
                 
-                if (shouldSync && year) {
-                    console.log(`🔄 CFO Sync for filters: dept="${department}", loc="${location}", class="${classId}"`);
+                if (syncType && year) {
+                    console.log(`🔄 Filter Sync (${syncType}): dept="${department}", loc="${location}", class="${classId}"`);
                     
                     isSyncInProgress = true;
                     
                     try {
-                        await performCFOSync(year, subsidiary, department, location, classId, accountingBook);
+                        if (syncType === 'cfo') {
+                            await performCFOSync(year, subsidiary, department, location, classId, accountingBook);
+                        } else if (syncType === 'income') {
+                            await performIncomeStatementFilterSync(year, subsidiary, department, location, classId, accountingBook);
+                        }
                     } finally {
                         setTimeout(() => {
                             isSyncInProgress = false;
@@ -13732,6 +13743,159 @@ export default {
                 console.warn('Filter change error:', e.message);
                 setTimeout(() => { isSyncInProgress = false; }, 3000);
             }
+        }
+        
+        // Perform Income Statement filter sync - shows overlay while formulas recalculate
+        async function performIncomeStatementFilterSync(targetYear, currentSubsidiary, department = '', location = '', classId = '', accountingBook = '') {
+            console.log(`📊 Income Statement Filter Sync starting for year=${targetYear}, subsidiary="${currentSubsidiary}"`);
+            
+            // Suppress the small status bar - we're showing our own overlay
+            suppressStatusBar = true;
+            localStorage.removeItem('netsuite_status');
+            hideStatus();
+            
+            const syncStartTime = Date.now();
+            
+            // Get currency info
+            let currencyFormat = '$#,##0.00';
+            let currencySymbol = '$';
+            let currencyFlag = '🇺🇸';
+            
+            try {
+                const currencyData = await getCurrencyData();
+                if (currencyData && currentSubsidiary) {
+                    const subsidiaryNameToId = await getSubsidiaryLookup();
+                    const subId = /^\d+$/.test(currentSubsidiary) ? 
+                        currentSubsidiary : 
+                        (subsidiaryNameToId[currentSubsidiary.toLowerCase()] || currencyData.default_subsidiary);
+                    currencySymbol = currencyData.currencies[subId] || currencyData.currencies[currencyData.default_subsidiary] || '$';
+                    currencyFormat = currencyData.formats[currencySymbol] || '$#,##0.00';
+                    currencyFlag = getCurrencyFlag(currencySymbol);
+                    console.log(`💱 Income Statement Filter Sync currency: "${currentSubsidiary}" → ${currencyFlag} ${currencySymbol}`);
+                }
+            } catch (e) {
+                console.warn('Currency lookup failed:', e.message);
+            }
+            
+            // Build filter summary
+            const filters = [];
+            if (department) filters.push(`Dept: ${department}`);
+            if (classId) filters.push(`Class: ${classId}`);
+            if (location) filters.push(`Location: ${location}`);
+            if (accountingBook) filters.push(`Book: ${accountingBook}`);
+            const filterSummary = filters.length > 0 ? filters.join(' • ') : 'No additional filters';
+            
+            // Show full-screen overlay
+            const syncOverlay = document.createElement('div');
+            syncOverlay.id = 'structureSyncOverlay';
+            syncOverlay.className = 'guide-me-overlay';
+            syncOverlay.innerHTML = `
+                <div class="loading-spinner"></div>
+                <h2>🔄 Filter Update</h2>
+                <div class="loading-subtitle">
+                    Recalculating <strong>${targetYear}</strong> Income Statement for <strong>"${currentSubsidiary || 'All Subsidiaries'}"</strong>
+                </div>
+                <div style="margin: 8px auto; font-size: 12px; color: #93c5fd;">${filterSummary}</div>
+                <div style="margin: 16px auto; display: flex; align-items: center; justify-content: center; gap: 12px; 
+                            padding: 12px 24px; background: rgba(10, 226, 193, 0.15); border-radius: 12px; border: 1px solid rgba(10, 226, 193, 0.3);">
+                    <span style="font-size: 32px;">${currencyFlag}</span>
+                    <div style="text-align: left;">
+                        <div style="font-size: 11px; color: #93c5fd; text-transform: uppercase;">Currency</div>
+                        <div style="font-size: 22px; font-weight: bold; color: #0AE2C1;">${currencySymbol}</div>
+                    </div>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="syncProgressBar" style="width: 30%; animation: syncPulse 1.5s infinite;"></div>
+                    </div>
+                    <div class="progress-text">Recalculating...</div>
+                </div>
+                <div class="loading-step"><span class="spreadsheet-animation">📊</span> Recalculating formulas...</div>
+                <div class="loading-step-desc">BALANCE formulas are refreshing with new filter values.</div>
+            `;
+            document.body.appendChild(syncOverlay);
+            
+            // Add pulse animation
+            const style = document.createElement('style');
+            style.id = 'syncPulseStyle';
+            style.textContent = `
+                @keyframes syncPulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.7; }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            const loadingStep = syncOverlay.querySelector('.loading-step');
+            const loadingDesc = syncOverlay.querySelector('.loading-step-desc');
+            
+            // Signal cache clear to functions.js
+            localStorage.setItem('netsuite_cache_clear_signal', JSON.stringify({
+                action: 'clear_balance',
+                timestamp: Date.now()
+            }));
+            
+            // Brief pause to let signal propagate
+            await new Promise(r => setTimeout(r, 500));
+            
+            if (loadingStep) loadingStep.innerHTML = '<span class="spreadsheet-animation">📊</span> Tucking everything into place...';
+            if (loadingDesc) loadingDesc.textContent = 'BALANCE formulas are refreshing with new filter values.';
+            
+            // Wait for formulas to resolve
+            await waitForFormulasToComplete(90000, null);
+            
+            // Auto-fit columns AFTER all formulas have resolved
+            await autoFitColumns();
+            
+            // Apply currency formatting
+            try {
+                await scanForSubsidiaryCells();
+                await autoFormatCurrencies();
+            } catch (e) {
+                console.warn('Currency format failed:', e.message);
+            }
+            
+            // Remove overlay
+            const syncOverlayEl = document.getElementById('structureSyncOverlay');
+            if (syncOverlayEl) {
+                syncOverlayEl.style.opacity = '0';
+                syncOverlayEl.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => syncOverlayEl.remove(), 300);
+            }
+            const syncStyle = document.getElementById('syncPulseStyle');
+            if (syncStyle) syncStyle.remove();
+            
+            // Keep suppressStatusBar true - dismissReportSuccess will handle it
+            localStorage.removeItem('netsuite_status');
+            hideStatus();
+            
+            // Calculate elapsed time
+            const elapsedSeconds = ((Date.now() - syncStartTime) / 1000).toFixed(1);
+            
+            // Show success overlay
+            showReportSuccessOverlay(
+                '✅ Filters Applied!',
+                `Income Statement updated in ${elapsedSeconds}s`,
+                [{
+                    label: 'Subsidiary',
+                    value: currentSubsidiary || 'All',
+                    icon: '🏢'
+                }, {
+                    label: 'Currency',
+                    value: `${currencyFlag} ${currencySymbol}`,
+                    icon: '💱'
+                }, {
+                    label: 'Year',
+                    value: String(targetYear),
+                    icon: '📅'
+                }, {
+                    label: 'Filters',
+                    value: filters.length > 0 ? filters.join(', ') : 'None',
+                    icon: '🔧'
+                }],
+                'Filter Update',
+                'records'
+            );
         }
         
         // Perform CFO Flash sync - simpler than full Structure Sync (no row rebuilding needed)
