@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.219</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.220</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8530,7 +8530,8 @@ For licensing inquiries, contact: legal@celigo.com
                                     const value = monthData[period];
                                     // Key format: typebalance:${type}:${from}:${to}:${sub}:${dept}:${loc}:${class}:${book}:${special}
                                     // 4 empty fields: department, location, class, book
-                                    const cacheKey = `typebalance:${accountType}:${period}:${period}:${defaultSubsidiary}::::${specialFlag}`;
+                                    // IMPORTANT: Must trim subsidiary - TYPEBALANCE function uses .trim()
+                                    const cacheKey = `typebalance:${accountType}:${period}:${period}:${(defaultSubsidiary || '').trim()}::::${specialFlag}`;
                                     cacheEntries[cacheKey] = value;
                                 }
                             }
@@ -13362,7 +13363,8 @@ export default {
                                     // Single month entries - key format must match TYPEBALANCE function
                                     // Format: typebalance:${type}:${from}:${to}:${sub}:${dept}:${loc}:${class}:${book}:${special}
                                     // NOTE: We include all filter values to match what the formulas will generate
-                                    const key = `typebalance:${accountType}:${period}:${period}:${subsidiary}:${department}:${location}:${classId}:${accountingBook}:0`;
+                                    // IMPORTANT: Must trim all values - TYPEBALANCE function uses .trim() on all parameters
+                                    const key = `typebalance:${accountType}:${period}:${period}:${(subsidiary || '').trim()}:${(department || '').trim()}:${(location || '').trim()}:${(classId || '').trim()}:${(accountingBook || '').trim()}:0`;
                                     cacheEntries[key] = monthData[period];
                                 }
                             }
@@ -13864,7 +13866,8 @@ export default {
                                     
                                     // CRITICAL: Cache key format must match TYPEBALANCE function exactly!
                                     // Format: typebalance:${type}:${fromPeriod}:${toPeriod}:${subsidiary}:${dept}:${loc}:${class}:${book}:${specialFlag}
-                                    const cacheKey = `typebalance:${acctType}:${period}:${period}:${currentSubsidiary || ''}:${department || ''}:${location || ''}:${classId || ''}:${accountingBook || ''}:${specialFlag}`;
+                                    // IMPORTANT: Must trim all values - TYPEBALANCE function uses .trim() on all parameters
+                                    const cacheKey = `typebalance:${acctType}:${period}:${period}:${(currentSubsidiary || '').trim()}:${(department || '').trim()}:${(location || '').trim()}:${(classId || '').trim()}:${(accountingBook || '').trim()}:${specialFlag}`;
                                     
                                     cacheEntries[cacheKey] = value;
                                 }
