@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!--
-XAVI for NetSuite - Excel Add-in Manifest
+CE - Excel Add-in Manifest
 
 Copyright (c) 2025 Celigo, Inc.
 All rights reserved.
@@ -28,11 +28,11 @@ Context menu uses ExecuteFunction (runs in blank sharedruntime.html):
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
 
-  <Id>c3d4e5f6-7890-12ab-cdef-345678901cde</Id>
+  <Id>b2c3d4e5-6789-01ab-cdef-234567890bcd</Id>
   <Version>3.0.5.221</Version>
   <ProviderName>CloudExtend</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="XAVI for NetSuite"/>
+  <DisplayName DefaultValue="CE"/>
   <Description DefaultValue="XAVI - Financial reporting formulas for NetSuite"/>
   <IconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-32.png?v=3.0.5.221"/>
   <HighResolutionIconUrl DefaultValue="https://chris-cloudextend.github.io/netsuite-excel-addin/icon-64.png?v=3.0.5.221"/>
@@ -200,10 +200,10 @@ Context menu uses ExecuteFunction (runs in blank sharedruntime.html):
       <bt:ShortStrings>
         <bt:String id="Functions.Namespace" DefaultValue="XAVI"/>
         <bt:String id="CloudExtend.Group.Label" DefaultValue="CloudExtend"/>
-        <bt:String id="Taskpane.Button.Label" DefaultValue="XAVI"/>
+        <bt:String id="Taskpane.Button.Label" DefaultValue="CE"/>
         <bt:String id="ContextMenu.Label" DefaultValue="CloudExtend"/>
         <bt:String id="DrillDown.Label" DefaultValue="View Transactions"/>
-        <bt:String id="GetStarted.Title" DefaultValue="XAVI for NetSuite"/>
+        <bt:String id="GetStarted.Title" DefaultValue="CE"/>
       </bt:ShortStrings>
 
       <bt:LongStrings>
