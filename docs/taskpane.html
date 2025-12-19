@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.221</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.222</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12957,10 +12957,10 @@ export default {
                         }
                         
                         // Check if the changed cell is a filter parameter (R3, S3, T3, U3)
-                        // These trigger CFO Sync (but not Structure Sync for Income Statement)
+                        // These trigger CFO Sync OR Income Statement Filter Sync
                         const filterCells = ['R3', 'S3', 'T3', 'U3'];
                         if (filterCells.includes(eventAddr)) {
-                            console.log(`🔧 Filter cell ${eventAddr} changed (raw: ${event.address})`);
+                            console.log(`🔧🔧🔧 Filter cell ${eventAddr} changed! (raw: ${event.address}) 🔧🔧🔧`);
                             
                             // Suppress statusBar immediately
                             suppressStatusBar = true;
@@ -12968,17 +12968,23 @@ export default {
                             hideStatus();
                             
                             if (window.filterChangeTimer) {
+                                console.log('🔧 Clearing previous filter timer');
                                 clearTimeout(window.filterChangeTimer);
                             }
+                            console.log('🔧 Setting 500ms debounce timer for handleFilterChange()...');
                             window.filterChangeTimer = setTimeout(async () => {
-                                console.log('🔧 Filter debounce complete - checking for CFO sync...');
+                                console.log('🔧 Filter debounce complete - calling handleFilterChange() NOW');
                                 
                                 suppressStatusBar = true;
                                 localStorage.removeItem('netsuite_status');
                                 hideStatus();
                                 
-                                // Check if this is a CFO Flash Report and trigger sync
-                                await handleFilterChange();
+                                // Check if this is a CFO Flash Report or Income Statement and trigger sync
+                                try {
+                                    await handleFilterChange();
+                                } catch (e) {
+                                    console.error('❌ handleFilterChange() threw error:', e.message);
+                                }
                             }, 500);
                         }
                         
@@ -13653,9 +13659,9 @@ export default {
         
         // Handle filter change (R3, S3, T3, U3) - triggers CFO Sync OR Income Statement Filter Sync
         async function handleFilterChange() {
-            console.log('🔧 handleFilterChange() called');
+            console.log('🔧 handleFilterChange() called - checking report type...');
             
-            // Prevent infinite loop
+            // Prevent infinite loop - but also add a safety valve
             if (isSyncInProgress) {
                 console.log('⏸️ Sync already in progress, skipping filter change...');
                 return;
@@ -13695,8 +13701,13 @@ export default {
                     
                     await context.sync();
                     
-                    const marker = String(markerCell.values[0][0] || '').toLowerCase();
-                    const sync = String(syncCell.values[0][0] || '').toUpperCase();
+                    const rawMarker = String(markerCell.values[0][0] || '');
+                    const marker = rawMarker.toLowerCase().trim();
+                    const rawSync = String(syncCell.values[0][0] || '');
+                    const sync = rawSync.toUpperCase().trim();
+                    
+                    console.log(`🔧 Filter change: V2 raw="${rawMarker}", V3 raw="${rawSync}"`);
+                    console.log(`🔧 Filter change: marker="${marker}", sync="${sync}"`);
                     
                     year = parseInt(yearCell.values[0][0]) || new Date().getFullYear();
                     subsidiary = subCell.values[0][0] || '';
@@ -13705,42 +13716,56 @@ export default {
                     classId = classCell.values[0][0] || '';
                     accountingBook = bookCell.values[0][0] || '';
                     
-                    // Check for CFO Flash Reports
-                    if ((marker.includes('cfo sync') || marker.includes('cfo')) &&
-                        (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                    console.log(`🔧 Filter values: year=${year}, sub="${subsidiary}", dept="${department}", loc="${location}", class="${classId}", book="${accountingBook}"`);
+                    
+                    // Check for CFO Flash Reports - check multiple variations
+                    const isCFO = marker.includes('cfo sync') || marker.includes('cfo flash') || marker.includes('cfo');
+                    const syncEnabled = sync === 'TRUE' || sync === 'YES' || sync === '1';
+                    
+                    console.log(`🔧 Detection: isCFO=${isCFO}, isStructure=${marker.includes('structure sync')}, syncEnabled=${syncEnabled}`);
+                    
+                    if (isCFO && syncEnabled) {
                         syncType = 'cfo';
-                        console.log(`🔧 Filter change detected on CFO Flash - triggering CFO sync`);
+                        console.log(`🔧 ✅ Detected CFO Flash Report - will trigger performCFOSync()`);
                     }
-                    // Check for Income Statement (Structure Sync marker)
-                    else if ((marker.includes('structure sync') || marker.includes('🔄')) &&
-                             (sync === 'TRUE' || sync === 'YES' || sync === '1')) {
+                    // Check for Income Statement (Structure Sync marker) - but NOT if it's a CFO report
+                    else if ((marker.includes('structure sync') || (marker.includes('🔄') && !marker.includes('cfo'))) && syncEnabled) {
                         syncType = 'income';
-                        console.log(`🔧 Filter change detected on Income Statement - triggering filter sync`);
+                        console.log(`🔧 ✅ Detected Income Statement - will trigger performIncomeStatementFilterSync()`);
                     } else {
-                        console.log(`🔧 Filter change: marker="${marker}", sync="${sync}" - no sync marker, skipping`);
+                        console.log(`🔧 ❌ No matching report type - no sync will be triggered`);
+                        console.log(`🔧    (isCFO=${isCFO}, isStructure=${marker.includes('structure sync')}, syncEnabled=${syncEnabled})`);
                     }
                 });
                 
                 if (syncType && year) {
-                    console.log(`🔄 Filter Sync (${syncType}): dept="${department}", loc="${location}", class="${classId}"`);
+                    console.log(`🔄 Starting Filter Sync (${syncType}): dept="${department}", loc="${location}", class="${classId}"`);
                     
                     isSyncInProgress = true;
                     
                     try {
                         if (syncType === 'cfo') {
+                            console.log('🔄 Calling performCFOSync()...');
                             await performCFOSync(year, subsidiary, department, location, classId, accountingBook);
+                            console.log('✅ performCFOSync() completed');
                         } else if (syncType === 'income') {
+                            console.log('🔄 Calling performIncomeStatementFilterSync()...');
                             await performIncomeStatementFilterSync(year, subsidiary, department, location, classId, accountingBook);
+                            console.log('✅ performIncomeStatementFilterSync() completed');
                         }
+                    } catch (syncError) {
+                        console.error(`❌ Sync error (${syncType}):`, syncError.message);
                     } finally {
                         setTimeout(() => {
                             isSyncInProgress = false;
                             console.log('✅ Filter sync protection cleared');
                         }, 3000);
                     }
+                } else {
+                    console.log(`🔧 No sync triggered: syncType=${syncType}, year=${year}`);
                 }
             } catch (e) {
-                console.warn('Filter change error:', e.message);
+                console.error('❌ Filter change error:', e.message);
                 setTimeout(() => { isSyncInProgress = false; }, 3000);
             }
         }
