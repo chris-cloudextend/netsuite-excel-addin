@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.230</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.231</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -8946,12 +8946,12 @@ For licensing inquiries, contact: legal@celigo.com
                     }
                     
                     // Release the sync lock after currency formatting is done
-                    // Use a small delay to ensure any debounced cell change events have fired and been blocked
+                    // Reduced delay (was 1000ms) - user can change subsidiary sooner
                     setTimeout(() => {
                         isSyncInProgress = false;
                         console.log('🔓 CFO Flash: Filter change handlers unblocked - report generation complete');
-                    }, 1000);
-                }, 2000); // Wait for formulas to start evaluating
+                    }, 500);
+                }, 500); // Reduced from 2000ms - formulas start immediately
                 
             } catch (error) {
                 console.error('CFO Flash Report error:', error);
@@ -13816,9 +13816,10 @@ export default {
                             await performCFOSync(year, subsidiary, department, location, classId, accountingBook);
                             console.log('✅ performCFOSync() completed');
                         } else if (syncType === 'income') {
-                            console.log('🔄 Calling performIncomeStatementFilterSync()...');
-                            await performIncomeStatementFilterSync(year, subsidiary, department, location, classId, accountingBook);
-                            console.log('✅ performIncomeStatementFilterSync() completed');
+                            // Use full Structure Sync for filter changes to ensure zero rows are removed
+                            console.log('🔄 Calling performStructureSync() for filter change...');
+                            await performStructureSync(year, subsidiary);
+                            console.log('✅ performStructureSync() completed');
                         }
                     } catch (syncError) {
                         console.error(`❌ Sync error (${syncType}):`, syncError.message);
