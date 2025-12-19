@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.218</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.219</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -12902,10 +12902,16 @@ export default {
                     sheet.onChanged.add(async (event) => {
                         // Normalize the event address - strip sheet prefix and dollar signs
                         let eventAddr = event.address;
+                        const rawAddr = eventAddr; // Keep for logging
                         if (eventAddr.includes('!')) {
                             eventAddr = eventAddr.split('!')[1];
                         }
                         eventAddr = eventAddr.replace(/\$/g, '').toUpperCase();
+                        
+                        // Debug: Log all cell changes to parameter row
+                        if (eventAddr.endsWith('3')) {
+                            console.log(`📝 Cell changed: raw="${rawAddr}" → normalized="${eventAddr}"`);
+                        }
                         
                         // Check if the changed cell is P3 (YEAR parameter for auto-sync)
                         if (eventAddr === 'P3') {
@@ -13645,6 +13651,8 @@ export default {
         
         // Handle filter change (R3, S3, T3, U3) - triggers CFO Sync only
         async function handleFilterChange() {
+            console.log('🔧 handleFilterChange() called');
+            
             // Prevent infinite loop
             if (isSyncInProgress) {
                 console.log('⏸️ Sync already in progress, skipping filter change...');
