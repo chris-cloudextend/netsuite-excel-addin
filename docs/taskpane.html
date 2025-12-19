@@ -3957,7 +3957,7 @@ For licensing inquiries, contact: legal@celigo.com
                     <h3>ℹ️ Version Info</h3>
                     <div style="font-size: 12px; color: #4b5563;">
                         <p>Add-in Version: <strong id="settingsVersion">loading...</strong></p>
-                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.226</strong></p>
+                        <p style="margin-top: 4px;">Manifest Version: <strong>3.0.5.227</strong></p>
                         <p style="margin-top: 4px;">Proxy: <code style="font-size: 10px; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">netsuite-proxy.chris-corcoran.workers.dev</code></p>
                     </div>
                 </div>
@@ -6060,6 +6060,17 @@ For licensing inquiries, contact: legal@celigo.com
                 newValue = selectEl.value;
             } else {
                 newValue = inputEl.value.trim();
+            }
+            
+            // CRITICAL: For parameter cells that trigger sync (P3, Q3, R3, S3, T3, U3),
+            // suppress the statusBar BEFORE writing to prevent "Fetching P&L" flash
+            const syncTriggerCells = ['P3', 'Q3', 'R3', 'S3', 'T3', 'U3'];
+            const normalizedAddr = currentParamCellAddress.replace(/\$/g, '').toUpperCase();
+            if (syncTriggerCells.includes(normalizedAddr)) {
+                console.log(`🔒 Pre-suppressing statusBar before writing to ${normalizedAddr}`);
+                suppressStatusBar = true;
+                localStorage.removeItem('netsuite_status');
+                hideStatus();
             }
             
             // Apply the value to the cell
@@ -8642,22 +8653,7 @@ For licensing inquiries, contact: legal@celigo.com
                     }
                     await context.sync();
                     
-                    // Add comments to parameter cells
-                    try {
-                        const comments = context.workbook.comments;
-                        const filterComments = {
-                            'P3': 'YEAR: Change this value to view a different fiscal year.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'DEPARTMENT: Filter by department. Leave empty for all.',
-                            'S3': 'LOCATION: Filter by location. Leave empty for all.',
-                            'T3': 'CLASS: Filter by class. Leave empty for all.',
-                            'U3': 'ACCOUNTING BOOK: Enter a book ID for specific book. Leave empty for primary.'
-                        };
-                        for (const [cell, text] of Object.entries(filterComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) {}
+                    // NOTE: Parameter cell comments removed - caused errors on Mac
                     
                     // ========== ROW 4: KPI DASHBOARD ==========
                     try {
@@ -9298,23 +9294,7 @@ For licensing inquiries, contact: legal@celigo.com
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ADD COMMENTS TO FILTER CELLS ==========
-                    try {
-                        const comments = context.workbook.comments;
-                        const filterComments = {
-                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
-                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
-                        };
-                        for (const [cell, text] of Object.entries(filterComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                    // NOTE: Filter cell comments removed - caused errors on Mac
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     // Set row height for KPI cards
@@ -10072,23 +10052,7 @@ For licensing inquiries, contact: legal@celigo.com
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ADD COMMENTS TO FILTER CELLS ==========
-                    try {
-                        const comments = context.workbook.comments;
-                        const budgetComments = {
-                            'P3': 'YEAR: Enter the fiscal year for the budget report. Change this value to view different budget years.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter by subsidiary. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'BUDGET CATEGORY: Select a budget category name to filter. Leave empty for all categories.',
-                            'S3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                            'T3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                            'U3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                            'V3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.'
-                        };
-                        for (const [cell, text] of Object.entries(budgetComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) { console.warn('Could not add budget comments:', e.message); }
+                    // NOTE: Budget cell comments removed - caused errors on Mac
                     
                     // ========== ROW 4: BLANK ==========
                     currentRow = 4;
@@ -10635,23 +10599,7 @@ For licensing inquiries, contact: legal@celigo.com
                         await context.sync();
                     } catch (e) {}
                     
-                    // ========== ADD COMMENTS TO FILTER CELLS ==========
-                    try {
-                        const comments = context.workbook.comments;
-                        const filterComments = {
-                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
-                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
-                        };
-                        for (const [cell, text] of Object.entries(filterComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                    // NOTE: Filter cell comments removed - caused errors on Mac
                     
                     // ========== ROW 4: KPI METRICS DASHBOARD ==========
                     try {
@@ -13657,9 +13605,13 @@ export default {
         
         // Handle subsidiary change - trigger structure sync if enabled
         async function handleSubsidiaryChange() {
+            console.log('🏢 handleSubsidiaryChange() called');
+            console.log(`   isSyncInProgress: ${isSyncInProgress}`);
+            console.log(`   lastSyncedSubsidiary: "${lastSyncedSubsidiary}"`);
+            
             // Prevent infinite loop - don't sync if already syncing
             if (isSyncInProgress) {
-                console.log('⏸️ Sync already in progress, skipping...');
+                console.log('⏸️ Sync already in progress, skipping subsidiary change...');
                 return;
             }
             
@@ -14497,23 +14449,7 @@ export default {
                         await context.sync();
                     } catch (e) {}
                     
-                    // ADD COMMENTS TO FILTER CELLS
-                    try {
-                        const comments = context.workbook.comments;
-                        const filterComments = {
-                            'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
-                            'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
-                            'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                            'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                            'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                            'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
-                            'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
-                        };
-                        for (const [cell, text] of Object.entries(filterComments)) {
-                            comments.add(sheet.getRange(cell).address, text);
-                        }
-                        await context.sync();
-                    } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                    // NOTE: Filter cell comments removed - caused errors on Mac
                     
                     // ROW 4: KPI METRICS DASHBOARD
                     try {
@@ -15146,8 +15082,8 @@ export default {
                     const sorted = Object.entries(subCounts).sort((a, b) => b[1] - a[1]);
                     if (sorted.length > 0) {
                         sheetSubId = sorted[0][0];
+                        }
                     }
-                }
                     
                     const sheetSymbol = sheetSubId && currencies[sheetSubId] ? currencies[sheetSubId] : defaultSymbol;
                     const sheetFormat = formats[sheetSymbol] || defaultFormat;
@@ -15759,23 +15695,7 @@ export default {
                                 await context.sync();
                             } catch (e) {}
                             
-                            // ADD COMMENTS TO FILTER CELLS
-                            try {
-                                const comments = context.workbook.comments;
-                                const filterComments = {
-                                    'P3': 'YEAR: Enter the fiscal year for the report. Change this value and refresh to view different years.',
-                                    'Q3': 'SUBSIDIARY: Enter a subsidiary name or ID to filter. Add "(Consolidated)" to include child subsidiaries.',
-                                    'R3': 'DEPARTMENT: Enter a department name to filter by department. Leave empty for all departments.',
-                                    'S3': 'LOCATION: Enter a location name to filter by location. Leave empty for all locations.',
-                                    'T3': 'CLASS: Enter a class name to filter by class. Leave empty for all classes.',
-                                    'U3': 'ACCOUNTING BOOK: Enter an accounting book ID to query a specific book. Leave empty for primary book.',
-                                    'V3': 'STRUCTURE SYNC: Set to TRUE to auto-refresh when Year or Subsidiary changes. Set to FALSE to disable.'
-                                };
-                                for (const [cell, text] of Object.entries(filterComments)) {
-                                    comments.add(sheet.getRange(cell).address, text);
-                                }
-                                await context.sync();
-                            } catch (e) { console.warn('Could not add filter comments:', e.message); }
+                            // NOTE: Filter cell comments removed - caused errors on Mac
                             
                             // ===== ROW 4: KPI METRICS =====
                             try {
