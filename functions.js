@@ -22,7 +22,7 @@
 
 const SERVER_URL = 'https://netsuite-proxy.chris-corcoran.workers.dev';
 const REQUEST_TIMEOUT = 30000;  // 30 second timeout for NetSuite queries
-const FUNCTIONS_VERSION = '3.0.5.237';  // Version marker for debugging - BALANCECHANGE 1766242067
+const FUNCTIONS_VERSION = '3.0.5.238';  // Version marker for debugging - added BALANCECHANGE formula
 console.log(`📦 XAVI functions.js loaded - version ${FUNCTIONS_VERSION}`);
 
 // ============================================================================
@@ -288,6 +288,144 @@ let bsSlowQueryCount = 0;          // Track consecutive slow BS queries
 let lastBsPreloadSuggestion = 0;   // Prevent spamming suggestions
 const BS_SLOW_THRESHOLD_MS = 30000; // 30 seconds = slow query
 const BS_SUGGESTION_COOLDOWN_MS = 300000; // Only suggest every 5 minutes
+
+// ============================================================================
+// BS FORMULA DETECTION & USER GUIDANCE
+// Proactively guide users when they're entering BS formulas
+// ============================================================================
+let bsFormulaEducationShown = false;  // Only show "BS accounts are slow" once per session
+let bsBuildModeWarningShown = false;  // Only show BUILD MODE warning once
+let totalBSFormulasQueued = 0;        // Track total BS formulas this session
+const BS_MULTI_FORMULA_THRESHOLD = 3; // Show warning after this many BS formulas queued
+
+/**
+ * Detect if an account is Balance Sheet type.
+ * Used for early detection and user guidance.
+ */
+const BS_ACCOUNT_TYPES = ['Bank', 'AcctRec', 'OthCurrAsset', 'FixedAsset', 'OthAsset', 
+                          'AcctPay', 'CreditCard', 'OthCurrLiab', 'LongTermLiab', 
+                          'Equity', 'RetainEarn', 'DeferRevenue', 'UnbilledRec'];
+
+/**
+ * Check if a request is for a cumulative (BS) account.
+ * BS accounts have no fromPeriod (cumulative from inception).
+ */
+function isCumulativeRequest(fromPeriod) {
+    return !fromPeriod || fromPeriod === '';
+}
+
+/**
+ * Trigger automatic BS preload when first BS formula is detected.
+ * This removes user interaction - we automatically scan and preload.
+ */
+let autoPreloadTriggered = false;
+let autoPreloadInProgress = false;
+
+function triggerAutoPreload(firstAccount, firstPeriod) {
+    if (autoPreloadTriggered || autoPreloadInProgress) {
+        console.log('🔄 Auto-preload already triggered or in progress');
+        return;
+    }
+    autoPreloadTriggered = true;
+    autoPreloadInProgress = true;
+    
+    console.log(`🚀 AUTO-PRELOAD: Triggered by first BS formula (${firstAccount}, ${firstPeriod})`);
+    
+    // Send signal to taskpane to trigger auto-preload
+    // Taskpane will scan the sheet and preload all BS accounts
+    try {
+        localStorage.setItem('netsuite_auto_preload_trigger', JSON.stringify({
+            firstAccount: firstAccount,
+            firstPeriod: firstPeriod,
+            timestamp: Date.now(),
+            reason: 'First Balance Sheet formula detected'
+        }));
+    } catch (e) {
+        console.warn('Could not trigger auto-preload:', e);
+    }
+}
+
+/**
+ * Mark auto-preload as complete (called from taskpane)
+ */
+function markAutoPreloadComplete() {
+    autoPreloadInProgress = false;
+    console.log('✅ AUTO-PRELOAD: Complete');
+}
+
+// Expose for taskpane
+window.markAutoPreloadComplete = markAutoPreloadComplete;
+
+/**
+ * Show first-time BS education toast.
+ * Only shown once per session when first BS formula is detected.
+ * NOW: Also triggers automatic preload!
+ */
+function showBSEducationToast(account, period) {
+    if (bsFormulaEducationShown) return;
+    bsFormulaEducationShown = true;
+    
+    // AUTOMATIC PRELOAD: Instead of just showing a toast, trigger auto-preload
+    triggerAutoPreload(account, period);
+    
+    console.log('💡 BS EDUCATION: First BS formula detected, triggering auto-preload');
+}
+
+/**
+ * Show BUILD MODE warning when multiple BS formulas are detected.
+ * Warns user that drag-fill on BS accounts will be slow without preload.
+ */
+function showBSBuildModeWarning(bsCount, periods) {
+    if (bsBuildModeWarningShown) return;
+    bsBuildModeWarningShown = true;
+    
+    // Send special signal to taskpane to show prominent modal
+    try {
+        localStorage.setItem('netsuite_bs_buildmode_warning', JSON.stringify({
+            bsCount: bsCount,
+            periods: periods,
+            timestamp: Date.now(),
+            message: `You're adding ${bsCount} Balance Sheet formulas. Each takes 60-90 seconds individually. Smart Preload can load them all at once in ~30 seconds!`
+        }));
+    } catch (e) {}
+    
+    broadcastToast({
+        id: 'bs-buildmode-' + Date.now(),
+        title: '⚠️ Multiple BS Formulas Detected',
+        message: `${bsCount} BS formulas queued. Without preload, this could take ${bsCount * 60}+ seconds. Click "Smart Preload" to speed this up!`,
+        type: 'warning',
+        duration: 15000,
+        priority: 'critical'
+    });
+    console.log(`⚠️ BS BUILD MODE WARNING: ${bsCount} BS formulas detected`);
+}
+
+/**
+ * Analyze pending requests and detect BS formula patterns.
+ * Called before processing batch to provide guidance.
+ */
+function analyzePendingBSRequests(pendingMap) {
+    let bsCount = 0;
+    const bsPeriods = new Set();
+    const bsAccounts = new Set();
+    
+    for (const [cacheKey, request] of pendingMap) {
+        if (isCumulativeRequest(request.params.fromPeriod)) {
+            bsCount++;
+            bsAccounts.add(request.params.account);
+            if (request.params.toPeriod) {
+                bsPeriods.add(request.params.toPeriod);
+            }
+        }
+    }
+    
+    return {
+        bsCount,
+        bsAccounts: Array.from(bsAccounts),
+        bsPeriods: Array.from(bsPeriods),
+        hasBSFormulas: bsCount > 0
+    };
+}
 
 /**
  * Suggest BS preload after detecting slow queries.
@@ -1215,9 +1353,11 @@ async function runBuildModeBatch() {
                     }
                 } else {
                     // HTTP error - return informative error code
-                    const errorCode = response.status === 408 || response.status === 504 ? 'TIMEOUT' :
+                    // 522/523/524 are Cloudflare timeout errors
+                    const errorCode = [408, 504, 522, 523, 524].includes(response.status) ? 'TIMEOUT' :
                                      response.status === 429 ? 'RATELIMIT' :
                                      response.status === 401 || response.status === 403 ? 'AUTHERR' :
+                                     response.status >= 500 ? 'SERVERR' :
                                      'APIERR';
                     console.error(`   ❌ Cumulative API error: ${response.status} → ${errorCode}`);
                     items.forEach(item => item.resolve(errorCode));
@@ -3365,9 +3505,21 @@ async function BALANCE(account, fromPeriod, toPeriod, subsidiary, department, lo
         
         cacheStats.misses++;
         
+        // BS DETECTION: Check if this is a cumulative (Balance Sheet) request
+        const isBSRequest = isCumulativeRequest(fromPeriod);
+        if (isBSRequest) {
+            totalBSFormulasQueued++;
+            trackBSPeriod(toPeriod);
+            
+            // First BS formula - trigger automatic preload!
+            if (totalBSFormulasQueued === 1) {
+                showBSEducationToast(account, toPeriod);
+            }
+        }
+        
         // In full refresh mode, queue silently (task pane will trigger processFullRefresh)
         if (!isFullRefreshMode) {
-            console.log(`📥 CACHE MISS [balance]: ${account} (${fromPeriod || '(cumulative)'} to ${toPeriod}) → queuing`);
+            console.log(`📥 CACHE MISS [balance]: ${account} (${fromPeriod || '(cumulative)'} to ${toPeriod}) → queuing${isBSRequest ? ' [BS]' : ''}`);
         }
         
         // Return a Promise that will be resolved by the batch processor
@@ -3491,9 +3643,14 @@ async function BALANCECHANGE(account, fromPeriod, toPeriod, subsidiary, departme
         const response = await fetch(`${SERVER_URL}/balance-change?${apiParams.toString()}`);
         
         if (!response.ok) {
-            const errorCode = response.status === 408 || response.status === 504 ? 'TIMEOUT' :
+            // Map HTTP status codes to user-friendly error codes
+            // 408/504/522/523/524 = various timeout errors (including Cloudflare)
+            // 429 = rate limited
+            // 401/403 = auth errors
+            const errorCode = [408, 504, 522, 523, 524].includes(response.status) ? 'TIMEOUT' :
                              response.status === 429 ? 'RATELIMIT' :
                              response.status === 401 || response.status === 403 ? 'AUTHERR' :
+                             response.status >= 500 ? 'SERVERR' :
                              'APIERR';
             console.error(`❌ BALANCECHANGE API error: ${response.status} → ${errorCode}`);
             return errorCode;
@@ -4036,6 +4193,20 @@ async function processBatchQueue() {
             console.log(`   🔄 DEDUPLICATED: ${cumulativeRequests.length} requests → ${uniqueRequests.size} unique (saved ${deduplicated} API calls)`);
         }
         
+        // ================================================================
+        // BS BUILD WARNING: Warn user if multiple BS formulas detected
+        // This helps them understand why things are slow and offers preload
+        // ================================================================
+        const uniqueBSCount = uniqueRequests.size;
+        if (uniqueBSCount >= BS_MULTI_FORMULA_THRESHOLD && !bsBuildModeWarningShown) {
+            const bsAccounts = new Set();
+            for (const [_, data] of uniqueRequests) {
+                bsAccounts.add(data.params.account);
+            }
+            showBSBuildModeWarning(uniqueBSCount, Array.from(bsPeriodsInBatch));
+            console.log(`   ⚠️ BS BUILD WARNING: ${uniqueBSCount} unique BS formulas, ${bsAccounts.size} accounts, ${bsPeriodsInBatch.size} periods`);
+        }
+        
         // Log multi-period detection
         if (bsPeriodsInBatch.size > 1) {
             console.log(`   📅 MULTI-PERIOD DETECTED: ${Array.from(bsPeriodsInBatch).join(', ')} - consider preloading both!`);
@@ -4165,9 +4336,11 @@ async function processBatchQueue() {
                     }
                 } else {
                     // HTTP error - return informative error code
-                    const errorCode = response.status === 408 || response.status === 504 ? 'TIMEOUT' :
+                    // 522/523/524 are Cloudflare timeout errors
+                    const errorCode = [408, 504, 522, 523, 524].includes(response.status) ? 'TIMEOUT' :
                                      response.status === 429 ? 'RATELIMIT' :
                                      response.status === 401 || response.status === 403 ? 'AUTHERR' :
+                                     response.status >= 500 ? 'SERVERR' :
                                      'APIERR';
                     console.error(`   ❌ Cumulative API error: ${response.status} → ${errorCode}`);
                     requests.forEach(r => r.resolve(errorCode));
