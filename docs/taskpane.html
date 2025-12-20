@@ -10429,7 +10429,8 @@ For licensing inquiries, contact: legal@celigo.com
             if (period2) periods.push(period2);
             
             const periodLabel = periods.length > 1 ? periods.join(' & ') : periods[0];
-            const expectedTime = periods.length > 1 ? '~90 seconds' : '~70 seconds';
+            // Sequential loading: ~70s per period to avoid Cloudflare timeout
+            const expectedTime = periods.length > 1 ? '~140 seconds (sequential to avoid timeout)' : '~70 seconds';
             
             console.log(`📊 BS Preload: ${periods.length} period(s): ${periodLabel}`);
             
@@ -10519,62 +10520,84 @@ For licensing inquiries, contact: legal@celigo.com
             try {
                 const startTime = Date.now();
                 
-                const response = await fetch(`${SERVER_URL}/batch/bs_preload`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        periods: periods  // Send array of periods
-                    })
-                });
+                // Load periods SEQUENTIALLY to avoid Cloudflare timeout
+                // Each period takes ~70s, Cloudflare times out at ~100s
+                let totalAccountCount = 0;
+                const allBalances = {};
+                const cacheEntries = {};
                 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`);
-                }
-                
-                const result = await response.json();
-                const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
-                
-                console.log('✅ BS PRELOAD COMPLETE:', result);
-                
-                // Cache results in localStorage for formula lookups
-                // New format: balances = { "10010": { "Dec 2024": 100, "Dec 2023": 90 } }
-                if (result.balances) {
-                    const cacheEntries = {};
-                    for (const [account, periodBalances] of Object.entries(result.balances)) {
-                        if (typeof periodBalances === 'object') {
-                            // Multi-period format: { "Dec 2024": 100, "Dec 2023": 90 }
-                            for (const [periodName, balance] of Object.entries(periodBalances)) {
-                                const cacheKey = `balance:${account}::${periodName}`;
-                                cacheEntries[cacheKey] = {
-                                    value: balance,
-                                    timestamp: Date.now()
-                                };
-                            }
-                        } else {
-                            // Single period (backward compat)
-                            const cacheKey = `balance:${account}::${periods[0]}`;
-                            cacheEntries[cacheKey] = {
-                                value: periodBalances,
-                                timestamp: Date.now()
-                            };
+                for (let i = 0; i < periods.length; i++) {
+                    const period = periods[i];
+                    const periodNum = i + 1;
+                    
+                    console.log(`📊 Loading period ${periodNum}/${periods.length}: ${period}`);
+                    updateLoading(
+                        `Loading Period ${periodNum}/${periods.length}: ${period}`,
+                        Math.round(10 + (i / periods.length) * 70),
+                        `⏳ Each period takes ~70 seconds to calculate from inception...`
+                    );
+                    
+                    const response = await fetch(`${SERVER_URL}/batch/bs_preload`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            periods: [period]  // Send ONE period at a time to avoid timeout
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        // Handle Cloudflare timeout errors (524, 522, 523) and other errors
+                        if ([524, 522, 523].includes(response.status)) {
+                            throw new Error(`Gateway timeout loading ${period}. Try again or contact support.`);
+                        }
+                        try {
+                            const errorData = await response.json();
+                            throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`);
+                        } catch (jsonError) {
+                            throw new Error(`Server error loading ${period}: HTTP ${response.status}`);
                         }
                     }
                     
-                    // Store in localStorage for functions.js to use
-                    try {
-                        const existing = JSON.parse(localStorage.getItem('xavi_balance_cache') || '{}');
-                        const merged = { ...existing, ...cacheEntries };
-                        localStorage.setItem('xavi_balance_cache', JSON.stringify(merged));
-                        console.log(`📦 Cached ${Object.keys(cacheEntries).length} BS balances to localStorage`);
-                    } catch (e) {
-                        console.warn('Could not cache to localStorage:', e.message);
+                    const result = await response.json();
+                    console.log(`✅ Period ${periodNum} loaded: ${result.account_count} accounts`);
+                    
+                    totalAccountCount = result.account_count;
+                    
+                    // Merge balances from this period
+                    if (result.balances) {
+                        for (const [account, periodBalances] of Object.entries(result.balances)) {
+                            if (!allBalances[account]) allBalances[account] = {};
+                            if (typeof periodBalances === 'object') {
+                                for (const [pName, balance] of Object.entries(periodBalances)) {
+                                    allBalances[account][pName] = balance;
+                                    cacheEntries[`balance:${account}::${pName}`] = { value: balance, timestamp: Date.now() };
+                                }
+                            } else {
+                                allBalances[account][period] = periodBalances;
+                                cacheEntries[`balance:${account}::${period}`] = { value: periodBalances, timestamp: Date.now() };
+                            }
+                        }
                     }
+                }
+                
+                const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
+                
+                console.log(`✅ BS PRELOAD COMPLETE: ${totalAccountCount} accounts × ${periods.length} periods in ${elapsedSec}s`);
+                
+                // Store in localStorage for functions.js to use
+                try {
+                    const existing = JSON.parse(localStorage.getItem('xavi_balance_cache') || '{}');
+                    const merged = { ...existing, ...cacheEntries };
+                    localStorage.setItem('xavi_balance_cache', JSON.stringify(merged));
+                    console.log(`📦 Cached ${Object.keys(cacheEntries).length} BS balances to localStorage`);
+                } catch (e) {
+                    console.warn('Could not cache to localStorage:', e.message);
                 }
                 
                 hideLoading();
                 
-                const periodCount = result.period_count || 1;
+                const periodCount = periods.length;
+                const result = { account_count: totalAccountCount, balances: allBalances };
                 const timeSaved = Math.round(result.account_count * 70 / 60); // ~70s per account if done individually
                 
                 showToast({
